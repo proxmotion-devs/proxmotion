@@ -98,7 +98,7 @@ proxmotion/
 │   │   ├── Enums/                        # UserRole, ClusterType, NodeStatus, NetworkModel, IpVersion, …
 │   │   ├── Domain/                       # Business logic (services/actions), grouped by domain
 │   │   │   ├── Infrastructure/           # ClusterSynchronizer, …
-│   │   │   ├── Networking/               # GenerateIpAddresses, rDNS, firewall, NAT port forwards
+│   │   │   ├── Networking/               # GenerateIpAddresses, ReverseDns drivers (ADR 0003), firewall, NAT port forwards
 │   │   │   ├── Servers/                  # power, reinstall, resize
 │   │   │   ├── Usage/                    # traffic/resource accounting, quotas
 │   │   │   ├── Backups/                  # snapshots, backups
@@ -160,7 +160,7 @@ proxmotion/
 8. **No SSH to hypervisors.** The panel uses only the Proxmox API (and the QEMU Guest Agent through it). Anything that seems to need host shell access must be solved differently or escalated to the maintainers.
 
 ### 3.4 Core data models
-`Location`, `Cluster` (one API connection: host(s), port, token id, encrypted token secret, `type: standalone | cluster`), `Node` (belongs to a cluster; capacity limits, active/maintenance), `Storage` (`shared` flag), `NetworkBridge`, `IpPool` (v4/v6, network model, gateway, netmask, VLAN, location, optional per-IP MAC), `IpAddress`, `NatPortForward`, `Package`, `OsTemplate` (template VMID mapped per node/cluster), `Iso`, `Server` (uuid, vmid, node, package, user, network model, status, suspension reason, `external_id` = billing service id, `origin: provisioned | adopted | imported`), `Task`, `UsageRecord`, `Snapshot`, `Backup`, `User` (admin/client role, locale), `SshKey`, `ApiToken` (scoped), `AuditLog`, `AppRecipe`, `AppInstallation`, `AppEntitlement`.
+`Location`, `Cluster` (one API connection: host(s), port, token id, encrypted token secret, `type: standalone | cluster`), `Node` (belongs to a cluster; capacity limits, active/maintenance), `Storage` (`shared` flag), `NetworkBridge`, `IpPool` (v4/v6, network model, gateway, netmask, VLAN, location, optional per-IP MAC), `IpAddress`, `NatPortForward`, `Package`, `OsTemplate` (template VMID mapped per node/cluster), `Iso`, `Server` (uuid, vmid, node, package, user, network model, status, suspension reason, `external_id` = billing service id, `origin: provisioned | adopted | imported`), `Task`, `UsageRecord`, `Snapshot`, `Backup`, `User` (admin/client role, locale), `SshKey`, `ApiToken` (scoped), `AuditLog`, `DnsProvider` (rDNS driver + encrypted credentials, ADR 0003), `ServerDrift` (ADR 0005), `AppRecipe`, `AppInstallation`, `AppEntitlement`.
 
 `Server.status`: `pending → provisioning → active ⇄ suspended`, `active → reinstalling → active`, `* → terminating → terminated`, `* → error`.
 
@@ -173,7 +173,7 @@ The equivalent of OVH's "install with an application". A customer can install an
 #### Install paths
 | Path | When | Mechanism |
 |---|---|---|
-| **At order time** | `POST /servers` contains an `app` field (WHMCS order form) | After cloning, the pipeline runs `install.sh` on first boot via cloud-init |
+| **At order time** | `POST /servers` contains an `app` field (WHMCS order form) | After first boot, a post-boot hook runs the same Guest Agent flow as "later" (ADR 0004) — no cloud-init snippets |
 | **Later** | Client panel "Install app" or API | **QEMU Guest Agent**: `file-write` puts the script and inputs into the VPS, `exec` runs it |
 | **Reinstall** | An app is selected while reinstalling the OS | Same as at order time |
 
@@ -244,7 +244,7 @@ Providers run **standalone nodes and clusters side by side**, and both must be f
 - `Storage.shared` decides behaviour: on **local storage** (LVM-thin, ZFS, dir) the template must exist on the target node (clone per node, or full clone + migrate); on **shared storage** (Ceph RBD, NFS, iSCSI) any node in the cluster can use it.
 - **Placement** chooses a node within the requested location, filtering by package fit, node state (`active`, not `maintenance`), storage availability and network-model support, then scores by free RAM/disk and configurable over-commit ratios. Strategies are pluggable (`least-used`, `fill-first`).
 - **Live migration** is only offered between nodes of the same cluster (later phase); moving across clusters is backup/restore based.
-- Nodes are synced periodically (`php artisan infra:sync`): storages, bridges, templates, capacity and running VMs (used for drift detection and adoption).
+- Nodes are synced periodically (`php artisan infra:sync`): storages, bridges, templates, capacity and running VMs (used for adoption and for drift reports, see ADR 0005; drift is shown to admins, never repaired automatically).
 
 ### 3.7 Network models
 
@@ -258,7 +258,7 @@ Each `IpPool` declares one network model; each `Package` lists the models it all
 | **IPv6** | Per-VPS address(es) or a routed **/64 per VPS** from a /48 or /56 pool | Can be combined with any IPv4 model; routed /64 preferred over a shared /64 to avoid NDP exhaustion issues |
 
 - App recipes declare their ports; on NAT VPS, those ports are forwarded automatically within the customer's port range, or the install is rejected if they cannot be.
-- rDNS is only available for public IPs (bridged, routed, IPv6).
+- rDNS is only available for public IPs (bridged, routed, IPv6). PTRs are published through a pluggable driver per IP pool (`none` = record only/export, `powerdns`; others optional), see ADR 0003.
 
 ### 3.8 Migration and import
 
@@ -418,7 +418,7 @@ This panel manages customer infrastructure and is internet-facing. Agents **must
 - Task status: `GET /nodes/{node}/tasks/{upid}/status` → `status == "stopped"` and `exitstatus == "OK"`.
 - Firewall: `PUT .../firewall/options` (`enable`, `ipfilter`, `macfilter`), `POST .../firewall/ipset`, `POST .../firewall/rules` (app ports). The Proxmox firewall does **not** do DNAT — hence the NAT gateway design in 3.7.
 - Guest Agent: `POST .../agent/ping`, `POST .../agent/file-write` (`file`, `content`; size-limited — chunk large scripts or base64 + concatenate), `POST .../agent/exec` (`command` as array, `input-data`) → `pid`, `GET .../agent/exec-status?pid=` (`exited`, `exitcode`, `out-data`, `err-data`), `GET .../agent/file-read?file=` (may be truncated — check `truncated`). Start long installs detached (`systemd-run`/`nohup`) and track them through `status.json`.
-- Cloud-init custom data: `cicustom: vendor=<storage>:snippets/<file>.yaml` requires a storage with the `snippets` content type. Snippet files are believed not to be uploadable via the API — **verify against the API viewer** and decide the delivery method in an ADR at the start of Phase 5 (options: shared snippet storage, or a minimal first-boot hook plus Guest Agent delivery).
+- Cloud-init custom data: `cicustom: vendor=<storage>:snippets/<file>.yaml` requires a storage with the `snippets` content type. Snippet files are believed not to be uploadable via the API — **verify against the API viewer**. ADR 0004 avoids snippets entirely: cloud-init uses only built-in fields, and first-boot work runs as Guest Agent post-boot hooks.
 - Cluster resources: `GET /cluster/resources?type=vm|node|storage` for sync and adoption discovery.
 
 Never guess ambiguous API behaviour; consult the official API viewer (https://pve.proxmox.com/pve-docs/api-viewer/) and write fixtures to match it.
@@ -430,16 +430,16 @@ Never guess ambiguous API behaviour; consult the official API viewer (https://pv
 - [x] **Phase 0 — Skeleton:** Laravel 13 Vue starter kit (Inertia 3, TS, Tailwind 4, Vite+), Fortify auth (2FA, passkeys; registration disabled), admin/client roles, i18n (`en`/`tr`) with language switcher, Pint/PHPStan 8/Pest/Oxlint/Oxfmt/Vitest, CI (GitHub Actions), Docker Compose dev environment (not yet run), `LICENSE` (AGPL-3.0), `README`, `CONTRIBUTING`, `SECURITY`, `CODE_OF_CONDUCT`, Proxmotion logo/favicons, admin 2FA enforcement, self account deletion removed.
 - [x] **Phase 1 — Infrastructure management (admin):** `app/Proxmox` client (token auth, host failover, typed errors) + `TaskWaiter`; locations; clusters (connection tested on save, standalone/cluster auto-detected, encrypted token); `ClusterSynchronizer` + `SyncCluster` job + `infra:sync` (every 5 min) for nodes, storages, bridges, QEMU templates; node placement settings (maintenance, over-commit, max servers); "use for servers" per storage; IP pools (v4/v6, bridged/routed/NAT, IPv4 addresses generated, reserve/MAC/notes); OS templates mapped to Proxmox templates; packages; admin dashboard. **Not yet verified against a real Proxmox server.**
 - [x] **Phase 2 — Provisioning engine:** servers and tasks; per-cluster resource pool (token only needs VM rights on the pool); permission check listing missing **and excess** privileges; placement (online, not in maintenance, bridge, storage, CPU/memory/disk over-commit, max servers); VMID + IP allocation under a per-location lock; idempotent create (full clone → config + cloud-init → grow disk → anti-spoofing ipset → start), suspend/unsuspend, terminate (frees IPs, keeps history); retry after failure; admin server pages with polling progress; customers created by admins; adopt existing VMs from the pool without touching Proxmox; deletion guards; client dashboard lists own servers. Limitations: one IPv4 + one IPv6 configured by cloud-init (extra IPs are assigned/allowed but configured in the OS); routed /32 with on-link gateway relies on cloud-init and needs real-world verification; NAT not yet supported; Horizon not set up yet (`queue:work`).
-- [ ] **Phase 3 — Client panel:** server list/detail, power actions, noVNC console proxy, reinstall, root password reset, rDNS, SSH keys.
+- [ ] **Phase 3 — Client panel:** server list/detail, power actions, noVNC console proxy, Guest Agent client (`ping`, `file-write`/`file-read`, `exec`, `set-user-password`; moved up from 5a per ADR 0004), reinstall (ends with `WaitForGuestAgent` + post-boot hooks), root password reset, rDNS (ADR 0003: `DnsProvider`, `none` + `powerdns` drivers), SSH keys, admin drift report (ADR 0005).
 - [ ] **Phase 4 — Billing integration:** public API v1 + OpenAPI, token scopes, idempotency, SSO, webhooks, **WHMCS module**.
 - [ ] **Phase 5 — App Marketplace:**
-  - 5a: recipe schema, `RecipeLoader`, `apps:sync` / `apps:validate`, Guest Agent client, install-later flow + client panel; first recipes **OpenVPN, WireGuard, Docker**.
-  - 5b: install at order time (cloud-init, ADR on snippet delivery), reinstall + app, WHMCS configurable option and paid-app entitlements.
+  - 5a: recipe schema, `RecipeLoader`, `apps:sync` / `apps:validate`, install-later flow + client panel; first recipes **OpenVPN, WireGuard, Docker**.
+  - 5b: install at order time and reinstall + app as post-boot hooks (ADR 0004), WHMCS configurable option and paid-app entitlements.
   - 5c: admin custom recipe editor, remaining recipes (Portainer, Coolify, aaPanel, HestiaCP, CyberPanel, cPanel, Plesk, LAMP, LEMP, WordPress, Node.js), app actions (VPN add/revoke client).
 - [ ] **Phase 6 — Usage and quotas:** traffic collection, graphs, throttle/suspend on overrun, `ChangePackage` (upgrade/downgrade), WHMCS `UsageUpdate`.
 - [ ] **Phase 7 — Snapshots and backups:** snapshot CRUD, scheduled backups, Proxmox Backup Server, restore.
 - [ ] **Phase 8 — Migration and production install:** Virtualizor importer (dry-run, idempotent, WHMCS module switch guide), native installer, production Docker images, upgrade command, admin branding settings.
-- [ ] **Phase 9 — Expansion:** **NAT VPS** (NAT gateway per node, port ranges — ADR first), LXC, ISO upload/mount, live migration within clusters, reseller system, Blesta / HostBill / Paymenter / FOSSBilling modules, optional provider plugins (e.g. OVH vMAC).
+- [ ] **Phase 9 — Expansion:** **NAT VPS** (NAT gateway per node, port ranges — ADR first), LXC, ISO upload/mount, rescue/recovery mode (ADR first), customer-managed firewall rules, live migration within clusters, reseller system, Blesta / HostBill / Paymenter / FOSSBilling modules, optional provider plugins (e.g. OVH vMAC).
 
 Each phase must be usable on its own and complete with passing tests. Do not skip phases without the maintainers' agreement.
 
