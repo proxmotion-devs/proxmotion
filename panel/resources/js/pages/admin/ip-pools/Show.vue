@@ -1,7 +1,16 @@
 <script setup lang="ts">
 import { Head, Link, router, setLayoutProps, useForm } from '@inertiajs/vue3';
-import { Pencil, Plus } from '@lucide/vue';
-import { ref } from 'vue';
+import {
+    Eraser,
+    Lock,
+    LockOpen,
+    Pencil,
+    Plus,
+    Search,
+    Trash2,
+} from '@lucide/vue';
+import { computed, ref, watch } from 'vue';
+import AddressesField from '@/components/admin/AddressesField.vue';
 import ConfirmDelete from '@/components/admin/ConfirmDelete.vue';
 import FormDialog from '@/components/admin/FormDialog.vue';
 import FormField from '@/components/admin/FormField.vue';
@@ -13,11 +22,14 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
+    bulk,
     destroy as destroyAddress,
+    keepOnly,
     store as storeAddresses,
     update as updateAddress,
 } from '@/routes/admin/ip-addresses';
 import { destroy, index, show } from '@/routes/admin/ip-pools';
+import { show as showServer } from '@/routes/admin/servers';
 import { NETWORK_MODELS } from '@/types/admin';
 import type {
     IpAddress,
@@ -26,9 +38,16 @@ import type {
     Paginated,
 } from '@/types/admin';
 
+type Address = IpAddress & {
+    server: { uuid: string; hostname: string } | null;
+};
+
 const props = defineProps<{
     pool: IpPool;
-    addresses: Paginated<IpAddress>;
+    counts: { total: number; assigned: number; reserved: number };
+    search: string;
+    protected: Record<string, string>;
+    addresses: Paginated<Address>;
 }>();
 
 setLayoutProps({
@@ -43,17 +62,60 @@ const editOpen = ref(false);
 const modelLabel =
     NETWORK_MODELS.find((model) => model.value === props.pool.network_model)
         ?.label ?? props.pool.network_model;
+const free = computed(
+    () => props.counts.total - props.counts.assigned - props.counts.reserved,
+);
 
-// Adding addresses: a range for IPv4, a single address for IPv6.
+// Search
+const searchText = ref(props.search);
+const runSearch = () => {
+    router.visit(
+        show(props.pool.uuid, {
+            query: searchText.value ? { search: searchText.value } : {},
+        }),
+        {
+            preserveState: true,
+            preserveScroll: true,
+        },
+    );
+};
+
+// Selection for bulk actions (current page only)
+const selected = ref<number[]>([]);
+watch(
+    () => props.addresses.data,
+    () => (selected.value = []),
+);
+const allSelected = computed(
+    () =>
+        props.addresses.data.length > 0 &&
+        selected.value.length === props.addresses.data.length,
+);
+const toggleAll = (value: boolean | 'indeterminate') => {
+    selected.value =
+        value === true ? props.addresses.data.map((address) => address.id) : [];
+};
+const toggleOne = (id: number, value: boolean | 'indeterminate') => {
+    selected.value =
+        value === true
+            ? [...selected.value, id]
+            : selected.value.filter((existing) => existing !== id);
+};
+const runBulk = (action: 'delete' | 'reserve' | 'unreserve') => {
+    router.visit(bulk(props.pool.uuid), {
+        data: { action, ids: selected.value },
+        preserveScroll: true,
+    });
+};
+
+// Adding addresses
 const addOpen = ref(false);
-const addForm = useForm({ from: '', to: '', address: '' });
-
+const addForm = useForm({ addresses: '' });
 const openAdd = () => {
     addForm.reset();
     addForm.clearErrors();
     addOpen.value = true;
 };
-
 const submitAdd = () => {
     addForm.submit(storeAddresses(props.pool.uuid), {
         preserveScroll: true,
@@ -61,12 +123,26 @@ const submitAdd = () => {
     });
 };
 
+// Keep only these
+const keepOpen = ref(false);
+const keepForm = useForm({ addresses: '' });
+const openKeep = () => {
+    keepForm.reset();
+    keepForm.clearErrors();
+    keepOpen.value = true;
+};
+const submitKeep = () => {
+    keepForm.submit(keepOnly(props.pool.uuid), {
+        preserveScroll: true,
+        onSuccess: () => (keepOpen.value = false),
+    });
+};
+
 // Editing one address
 const editAddressOpen = ref(false);
-const editingAddress = ref<IpAddress | null>(null);
+const editingAddress = ref<Address | null>(null);
 const addressForm = useForm({ is_reserved: false, mac_address: '', notes: '' });
-
-const editAddress = (address: IpAddress) => {
+const editAddress = (address: Address) => {
     editingAddress.value = address;
     addressForm.clearErrors();
     addressForm.defaults({
@@ -77,7 +153,6 @@ const editAddress = (address: IpAddress) => {
     addressForm.reset();
     editAddressOpen.value = true;
 };
-
 const submitAddress = () => {
     if (!editingAddress.value) {
         return;
@@ -86,20 +161,6 @@ const submitAddress = () => {
     addressForm.submit(updateAddress(editingAddress.value.id), {
         preserveScroll: true,
         onSuccess: () => (editAddressOpen.value = false),
-    });
-};
-
-const toggleReserved = (
-    address: IpAddress,
-    value: boolean | 'indeterminate',
-) => {
-    router.visit(updateAddress(address.id), {
-        data: {
-            is_reserved: value === true,
-            mac_address: address.mac_address,
-            notes: address.notes,
-        },
-        preserveScroll: true,
     });
 };
 </script>
@@ -114,9 +175,13 @@ const toggleReserved = (
                 :description="`${pool.network} · IPv${pool.version}`"
             />
             <div class="flex flex-wrap gap-2">
-                <Button variant="outline" @click="openAdd">
+                <Button @click="openAdd">
                     <Plus class="h-4 w-4" />
                     {{ $t('Add addresses') }}
+                </Button>
+                <Button variant="outline" @click="openKeep">
+                    <Eraser class="h-4 w-4" />
+                    {{ $t('Keep only listed addresses') }}
                 </Button>
                 <Button variant="outline" @click="editOpen = true">
                     <Pencil class="h-4 w-4" />
@@ -155,52 +220,112 @@ const toggleReserved = (
                     >
                 </dd>
             </div>
-            <div class="sm:col-span-2">
-                <dt class="text-muted-foreground">{{ $t('Nameservers') }}</dt>
-                <dd class="font-mono text-xs">
-                    {{ pool.nameservers.join(', ') || '—' }}
-                </dd>
-            </div>
-            <div>
-                <dt class="text-muted-foreground">{{ $t('Status') }}</dt>
-                <dd>
-                    <StatusBadge
-                        :tone="pool.is_active ? 'success' : 'neutral'"
-                        :label="pool.is_active ? 'Active' : 'Inactive'"
-                    />
-                </dd>
-            </div>
             <div>
                 <dt class="text-muted-foreground">{{ $t('Addresses') }}</dt>
-                <dd class="font-medium">{{ addresses.total }}</dd>
+                <dd class="font-medium">{{ counts.total }}</dd>
+            </div>
+            <div>
+                <dt class="text-muted-foreground">{{ $t('Free') }}</dt>
+                <dd class="font-medium">{{ free }}</dd>
+            </div>
+            <div>
+                <dt class="text-muted-foreground">{{ $t('Assigned') }}</dt>
+                <dd class="font-medium">{{ counts.assigned }}</dd>
+            </div>
+            <div>
+                <dt class="text-muted-foreground">{{ $t('Reserved') }}</dt>
+                <dd class="font-medium">{{ counts.reserved }}</dd>
+            </div>
+            <div
+                v-if="Object.keys(protected).length"
+                class="sm:col-span-2 lg:col-span-4"
+            >
+                <dt class="text-muted-foreground">
+                    {{ $t('Never assigned to servers') }}
+                </dt>
+                <dd class="flex flex-wrap gap-2 font-mono text-xs">
+                    <span
+                        v-for="(reason, address) in protected"
+                        :key="address"
+                        class="rounded-md border px-2 py-0.5"
+                    >
+                        {{ address }}
+                        <span class="text-muted-foreground"
+                            >({{ $t(reason) }})</span
+                        >
+                    </span>
+                </dd>
             </div>
         </dl>
 
-        <p
-            v-if="pool.version === 6"
-            class="rounded-lg border border-dashed p-4 text-sm text-muted-foreground"
-        >
-            {{
-                $t(
-                    'IPv6 addresses and prefixes are assigned per server when servers are created. You can add individual addresses here if needed.',
-                )
-            }}
-        </p>
+        <div class="flex flex-wrap items-center justify-between gap-3">
+            <form class="flex gap-2" @submit.prevent="runSearch">
+                <Input
+                    v-model="searchText"
+                    class="w-60 font-mono"
+                    :placeholder="$t('Search address or note')"
+                />
+                <Button
+                    type="submit"
+                    variant="outline"
+                    size="icon"
+                    :aria-label="$t('Search')"
+                >
+                    <Search class="h-4 w-4" />
+                </Button>
+            </form>
+            <div
+                v-if="selected.length"
+                class="flex flex-wrap items-center gap-2 text-sm"
+            >
+                <span class="text-muted-foreground">{{
+                    $t(':count selected', { count: String(selected.length) })
+                }}</span>
+                <Button variant="outline" size="sm" @click="runBulk('reserve')">
+                    <Lock class="h-4 w-4" />
+                    {{ $t('Reserve') }}
+                </Button>
+                <Button
+                    variant="outline"
+                    size="sm"
+                    @click="runBulk('unreserve')"
+                >
+                    <LockOpen class="h-4 w-4" />
+                    {{ $t('Unreserve') }}
+                </Button>
+                <Button
+                    variant="outline"
+                    size="sm"
+                    class="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                    @click="runBulk('delete')"
+                >
+                    <Trash2 class="h-4 w-4" />
+                    {{ $t('Delete') }}
+                </Button>
+            </div>
+        </div>
 
         <div class="overflow-x-auto rounded-xl border">
             <table class="w-full text-sm">
                 <thead class="bg-muted/50 text-left text-muted-foreground">
                     <tr>
+                        <th class="w-10 px-4 py-2">
+                            <Checkbox
+                                :model-value="allSelected"
+                                :aria-label="$t('Select all on this page')"
+                                @update:model-value="toggleAll"
+                            />
+                        </th>
                         <th class="px-4 py-2 font-medium">
                             {{ $t('Address') }}
+                        </th>
+                        <th class="px-4 py-2 font-medium">
+                            {{ $t('Status') }}
                         </th>
                         <th class="px-4 py-2 font-medium">
                             {{ $t('MAC address') }}
                         </th>
                         <th class="px-4 py-2 font-medium">{{ $t('Notes') }}</th>
-                        <th class="px-4 py-2 font-medium">
-                            {{ $t('Reserved') }}
-                        </th>
                         <th class="px-4 py-2" />
                     </tr>
                 </thead>
@@ -210,27 +335,43 @@ const toggleReserved = (
                         :key="address.id"
                         class="border-t"
                     >
+                        <td class="px-4 py-2">
+                            <Checkbox
+                                :model-value="selected.includes(address.id)"
+                                :aria-label="
+                                    $t('Select :address', {
+                                        address: address.address,
+                                    })
+                                "
+                                @update:model-value="
+                                    (value) => toggleOne(address.id, value)
+                                "
+                            />
+                        </td>
                         <td class="px-4 py-2 font-mono text-xs">
                             {{ address.address }}
+                        </td>
+                        <td class="px-4 py-2">
+                            <Link
+                                v-if="address.server"
+                                :href="showServer(address.server.uuid)"
+                                class="text-xs hover:underline"
+                            >
+                                <StatusBadge tone="success" label="Assigned" />
+                                {{ address.server.hostname }}
+                            </Link>
+                            <StatusBadge
+                                v-else-if="address.is_reserved"
+                                tone="warning"
+                                label="Reserved"
+                            />
+                            <StatusBadge v-else tone="neutral" label="Free" />
                         </td>
                         <td class="px-4 py-2 font-mono text-xs">
                             {{ address.mac_address ?? '—' }}
                         </td>
                         <td class="px-4 py-2 text-muted-foreground">
                             {{ address.notes ?? '' }}
-                        </td>
-                        <td class="px-4 py-2">
-                            <Checkbox
-                                :model-value="address.is_reserved"
-                                :aria-label="
-                                    $t('Reserve :address', {
-                                        address: address.address,
-                                    })
-                                "
-                                @update:model-value="
-                                    (value) => toggleReserved(address, value)
-                                "
-                            />
                         </td>
                         <td class="px-4 py-2">
                             <div class="flex justify-end gap-1">
@@ -247,6 +388,7 @@ const toggleReserved = (
                                     <Pencil class="h-4 w-4" />
                                 </Button>
                                 <ConfirmDelete
+                                    v-if="!address.server"
                                     :action="destroyAddress(address.id)"
                                     :name="address.address"
                                 />
@@ -255,10 +397,16 @@ const toggleReserved = (
                     </tr>
                     <tr v-if="addresses.data.length === 0">
                         <td
-                            colspan="5"
+                            colspan="6"
                             class="px-4 py-8 text-center text-muted-foreground"
                         >
-                            {{ $t('No addresses in this pool.') }}
+                            {{
+                                $t(
+                                    search
+                                        ? 'No addresses match the search.'
+                                        : 'No addresses in this pool.',
+                                )
+                            }}
                         </td>
                     </tr>
                 </tbody>
@@ -291,49 +439,32 @@ const toggleReserved = (
     <FormDialog
         v-model:open="addOpen"
         title="Add addresses"
-        :description="
-            pool.version === 4
-                ? 'Adds every address in the range. Existing addresses and the gateway are skipped.'
-                : undefined
-        "
+        description="Gateway, network/broadcast addresses and Proxmox node IPs are skipped automatically, as are addresses that already exist."
         submit-label="Add"
         :processing="addForm.processing"
         @submit="submitAdd"
     >
-        <div v-if="pool.version === 4" class="grid gap-4 sm:grid-cols-2">
-            <FormField label="From" for="from" :error="addForm.errors.from">
-                <Input
-                    id="from"
-                    v-model="addForm.from"
-                    required
-                    class="font-mono"
-                    placeholder="203.0.113.10"
-                />
-            </FormField>
-            <FormField label="To" for="to" :error="addForm.errors.to">
-                <Input
-                    id="to"
-                    v-model="addForm.to"
-                    required
-                    class="font-mono"
-                    placeholder="203.0.113.20"
-                />
-            </FormField>
-        </div>
-        <FormField
-            v-else
-            label="Address"
-            for="address"
-            :error="addForm.errors.address"
-        >
-            <Input
-                id="address"
-                v-model="addForm.address"
-                required
-                class="font-mono"
-                placeholder="2001:db8:100::10"
-            />
-        </FormField>
+        <AddressesField
+            v-model="addForm.addresses"
+            :error="addForm.errors.addresses"
+            :ipv6="pool.version === 6"
+        />
+    </FormDialog>
+
+    <FormDialog
+        v-model:open="keepOpen"
+        title="Keep only listed addresses"
+        description="Paste the addresses that belong to you. Every other unassigned address of this pool is deleted. Addresses assigned to servers are always kept."
+        submit-label="Delete the others"
+        :processing="keepForm.processing"
+        @submit="submitKeep"
+    >
+        <AddressesField
+            v-model="keepForm.addresses"
+            :error="keepForm.errors.addresses"
+            :ipv6="pool.version === 6"
+            label="Addresses to keep"
+        />
     </FormDialog>
 
     <FormDialog

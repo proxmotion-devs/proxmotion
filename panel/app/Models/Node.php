@@ -82,4 +82,12 @@ class Node extends Model
     {
         return $this->hasMany(NetworkBridge::class);
     }
+
+    /**
+     * @return HasMany<Server, $this>
+     */
+    public function servers(): HasMany
+    {
+        return $this->hasMany(Server::class);
+    }
 }

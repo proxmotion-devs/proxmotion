@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Requests\Admin;
 
+use App\Domain\Networking\AddressInput;
 use App\Enums\IpVersion;
 use App\Enums\NetworkModel;
 use App\Models\IpPool;
@@ -40,8 +41,19 @@ class IpPoolRequest extends FormRequest
             'nameservers' => ['array', 'max:4'],
             'nameservers.*' => ['required', 'ip'],
             'is_active' => ['required', 'boolean'],
+            // Creating only: which addresses to add right away.
+            'add_mode' => [$creating ? 'required' : 'nullable', Rule::in(self::ADD_MODES)],
+            'addresses' => ['nullable', 'string', 'max:65535'],
         ];
     }
+
+    /**
+     * list: only the addresses typed in; network: every usable address of the
+     * network (only when the whole block is yours); none: add them later.
+     */
+    public const array ADD_MODES = ['list', 'network', 'none'];
+
+    private ?AddressInput $parsedAddresses = null;
 
     /**
      * @return array<int, \Closure(Validator): void>
@@ -81,7 +93,36 @@ class IpPoolRequest extends FormRequest
                     $validator->errors()->add('gateway', __('For bridged networks the gateway must be inside the network.'));
                 }
             }
+
+            if ($pool !== null || $network->version !== $version) {
+                return;
+            }
+
+            if ($this->input('add_mode') === 'list') {
+                $this->parsedAddresses = AddressInput::parse((string) $this->input('addresses', ''), IpVersion::from($version), $network);
+
+                foreach ($this->parsedAddresses->problems() as $problem) {
+                    $validator->errors()->add('addresses', $problem);
+                }
+            }
+
+            if ($this->input('add_mode') === 'network' && $version !== IpVersion::V4->value) {
+                $validator->errors()->add('add_mode', __('Whole networks can only be added for IPv4 pools.'));
+            }
         }];
+    }
+
+    public function addMode(): string
+    {
+        return $this->string('add_mode')->toString();
+    }
+
+    /**
+     * @return list<string>
+     */
+    public function addressesToAdd(): array
+    {
+        return $this->parsedAddresses->addresses ?? [];
     }
 
     public function pool(): ?IpPool
@@ -96,7 +137,7 @@ class IpPoolRequest extends FormRequest
      */
     public function poolData(): array
     {
-        $data = $this->safe()->except(['location', 'version', 'network']);
+        $data = $this->safe()->except(['location', 'version', 'network', 'add_mode', 'addresses']);
         $data['nameservers'] = array_values($this->array('nameservers'));
         $data['gateway'] = $this->filled('gateway') ? $this->string('gateway')->toString() : null;
 

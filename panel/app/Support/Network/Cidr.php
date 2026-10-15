@@ -109,6 +109,30 @@ final readonly class Cidr
         }
     }
 
+    /**
+     * The address at a (small, non-negative) offset from the network address,
+     * e.g. offset 1 of 2001:db8::/64 is 2001:db8::1.
+     */
+    public function address(int $offset): string
+    {
+        $bytes = array_values((array) unpack('C*', $this->packed));
+        $carry = $offset;
+
+        for ($i = count($bytes) - 1; $i >= 0 && $carry > 0; $i--) {
+            $sum = (int) $bytes[$i] + ($carry & 0xFF);
+            $bytes[$i] = $sum & 0xFF;
+            $carry = ($carry >> 8) + ($sum >> 8);
+        }
+
+        $address = (string) inet_ntop(pack('C*', ...$bytes));
+
+        if ($carry > 0 || ! $this->contains($address)) {
+            throw new InvalidArgumentException("Offset {$offset} is outside {$this}.");
+        }
+
+        return $address;
+    }
+
     public function __toString(): string
     {
         return "{$this->address}/{$this->prefix}";

@@ -1,0 +1,173 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Models;
+
+use App\Enums\NetworkModel;
+use App\Enums\ServerOrigin;
+use App\Enums\ServerStatus;
+use App\Models\Concerns\HasPublicUuid;
+use Database\Factories\ServerFactory;
+use Illuminate\Database\Eloquent\Attributes\Hidden;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Support\Carbon;
+
+/**
+ * A customer VPS. Its resources are copied from the package at creation time,
+ * so later package edits don't silently change existing servers.
+ *
+ * Nothing on this model is mass-assignable: servers are only created and
+ * changed by the provisioning code (forceFill).
+ *
+ * @property int $id
+ * @property string $uuid
+ * @property int $user_id
+ * @property int $package_id
+ * @property int $location_id
+ * @property int $cluster_id
+ * @property int $node_id
+ * @property int|null $storage_id
+ * @property int|null $os_template_id
+ * @property int $vmid
+ * @property string $hostname
+ * @property ServerStatus $status
+ * @property ServerOrigin $origin
+ * @property NetworkModel $network_model
+ * @property int $cpu_cores
+ * @property int $memory_mib
+ * @property int $disk_mib
+ * @property string|null $root_password
+ * @property string|null $ssh_keys
+ * @property string|null $suspension_reason
+ * @property string|null $external_id
+ * @property Carbon|null $provisioned_at
+ * @property Carbon|null $terminated_at
+ * @property Carbon|null $created_at
+ * @property Carbon|null $updated_at
+ * @property-read User $user
+ * @property-read Package $package
+ * @property-read Location $location
+ * @property-read Cluster $cluster
+ * @property-read Node $node
+ * @property-read Storage|null $storage
+ * @property-read OsTemplate|null $osTemplate
+ */
+#[Hidden(['root_password'])]
+class Server extends Model
+{
+    /** @use HasFactory<ServerFactory> */
+    use HasFactory, HasPublicUuid;
+
+    /**
+     * @return array<string, string>
+     */
+    protected function casts(): array
+    {
+        return [
+            'vmid' => 'integer',
+            'status' => ServerStatus::class,
+            'origin' => ServerOrigin::class,
+            'network_model' => NetworkModel::class,
+            'cpu_cores' => 'integer',
+            'memory_mib' => 'integer',
+            'disk_mib' => 'integer',
+            'root_password' => 'encrypted',
+            'provisioned_at' => 'datetime',
+            'terminated_at' => 'datetime',
+        ];
+    }
+
+    /**
+     * @param  Builder<self>  $query
+     */
+    public function scopeOccupying(Builder $query): void
+    {
+        $query->whereIn('status', ServerStatus::occupying());
+    }
+
+    /**
+     * @return BelongsTo<User, $this>
+     */
+    public function user(): BelongsTo
+    {
+        return $this->belongsTo(User::class);
+    }
+
+    /**
+     * @return BelongsTo<Package, $this>
+     */
+    public function package(): BelongsTo
+    {
+        return $this->belongsTo(Package::class);
+    }
+
+    /**
+     * @return BelongsTo<Location, $this>
+     */
+    public function location(): BelongsTo
+    {
+        return $this->belongsTo(Location::class);
+    }
+
+    /**
+     * @return BelongsTo<Cluster, $this>
+     */
+    public function cluster(): BelongsTo
+    {
+        return $this->belongsTo(Cluster::class);
+    }
+
+    /**
+     * @return BelongsTo<Node, $this>
+     */
+    public function node(): BelongsTo
+    {
+        return $this->belongsTo(Node::class);
+    }
+
+    /**
+     * @return BelongsTo<Storage, $this>
+     */
+    public function storage(): BelongsTo
+    {
+        return $this->belongsTo(Storage::class);
+    }
+
+    /**
+     * @return BelongsTo<OsTemplate, $this>
+     */
+    public function osTemplate(): BelongsTo
+    {
+        return $this->belongsTo(OsTemplate::class);
+    }
+
+    /**
+     * @return HasMany<IpAddress, $this>
+     */
+    public function ipAddresses(): HasMany
+    {
+        return $this->hasMany(IpAddress::class);
+    }
+
+    /**
+     * @return HasMany<Task, $this>
+     */
+    public function tasks(): HasMany
+    {
+        return $this->hasMany(Task::class);
+    }
+
+    /**
+     * @return HasOne<Task, $this>
+     */
+    public function latestTask(): HasOne
+    {
+        return $this->hasOne(Task::class)->latestOfMany();
+    }
+}

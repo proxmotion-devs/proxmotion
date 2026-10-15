@@ -1,0 +1,174 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Provisioning\Placement;
+
+use App\Enums\NodeStatus;
+use App\Models\Location;
+use App\Models\Node;
+use App\Models\OsTemplate;
+use App\Models\Package;
+use App\Models\ProxmoxTemplate;
+use App\Models\Server;
+use App\Models\Storage;
+use App\Provisioning\Exceptions\ProvisioningException;
+use Illuminate\Support\Collection;
+
+/**
+ * Picks the least-used node in a location that can host a package.
+ *
+ * A node qualifies when it is online, not in maintenance, belongs to an active
+ * cluster, has the OS template, has the bridge the server's network uses, and
+ * still has room for the package's CPU, memory and disk after over-commit.
+ */
+final class NodePlacer
+{
+    /**
+     * @throws ProvisioningException
+     */
+    public function place(Location $location, Package $package, OsTemplate $osTemplate, string $bridge): Placement
+    {
+        $templates = $osTemplate->proxmoxTemplates()
+            ->whereHas('cluster', fn ($query) => $query->where('location_id', $location->id)->where('is_active', true))
+            ->get();
+
+        if ($templates->isEmpty()) {
+            throw ProvisioningException::noTemplate();
+        }
+
+        $nodes = Node::query()
+            ->whereIn('cluster_id', $templates->pluck('cluster_id')->unique())
+            ->where('status', NodeStatus::Online)
+            ->where('is_maintenance', false)
+            ->with(['storages', 'bridges'])
+            ->get();
+
+        $candidates = [];
+
+        foreach ($nodes as $node) {
+            $storage = $this->pickStorage($node, $package);
+
+            if ($storage === null || ! $this->hasBridge($node, $bridge) || ! $this->fits($node, $package)) {
+                continue;
+            }
+
+            $candidates[] = [
+                'placement' => new Placement($node, $storage, $this->pickTemplate($templates, $node)),
+                'score' => $this->memoryUsageAfter($node, $package),
+            ];
+        }
+
+        if ($candidates === []) {
+            throw ProvisioningException::noCapacity();
+        }
+
+        usort($candidates, fn (array $a, array $b) => $a['score'] <=> $b['score']);
+
+        return $candidates[0]['placement'];
+    }
+
+    private function fits(Node $node, Package $package): bool
+    {
+        $booked = $this->booked($node);
+
+        if ($node->max_servers !== null && $node->max_servers < $booked['count'] + 1) {
+            return false;
+        }
+
+        if ($node->cpu_cores !== null && $node->cpu_cores * (float) $node->cpu_overcommit < $booked['cpu'] + $package->cpu_cores) {
+            return false;
+        }
+
+        return $node->memory_bytes === null
+            || intdiv($node->memory_bytes, 1024 ** 2) * (float) $node->memory_overcommit >= $booked['memory_mib'] + $package->memory_mib;
+    }
+
+    private function memoryUsageAfter(Node $node, Package $package): float
+    {
+        if (! $node->memory_bytes) {
+            return 1.0;
+        }
+
+        $capacityMib = intdiv($node->memory_bytes, 1024 ** 2) * (float) $node->memory_overcommit;
+
+        return ($this->booked($node)['memory_mib'] + $package->memory_mib) / max($capacityMib, 1);
+    }
+
+    /**
+     * The usable storage with the most free (over-committed) space for the disk.
+     */
+    private function pickStorage(Node $node, Package $package): ?Storage
+    {
+        $best = null;
+        $bestFree = 0;
+
+        foreach ($node->storages as $storage) {
+            if (! $storage->use_for_servers || ! $storage->is_available || ! $storage->supportsVmDisks() || $storage->total_bytes === null) {
+                continue;
+            }
+
+            $capacityMib = intdiv($storage->total_bytes, 1024 ** 2) * (float) $node->disk_overcommit;
+            $free = $capacityMib - $this->bookedDiskMib($storage, $node);
+
+            if ($free >= $package->disk_mib && $free > $bestFree) {
+                $best = $storage;
+                $bestFree = $free;
+            }
+        }
+
+        return $best;
+    }
+
+    /**
+     * Disk booked on a storage. Shared storages appear once per node, so
+     * servers on the same storage name anywhere in the cluster count.
+     */
+    private function bookedDiskMib(Storage $storage, Node $node): int
+    {
+        $query = Server::query()->occupying();
+
+        if ($storage->is_shared) {
+            $query->where('cluster_id', $node->cluster_id)
+                ->whereHas('storage', fn ($q) => $q->where('name', $storage->name));
+        } else {
+            $query->where('storage_id', $storage->id);
+        }
+
+        return (int) $query->sum('disk_mib');
+    }
+
+    /**
+     * @return array{count: int, cpu: int, memory_mib: int}
+     */
+    private function booked(Node $node): array
+    {
+        $row = Server::query()->occupying()->where('node_id', $node->id)
+            ->selectRaw('count(*) as servers, coalesce(sum(cpu_cores), 0) as cpu, coalesce(sum(memory_mib), 0) as memory')
+            ->toBase()
+            ->first();
+
+        return [
+            'count' => (int) ($row->servers ?? 0),
+            'cpu' => (int) ($row->cpu ?? 0),
+            'memory_mib' => (int) ($row->memory ?? 0),
+        ];
+    }
+
+    private function hasBridge(Node $node, string $bridge): bool
+    {
+        return $node->bridges->contains(fn ($candidate) => $candidate->name === $bridge && $candidate->is_active);
+    }
+
+    /**
+     * Prefer a template on the node itself (works with local storage); otherwise
+     * clone from another node of the cluster (needs shared storage on Proxmox).
+     *
+     * @param  Collection<int, ProxmoxTemplate>  $templates
+     */
+    private function pickTemplate(Collection $templates, Node $node): ProxmoxTemplate
+    {
+        return $templates->firstWhere('node_id', $node->id)
+            ?? $templates->where('cluster_id', $node->cluster_id)->firstOrFail();
+    }
+}

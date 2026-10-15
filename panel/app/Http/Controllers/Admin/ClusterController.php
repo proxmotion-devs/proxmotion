@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Admin;
 
+use App\Domain\Infrastructure\PermissionChecker;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\ClusterRequest;
 use App\Jobs\SyncCluster;
@@ -103,7 +104,24 @@ class ClusterController extends Controller
                 'name' => $template->name,
                 'node' => $template->node->name,
             ]),
+            'permissionCheck' => session('permission_check'),
         ]);
+    }
+
+    /**
+     * Ask Proxmox which privileges the token has and show what's missing.
+     */
+    public function checkPermissions(Cluster $cluster, PermissionChecker $checker): RedirectResponse
+    {
+        try {
+            $results = $checker->check($cluster);
+        } catch (ProxmoxException $e) {
+            $this->toast('error', 'Could not connect to Proxmox: :error', ['error' => $e->getMessage()]);
+
+            return back();
+        }
+
+        return back()->with('permission_check', $results);
     }
 
     public function update(ClusterRequest $request, Cluster $cluster): RedirectResponse
@@ -130,7 +148,14 @@ class ClusterController extends Controller
 
     public function destroy(Cluster $cluster): RedirectResponse
     {
-        // Servers will reference nodes from Phase 2 on; deleting must be blocked then.
+        $servers = $cluster->servers()->count();
+
+        if ($servers > 0) {
+            $this->toast('error', ':count servers belong to this cluster (deleted ones included), so it cannot be removed.', ['count' => (string) $servers]);
+
+            return back();
+        }
+
         $cluster->delete();
 
         $this->toast('success', 'Cluster removed from the panel. Nothing was changed on Proxmox.');
@@ -194,6 +219,7 @@ class ClusterController extends Controller
             'port' => $cluster->port,
             'token_id' => $cluster->token_id,
             'verify_tls' => $cluster->verify_tls,
+            'resource_pool' => $cluster->resource_pool,
             'is_active' => $cluster->is_active,
             'pve_version' => $cluster->pve_version,
             'nodes_count' => $cluster->getAttribute('nodes_count') ?? $cluster->nodes->count(),

@@ -114,10 +114,12 @@ proxmotion/
 │   │   │   └── Exceptions/
 │   │   ├── Support/                      # Locales, Network/Cidr
 │   │   ├── Provisioning/                 # Orchestration
-│   │   │   ├── Placement/                # Node selection strategies
-│   │   │   ├── Network/                  # One strategy per network model (Bridged, Routed, Nat, Ipv6)
-│   │   │   ├── Steps/                    # Clone, Configure, CloudInit, Resize, Network, Start, InstallApp…
-│   │   │   └── Pipelines/                # CreateServer, Reinstall, ChangePackage, Terminate, Adopt
+│   │   │   ├── ServerCreator.php         # reserve node/storage/VMID/IPs under a per-location lock, queue the task
+│   │   │   ├── IpAllocator.php           # pool choice, IPv4 assignment, next free IPv6 address
+│   │   │   ├── TaskRunner.php            # one Task per operation, refuses parallel tasks per server
+│   │   │   ├── Placement/                # NodePlacer (least memory used after placement), Placement
+│   │   │   ├── Network/                  # NetworkConfig: net0, ipconfig0, nameserver, anti-spoofing addresses
+│   │   │   └── Pipelines/                # CreateServer, Power (suspend/unsuspend), TerminateServer — idempotent
 │   │   ├── Jobs/                         # Queue jobs (run pipelines)
 │   │   ├── Http/
 │   │   │   ├── Controllers/Admin/
@@ -150,7 +152,7 @@ proxmotion/
 ### 3.3 Layering rules
 1. **The Proxmox API is reached only through `app/Proxmox/`.** Controllers, jobs and models never make HTTP calls themselves.
 2. **Controllers are thin:** validate (FormRequest) → authorize (Policy) → call a domain service or dispatch a job → return a Resource / Inertia response.
-3. **Every operation that changes Proxmox runs in the queue.** HTTP requests never wait on a Proxmox task; they create a `Task` record and return immediately. Progress is broadcast via Reverb.
+3. **Every operation that changes Proxmox runs in the queue.** HTTP requests never wait on a Proxmox task; they create a `Task` record and return immediately. Pages poll (`usePoll`) while a task runs; Reverb is planned for the client panel.
 4. **Pipeline steps are idempotent:** re-running a half-finished pipeline recognizes what already exists and continues. Each step records what it did on the `Task`.
 5. **Resource allocation is atomic:** VMID, IP addresses, NAT ports and node capacity are reserved inside a DB transaction plus a Redis lock, so two concurrent provisions can never get the same IP/VMID/port.
 6. **The panel database is the source of truth.** Proxmox state is reconciled periodically; drift is reported to admins and never auto-deleted.
@@ -394,7 +396,8 @@ This panel manages customer infrastructure and is internet-facing. Agents **must
 - **Migration:** adoption and Virtualizor import tested with fixtures, including dry-run output and idempotent re-runs.
 - **i18n:** `TranslationsTest` fails if a key has no entry in `lang/tr.json`, or if a PHP lang file exists for `en` but not `tr`. It detects `$t('…')`, `trans('…')`, `__('…')`, `->toast('…', '…')`, static and bound `title`/`description`/`label`/`hint`/`submit-label` attributes, and `title:`/`label:`/`description:`/`detail:`/`buttonText:` properties. Keys hidden elsewhere (e.g. a `Record` of status labels, `placeholder` props) must be added by hand.
 - **Proxmox:** use `Tests\Concerns\FakesProxmox` (fixtures in `tests/Fixtures/proxmox/`, stray requests prevented). Summaries of test runs must count **errors as well as failures**.
-- **Mass assignment:** columns owned by the sync (node status/resources, storage details, bridge data, templates) are intentionally not fillable; the sync writes them with `forceFill`. Don't add them to `#[Fillable]`.
+- **Mass assignment:** columns owned by the sync (node status/resources, storage details, bridge data, templates) are intentionally not fillable; the sync writes them with `forceFill`. `Server`, `Task` and IP assignment (`server_id`) have no fillable columns at all — only provisioning code writes them. Don't add them to `#[Fillable]`.
+- **Provisioning:** use `Tests\Support\FakeProxmoxCluster` (an in-memory Proxmox: clone, config, resize, power, delete, firewall, permissions) with `Tests\Concerns\BuildsInfrastructure`. The test queue is synchronous, so `ServerCreator::create()` runs the whole pipeline.
 - **Frontend:** Vitest tests live next to the code as `*.test.ts` (`import { … } from 'vite-plus/test'`); mock `@inertiajs/vue3` and provide `$t` through `global.mocks` when mounting components.
 - **WHMCS module:** functions tested with the panel API mocked.
 - **Integration tests** (`@group integration`, `@group recipes`): require a real test Proxmox, skipped if `PROXMOX_TEST_*` env vars are missing; touch only resources in the `proxmotion-test` pool.
@@ -426,7 +429,7 @@ Never guess ambiguous API behaviour; consult the official API viewer (https://pv
 
 - [x] **Phase 0 — Skeleton:** Laravel 13 Vue starter kit (Inertia 3, TS, Tailwind 4, Vite+), Fortify auth (2FA, passkeys; registration disabled), admin/client roles, i18n (`en`/`tr`) with language switcher, Pint/PHPStan 8/Pest/Oxlint/Oxfmt/Vitest, CI (GitHub Actions), Docker Compose dev environment (not yet run), `LICENSE` (AGPL-3.0), `README`, `CONTRIBUTING`, `SECURITY`, `CODE_OF_CONDUCT`, Proxmotion logo/favicons, admin 2FA enforcement, self account deletion removed.
 - [x] **Phase 1 — Infrastructure management (admin):** `app/Proxmox` client (token auth, host failover, typed errors) + `TaskWaiter`; locations; clusters (connection tested on save, standalone/cluster auto-detected, encrypted token); `ClusterSynchronizer` + `SyncCluster` job + `infra:sync` (every 5 min) for nodes, storages, bridges, QEMU templates; node placement settings (maintenance, over-commit, max servers); "use for servers" per storage; IP pools (v4/v6, bridged/routed/NAT, IPv4 addresses generated, reserve/MAC/notes); OS templates mapped to Proxmox templates; packages; admin dashboard. **Not yet verified against a real Proxmox server.**
-- [ ] **Phase 2 — Provisioning engine:** placement, atomic allocation, `CreateServer` / `Terminate` / `Suspend` / `Unsuspend` pipelines for **bridged, routed and IPv6** models, `Task` tracking, Horizon, live progress via Reverb, **adopt existing Proxmox VMs** wizard.
+- [x] **Phase 2 — Provisioning engine:** servers and tasks; per-cluster resource pool (token only needs VM rights on the pool); permission check listing missing **and excess** privileges; placement (online, not in maintenance, bridge, storage, CPU/memory/disk over-commit, max servers); VMID + IP allocation under a per-location lock; idempotent create (full clone → config + cloud-init → grow disk → anti-spoofing ipset → start), suspend/unsuspend, terminate (frees IPs, keeps history); retry after failure; admin server pages with polling progress; customers created by admins; adopt existing VMs from the pool without touching Proxmox; deletion guards; client dashboard lists own servers. Limitations: one IPv4 + one IPv6 configured by cloud-init (extra IPs are assigned/allowed but configured in the OS); routed /32 with on-link gateway relies on cloud-init and needs real-world verification; NAT not yet supported; Horizon not set up yet (`queue:work`).
 - [ ] **Phase 3 — Client panel:** server list/detail, power actions, noVNC console proxy, reinstall, root password reset, rDNS, SSH keys.
 - [ ] **Phase 4 — Billing integration:** public API v1 + OpenAPI, token scopes, idempotency, SSO, webhooks, **WHMCS module**.
 - [ ] **Phase 5 — App Marketplace:**

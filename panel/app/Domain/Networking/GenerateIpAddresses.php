@@ -10,20 +10,20 @@ use App\Support\Network\Cidr;
 use InvalidArgumentException;
 
 /**
- * Adds the usable IPv4 addresses of a pool's network (optionally limited to a range)
- * as individual IP addresses. Existing addresses and the gateway are skipped.
+ * Adds the usable IPv4 addresses of a pool's whole network (optionally limited
+ * to a range). Protected addresses (gateway, node IPs…) and addresses that
+ * already exist are skipped. Only for blocks that fully belong to the provider.
  */
-final class GenerateIpAddresses
+final readonly class GenerateIpAddresses
 {
-    /**
-     * Upper bound for one call, so a typo like /8 can't create millions of rows.
-     */
-    public const int MAX_ADDRESSES = 4096;
+    public const int MAX_ADDRESSES = AddressInput::MAX_ADDRESSES;
+
+    public function __construct(private AddIpAddresses $add) {}
 
     /**
      * @return int number of addresses added
      *
-     * @throws InvalidArgumentException for IPv6 pools or ranges larger than MAX_ADDRESSES
+     * @throws InvalidArgumentException for IPv6 pools or more than MAX_ADDRESSES addresses
      */
     public function handle(IpPool $pool, ?string $from = null, ?string $to = null): int
     {
@@ -39,28 +39,8 @@ final class GenerateIpAddresses
             throw new InvalidArgumentException(sprintf('Refusing to add more than %d addresses at once.', self::MAX_ADDRESSES));
         }
 
-        $gateway = $pool->gateway !== null ? ip2long($pool->gateway) : false;
-        $now = now();
-        $rows = [];
+        $addresses = $last >= $first ? array_map(fn (int $ip) => (string) long2ip($ip), range($first, $last)) : [];
 
-        for ($ip = $first; $ip <= $last; $ip++) {
-            if ($ip !== $gateway) {
-                $rows[] = [
-                    'ip_pool_id' => $pool->id,
-                    'address' => (string) long2ip($ip),
-                    'is_reserved' => false,
-                    'created_at' => $now,
-                    'updated_at' => $now,
-                ];
-            }
-        }
-
-        $added = 0;
-
-        foreach (array_chunk($rows, 500) as $chunk) {
-            $added += $pool->addresses()->getQuery()->insertOrIgnore($chunk);
-        }
-
-        return $added;
+        return $this->add->handle($pool, $addresses)['added'];
     }
 }

@@ -21,6 +21,7 @@ export type Cluster = {
     port: number;
     token_id: string;
     verify_tls: boolean;
+    resource_pool: string | null;
     is_active: boolean;
     pve_version: string | null;
     nodes_count: number;
@@ -87,6 +88,7 @@ export type IpPool = {
     is_active: boolean;
     addresses_count?: number;
     reserved_count?: number;
+    assigned_count?: number;
 };
 
 export type IpAddress = {
@@ -137,3 +139,60 @@ export const NETWORK_MODELS: { value: NetworkModel; label: string }[] = [
     { value: 'routed', label: 'Routed / failover IP' },
     { value: 'nat', label: 'NAT' },
 ];
+
+export type ServerStatus =
+    | 'pending'
+    | 'provisioning'
+    | 'active'
+    | 'suspended'
+    | 'terminating'
+    | 'terminated'
+    | 'error';
+
+export type TaskStatus = 'queued' | 'running' | 'succeeded' | 'failed';
+
+export type TaskType =
+    | 'create'
+    | 'suspend'
+    | 'unsuspend'
+    | 'terminate'
+    | 'adopt';
+
+export type Option<T extends string | number = string> = {
+    value: T;
+    label: string;
+};
+
+export type ServerListItem = {
+    uuid: string;
+    hostname: string;
+    status: ServerStatus;
+    vmid: number;
+    user: { uuid: string; name: string };
+    node: string;
+    location: string;
+    package: string;
+    addresses: string[];
+};
+
+export type Task = {
+    uuid: string;
+    type: TaskType;
+    status: TaskStatus;
+    steps: {
+        key: string;
+        status: string;
+        message: string | null;
+        finished_at: string | null;
+    }[];
+    error: string | null;
+    created_at: string | null;
+    finished_at: string | null;
+};
+
+export type PermissionCheck = {
+    path: string;
+    purpose: string;
+    missing: string[];
+    excess: string[];
+}[];

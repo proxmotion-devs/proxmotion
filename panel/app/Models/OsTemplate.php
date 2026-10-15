@@ -10,6 +10,7 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Carbon;
 
 /**
@@ -49,5 +50,13 @@ class OsTemplate extends Model
     public function proxmoxTemplates(): BelongsToMany
     {
         return $this->belongsToMany(ProxmoxTemplate::class);
+    }
+
+    /**
+     * @return HasMany<Server, $this>
+     */
+    public function servers(): HasMany
+    {
+        return $this->hasMany(Server::class);
     }
 }

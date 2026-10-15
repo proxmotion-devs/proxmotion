@@ -1,0 +1,47 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Provisioning\Exceptions;
+
+use RuntimeException;
+
+/**
+ * A server cannot be created as requested. Messages are English translation
+ * keys; use translatedMessage() when showing them to users.
+ */
+class ProvisioningException extends RuntimeException
+{
+    /**
+     * @param  array<string, string>  $replace
+     */
+    public function __construct(string $message, private readonly array $replace = [])
+    {
+        parent::__construct($message);
+    }
+
+    public function translatedMessage(): string
+    {
+        return __($this->getMessage(), $this->replace);
+    }
+
+    public static function noCapacity(): self
+    {
+        return new self('No node in this location has enough free capacity for this package.');
+    }
+
+    public static function noTemplate(): self
+    {
+        return new self('This OS template is not available on any cluster in this location.');
+    }
+
+    public static function noAddresses(string $version): self
+    {
+        return new self('No free :version addresses are left in this location for the chosen network model.', ['version' => $version]);
+    }
+
+    public static function unsupportedNetworkModel(): self
+    {
+        return new self('This network model is not supported yet.');
+    }
+}

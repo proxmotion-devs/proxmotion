@@ -42,6 +42,16 @@ class CidrTest extends TestCase
         $this->assertSame(2, Cidr::parse('203.0.113.8/31')->hostCount());
     }
 
+    public function test_it_computes_addresses_by_offset()
+    {
+        $this->assertSame('2001:db8:100::2', Cidr::parse('2001:db8:100::/64')->address(2));
+        $this->assertSame('2001:db8:100::100', Cidr::parse('2001:db8:100::/64')->address(256));
+        $this->assertSame('203.0.113.10', Cidr::parse('203.0.113.0/24')->address(10));
+
+        $this->expectException(InvalidArgumentException::class);
+        Cidr::parse('203.0.113.0/30')->address(4);
+    }
+
     #[DataProvider('invalidNetworks')]
     public function test_it_rejects_invalid_networks(string $cidr)
     {

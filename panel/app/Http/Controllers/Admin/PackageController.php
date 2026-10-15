@@ -59,7 +59,14 @@ class PackageController extends Controller
 
     public function destroy(Package $package): RedirectResponse
     {
-        // From Phase 2, packages in use by servers must not be deletable.
+        $servers = $package->servers()->count();
+
+        if ($servers > 0) {
+            $this->toast('error', ':count servers use this package (deleted ones included). Deactivate it instead.', ['count' => (string) $servers]);
+
+            return back();
+        }
+
         $package->delete();
 
         $this->toast('success', 'Package deleted.');

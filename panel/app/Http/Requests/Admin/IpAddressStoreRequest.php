@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Requests\Admin;
 
-use App\Enums\IpVersion;
+use App\Domain\Networking\AddressInput;
 use App\Models\IpPool;
 use App\Support\Network\Cidr;
 use Illuminate\Contracts\Validation\ValidationRule;
@@ -12,24 +12,19 @@ use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Validator;
 
 /**
- * IPv4 pools take a range (from–to), IPv6 pools a single address.
+ * One text field that accepts single IPs, lists, IPv4 ranges (a-b) and IPv4 blocks (a/29).
  */
 class IpAddressStoreRequest extends FormRequest
 {
+    private ?AddressInput $parsed = null;
+
     /**
      * @return array<string, ValidationRule|array<mixed>|string>
      */
     public function rules(): array
     {
-        if ($this->pool()->version === IpVersion::V4) {
-            return [
-                'from' => ['required', 'ipv4'],
-                'to' => ['required', 'ipv4'],
-            ];
-        }
-
         return [
-            'address' => ['required', 'ipv6', 'unique:ip_addresses,address'],
+            'addresses' => ['required', 'string', 'max:65535'],
         ];
     }
 
@@ -43,19 +38,21 @@ class IpAddressStoreRequest extends FormRequest
                 return;
             }
 
-            $network = Cidr::parse($this->pool()->network);
-            $fields = $this->pool()->version === IpVersion::V4 ? ['from', 'to'] : ['address'];
+            $pool = $this->pool();
+            $this->parsed = AddressInput::parse($this->string('addresses')->toString(), $pool->version, Cidr::parse($pool->network));
 
-            foreach ($fields as $field) {
-                if (! $network->contains($this->string($field)->toString())) {
-                    $validator->errors()->add($field, __('The address must be inside :network.', ['network' => (string) $network]));
-                }
-            }
-
-            if ($fields === ['from', 'to'] && ip2long($this->string('from')->toString()) > ip2long($this->string('to')->toString())) {
-                $validator->errors()->add('to', __('The end of the range must not be before its start.'));
+            foreach ($this->parsed->problems() as $problem) {
+                $validator->errors()->add('addresses', $problem);
             }
         }];
+    }
+
+    /**
+     * @return list<string>
+     */
+    public function addresses(): array
+    {
+        return $this->parsed->addresses ?? [];
     }
 
     public function pool(): IpPool

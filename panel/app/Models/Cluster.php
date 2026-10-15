@@ -38,7 +38,7 @@ use Illuminate\Support\Carbon;
  * @property Carbon|null $updated_at
  * @property-read Location $location
  */
-#[Fillable(['location_id', 'name', 'hosts', 'port', 'token_id', 'token_secret', 'verify_tls', 'is_active'])]
+#[Fillable(['location_id', 'name', 'hosts', 'port', 'token_id', 'token_secret', 'verify_tls', 'resource_pool', 'is_active'])]
 #[Hidden(['token_secret'])]
 class Cluster extends Model
 {
@@ -94,5 +94,13 @@ class Cluster extends Model
     public function proxmoxTemplates(): HasMany
     {
         return $this->hasMany(ProxmoxTemplate::class);
+    }
+
+    /**
+     * @return HasMany<Server, $this>
+     */
+    public function servers(): HasMany
+    {
+        return $this->hasMany(Server::class);
     }
 }

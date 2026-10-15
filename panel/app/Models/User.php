@@ -3,11 +3,13 @@
 namespace App\Models;
 
 use App\Enums\UserRole;
+use App\Models\Concerns\HasPublicUuid;
 use Database\Factories\UserFactory;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Carbon;
@@ -17,6 +19,7 @@ use Laravel\Fortify\TwoFactorAuthenticatable;
 
 /**
  * @property int $id
+ * @property string $uuid
  * @property string $name
  * @property string $email
  * @property Carbon|null $email_verified_at
@@ -36,7 +39,7 @@ use Laravel\Fortify\TwoFactorAuthenticatable;
 class User extends Authenticatable implements MustVerifyEmail, PasskeyUser
 {
     /** @use HasFactory<UserFactory> */
-    use HasFactory, Notifiable, PasskeyAuthenticatable, TwoFactorAuthenticatable;
+    use HasFactory, HasPublicUuid, Notifiable, PasskeyAuthenticatable, TwoFactorAuthenticatable;
 
     /**
      * Get the attributes that should be cast.
@@ -56,5 +59,13 @@ class User extends Authenticatable implements MustVerifyEmail, PasskeyUser
     public function isAdmin(): bool
     {
         return $this->role === UserRole::Admin;
+    }
+
+    /**
+     * @return HasMany<Server, $this>
+     */
+    public function servers(): HasMany
+    {
+        return $this->hasMany(Server::class);
     }
 }

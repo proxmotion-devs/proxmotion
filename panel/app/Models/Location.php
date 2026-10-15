@@ -43,4 +43,12 @@ class Location extends Model
     {
         return $this->hasMany(IpPool::class);
     }
+
+    /**
+     * @return HasMany<Server, $this>
+     */
+    public function servers(): HasMany
+    {
+        return $this->hasMany(Server::class);
+    }
 }

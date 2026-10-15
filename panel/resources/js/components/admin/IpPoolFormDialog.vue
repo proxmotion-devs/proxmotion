@@ -2,6 +2,7 @@
 import { useForm } from '@inertiajs/vue3';
 import { computed, watch } from 'vue';
 import FormDialog from '@/components/admin/FormDialog.vue';
+import AddressesField from '@/components/admin/AddressesField.vue';
 import FormField from '@/components/admin/FormField.vue';
 import NativeSelect from '@/components/admin/NativeSelect.vue';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -32,7 +33,20 @@ const form = useForm({
     vlan_tag: '' as OptionalNumber,
     nameservers: '',
     is_active: true,
+    add_mode: 'list' as 'list' | 'network' | 'none' | null,
+    addresses: '',
 });
+
+const addModeOptions = computed(() =>
+    [
+        { value: 'list' as const, label: trans('Only the addresses I list') },
+        {
+            value: 'network' as const,
+            label: trans('Every address of the network'),
+        },
+        { value: 'none' as const, label: trans('None for now') },
+    ].filter((option) => option.value !== 'network' || form.version === 4),
+);
 
 const locationOptions = computed(() =>
     props.locations.map((location) => ({
@@ -70,6 +84,8 @@ watch(open, (isOpen) => {
         vlan_tag: pool?.vlan_tag ?? '',
         nameservers: pool?.nameservers.join('\n') ?? '',
         is_active: pool?.is_active ?? true,
+        add_mode: 'list',
+        addresses: '',
     });
     form.reset();
 });
@@ -103,7 +119,7 @@ const submit = () => {
         :description="
             pool
                 ? 'Network, IP version and location cannot be changed after creation.'
-                : 'For IPv4 pools, every usable address of the network (except the gateway) is added automatically.'
+                : 'The network is the subnet your addresses belong to. Only add the addresses that are yours.'
         "
         :processing="form.processing"
         @submit="submit"
@@ -241,5 +257,35 @@ const submit = () => {
             <Checkbox v-model="form.is_active" />
             {{ $t('Active (used for new servers)') }}
         </Label>
+
+        <template v-if="!pool">
+            <FormField
+                label="Which addresses should be added?"
+                for="add_mode"
+                :error="form.errors.add_mode"
+            >
+                <NativeSelect
+                    id="add_mode"
+                    v-model="form.add_mode"
+                    :options="addModeOptions"
+                />
+            </FormField>
+            <p
+                v-if="form.add_mode === 'network'"
+                class="text-xs text-amber-700 dark:text-amber-400"
+            >
+                {{
+                    $t(
+                        'Only choose this when the whole block is yours. Shared data-centre subnets contain other customers’ addresses.',
+                    )
+                }}
+            </p>
+            <AddressesField
+                v-if="form.add_mode === 'list'"
+                v-model="form.addresses"
+                :error="form.errors.addresses"
+                :ipv6="form.version === 6"
+            />
+        </template>
     </FormDialog>
 </template>

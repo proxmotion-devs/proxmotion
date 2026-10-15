@@ -26,6 +26,8 @@ describe('useMainNavigation', () => {
 
         expect(items.map((item) => toUrl(item.href))).toEqual([
             '/admin',
+            '/admin/servers',
+            '/admin/users',
             '/admin/locations',
             '/admin/clusters',
             '/admin/ip-pools',

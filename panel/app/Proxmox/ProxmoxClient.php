@@ -8,8 +8,10 @@ use App\Proxmox\Exceptions\ProxmoxAuthenticationFailed;
 use App\Proxmox\Exceptions\ProxmoxRequestFailed;
 use App\Proxmox\Exceptions\ProxmoxTlsVerificationFailed;
 use App\Proxmox\Exceptions\ProxmoxUnreachable;
+use App\Proxmox\Resources\AccessResource;
 use App\Proxmox\Resources\ClusterResource;
 use App\Proxmox\Resources\NodesResource;
+use App\Proxmox\Resources\QemuResource;
 use App\Proxmox\Resources\TasksResource;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Factory as HttpFactory;
@@ -40,6 +42,21 @@ class ProxmoxClient
     public function tasks(): TasksResource
     {
         return new TasksResource($this);
+    }
+
+    public function qemu(string $node): QemuResource
+    {
+        return new QemuResource($this, $node);
+    }
+
+    public function access(): AccessResource
+    {
+        return new AccessResource($this);
+    }
+
+    public function taskWaiter(): TaskWaiter
+    {
+        return new TaskWaiter($this);
     }
 
     /**

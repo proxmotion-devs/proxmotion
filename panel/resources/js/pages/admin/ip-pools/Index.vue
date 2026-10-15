@@ -2,11 +2,12 @@
 import { Head, Link } from '@inertiajs/vue3';
 import { Plus } from '@lucide/vue';
 import { ref } from 'vue';
+import ConfirmDelete from '@/components/admin/ConfirmDelete.vue';
 import IpPoolFormDialog from '@/components/admin/IpPoolFormDialog.vue';
 import StatusBadge from '@/components/admin/StatusBadge.vue';
 import Heading from '@/components/Heading.vue';
 import { Button } from '@/components/ui/button';
-import { index, show } from '@/routes/admin/ip-pools';
+import { destroy, index, show } from '@/routes/admin/ip-pools';
 import { index as locationsIndex } from '@/routes/admin/locations';
 import { NETWORK_MODELS } from '@/types/admin';
 import type { IpPool, LocationOption } from '@/types/admin';
@@ -65,6 +66,9 @@ const modelLabel = (value: string) =>
                         <th class="px-4 py-3 font-medium">
                             {{ $t('Addresses') }}
                         </th>
+                        <th class="px-4 py-3 text-right font-medium">
+                            {{ $t('Actions') }}
+                        </th>
                     </tr>
                 </thead>
                 <tbody>
@@ -100,6 +104,16 @@ const modelLabel = (value: string) =>
                         <td class="px-4 py-3">
                             {{ pool.addresses_count }}
                             <span
+                                v-if="pool.assigned_count"
+                                class="text-muted-foreground"
+                            >
+                                ({{
+                                    $t(':count assigned', {
+                                        count: String(pool.assigned_count),
+                                    })
+                                }})
+                            </span>
+                            <span
                                 v-if="pool.reserved_count"
                                 class="text-muted-foreground"
                             >
@@ -110,10 +124,24 @@ const modelLabel = (value: string) =>
                                 }})
                             </span>
                         </td>
+                        <td class="px-4 py-3">
+                            <div class="flex justify-end gap-1">
+                                <Button variant="outline" size="sm" as-child>
+                                    <Link :href="show(pool.uuid)">
+                                        {{ $t('Details') }}
+                                    </Link>
+                                </Button>
+                                <ConfirmDelete
+                                    :action="destroy(pool.uuid)"
+                                    :name="pool.name"
+                                    description="The pool and all of its addresses are deleted."
+                                />
+                            </div>
+                        </td>
                     </tr>
                     <tr v-if="pools.length === 0">
                         <td
-                            colspan="5"
+                            colspan="6"
                             class="px-4 py-10 text-center text-muted-foreground"
                         >
                             {{ $t('No IP pools yet.') }}

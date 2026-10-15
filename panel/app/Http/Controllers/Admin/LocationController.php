@@ -52,8 +52,18 @@ class LocationController extends Controller
 
     public function destroy(Location $location): RedirectResponse
     {
-        if ($location->clusters()->exists() || $location->ipPools()->exists()) {
-            $this->toast('error', 'Remove the clusters and IP pools of this location first.');
+        $counts = [
+            'clusters' => $location->clusters()->count(),
+            'pools' => $location->ipPools()->count(),
+            'servers' => $location->servers()->count(),
+        ];
+
+        if (array_sum($counts) > 0) {
+            $this->toast(
+                'error',
+                'This location still has :clusters clusters, :pools IP pools and :servers servers. Remove them first.',
+                array_map(strval(...), $counts),
+            );
 
             return back();
         }

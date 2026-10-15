@@ -35,6 +35,8 @@ class ClusterRequest extends FormRequest
             // Leave empty when editing to keep the stored secret.
             'token_secret' => [$creating ? 'required' : 'nullable', 'string', 'max:255'],
             'verify_tls' => ['required', 'boolean'],
+            // Proxmox pool IDs: letters, digits, dashes and underscores.
+            'resource_pool' => ['nullable', 'string', 'max:64', 'regex:/^[A-Za-z][A-Za-z0-9_-]*$/'],
             'is_active' => ['required', 'boolean'],
         ];
     }
@@ -47,6 +49,7 @@ class ClusterRequest extends FormRequest
         $data = $this->safe()->except(['location', 'token_secret']);
         $data['location_id'] = Location::query()->where('uuid', $this->string('location'))->value('id');
         $data['hosts'] = array_values($this->array('hosts'));
+        $data['resource_pool'] = $this->filled('resource_pool') ? $this->string('resource_pool')->toString() : null;
 
         if ($this->filled('token_secret')) {
             $data['token_secret'] = $this->string('token_secret')->toString();

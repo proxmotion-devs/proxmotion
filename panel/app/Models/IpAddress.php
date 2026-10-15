@@ -12,6 +12,8 @@ use Illuminate\Support\Carbon;
 /**
  * @property int $id
  * @property int $ip_pool_id
+ * @property int|null $server_id
+ * @property Carbon|null $assigned_at
  * @property string $address
  * @property string|null $mac_address
  * @property bool $is_reserved
@@ -19,6 +21,7 @@ use Illuminate\Support\Carbon;
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  * @property-read IpPool $pool
+ * @property-read Server|null $server
  */
 #[Fillable(['address', 'mac_address', 'is_reserved', 'notes'])]
 class IpAddress extends Model
@@ -30,7 +33,16 @@ class IpAddress extends Model
     {
         return [
             'is_reserved' => 'boolean',
+            'assigned_at' => 'datetime',
         ];
+    }
+
+    /**
+     * @return BelongsTo<Server, $this>
+     */
+    public function server(): BelongsTo
+    {
+        return $this->belongsTo(Server::class);
     }
 
     /**

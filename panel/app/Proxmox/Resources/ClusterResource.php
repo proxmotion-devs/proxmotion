@@ -7,6 +7,7 @@ namespace App\Proxmox\Resources;
 use App\Proxmox\Data\ClusterStatus;
 use App\Proxmox\Data\StorageInfo;
 use App\Proxmox\Data\VmResource;
+use App\Proxmox\Exceptions\ProxmoxRequestFailed;
 use App\Proxmox\ProxmoxClient;
 
 final readonly class ClusterResource
@@ -45,6 +46,25 @@ final readonly class ClusterResource
         $data = $this->client->get('/cluster/nextid');
 
         return is_numeric($data) ? (int) $data : 0;
+    }
+
+    /**
+     * Whether no guest on the cluster uses this VMID. Proxmox answers 400
+     * ("VM … already exists") for taken IDs.
+     */
+    public function isVmidFree(int $vmid): bool
+    {
+        try {
+            $this->client->get('/cluster/nextid', ['vmid' => $vmid]);
+
+            return true;
+        } catch (ProxmoxRequestFailed $e) {
+            if ($e->status === 400) {
+                return false;
+            }
+
+            throw $e;
+        }
     }
 
     /**

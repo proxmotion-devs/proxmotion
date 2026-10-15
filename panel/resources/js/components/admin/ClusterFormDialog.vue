@@ -25,6 +25,7 @@ const form = useForm({
     token_id: '',
     token_secret: '',
     verify_tls: true,
+    resource_pool: 'proxmotion',
     is_active: true,
 });
 
@@ -51,6 +52,7 @@ watch(open, (isOpen) => {
         token_id: cluster?.token_id ?? '',
         token_secret: '',
         verify_tls: cluster?.verify_tls ?? true,
+        resource_pool: cluster ? (cluster.resource_pool ?? '') : 'proxmotion',
         is_active: cluster?.is_active ?? true,
     });
     form.reset();
@@ -163,6 +165,19 @@ const submit = () => {
                 type="password"
                 autocomplete="new-password"
                 :required="!cluster"
+            />
+        </FormField>
+        <FormField
+            label="Resource pool"
+            for="resource_pool"
+            :error="form.errors.resource_pool"
+            hint="New servers are created in this Proxmox pool; the token only needs VM permissions there. Leave empty to use /vms."
+        >
+            <Input
+                id="resource_pool"
+                v-model="form.resource_pool"
+                class="font-mono"
+                placeholder="proxmotion"
             />
         </FormField>
         <div class="flex flex-col gap-3">

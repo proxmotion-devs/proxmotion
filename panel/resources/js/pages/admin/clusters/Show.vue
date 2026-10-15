@@ -6,7 +6,14 @@ import {
     useForm,
     usePage,
 } from '@inertiajs/vue3';
-import { AlertTriangle, Pencil, RefreshCw } from '@lucide/vue';
+import {
+    AlertTriangle,
+    CircleCheck,
+    CircleX,
+    Pencil,
+    RefreshCw,
+    ShieldCheck,
+} from '@lucide/vue';
 import { computed, ref } from 'vue';
 import ClusterFormDialog from '@/components/admin/ClusterFormDialog.vue';
 import ConfirmDelete from '@/components/admin/ConfirmDelete.vue';
@@ -22,7 +29,7 @@ import { Label } from '@/components/ui/label';
 import { formatBytes, formatDateTime, percentage } from '@/lib/format';
 import { optionalNumber } from '@/lib/forms';
 import type { OptionalNumber } from '@/lib/forms';
-import { destroy, index, show } from '@/routes/admin/clusters';
+import { destroy, index, permissions, show } from '@/routes/admin/clusters';
 import { update as updateNode } from '@/routes/admin/nodes';
 import { update as updateStorage } from '@/routes/admin/storages';
 import type {
@@ -30,6 +37,7 @@ import type {
     LocationOption,
     Node,
     NodeStatus,
+    PermissionCheck,
     Storage,
 } from '@/types/admin';
 
@@ -38,7 +46,11 @@ const props = defineProps<{
     locations: LocationOption[];
     nodes: Node[];
     templates: { vmid: number; name: string | null; node: string }[];
+    permissionCheck: PermissionCheck | null;
 }>();
+
+const checkPermissions = () =>
+    router.visit(permissions(props.cluster.uuid), { preserveScroll: true });
 
 setLayoutProps({
     breadcrumbs: [
@@ -222,7 +234,68 @@ const submitNode = () => {
                     />
                 </dd>
             </div>
+            <div>
+                <dt class="text-muted-foreground">{{ $t('Resource pool') }}</dt>
+                <dd class="font-mono text-xs">
+                    {{ cluster.resource_pool ?? '/vms' }}
+                </dd>
+            </div>
         </dl>
+
+        <section class="flex flex-col gap-4">
+            <div class="flex flex-wrap items-start justify-between gap-4">
+                <Heading
+                    variant="small"
+                    title="API token permissions"
+                    description="Checks on Proxmox whether the token has every privilege the panel needs."
+                />
+                <Button variant="outline" @click="checkPermissions">
+                    <ShieldCheck class="h-4 w-4" />
+                    {{ $t('Check permissions') }}
+                </Button>
+            </div>
+            <ul v-if="permissionCheck" class="flex flex-col gap-2 text-sm">
+                <li
+                    v-for="entry in permissionCheck"
+                    :key="entry.path"
+                    class="flex flex-wrap items-center gap-2 rounded-lg border p-3"
+                >
+                    <CircleX
+                        v-if="entry.missing.length"
+                        class="h-4 w-4 text-red-600"
+                    />
+                    <AlertTriangle
+                        v-else-if="entry.excess.length"
+                        class="h-4 w-4 text-amber-600"
+                    />
+                    <CircleCheck v-else class="h-4 w-4 text-emerald-600" />
+                    <span class="font-mono text-xs">{{ entry.path }}</span>
+                    <span class="text-muted-foreground">{{
+                        $t(entry.purpose)
+                    }}</span>
+                    <span
+                        v-if="entry.missing.length"
+                        class="w-full font-mono text-xs text-red-700 dark:text-red-400"
+                    >
+                        {{
+                            $t('Missing: :privileges', {
+                                privileges: entry.missing.join(', '),
+                            })
+                        }}
+                    </span>
+                    <span
+                        v-if="entry.excess.length"
+                        class="w-full font-mono text-xs text-amber-700 dark:text-amber-400"
+                    >
+                        {{
+                            $t('More than needed: :privileges', {
+                                privileges: entry.excess.join(', '),
+                            })
+                        }}
+                    </span>
+                </li>
+            </ul>
+        </section>
 
         <section class="flex flex-col gap-4">
             <Heading variant="small" title="Nodes" />

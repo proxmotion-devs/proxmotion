@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace App\Domain\Infrastructure;
 
+use App\Domain\Networking\ProtectedAddresses;
 use App\Enums\ClusterType;
 use App\Enums\NodeStatus;
 use App\Models\Cluster;
+use App\Models\IpAddress;
 use App\Models\Node;
 use App\Proxmox\Data\BridgeInfo;
 use App\Proxmox\Data\NodeInfo;
@@ -26,7 +28,10 @@ use Illuminate\Support\Facades\DB;
  */
 final readonly class ClusterSynchronizer
 {
-    public function __construct(private ProxmoxClientFactory $clients) {}
+    public function __construct(
+        private ProxmoxClientFactory $clients,
+        private ProtectedAddresses $protected,
+    ) {}
 
     /**
      * @throws ProxmoxException when Proxmox can't be reached or rejects the request
@@ -61,6 +66,7 @@ final readonly class ClusterSynchronizer
             $this->syncStorages($nodeModels, $storages);
             $this->syncBridges($nodeModels, $bridges);
             $this->syncTemplates($cluster, $nodeModels, $guests);
+            $this->reserveNodeAddresses($cluster);
         });
     }
 
@@ -197,6 +203,25 @@ final readonly class ClusterSynchronizer
         }
 
         $cluster->proxmoxTemplates()->whereNotIn('vmid', $vmids)->delete();
+    }
+
+    /**
+     * A node's own IP must never be given to a server: reserve it in any pool
+     * that contains it (unless an admin already assigned it to a server).
+     */
+    private function reserveNodeAddresses(Cluster $cluster): void
+    {
+        $addresses = $this->protected->nodeAddresses($cluster->location_id);
+
+        if ($addresses === []) {
+            return;
+        }
+
+        IpAddress::query()
+            ->whereIn('address', $addresses)
+            ->whereNull('server_id')
+            ->where('is_reserved', false)
+            ->update(['is_reserved' => true, 'notes' => 'Proxmox node']);
     }
 
     /**

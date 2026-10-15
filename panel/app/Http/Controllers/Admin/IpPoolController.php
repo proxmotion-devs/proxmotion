@@ -4,14 +4,17 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Admin;
 
+use App\Domain\Networking\AddIpAddresses;
 use App\Domain\Networking\GenerateIpAddresses;
-use App\Enums\IpVersion;
+use App\Domain\Networking\ProtectedAddresses;
+use App\Http\Controllers\Admin\Concerns\ReportsAddedAddresses;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\IpPoolRequest;
 use App\Models\IpAddress;
 use App\Models\IpPool;
 use App\Models\Location;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
@@ -20,6 +23,8 @@ use InvalidArgumentException;
 
 class IpPoolController extends Controller
 {
+    use ReportsAddedAddresses;
+
     public function index(): Response
     {
         return Inertia::render('admin/ip-pools/Index', [
@@ -27,7 +32,8 @@ class IpPoolController extends Controller
                 ->with('location:id,uuid,name')
                 ->withCount([
                     'addresses',
-                    'addresses as reserved_count' => fn ($query) => $query->where('is_reserved', true),
+                    'addresses as reserved_count' => fn ($query) => $query->whereNull('server_id')->where('is_reserved', true),
+                    'addresses as assigned_count' => fn ($query) => $query->whereNotNull('server_id'),
                 ])
                 ->orderBy('name')
                 ->get()
@@ -35,52 +41,77 @@ class IpPoolController extends Controller
                     ...$this->poolProps($pool),
                     'addresses_count' => $pool->getAttribute('addresses_count'),
                     'reserved_count' => $pool->getAttribute('reserved_count'),
+                    'assigned_count' => $pool->getAttribute('assigned_count'),
                 ]),
             'locations' => Location::query()->orderBy('name')->get(['uuid', 'name'])
                 ->map(fn (Location $location) => ['uuid' => $location->uuid, 'name' => $location->name]),
         ]);
     }
 
-    public function store(IpPoolRequest $request, GenerateIpAddresses $generate): RedirectResponse
+    public function store(IpPoolRequest $request, GenerateIpAddresses $generate, AddIpAddresses $add): RedirectResponse
     {
-        $pool = DB::transaction(function () use ($request, $generate) {
+        $pool = DB::transaction(function () use ($request, $generate, $add) {
             $pool = IpPool::create($request->poolData());
 
-            if ($pool->version === IpVersion::V4) {
-                try {
-                    $generate->handle($pool);
-                } catch (InvalidArgumentException) {
-                    throw ValidationException::withMessages([
-                        'network' => __('This network is too large to add at once (max :max addresses). Use a smaller network.', [
-                            'max' => (string) GenerateIpAddresses::MAX_ADDRESSES,
-                        ]),
-                    ]);
-                }
-            }
+            match ($request->addMode()) {
+                'list' => $this->reportAddedAddresses($add->handle($pool, $request->addressesToAdd())),
+                'network' => $this->generateWholeNetwork($pool, $generate),
+                default => $this->toast('success', 'IP pool created. Add its addresses next.'),
+            };
 
             return $pool;
         });
 
-        $this->toast('success', 'IP pool created.');
-
         return to_route('admin.ip-pools.show', $pool);
     }
 
-    public function show(IpPool $ipPool): Response
+    private function generateWholeNetwork(IpPool $pool, GenerateIpAddresses $generate): void
+    {
+        try {
+            $added = $generate->handle($pool);
+        } catch (InvalidArgumentException) {
+            throw ValidationException::withMessages([
+                'network' => __('This network is too large to add at once (max :max addresses). Use a smaller network.', [
+                    'max' => (string) GenerateIpAddresses::MAX_ADDRESSES,
+                ]),
+            ]);
+        }
+
+        $this->toast('success', ':count addresses added.', ['count' => (string) $added]);
+    }
+
+    public function show(Request $request, IpPool $ipPool, ProtectedAddresses $protected): Response
     {
         $ipPool->load('location:id,uuid,name');
+        $search = trim($request->string('search')->toString());
 
         return Inertia::render('admin/ip-pools/Show', [
             'pool' => $this->poolProps($ipPool),
+            'counts' => [
+                'total' => $ipPool->addresses()->count(),
+                'assigned' => $ipPool->addresses()->whereNotNull('server_id')->count(),
+                'reserved' => $ipPool->addresses()->whereNull('server_id')->where('is_reserved', true)->count(),
+            ],
+            'search' => $search,
+            'protected' => $protected->for($ipPool),
             'addresses' => $ipPool->addresses()
+                ->when($search !== '', fn ($query) => $query->where(
+                    fn ($query) => $query->where('address', 'like', "%{$search}%")->orWhere('notes', 'like', "%{$search}%"),
+                ))
+                ->with('server:id,uuid,hostname')
                 ->orderBy('id')
                 ->paginate(100)
+                ->withQueryString()
                 ->through(fn (IpAddress $address) => [
                     'id' => $address->id,
                     'address' => $address->address,
                     'mac_address' => $address->mac_address,
                     'is_reserved' => $address->is_reserved,
                     'notes' => $address->notes,
+                    'server' => $address->server === null ? null : [
+                        'uuid' => $address->server->uuid,
+                        'hostname' => $address->server->hostname,
+                    ],
                 ]),
         ]);
     }
@@ -96,7 +127,14 @@ class IpPoolController extends Controller
 
     public function destroy(IpPool $ipPool): RedirectResponse
     {
-        // From Phase 2, pools with assigned addresses must not be deletable.
+        $assigned = $ipPool->addresses()->whereNotNull('server_id')->count();
+
+        if ($assigned > 0) {
+            $this->toast('error', ':count addresses of this pool are assigned to servers. Delete those servers first.', ['count' => (string) $assigned]);
+
+            return back();
+        }
+
         $ipPool->delete();
 
         $this->toast('success', 'IP pool deleted.');

@@ -16,6 +16,10 @@ final readonly class VmResource
         public ?string $name,
         public bool $template,
         public ?string $status,
+        public ?string $pool = null,
+        public ?int $cpus = null,
+        public ?int $memoryBytes = null,
+        public ?int $diskBytes = null,
     ) {}
 
     /**
@@ -23,16 +27,20 @@ final readonly class VmResource
      */
     public static function fromArray(array $data): self
     {
-        $name = $data['name'] ?? null;
-        $status = $data['status'] ?? null;
+        $string = fn (string $key) => is_string($data[$key] ?? null) && $data[$key] !== '' ? $data[$key] : null;
+        $int = fn (string $key) => is_numeric($data[$key] ?? null) ? (int) $data[$key] : null;
 
         return new self(
             vmid: (int) $data['vmid'],
             node: (string) $data['node'],
             type: (string) ($data['type'] ?? 'qemu'),
-            name: is_string($name) ? $name : null,
+            name: $string('name'),
             template: (bool) ($data['template'] ?? false),
-            status: is_string($status) ? $status : null,
+            status: $string('status'),
+            pool: $string('pool'),
+            cpus: $int('maxcpu'),
+            memoryBytes: $int('maxmem'),
+            diskBytes: $int('maxdisk'),
         );
     }
 }
