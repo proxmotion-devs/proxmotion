@@ -10,7 +10,7 @@
 # Downloads are cached in $OUTDIR/downloads. A cached image is downloaded
 # again when it no longer matches the published checksum (a newer image was
 # released), so re-running the script always prepares the current images.
-# See docs/guides/offline-templates.md.
+# See docs/guides/os-templates.md.
 #
 # Requirements: bash, curl, coreutils, virt-customize (apt install libguestfs-tools).
 #

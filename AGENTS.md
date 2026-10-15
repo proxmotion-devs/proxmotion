@@ -145,9 +145,9 @@ proxmotion/
 │   └── blesta/                           # later
 ├── deploy/
 │   ├── docker/                           # Dockerfiles + compose.yml (dev and production)
-│   ├── proxmox/                          # Scripts admins run on a Proxmox node (prepare-images.sh: build images off-node; build-templates.sh: create templates on the node with qm/pvesh only)
+│   ├── proxmox/                          # Scripts admins run on a Proxmox node (prepare-images.sh: build images off-node, natively or via images.Dockerfile; build-templates.sh: create templates on the node with qm/pvesh only)
 │   └── installer/                        # Native Debian/Ubuntu installer (install.sh, nginx, systemd units)
-└── docs/                                 # Install guide, admin guide, guides/ (e.g. offline-templates.md), API reference (OpenAPI), ADRs
+└── docs/                                 # Install guide, admin guide, guides/ (e.g. os-templates.md), API reference (OpenAPI), ADRs
 ```
 
 ### 3.3 Layering rules

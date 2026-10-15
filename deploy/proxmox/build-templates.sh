@@ -3,7 +3,7 @@
 #
 # Run as root in a Proxmox VE node shell (the panel never does this itself).
 # The node needs no internet access and no extra packages: the script only
-# runs pvesh and qm. See docs/guides/offline-templates.md.
+# runs pvesh and qm. See docs/guides/os-templates.md.
 #
 # For every $WORKDIR/tpl-<key>.qcow2 it creates a template named
 # tpl-<key>-<YYYYMMDD> with a cloud-init drive and `agent: 1`, using the first
