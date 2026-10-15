@@ -1,0 +1,17 @@
+# OS / editors
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+
+# Environment & secrets
+.env
+.env.*
+!.env.example
+
+# Local tooling
+.claude/settings.local.json
+
+# Local preview config (machine-specific paths)
+.claude/launch.json
