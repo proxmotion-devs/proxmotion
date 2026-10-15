@@ -19,8 +19,8 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Carbon;
 
 /**
- * A customer VPS. Its resources are copied from the package at creation time,
- * so later package edits don't silently change existing servers.
+ * A customer VPS. Its resources are copied from the package (or entered as custom
+ * resources) at creation time, so later package edits do not change existing servers.
  *
  * Nothing on this model is mass-assignable: servers are only created and
  * changed by the provisioning code (forceFill).
@@ -28,7 +28,7 @@ use Illuminate\Support\Carbon;
  * @property int $id
  * @property string $uuid
  * @property int $user_id
- * @property int $package_id
+ * @property int|null $package_id
  * @property int $location_id
  * @property int $cluster_id
  * @property int $node_id
@@ -42,6 +42,8 @@ use Illuminate\Support\Carbon;
  * @property int $cpu_cores
  * @property int $memory_mib
  * @property int $disk_mib
+ * @property int|null $port_speed_mbps
+ * @property int|null $traffic_bytes
  * @property string|null $root_password
  * @property string|null $ssh_keys
  * @property string|null $suspension_reason
@@ -51,7 +53,7 @@ use Illuminate\Support\Carbon;
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  * @property-read User $user
- * @property-read Package $package
+ * @property-read Package|null $package
  * @property-read Location $location
  * @property-read Cluster $cluster
  * @property-read Node $node
@@ -77,6 +79,8 @@ class Server extends Model
             'cpu_cores' => 'integer',
             'memory_mib' => 'integer',
             'disk_mib' => 'integer',
+            'port_speed_mbps' => 'integer',
+            'traffic_bytes' => 'integer',
             'root_password' => 'encrypted',
             'provisioned_at' => 'datetime',
             'terminated_at' => 'datetime',

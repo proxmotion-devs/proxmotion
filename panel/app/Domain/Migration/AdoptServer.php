@@ -52,7 +52,7 @@ final readonly class AdoptServer
      *
      * @throws ProvisioningException
      */
-    public function adopt(Cluster $cluster, int $vmid, User $owner, Package $package, NetworkModel $networkModel, array $ipAddressIds, ?User $actor = null): Server
+    public function adopt(Cluster $cluster, int $vmid, User $owner, ?Package $package, NetworkModel $networkModel, array $ipAddressIds, ?User $actor = null): Server
     {
         $vm = collect($this->candidates($cluster))->firstWhere('vmid', $vmid)
             ?? throw new ProvisioningException('VM :vmid was not found, is already managed, or is not in the resource pool.', ['vmid' => (string) $vmid]);
@@ -75,7 +75,7 @@ final readonly class AdoptServer
             $server = new Server;
             $server->forceFill([
                 'user_id' => $owner->id,
-                'package_id' => $package->id,
+                'package_id' => $package?->id,
                 'location_id' => $cluster->location_id,
                 'cluster_id' => $cluster->id,
                 'node_id' => $node->id,
@@ -85,9 +85,11 @@ final readonly class AdoptServer
                 'origin' => ServerOrigin::Adopted,
                 'network_model' => $networkModel,
                 // Record what the VM really has; the package is what the customer pays for.
-                'cpu_cores' => $vm->cpus ?? $package->cpu_cores,
-                'memory_mib' => $vm->memoryBytes !== null ? intdiv($vm->memoryBytes, 1024 ** 2) : $package->memory_mib,
-                'disk_mib' => $vm->diskBytes !== null ? intdiv($vm->diskBytes, 1024 ** 2) : $package->disk_mib,
+                'cpu_cores' => $vm->cpus ?? $package->cpu_cores ?? 1,
+                'memory_mib' => $vm->memoryBytes !== null ? intdiv($vm->memoryBytes, 1024 ** 2) : ($package->memory_mib ?? 0),
+                'disk_mib' => $vm->diskBytes !== null ? intdiv($vm->diskBytes, 1024 ** 2) : ($package->disk_mib ?? 0),
+                'port_speed_mbps' => $package?->port_speed_mbps,
+                'traffic_bytes' => $package?->traffic_bytes,
                 'provisioned_at' => now(),
             ])->save();
 

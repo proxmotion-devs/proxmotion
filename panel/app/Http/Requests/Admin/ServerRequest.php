@@ -11,6 +11,7 @@ use App\Models\OsTemplate;
 use App\Models\Package;
 use App\Models\User;
 use App\Provisioning\NewServer;
+use App\Provisioning\ServerSpec;
 use App\Rules\Hostname;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
@@ -25,10 +26,22 @@ class ServerRequest extends FormRequest
      */
     public function rules(): array
     {
+        $custom = $this->input('resource_mode') === 'custom';
+
         return [
             'user' => ['required', 'string', Rule::exists('users', 'uuid')->where('role', UserRole::Client->value)],
             'location' => ['required', 'string', Rule::exists('locations', 'uuid')],
-            'package' => ['required', 'string', Rule::exists('packages', 'uuid')->where('is_active', true)],
+            // "package": resources from a package; "custom": entered below (admins only).
+            'resource_mode' => ['required', Rule::in(['package', 'custom'])],
+            'package' => [Rule::requiredIf(! $custom), 'nullable', 'string', Rule::exists('packages', 'uuid')->where('is_active', true)],
+            // Same limits as the package form.
+            'cpu_cores' => [Rule::requiredIf($custom), 'nullable', 'integer', 'between:1,512'],
+            'memory_mib' => [Rule::requiredIf($custom), 'nullable', 'integer', 'between:128,4194304'],
+            'disk_gib' => [Rule::requiredIf($custom), 'nullable', 'integer', 'between:1,65536'],
+            'ipv4_count' => [Rule::requiredIf($custom), 'nullable', 'integer', 'between:0,64'],
+            'ipv6_count' => [Rule::requiredIf($custom), 'nullable', 'integer', 'between:0,64'],
+            'port_speed_mbps' => ['nullable', 'integer', 'between:1,400000'],
+            'traffic_gb' => ['nullable', 'integer', 'between:1,10000000'],
             'os_template' => ['required', 'string', Rule::exists('os_templates', 'uuid')->where('is_active', true)],
             'network_model' => ['required', Rule::enum(NetworkModel::class)->except([NetworkModel::Nat])],
             'hostname' => ['required', 'string', 'max:253', new Hostname],
@@ -50,8 +63,12 @@ class ServerRequest extends FormRequest
 
             $package = $this->package();
 
-            if (! $package->network_models->contains(NetworkModel::from($this->string('network_model')->toString()))) {
+            if ($package !== null && ! $package->network_models->contains(NetworkModel::from($this->string('network_model')->toString()))) {
                 $validator->errors()->add('network_model', __('This package does not allow the selected network model.'));
+            }
+
+            if ($package === null && $this->integer('ipv4_count') + $this->integer('ipv6_count') === 0) {
+                $validator->errors()->add('ipv4_count', __('A server needs at least one IP address.'));
             }
 
             foreach (preg_split('/\R/', trim((string) $this->input('ssh_keys', ''))) ?: [] as $key) {
@@ -69,6 +86,7 @@ class ServerRequest extends FormRequest
         return new NewServer(
             owner: User::query()->where('uuid', $this->string('user'))->firstOrFail(),
             location: Location::query()->where('uuid', $this->string('location'))->firstOrFail(),
+            spec: $this->spec(),
             package: $this->package(),
             osTemplate: OsTemplate::query()->where('uuid', $this->string('os_template'))->firstOrFail(),
             networkModel: NetworkModel::from($this->string('network_model')->toString()),
@@ -78,8 +96,34 @@ class ServerRequest extends FormRequest
         );
     }
 
-    private function package(): Package
+    /**
+     * The chosen package, or null for custom resources.
+     */
+    private function package(): ?Package
     {
+        if ($this->input('resource_mode') === 'custom') {
+            return null;
+        }
+
         return Package::query()->where('uuid', $this->string('package'))->firstOrFail();
+    }
+
+    private function spec(): ServerSpec
+    {
+        $package = $this->package();
+
+        if ($package !== null) {
+            return ServerSpec::fromPackage($package);
+        }
+
+        return new ServerSpec(
+            cpuCores: $this->integer('cpu_cores'),
+            memoryMib: $this->integer('memory_mib'),
+            diskMib: $this->integer('disk_gib') * 1024,
+            ipv4Count: $this->integer('ipv4_count'),
+            ipv6Count: $this->integer('ipv6_count'),
+            portSpeedMbps: $this->filled('port_speed_mbps') ? $this->integer('port_speed_mbps') : null,
+            trafficBytes: $this->filled('traffic_gb') ? $this->integer('traffic_gb') * 1000 ** 3 : null,
+        );
     }
 }

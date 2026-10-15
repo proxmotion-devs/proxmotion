@@ -9,6 +9,8 @@ import InputError from '@/components/InputError.vue';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Spinner } from '@/components/ui/spinner';
+import { optionalNumber } from '@/lib/forms';
+import type { OptionalNumber } from '@/lib/forms';
 import { index as usersIndex } from '@/routes/admin/users';
 import { create, index, store } from '@/routes/admin/servers';
 import { NETWORK_MODELS } from '@/types/admin';
@@ -33,7 +35,19 @@ const props = defineProps<{
 const form = useForm({
     user: props.users[0]?.value ?? null,
     location: props.locations[0]?.value ?? null,
+    // Without packages, custom resources are the only option.
+    resource_mode: (props.packages.length > 0 ? 'package' : 'custom') as
+        | 'package'
+        | 'custom'
+        | null,
     package: props.packages[0]?.value ?? null,
+    cpu_cores: 1,
+    memory_mib: 1024,
+    disk_gib: 20,
+    ipv4_count: 1,
+    ipv6_count: 0,
+    port_speed_mbps: '' as OptionalNumber,
+    traffic_gb: '' as OptionalNumber,
     os_template: props.osTemplates[0]?.value ?? null,
     network_model: null as NetworkModel | null,
     hostname: '',
@@ -41,11 +55,19 @@ const form = useForm({
     ssh_keys: '',
 });
 
-// Only offer the network models the chosen package allows (NAT comes later).
+const custom = computed(() => form.resource_mode === 'custom');
+
+const resourceModes = computed(() => [
+    { value: 'package' as const, label: trans('From a package') },
+    { value: 'custom' as const, label: trans('Custom resources') },
+]);
+
+// Packages limit the network models; custom servers may use any (NAT comes later).
 const modelOptions = computed(() => {
-    const allowed =
-        props.packages.find((pkg) => pkg.value === form.package)
-            ?.network_models ?? [];
+    const allowed = custom.value
+        ? NETWORK_MODELS.map((model) => model.value)
+        : (props.packages.find((pkg) => pkg.value === form.package)
+              ?.network_models ?? []);
 
     return NETWORK_MODELS.filter(
         (model) => allowed.includes(model.value) && model.value !== 'nat',
@@ -69,7 +91,6 @@ const missing = computed(
     () =>
         props.users.length === 0 ||
         props.locations.length === 0 ||
-        props.packages.length === 0 ||
         props.osTemplates.length === 0,
 );
 
@@ -78,7 +99,14 @@ const serverError = computed(
     () => (form.errors as Record<string, string | undefined>).server,
 );
 
-const submit = () => form.submit(store());
+const submit = () =>
+    form
+        .transform((data) => ({
+            ...data,
+            port_speed_mbps: optionalNumber(data.port_speed_mbps),
+            traffic_gb: optionalNumber(data.traffic_gb),
+        }))
+        .submit(store());
 </script>
 
 <template>
@@ -96,7 +124,7 @@ const submit = () => form.submit(store());
         >
             {{
                 $t(
-                    'You need at least one customer, location, active package and active OS template.',
+                    'You need at least one customer, location and active OS template.',
                 )
             }}
             <Link :href="usersIndex()" class="font-medium underline">{{
@@ -129,17 +157,132 @@ const submit = () => form.submit(store());
                     />
                 </FormField>
                 <FormField
-                    label="Package"
-                    for="package"
-                    :error="form.errors.package"
+                    label="Resources"
+                    for="resource_mode"
+                    :error="form.errors.resource_mode"
                 >
                     <NativeSelect
-                        id="package"
-                        v-model="form.package"
-                        :options="packages"
+                        id="resource_mode"
+                        v-model="form.resource_mode"
+                        :options="resourceModes"
                     />
                 </FormField>
             </div>
+
+            <FormField
+                v-if="!custom"
+                label="Package"
+                for="package"
+                :error="form.errors.package"
+            >
+                <NativeSelect
+                    id="package"
+                    v-model="form.package"
+                    :options="packages"
+                    placeholder="Choose a package"
+                />
+            </FormField>
+
+            <fieldset v-else class="grid gap-4 rounded-lg border p-4">
+                <div class="grid gap-4 sm:grid-cols-3">
+                    <FormField
+                        label="vCPU cores"
+                        for="cpu_cores"
+                        :error="form.errors.cpu_cores"
+                    >
+                        <Input
+                            id="cpu_cores"
+                            v-model.number="form.cpu_cores"
+                            type="number"
+                            min="1"
+                            required
+                        />
+                    </FormField>
+                    <FormField
+                        label="Memory (MiB)"
+                        for="memory_mib"
+                        :error="form.errors.memory_mib"
+                    >
+                        <Input
+                            id="memory_mib"
+                            v-model.number="form.memory_mib"
+                            type="number"
+                            min="128"
+                            step="128"
+                            required
+                        />
+                    </FormField>
+                    <FormField
+                        label="Disk (GiB)"
+                        for="disk_gib"
+                        :error="form.errors.disk_gib"
+                    >
+                        <Input
+                            id="disk_gib"
+                            v-model.number="form.disk_gib"
+                            type="number"
+                            min="1"
+                            required
+                        />
+                    </FormField>
+                </div>
+                <div class="grid gap-4 sm:grid-cols-2">
+                    <FormField
+                        label="IPv4 addresses"
+                        for="ipv4_count"
+                        :error="form.errors.ipv4_count"
+                    >
+                        <Input
+                            id="ipv4_count"
+                            v-model.number="form.ipv4_count"
+                            type="number"
+                            min="0"
+                            required
+                        />
+                    </FormField>
+                    <FormField
+                        label="IPv6 addresses"
+                        for="ipv6_count"
+                        :error="form.errors.ipv6_count"
+                    >
+                        <Input
+                            id="ipv6_count"
+                            v-model.number="form.ipv6_count"
+                            type="number"
+                            min="0"
+                            required
+                        />
+                    </FormField>
+                </div>
+                <div class="grid gap-4 sm:grid-cols-2">
+                    <FormField
+                        label="Port speed (Mbps)"
+                        for="port_speed_mbps"
+                        :error="form.errors.port_speed_mbps"
+                        hint="Leave empty for unlimited."
+                    >
+                        <Input
+                            id="port_speed_mbps"
+                            v-model.number="form.port_speed_mbps"
+                            type="number"
+                            min="1"
+                        />
+                    </FormField>
+                    <FormField
+                        label="Monthly traffic (GB)"
+                        for="traffic_gb"
+                        :error="form.errors.traffic_gb"
+                        hint="Leave empty for unlimited."
+                    >
+                        <Input
+                            id="traffic_gb"
+                            v-model.number="form.traffic_gb"
+                            type="number"
+                            min="1"
+                        />
+                    </FormField>
+                </div>
+            </fieldset>
 
             <div class="grid gap-4 sm:grid-cols-2">
                 <FormField

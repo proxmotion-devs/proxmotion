@@ -23,7 +23,7 @@ import ServerStatusBadge from '@/components/admin/ServerStatusBadge.vue';
 import StatusBadge from '@/components/admin/StatusBadge.vue';
 import Heading from '@/components/Heading.vue';
 import { Button } from '@/components/ui/button';
-import { formatDateTime, formatMib } from '@/lib/format';
+import { formatDateTime, formatMib, formatTraffic } from '@/lib/format';
 import { show as showCluster } from '@/routes/admin/clusters';
 import { show as showPool } from '@/routes/admin/ip-pools';
 import {
@@ -55,6 +55,8 @@ const props = defineProps<{
         cpu_cores: number;
         memory_mib: number;
         disk_mib: number;
+        port_speed_mbps: number | null;
+        traffic_bytes: number | null;
         has_password: boolean;
         busy: boolean;
         user: { uuid: string; name: string; email: string };
@@ -62,7 +64,7 @@ const props = defineProps<{
         node: string;
         storage: string | null;
         location: string;
-        package: string;
+        package: string | null;
         os_template: string | null;
         addresses: {
             address: string;
@@ -230,11 +232,22 @@ const modelLabel =
             </div>
             <div>
                 <dt class="text-muted-foreground">{{ $t('Package') }}</dt>
-                <dd class="font-medium">{{ server.package }}</dd>
+                <dd class="font-medium">
+                    {{ server.package ?? $t('Custom') }}
+                </dd>
                 <dd class="text-xs text-muted-foreground">
                     {{ server.cpu_cores }} vCPU ·
                     {{ formatMib(server.memory_mib) }} ·
                     {{ formatMib(server.disk_mib) }}
+                </dd>
+                <dd class="text-xs text-muted-foreground">
+                    {{
+                        server.port_speed_mbps
+                            ? `${server.port_speed_mbps} Mbps`
+                            : '∞ Mbps'
+                    }}
+                    ·
+                    {{ formatTraffic(server.traffic_bytes) }}
                 </dd>
             </div>
             <div>

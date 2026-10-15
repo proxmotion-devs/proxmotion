@@ -56,6 +56,12 @@ const chooseCluster = (uuid: string | null) => {
     router.visit(adopt({ query: uuid ? { cluster: uuid } : {} }));
 };
 
+// "" = no package: the server keeps the VM's own resources.
+const packageOptions = computed(() => [
+    { value: '', label: trans('No package (custom)') },
+    ...props.packages,
+]);
+
 const modelOptions = NETWORK_MODELS.map((model) => ({
     value: model.value,
     label: trans(model.label),
@@ -68,7 +74,7 @@ const form = useForm({
     cluster: props.cluster,
     vmid: 0,
     user: props.users[0]?.value ?? null,
-    package: props.packages[0]?.value ?? null,
+    package: '' as string | null,
     network_model: 'bridged' as NetworkModel | null,
     addresses: [] as number[],
 });
@@ -229,7 +235,7 @@ const submit = () => {
                 <NativeSelect
                     id="adopt_package"
                     v-model="form.package"
-                    :options="packages"
+                    :options="packageOptions"
                 />
             </FormField>
             <FormField

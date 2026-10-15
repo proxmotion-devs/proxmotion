@@ -27,7 +27,7 @@ class ProvisioningException extends RuntimeException
 
     public static function noCapacity(): self
     {
-        return new self('No node in this location has enough free capacity for this package.');
+        return new self('No node in this location has enough free capacity for this server.');
     }
 
     public static function noTemplate(): self

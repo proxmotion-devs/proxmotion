@@ -8,6 +8,7 @@ use App\Models\Server;
 use App\Provisioning\Exceptions\ProvisioningException;
 use App\Provisioning\Placement\NodePlacer;
 use App\Provisioning\Placement\Placement;
+use App\Provisioning\ServerSpec;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Concerns\BuildsInfrastructure;
 use Tests\TestCase;
@@ -25,7 +26,7 @@ class NodePlacerTest extends TestCase
 
     private function place(): Placement
     {
-        return app(NodePlacer::class)->place($this->location, $this->package, $this->osTemplate, 'vmbr0');
+        return app(NodePlacer::class)->place($this->location, ServerSpec::fromPackage($this->package), $this->osTemplate, 'vmbr0');
     }
 
     public function test_the_least_used_node_is_chosen()
@@ -101,7 +102,7 @@ class NodePlacerTest extends TestCase
     {
         $this->expectException(ProvisioningException::class);
 
-        app(NodePlacer::class)->place($this->location, $this->package, $this->osTemplate, 'vmbr9');
+        app(NodePlacer::class)->place($this->location, ServerSpec::fromPackage($this->package), $this->osTemplate, 'vmbr9');
     }
 
     public function test_an_os_template_without_a_proxmox_template_cannot_be_placed()
@@ -115,7 +116,7 @@ class NodePlacerTest extends TestCase
 
     private function expectNoCapacity(): void
     {
-        $this->expectExceptionMessage('No node in this location has enough free capacity for this package.');
+        $this->expectExceptionMessage('No node in this location has enough free capacity for this server.');
 
         $this->place();
     }

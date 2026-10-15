@@ -12,18 +12,20 @@ use App\Models\User;
 use SensitiveParameter;
 
 /**
- * Everything needed to order a new server.
+ * Everything needed to order a new server. Resources come from $spec; the
+ * package is optional (null for servers with custom resources).
  */
 final readonly class NewServer
 {
     public function __construct(
         public User $owner,
         public Location $location,
-        public Package $package,
+        public ServerSpec $spec,
         public OsTemplate $osTemplate,
         public NetworkModel $networkModel,
         public string $hostname,
         #[SensitiveParameter] public string $rootPassword,
+        public ?Package $package = null,
         public ?string $sshKeys = null,
         public ?string $externalId = null,
     ) {}

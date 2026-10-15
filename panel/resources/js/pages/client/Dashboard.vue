@@ -22,7 +22,7 @@ defineProps<{
         hostname: string;
         status: ServerStatus;
         location: string;
-        package: string;
+        package: string | null;
         os_template: string | null;
         addresses: string[];
     }[];
@@ -55,7 +55,7 @@ defineProps<{
                         <dt class="text-muted-foreground">
                             {{ $t('Package') }}
                         </dt>
-                        <dd>{{ server.package }}</dd>
+                        <dd>{{ server.package ?? $t('Custom') }}</dd>
                     </div>
                     <div>
                         <dt class="text-muted-foreground">

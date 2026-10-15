@@ -34,7 +34,7 @@ class DashboardController extends Controller
                     'hostname' => $server->hostname,
                     'status' => $server->status,
                     'location' => $server->location->name,
-                    'package' => $server->package->name,
+                    'package' => $server->package?->name,
                     'os_template' => $server->osTemplate?->name,
                     'addresses' => $server->ipAddresses->pluck('address'),
                 ]),

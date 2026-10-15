@@ -106,7 +106,9 @@ const toggleTerminated = (value: boolean | 'indeterminate') => {
                         <td class="px-4 py-3 font-mono text-xs">
                             {{ server.addresses.join(', ') || '—' }}
                         </td>
-                        <td class="px-4 py-3">{{ server.package }}</td>
+                        <td class="px-4 py-3">
+                            {{ server.package ?? $t('Custom') }}
+                        </td>
                         <td class="px-4 py-3">
                             <span class="font-mono text-xs">{{
                                 server.node

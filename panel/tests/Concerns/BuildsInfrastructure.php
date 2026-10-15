@@ -15,6 +15,7 @@ use App\Models\ProxmoxTemplate;
 use App\Models\Storage;
 use App\Models\User;
 use App\Provisioning\NewServer;
+use App\Provisioning\ServerSpec;
 
 /**
  * A ready-to-use location: one cluster with node "pve1", local-lvm storage,
@@ -110,6 +111,7 @@ trait BuildsInfrastructure
         return new NewServer(...[
             'owner' => $this->customer,
             'location' => $this->location,
+            'spec' => ServerSpec::fromPackage($this->package),
             'package' => $this->package,
             'osTemplate' => $this->osTemplate,
             'networkModel' => NetworkModel::Bridged,

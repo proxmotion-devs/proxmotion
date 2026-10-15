@@ -97,7 +97,7 @@ final class NetworkConfig
             $parts[] = "tag={$primary->pool->vlan_tag}";
         }
 
-        $speed = $server->package->port_speed_mbps;
+        $speed = $server->port_speed_mbps;
 
         if ($speed !== null) {
             // Proxmox limits bandwidth in MB/s.

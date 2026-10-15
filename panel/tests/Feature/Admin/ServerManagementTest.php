@@ -34,6 +34,7 @@ class ServerManagementTest extends AdminTestCase
         return [
             'user' => $this->customer->uuid,
             'location' => $this->location->uuid,
+            'resource_mode' => 'package',
             'package' => $this->package->uuid,
             'os_template' => $this->osTemplate->uuid,
             'network_model' => 'bridged',
@@ -63,6 +64,82 @@ class ServerManagementTest extends AdminTestCase
                 ->where('server.status', 'active')
                 ->where('server.addresses.0.address', '203.0.113.2')
                 ->has('tasks', 1));
+    }
+
+    public function test_a_server_can_be_created_with_custom_resources_and_no_package()
+    {
+        $this->post(route('admin.servers.store'), $this->payload([
+            'resource_mode' => 'custom',
+            'package' => null,
+            'cpu_cores' => 3,
+            'memory_mib' => 3072,
+            'disk_gib' => 30,
+            'ipv4_count' => 1,
+            'ipv6_count' => 0,
+            'port_speed_mbps' => 200,
+            'traffic_gb' => null,
+        ]))->assertSessionHasNoErrors();
+
+        $server = Server::query()->sole();
+        $this->assertNull($server->package_id);
+        $this->assertSame(3, $server->cpu_cores);
+        $this->assertSame(3072, $server->memory_mib);
+        $this->assertSame(30 * 1024, $server->disk_mib);
+        $this->assertSame(200, $server->port_speed_mbps);
+        $this->assertNull($server->traffic_bytes);
+        $this->assertSame(ServerStatus::Active, $server->status);
+
+        $vm = $this->proxmox->vms[$server->vmid];
+        $this->assertEquals(3, $vm['config']['cores']);
+        $this->assertStringContainsString('rate=25', $vm['config']['net0']);
+        $this->assertStringContainsString('size=30720M', $vm['config']['scsi0']);
+
+        $this->get(route('admin.servers.show', $server))
+            ->assertInertia(fn (Assert $page) => $page->where('server.package', null));
+    }
+
+    public function test_custom_servers_may_use_network_models_no_package_allows()
+    {
+        $this->package->update(['network_models' => ['routed']]);
+
+        $this->post(route('admin.servers.store'), $this->payload([
+            'resource_mode' => 'custom',
+            'cpu_cores' => 1, 'memory_mib' => 1024, 'disk_gib' => 20, 'ipv4_count' => 1, 'ipv6_count' => 0,
+        ]))->assertSessionHasNoErrors();
+    }
+
+    public function test_custom_resources_are_validated()
+    {
+        $this->post(route('admin.servers.store'), $this->payload([
+            'resource_mode' => 'custom',
+            'cpu_cores' => 0,
+            'memory_mib' => 64,
+            'disk_gib' => null,
+            'ipv4_count' => 0,
+            'ipv6_count' => 0,
+        ]))->assertSessionHasErrors(['cpu_cores', 'memory_mib', 'disk_gib']);
+
+        $this->post(route('admin.servers.store'), $this->payload([
+            'resource_mode' => 'custom',
+            'cpu_cores' => 1, 'memory_mib' => 1024, 'disk_gib' => 20, 'ipv4_count' => 0, 'ipv6_count' => 0,
+        ]))->assertSessionHasErrors('ipv4_count');
+
+        $this->assertDatabaseCount('servers', 0);
+    }
+
+    public function test_vms_can_be_adopted_without_a_package()
+    {
+        $this->proxmox->addVm(260, 'no-package-vm');
+
+        $this->post(route('admin.servers.adopt.store'), [
+            'cluster' => $this->cluster->uuid,
+            'vmid' => 260,
+            'user' => $this->customer->uuid,
+            'package' => '',
+            'network_model' => 'bridged',
+        ])->assertSessionHasNoErrors();
+
+        $this->assertNull(Server::query()->sole()->package_id);
     }
 
     public function test_the_password_is_only_shown_on_request()

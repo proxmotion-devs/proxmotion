@@ -8,26 +8,26 @@ use App\Enums\NodeStatus;
 use App\Models\Location;
 use App\Models\Node;
 use App\Models\OsTemplate;
-use App\Models\Package;
 use App\Models\ProxmoxTemplate;
 use App\Models\Server;
 use App\Models\Storage;
 use App\Provisioning\Exceptions\ProvisioningException;
+use App\Provisioning\ServerSpec;
 use Illuminate\Support\Collection;
 
 /**
- * Picks the least-used node in a location that can host a package.
+ * Picks the least-used node in a location that can host a server.
  *
  * A node qualifies when it is online, not in maintenance, belongs to an active
  * cluster, has the OS template, has the bridge the server's network uses, and
- * still has room for the package's CPU, memory and disk after over-commit.
+ * still has room for the server's CPU, memory and disk after over-commit.
  */
 final class NodePlacer
 {
     /**
      * @throws ProvisioningException
      */
-    public function place(Location $location, Package $package, OsTemplate $osTemplate, string $bridge): Placement
+    public function place(Location $location, ServerSpec $spec, OsTemplate $osTemplate, string $bridge): Placement
     {
         $templates = $osTemplate->proxmoxTemplates()
             ->whereHas('cluster', fn ($query) => $query->where('location_id', $location->id)->where('is_active', true))
@@ -47,15 +47,15 @@ final class NodePlacer
         $candidates = [];
 
         foreach ($nodes as $node) {
-            $storage = $this->pickStorage($node, $package);
+            $storage = $this->pickStorage($node, $spec);
 
-            if ($storage === null || ! $this->hasBridge($node, $bridge) || ! $this->fits($node, $package)) {
+            if ($storage === null || ! $this->hasBridge($node, $bridge) || ! $this->fits($node, $spec)) {
                 continue;
             }
 
             $candidates[] = [
                 'placement' => new Placement($node, $storage, $this->pickTemplate($templates, $node)),
-                'score' => $this->memoryUsageAfter($node, $package),
+                'score' => $this->memoryUsageAfter($node, $spec),
             ];
         }
 
@@ -68,7 +68,7 @@ final class NodePlacer
         return $candidates[0]['placement'];
     }
 
-    private function fits(Node $node, Package $package): bool
+    private function fits(Node $node, ServerSpec $spec): bool
     {
         $booked = $this->booked($node);
 
@@ -76,15 +76,15 @@ final class NodePlacer
             return false;
         }
 
-        if ($node->cpu_cores !== null && $node->cpu_cores * (float) $node->cpu_overcommit < $booked['cpu'] + $package->cpu_cores) {
+        if ($node->cpu_cores !== null && $node->cpu_cores * (float) $node->cpu_overcommit < $booked['cpu'] + $spec->cpuCores) {
             return false;
         }
 
         return $node->memory_bytes === null
-            || intdiv($node->memory_bytes, 1024 ** 2) * (float) $node->memory_overcommit >= $booked['memory_mib'] + $package->memory_mib;
+            || intdiv($node->memory_bytes, 1024 ** 2) * (float) $node->memory_overcommit >= $booked['memory_mib'] + $spec->memoryMib;
     }
 
-    private function memoryUsageAfter(Node $node, Package $package): float
+    private function memoryUsageAfter(Node $node, ServerSpec $spec): float
     {
         if (! $node->memory_bytes) {
             return 1.0;
@@ -92,13 +92,13 @@ final class NodePlacer
 
         $capacityMib = intdiv($node->memory_bytes, 1024 ** 2) * (float) $node->memory_overcommit;
 
-        return ($this->booked($node)['memory_mib'] + $package->memory_mib) / max($capacityMib, 1);
+        return ($this->booked($node)['memory_mib'] + $spec->memoryMib) / max($capacityMib, 1);
     }
 
     /**
      * The usable storage with the most free (over-committed) space for the disk.
      */
-    private function pickStorage(Node $node, Package $package): ?Storage
+    private function pickStorage(Node $node, ServerSpec $spec): ?Storage
     {
         $best = null;
         $bestFree = 0;
@@ -111,7 +111,7 @@ final class NodePlacer
             $capacityMib = intdiv($storage->total_bytes, 1024 ** 2) * (float) $node->disk_overcommit;
             $free = $capacityMib - $this->bookedDiskMib($storage, $node);
 
-            if ($free >= $package->disk_mib && $free > $bestFree) {
+            if ($free >= $spec->diskMib && $free > $bestFree) {
                 $best = $storage;
                 $bestFree = $free;
             }

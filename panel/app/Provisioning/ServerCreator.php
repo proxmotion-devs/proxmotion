@@ -40,24 +40,24 @@ final readonly class ServerCreator
             throw ProvisioningException::unsupportedNetworkModel();
         }
 
-        $package = $order->package;
+        $spec = $order->spec;
 
-        if ($package->ipv4_count + $package->ipv6_count === 0) {
+        if ($spec->ipv4Count + $spec->ipv6Count === 0) {
             throw ProvisioningException::noAddresses('IPv4');
         }
 
-        $server = Cache::lock("provisioning:location:{$order->location->id}", 30)->block(15, function () use ($order, $package) {
-            $ipv4Pool = $this->ips->ipv4Pool($order->location, $order->networkModel, $package->ipv4_count);
-            $ipv6Pool = $this->ips->ipv6Pool($order->location, $order->networkModel, $package->ipv6_count);
+        $server = Cache::lock("provisioning:location:{$order->location->id}", 30)->block(15, function () use ($order, $spec) {
+            $ipv4Pool = $this->ips->ipv4Pool($order->location, $order->networkModel, $spec->ipv4Count);
+            $ipv6Pool = $this->ips->ipv6Pool($order->location, $order->networkModel, $spec->ipv6Count);
             $bridge = ($ipv4Pool ?? $ipv6Pool)->bridge ?? 'vmbr0';
 
-            $placement = $this->placer->place($order->location, $package, $order->osTemplate, $bridge);
+            $placement = $this->placer->place($order->location, $spec, $order->osTemplate, $bridge);
             $cluster = $placement->node->cluster;
             $vmid = $this->firstFreeVmid($cluster);
 
-            return DB::transaction(function () use ($order, $package, $placement, $cluster, $vmid, $ipv4Pool, $ipv6Pool) {
+            return DB::transaction(function () use ($order, $spec, $placement, $cluster, $vmid, $ipv4Pool, $ipv6Pool) {
                 $server = $this->insertServer($order, $placement, $cluster, $vmid);
-                $this->ips->assign($server, $ipv4Pool, $package->ipv4_count, $ipv6Pool, $package->ipv6_count);
+                $this->ips->assign($server, $ipv4Pool, $spec->ipv4Count, $ipv6Pool, $spec->ipv6Count);
 
                 return $server;
             });
@@ -73,7 +73,7 @@ final readonly class ServerCreator
         $server = new Server;
         $server->forceFill([
             'user_id' => $order->owner->id,
-            'package_id' => $order->package->id,
+            'package_id' => $order->package?->id,
             'location_id' => $order->location->id,
             'cluster_id' => $cluster->id,
             'node_id' => $placement->node->id,
@@ -84,9 +84,11 @@ final readonly class ServerCreator
             'status' => ServerStatus::Pending,
             'origin' => ServerOrigin::Provisioned,
             'network_model' => $order->networkModel,
-            'cpu_cores' => $order->package->cpu_cores,
-            'memory_mib' => $order->package->memory_mib,
-            'disk_mib' => $order->package->disk_mib,
+            'cpu_cores' => $order->spec->cpuCores,
+            'memory_mib' => $order->spec->memoryMib,
+            'disk_mib' => $order->spec->diskMib,
+            'port_speed_mbps' => $order->spec->portSpeedMbps,
+            'traffic_bytes' => $order->spec->trafficBytes,
             'root_password' => $order->rootPassword,
             'ssh_keys' => $order->sshKeys,
             'external_id' => $order->externalId,

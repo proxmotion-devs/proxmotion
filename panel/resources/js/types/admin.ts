@@ -171,7 +171,7 @@ export type ServerListItem = {
     user: { uuid: string; name: string };
     node: string;
     location: string;
-    package: string;
+    package: string | null;
     addresses: string[];
 };
 
