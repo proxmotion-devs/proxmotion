@@ -145,8 +145,9 @@ proxmotion/
 │   └── blesta/                           # later
 ├── deploy/
 │   ├── docker/                           # Dockerfiles + compose.yml (dev and production)
+│   ├── proxmox/                          # Scripts admins run on a Proxmox node (prepare-images.sh: build images off-node; build-templates.sh: create templates on the node with qm/pvesh only)
 │   └── installer/                        # Native Debian/Ubuntu installer (install.sh, nginx, systemd units)
-└── docs/                                 # Install guide, admin guide, API reference (OpenAPI), ADRs
+└── docs/                                 # Install guide, admin guide, guides/ (e.g. offline-templates.md), API reference (OpenAPI), ADRs
 ```
 
 ### 3.3 Layering rules
@@ -333,7 +334,7 @@ composer lint:check               # Pint (`composer lint` to fix)
 composer types:check              # PHPStan level 8
 php artisan test                  # Pest
 php artisan apps:validate         # recipe schema validation (from Phase 5)
-shellcheck recipes/**/*.sh ../deploy/installer/*.sh
+shellcheck recipes/**/*.sh ../deploy/installer/*.sh ../deploy/proxmox/*.sh
 ```
 
 - **PHP must be on `PATH` for frontend commands too:** the Wayfinder Vite plugin runs `php artisan wayfinder:generate` during `vp build`, `vp dev` and `vp test`. On Windows, [Laravel Herd](https://herd.laravel.com/windows) provides PHP and Composer (`%USERPROFILE%\.config\herd\bin`).
