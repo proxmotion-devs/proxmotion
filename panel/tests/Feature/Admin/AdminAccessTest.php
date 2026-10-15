@@ -14,12 +14,43 @@ class AdminAccessTest extends TestCase
 
     public function test_admins_can_open_the_admin_dashboard()
     {
-        $admin = User::factory()->admin()->create();
+        $admin = User::factory()->admin()->withTwoFactor()->create();
 
         $this->actingAs($admin)
             ->get(route('admin.dashboard'))
             ->assertOk()
             ->assertInertia(fn (Assert $page) => $page->component('admin/Dashboard'));
+    }
+
+    public function test_admins_without_two_factor_are_sent_to_security_settings()
+    {
+        $admin = User::factory()->admin()->create();
+
+        $this->actingAs($admin)
+            ->get(route('admin.dashboard'))
+            ->assertRedirect(route('security.edit'));
+    }
+
+    public function test_admins_with_unconfirmed_two_factor_are_sent_to_security_settings()
+    {
+        $admin = User::factory()->admin()->withTwoFactor()->create([
+            'two_factor_confirmed_at' => null,
+        ]);
+
+        $this->actingAs($admin)
+            ->get(route('admin.dashboard'))
+            ->assertRedirect(route('security.edit'));
+    }
+
+    public function test_two_factor_requirement_can_be_disabled_for_local_development()
+    {
+        config(['proxmotion.require_admin_two_factor' => false]);
+
+        $admin = User::factory()->admin()->create();
+
+        $this->actingAs($admin)
+            ->get(route('admin.dashboard'))
+            ->assertOk();
     }
 
     public function test_clients_cannot_open_the_admin_dashboard()

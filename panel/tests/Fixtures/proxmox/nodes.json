@@ -1,0 +1,24 @@
+{
+    "data": [
+        {
+            "node": "pve1",
+            "status": "online",
+            "cpu": 0.042,
+            "maxcpu": 32,
+            "mem": 12884901888,
+            "maxmem": 137438953472,
+            "disk": 5368709120,
+            "maxdisk": 100000000000,
+            "uptime": 86400,
+            "id": "node/pve1",
+            "type": "node",
+            "level": ""
+        },
+        {
+            "node": "pve2",
+            "status": "offline",
+            "id": "node/pve2",
+            "type": "node"
+        }
+    ]
+}

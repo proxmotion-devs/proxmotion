@@ -1,0 +1,32 @@
+{
+    "data": [
+        {
+            "type": "cluster",
+            "id": "cluster",
+            "name": "dc1",
+            "nodes": 2,
+            "quorate": 1,
+            "version": 4
+        },
+        {
+            "type": "node",
+            "id": "node/pve1",
+            "name": "pve1",
+            "nodeid": 1,
+            "online": 1,
+            "local": 1,
+            "ip": "192.0.2.11",
+            "level": ""
+        },
+        {
+            "type": "node",
+            "id": "node/pve2",
+            "name": "pve2",
+            "nodeid": 2,
+            "online": 0,
+            "local": 0,
+            "ip": "192.0.2.12",
+            "level": ""
+        }
+    ]
+}

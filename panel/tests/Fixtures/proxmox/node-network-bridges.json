@@ -1,0 +1,28 @@
+{
+    "data": [
+        {
+            "iface": "vmbr0",
+            "type": "bridge",
+            "active": 1,
+            "autostart": 1,
+            "bridge_ports": "eno1",
+            "bridge_vlan_aware": 1,
+            "cidr": "192.0.2.11/24",
+            "address": "192.0.2.11",
+            "netmask": "24",
+            "gateway": "192.0.2.1",
+            "comments": "Public\n",
+            "method": "static",
+            "families": ["inet"]
+        },
+        {
+            "iface": "vmbr1",
+            "type": "bridge",
+            "active": 1,
+            "autostart": 1,
+            "bridge_ports": "none",
+            "method": "manual",
+            "families": ["inet"]
+        }
+    ]
+}

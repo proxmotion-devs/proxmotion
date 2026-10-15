@@ -1,0 +1,40 @@
+{
+    "data": [
+        {
+            "id": "storage/pve1/local",
+            "storage": "local",
+            "node": "pve1",
+            "type": "storage",
+            "plugintype": "dir",
+            "content": "iso,vztmpl,backup",
+            "shared": 0,
+            "status": "available",
+            "disk": 5368709120,
+            "maxdisk": 100000000000
+        },
+        {
+            "id": "storage/pve1/local-lvm",
+            "storage": "local-lvm",
+            "node": "pve1",
+            "type": "storage",
+            "plugintype": "lvmthin",
+            "content": "images,rootdir",
+            "shared": 0,
+            "status": "available",
+            "disk": 214748364800,
+            "maxdisk": 1000000000000
+        },
+        {
+            "id": "storage/pve1/ceph-vm",
+            "storage": "ceph-vm",
+            "node": "pve1",
+            "type": "storage",
+            "plugintype": "rbd",
+            "content": "images",
+            "shared": 1,
+            "status": "available",
+            "disk": 1099511627776,
+            "maxdisk": 10995116277760
+        }
+    ]
+}

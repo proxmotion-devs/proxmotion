@@ -1,0 +1,31 @@
+{
+    "data": [
+        {
+            "id": "qemu/9000",
+            "vmid": 9000,
+            "name": "ubuntu-2404-cloudinit",
+            "node": "pve1",
+            "type": "qemu",
+            "template": 1,
+            "status": "stopped"
+        },
+        {
+            "id": "qemu/101",
+            "vmid": 101,
+            "name": "customer-vm",
+            "node": "pve1",
+            "type": "qemu",
+            "template": 0,
+            "status": "running"
+        },
+        {
+            "id": "lxc/200",
+            "vmid": 200,
+            "name": "debian-ct-template",
+            "node": "pve1",
+            "type": "lxc",
+            "template": 1,
+            "status": "stopped"
+        }
+    ]
+}

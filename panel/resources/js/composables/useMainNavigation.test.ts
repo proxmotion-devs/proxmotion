@@ -24,6 +24,13 @@ describe('useMainNavigation', () => {
 
         const items = useMainNavigation().value;
 
-        expect(items.map((item) => toUrl(item.href))).toEqual(['/admin']);
+        expect(items.map((item) => toUrl(item.href))).toEqual([
+            '/admin',
+            '/admin/locations',
+            '/admin/clusters',
+            '/admin/ip-pools',
+            '/admin/os-templates',
+            '/admin/packages',
+        ]);
     });
 });

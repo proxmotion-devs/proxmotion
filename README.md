@@ -37,6 +37,8 @@ composer dev
 
 The seeder creates two local accounts, `admin@example.com` and `client@example.com`, both with the password `password`. Never run it in production.
 
+Administrators must set up two-factor authentication (TOTP) before they can open the admin panel. For local development only, you can turn this off with `PROXMOTION_REQUIRE_ADMIN_2FA=false` in `.env`.
+
 Run all checks (the same ones CI runs) with `composer ci:check`.
 
 Or with Docker:

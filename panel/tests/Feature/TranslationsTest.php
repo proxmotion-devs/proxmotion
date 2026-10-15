@@ -8,14 +8,18 @@ use Tests\TestCase;
 
 /**
  * Translation keys are the English source strings. These tests make sure every
- * key used as a string literal has a translation in every non-English locale.
+ * key the UI uses has a translation in every non-English locale. Detected:
  *
- * Keys passed indirectly (e.g. page titles, breadcrumb and Heading props) are
- * not detected here and must be added to `lang/<locale>.json` by hand.
+ * - $t('…'), trans('…'), __('…') and $this->toast('type', '…')
+ * - static title/description/label/hint/submit-label attributes (Heading, FormField, <Head>, …)
+ * - string literals in bound :title/:description/:label/:hint/:submit-label attributes
+ * - title/description/label/detail/buttonText properties in scripts (breadcrumbs, nav items, …)
  */
 class TranslationsTest extends TestCase
 {
     private const LITERAL = "'((?:[^'\\\\]|\\\\.)*)'";
+
+    private const TRANSLATED_ATTRIBUTES = 'title|description|label|hint|submit-label';
 
     public function test_every_literal_ui_key_is_translated()
     {
@@ -56,36 +60,57 @@ class TranslationsTest extends TestCase
      */
     private function usedKeys(): array
     {
+        $attributes = self::TRANSLATED_ATTRIBUTES;
+
         $patterns = [
             // $t('key'), trans('key'), __('key')
             '/(?:\$t|\btrans|\b__)\(\s*'.self::LITERAL.'/',
             // $t(condition ? 'a' : 'b')
             '/\$t\(\s*[\w.]+\s*\?\s*'.self::LITERAL.'\s*:\s*'.self::LITERAL.'/',
+            // $this->toast('success', 'key')
+            '/->toast\(\s*\'\w+\',\s*'.self::LITERAL.'/',
+            // <Heading title="key" />, <FormField label="key" />, <Head title="key" />
+            '/(?<![:\w-])(?:'.$attributes.')="([^"{}<>]*[A-Za-z][^"{}<>]*)"/',
+            // breadcrumbs, nav items, cards, option lists: { title: 'key' }, { label: 'key' }
+            '/\b(?:title|description|label|detail|buttonText):\s*'.self::LITERAL.'/',
         ];
 
         $finder = Finder::create()
             ->files()
             ->in([resource_path('js'), app_path()])
             ->exclude(['components/ui', 'actions', 'routes', 'wayfinder'])
-            ->name(['*.vue', '*.ts', '*.php']);
+            ->name(['*.vue', '*.ts', '*.php'])
+            ->notName('*.test.ts');
 
         $keys = [];
 
         foreach ($finder as $file) {
+            $contents = $file->getContents();
+
             foreach ($patterns as $pattern) {
-                preg_match_all($pattern, $file->getContents(), $matches);
+                preg_match_all($pattern, $contents, $matches);
 
                 foreach (array_slice($matches, 1) as $group) {
-                    foreach ($group as $key) {
-                        if ($key !== '') {
-                            $keys[] = stripslashes($key);
-                        }
+                    array_push($keys, ...array_filter($group, fn (string $key) => $key !== ''));
+                }
+            }
+
+            // :hint="cluster ? 'key a' : 'key b'" — only literals that look like text, not
+            // values being compared (e.g. === 'routed').
+            preg_match_all('/:(?:'.$attributes.')="([^"]*)"/', $contents, $bound);
+
+            foreach ($bound[1] as $expression) {
+                preg_match_all('/'.self::LITERAL.'/', $expression, $literals);
+
+                foreach ($literals[1] as $literal) {
+                    if (preg_match('/[A-Z]|[a-z] [a-z]/', $literal) === 1) {
+                        $keys[] = $literal;
                     }
                 }
             }
         }
 
-        $keys = array_values(array_unique($keys));
+        $keys = array_values(array_unique(array_map(stripslashes(...), $keys)));
         sort($keys);
 
         return $keys;

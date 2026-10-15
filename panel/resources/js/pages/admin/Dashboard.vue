@@ -1,38 +1,124 @@
 <script setup lang="ts">
-import { Head } from '@inertiajs/vue3';
+import { Head, Link } from '@inertiajs/vue3';
+import { Disc3, MapPin, Network, Package, Server } from '@lucide/vue';
+import type { Component } from 'vue';
+import { computed } from 'vue';
 import Heading from '@/components/Heading.vue';
-import PlaceholderPattern from '@/components/PlaceholderPattern.vue';
 import { dashboard } from '@/routes/admin';
+import { index as clusters } from '@/routes/admin/clusters';
+import { index as ipPools } from '@/routes/admin/ip-pools';
+import { index as locations } from '@/routes/admin/locations';
+import { index as osTemplates } from '@/routes/admin/os-templates';
+import { index as packages } from '@/routes/admin/packages';
+import type { RouteDefinition } from '@/wayfinder';
 
 defineOptions({
-    layout: {
-        breadcrumbs: [
-            {
-                title: 'Admin',
-                href: dashboard(),
-            },
-        ],
-    },
+    layout: { breadcrumbs: [{ title: 'Admin', href: dashboard() }] },
 });
+
+const props = defineProps<{
+    stats: {
+        locations: number;
+        clusters: number;
+        clusters_failing: number;
+        nodes: number;
+        nodes_online: number;
+        ip_addresses: number;
+        ip_addresses_reserved: number;
+        os_templates: number;
+        packages: number;
+    };
+}>();
+
+type Card = {
+    title: string;
+    value: string;
+    detail?: string;
+    warning?: boolean;
+    icon: Component;
+    href: RouteDefinition<'get'>;
+};
+
+const cards = computed<Card[]>(() => [
+    {
+        title: 'Locations',
+        value: String(props.stats.locations),
+        icon: MapPin,
+        href: locations(),
+    },
+    {
+        title: 'Clusters',
+        value: String(props.stats.clusters),
+        detail: props.stats.clusters_failing
+            ? 'Some clusters failed to sync'
+            : undefined,
+        warning: props.stats.clusters_failing > 0,
+        icon: Server,
+        href: clusters(),
+    },
+    {
+        title: 'Nodes online',
+        value: `${props.stats.nodes_online} / ${props.stats.nodes}`,
+        warning: props.stats.nodes_online < props.stats.nodes,
+        icon: Server,
+        href: clusters(),
+    },
+    {
+        title: 'IP addresses',
+        value: String(props.stats.ip_addresses),
+        icon: Network,
+        href: ipPools(),
+    },
+    {
+        title: 'Active OS templates',
+        value: String(props.stats.os_templates),
+        icon: Disc3,
+        href: osTemplates(),
+    },
+    {
+        title: 'Active packages',
+        value: String(props.stats.packages),
+        icon: Package,
+        href: packages(),
+    },
+]);
 </script>
 
 <template>
     <Head title="Admin" />
 
-    <div class="flex h-full flex-1 flex-col gap-4 overflow-x-auto p-4">
+    <div class="flex h-full flex-1 flex-col gap-6 p-4">
         <Heading
             title="Admin dashboard"
-            description="Clusters, nodes, IP pools and servers will be managed here."
+            description="Overview of the infrastructure connected to the panel."
         />
 
-        <div class="grid auto-rows-min gap-4 md:grid-cols-3">
-            <div
-                v-for="index in 3"
-                :key="index"
-                class="relative aspect-video overflow-hidden rounded-xl border border-sidebar-border/70 dark:border-sidebar-border"
+        <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <Link
+                v-for="card in cards"
+                :key="card.title"
+                :href="card.href"
+                class="flex flex-col gap-2 rounded-xl border p-5 transition-colors hover:bg-muted/40"
+                :class="{
+                    'border-amber-300 dark:border-amber-800': card.warning,
+                }"
             >
-                <PlaceholderPattern />
-            </div>
+                <div
+                    class="flex items-center justify-between text-sm text-muted-foreground"
+                >
+                    {{ $t(card.title) }}
+                    <component :is="card.icon" class="h-4 w-4" />
+                </div>
+                <div class="text-3xl font-semibold tabular-nums">
+                    {{ card.value }}
+                </div>
+                <div
+                    v-if="card.detail"
+                    class="text-xs text-amber-700 dark:text-amber-400"
+                >
+                    {{ $t(card.detail) }}
+                </div>
+            </Link>
         </div>
     </div>
 </template>

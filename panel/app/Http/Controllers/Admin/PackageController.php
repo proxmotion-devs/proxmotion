@@ -1,0 +1,69 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Http\Controllers\Admin;
+
+use App\Http\Controllers\Controller;
+use App\Http\Requests\Admin\PackageRequest;
+use App\Models\Package;
+use Illuminate\Http\RedirectResponse;
+use Inertia\Inertia;
+use Inertia\Response;
+
+class PackageController extends Controller
+{
+    public function index(): Response
+    {
+        return Inertia::render('admin/packages/Index', [
+            'packages' => Package::query()
+                ->orderBy('sort_order')
+                ->orderBy('name')
+                ->get()
+                ->map(fn (Package $package) => [
+                    'uuid' => $package->uuid,
+                    'name' => $package->name,
+                    'cpu_cores' => $package->cpu_cores,
+                    'memory_mib' => $package->memory_mib,
+                    'disk_mib' => $package->disk_mib,
+                    'traffic_bytes' => $package->traffic_bytes,
+                    'port_speed_mbps' => $package->port_speed_mbps,
+                    'ipv4_count' => $package->ipv4_count,
+                    'ipv6_count' => $package->ipv6_count,
+                    'snapshot_slots' => $package->snapshot_slots,
+                    'backup_slots' => $package->backup_slots,
+                    'network_models' => $package->network_models,
+                    'is_active' => $package->is_active,
+                    'sort_order' => $package->sort_order,
+                ]),
+        ]);
+    }
+
+    public function store(PackageRequest $request): RedirectResponse
+    {
+        Package::create($request->packageData());
+
+        $this->toast('success', 'Package created.');
+
+        return to_route('admin.packages.index');
+    }
+
+    public function update(PackageRequest $request, Package $package): RedirectResponse
+    {
+        $package->update($request->packageData());
+
+        $this->toast('success', 'Package updated.');
+
+        return to_route('admin.packages.index');
+    }
+
+    public function destroy(Package $package): RedirectResponse
+    {
+        // From Phase 2, packages in use by servers must not be deletable.
+        $package->delete();
+
+        $this->toast('success', 'Package deleted.');
+
+        return to_route('admin.packages.index');
+    }
+}

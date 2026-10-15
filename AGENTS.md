@@ -94,22 +94,25 @@ proxmotion/
 ├── README.md / CONTRIBUTING.md / SECURITY.md / CODE_OF_CONDUCT.md
 ├── panel/                                # Laravel application
 │   ├── app/
-│   │   ├── Domain/                       # Business logic, grouped by domain
-│   │   │   ├── Infrastructure/           # Location, Cluster, Node, Storage, Bridge
-│   │   │   ├── Servers/                  # Server (VPS), power, reinstall, resize
-│   │   │   ├── Networking/               # IpPool, IpAddress, NetworkModel, NatPortForward, rDNS, firewall
-│   │   │   ├── Packages/                 # Package (plan)
-│   │   │   ├── Templates/                # OsTemplate, Iso
-│   │   │   ├── Usage/                    # Traffic/resource accounting, quotas
-│   │   │   ├── Backups/                  # Snapshot, Backup, BackupPlan
-│   │   │   ├── Apps/                     # AppRecipe, AppInstallation, AppEntitlement, RecipeLoader
-│   │   │   ├── Migration/                # Adopt existing VMs, Virtualizor importer
-│   │   │   └── Users/                    # User, SshKey, ApiToken, 2FA
+│   │   ├── Models/                       # Eloquent models (Laravel convention), incl. Concerns/HasPublicUuid
+│   │   ├── Enums/                        # UserRole, ClusterType, NodeStatus, NetworkModel, IpVersion, …
+│   │   ├── Domain/                       # Business logic (services/actions), grouped by domain
+│   │   │   ├── Infrastructure/           # ClusterSynchronizer, …
+│   │   │   ├── Networking/               # GenerateIpAddresses, rDNS, firewall, NAT port forwards
+│   │   │   ├── Servers/                  # power, reinstall, resize
+│   │   │   ├── Usage/                    # traffic/resource accounting, quotas
+│   │   │   ├── Backups/                  # snapshots, backups
+│   │   │   ├── Apps/                     # RecipeLoader, app installs
+│   │   │   └── Migration/                # adopt existing VMs, Virtualizor importer
 │   │   ├── Proxmox/                      # Proxmox API client (the ONLY touchpoint)
-│   │   │   ├── ProxmoxClient.php
-│   │   │   ├── Resources/                # Qemu, Lxc, Nodes, Storage, Tasks, Cluster, GuestAgent, Firewall
+│   │   │   ├── ProxmoxClient.php         # token auth, host failover, error mapping
+│   │   │   ├── ProxmoxConnection.php     # hosts/port/token (secret hidden from dumps)
+│   │   │   ├── ProxmoxClientFactory.php  # forCluster(), make()
+│   │   │   ├── Resources/                # ClusterResource, NodesResource, TasksResource (later: Qemu, GuestAgent, Firewall…)
+│   │   │   ├── Data/                     # typed DTOs of API responses (NodeInfo, StorageInfo, Upid, …)
 │   │   │   ├── TaskWaiter.php            # UPID tracking
 │   │   │   └── Exceptions/
+│   │   ├── Support/                      # Locales, Network/Cidr
 │   │   ├── Provisioning/                 # Orchestration
 │   │   │   ├── Placement/                # Node selection strategies
 │   │   │   ├── Network/                  # One strategy per network model (Bridged, Routed, Nat, Ipv6)
@@ -343,7 +346,9 @@ A task is not "done" until `composer ci:check` passes (plus recipe validation an
 
 - Code, identifiers, comments, commit messages and **all documentation are in English**.
 - **UI text is always translatable; the key is the English text itself.** In templates use `{{ $t('Save changes') }}` / `:placeholder="$t('Name')"`, in scripts `trans()` from `laravel-vue-i18n`, in PHP `__('Profile updated.')`. Use placeholders instead of concatenation: `$t('Added :time', { time })`. Add every new key with its Turkish translation to `lang/tr.json` (`lang/en.json` stays empty).
-- Page titles (`<Head title>`), layout `title`/`description`, breadcrumb titles, nav item titles and `<Heading>` props are passed as **English keys** and translated by the component that renders them — don't wrap them in `$t()` again. These indirect keys are not detected by `TranslationsTest`, so add them to `lang/tr.json` by hand.
+- Page titles (`<Head title>`), layout `title`/`description`, breadcrumb titles, nav item titles and the `title`/`description`/`label`/`hint`/`submit-label` props of `Heading`, `FormField`, `FormDialog`, `StatusBadge`, `ConfirmDelete` are passed as **English keys** and translated by the component that renders them — don't wrap them in `$t()` again.
+- Flash messages: `$this->toast('success', 'Location created.')` in controllers (English key, translated server-side).
+- Admin pages reuse `components/admin/*` (FormDialog, FormField, NativeSelect, ConfirmDelete, StatusBadge) and `useForm` + Wayfinder (`form.submit(store())`). Optional number inputs use `OptionalNumber` from `lib/forms.ts`.
 - Files under `resources/js/components/ui/` are generated shadcn-vue components; avoid editing them.
 - `declare(strict_types=1);` and full parameter/return types everywhere.
 - Units are consistent: disk and RAM in **MiB**, traffic in **bytes**, port speed in **Mbps**. Conversions happen in a single helper class.
@@ -370,7 +375,7 @@ This panel manages customer infrastructure and is internet-facing. Agents **must
 7. **User input** (hostname, rDNS, SSH keys, cloud-init data, app inputs) is strictly validated and never passed raw into Proxmox parameters or a shell.
 8. **Destructive operations** (terminate, reinstall, snapshot rollback, node/cluster removal) require extra confirmation in admin and client UIs and are written to `AuditLog`.
 9. **App Marketplace:** only scripts from recipe files are ever executed inside a VPS via the Guest Agent; free-form commands/scripts from customers or the API are never executed. Inputs are type-validated and passed as `inputs.json`. Secret outputs are stored encrypted and never logged. Custom recipes require `apps.manage` and are audited.
-10. 2FA (TOTP) for admin accounts; session cookies `Secure`, `HttpOnly`, `SameSite=Lax`.
+10. Admins must confirm TOTP 2FA before any admin page opens (`2fa` middleware; `PROXMOTION_REQUIRE_ADMIN_2FA=false` only for local development). Users cannot delete their own accounts — deletion is an admin/billing action. Session cookies `Secure`, `HttpOnly`, `SameSite=Lax`.
 11. `.env` and real credentials are never committed; only `.env.example`.
 12. **Open source hygiene:** no secrets, internal hostnames, real IPs or customer data in code, fixtures, docs, screenshots or commit history. Fixtures use documentation ranges (`192.0.2.0/24`, `198.51.100.0/24`, `203.0.113.0/24`, `2001:db8::/32`) and `example.com`. Vulnerabilities are reported per `SECURITY.md`, not in public issues.
 13. Agents **never perform write operations against a real Proxmox server, a live WHMCS or a live Virtualizor**, unless the user explicitly asks; use faked HTTP tests and the local dev environment.
@@ -387,7 +392,9 @@ This panel manages customer infrastructure and is internet-facing. Agents **must
 - **API contract:** v1 response shapes are asserted in Feature tests.
 - **App recipes:** all `recipe.yaml` files validated against the JSON Schema (`apps:validate`); input validation, eligibility checks and the Guest Agent flow (`file-write → exec → file-read`) tested with `Http::fake()`. Scripts pass shellcheck. Real install tests for each bundled recipe on each supported OS live in the `recipes` integration group.
 - **Migration:** adoption and Virtualizor import tested with fixtures, including dry-run output and idempotent re-runs.
-- **i18n:** `TranslationsTest` fails if a literal key (`$t('…')`, `trans('…')`, `__('…')`) has no entry in `lang/tr.json`, or if a PHP lang file exists for `en` but not `tr`.
+- **i18n:** `TranslationsTest` fails if a key has no entry in `lang/tr.json`, or if a PHP lang file exists for `en` but not `tr`. It detects `$t('…')`, `trans('…')`, `__('…')`, `->toast('…', '…')`, static and bound `title`/`description`/`label`/`hint`/`submit-label` attributes, and `title:`/`label:`/`description:`/`detail:`/`buttonText:` properties. Keys hidden elsewhere (e.g. a `Record` of status labels, `placeholder` props) must be added by hand.
+- **Proxmox:** use `Tests\Concerns\FakesProxmox` (fixtures in `tests/Fixtures/proxmox/`, stray requests prevented). Summaries of test runs must count **errors as well as failures**.
+- **Mass assignment:** columns owned by the sync (node status/resources, storage details, bridge data, templates) are intentionally not fillable; the sync writes them with `forceFill`. Don't add them to `#[Fillable]`.
 - **Frontend:** Vitest tests live next to the code as `*.test.ts` (`import { … } from 'vite-plus/test'`); mock `@inertiajs/vue3` and provide `$t` through `global.mocks` when mounting components.
 - **WHMCS module:** functions tested with the panel API mocked.
 - **Integration tests** (`@group integration`, `@group recipes`): require a real test Proxmox, skipped if `PROXMOX_TEST_*` env vars are missing; touch only resources in the `proxmotion-test` pool.
@@ -417,8 +424,8 @@ Never guess ambiguous API behaviour; consult the official API viewer (https://pv
 
 ## 10. Roadmap
 
-- [x] **Phase 0 — Skeleton:** Laravel 13 Vue starter kit (Inertia 3, TS, Tailwind 4, Vite+), Fortify auth (2FA, passkeys; registration disabled), admin/client roles, i18n (`en`/`tr`) with language switcher, Pint/PHPStan 8/Pest/Oxlint/Oxfmt/Vitest, CI (GitHub Actions), Docker Compose dev environment (not yet run), `LICENSE` (AGPL-3.0), `README`, `CONTRIBUTING`, `SECURITY`, `CODE_OF_CONDUCT`. Open: replace the Laravel logo with a Proxmotion logo; enforce 2FA for admins.
-- [ ] **Phase 1 — Infrastructure management (admin):** Location, Cluster/Node (standalone + cluster, connection test, capacity), storage/bridge sync, IP pools (bridged, routed, IPv6), OS templates, packages. `app/Proxmox` client + `TaskWaiter`.
+- [x] **Phase 0 — Skeleton:** Laravel 13 Vue starter kit (Inertia 3, TS, Tailwind 4, Vite+), Fortify auth (2FA, passkeys; registration disabled), admin/client roles, i18n (`en`/`tr`) with language switcher, Pint/PHPStan 8/Pest/Oxlint/Oxfmt/Vitest, CI (GitHub Actions), Docker Compose dev environment (not yet run), `LICENSE` (AGPL-3.0), `README`, `CONTRIBUTING`, `SECURITY`, `CODE_OF_CONDUCT`, Proxmotion logo/favicons, admin 2FA enforcement, self account deletion removed.
+- [x] **Phase 1 — Infrastructure management (admin):** `app/Proxmox` client (token auth, host failover, typed errors) + `TaskWaiter`; locations; clusters (connection tested on save, standalone/cluster auto-detected, encrypted token); `ClusterSynchronizer` + `SyncCluster` job + `infra:sync` (every 5 min) for nodes, storages, bridges, QEMU templates; node placement settings (maintenance, over-commit, max servers); "use for servers" per storage; IP pools (v4/v6, bridged/routed/NAT, IPv4 addresses generated, reserve/MAC/notes); OS templates mapped to Proxmox templates; packages; admin dashboard. **Not yet verified against a real Proxmox server.**
 - [ ] **Phase 2 — Provisioning engine:** placement, atomic allocation, `CreateServer` / `Terminate` / `Suspend` / `Unsuspend` pipelines for **bridged, routed and IPv6** models, `Task` tracking, Horizon, live progress via Reverb, **adopt existing Proxmox VMs** wizard.
 - [ ] **Phase 3 — Client panel:** server list/detail, power actions, noVNC console proxy, reinstall, root password reset, rDNS, SSH keys.
 - [ ] **Phase 4 — Billing integration:** public API v1 + OpenAPI, token scopes, idempotency, SSO, webhooks, **WHMCS module**.
