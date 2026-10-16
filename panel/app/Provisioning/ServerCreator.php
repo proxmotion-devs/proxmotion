@@ -109,7 +109,8 @@ final readonly class ServerCreator
     private function firstFreeVmid(Cluster $cluster): int
     {
         $proxmox = $this->clients->forCluster($cluster)->cluster();
-        $candidate = $proxmox->nextVmid();
+        // Optionally keep the panel's VMs in their own range, apart from VMs managed by hand.
+        $candidate = max($proxmox->nextVmid(), (int) config('proxmotion.provisioning.min_vmid'));
 
         for ($attempt = 0; $attempt < 50; $attempt++, $candidate++) {
             $takenInPanel = Server::query()->where('cluster_id', $cluster->id)->where('vmid', $candidate)->exists();

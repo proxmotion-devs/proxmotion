@@ -97,6 +97,16 @@ class ServerProvisioningTest extends TestCase
         $this->assertSame(101, $server->vmid);
     }
 
+    public function test_vmids_can_start_at_a_configured_minimum()
+    {
+        config(['proxmotion.provisioning.min_vmid' => 5000]);
+        $this->proxmox->addVm(5000, 'existing-vm', pool: null);
+
+        $server = app(ServerCreator::class)->create($this->order());
+
+        $this->assertSame(5001, $server->vmid);
+    }
+
     public function test_running_out_of_addresses_reserves_nothing()
     {
         IpAddress::query()->update(['is_reserved' => true]);

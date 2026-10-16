@@ -233,6 +233,14 @@ deletes one PTR in the test zone.
    `PermissionTest`~~ — done (`tests/Integration`). Copy `panel/.env.integration.example`
    to `panel/.env.integration`, fill it in and run `composer test:integration` inside
    `panel/`. Without that file (or without the composer script) every test is skipped.
-2. `ProvisioningTest` and `GuestAgentTest` — they cover most of the risky code.
+2. ~~`ProvisioningTest` and `GuestAgentTest`~~ — written. `GuestAgentTest` full-clones the
+   test template, starts it and runs every agent call the panel uses (about a few
+   minutes). `ProvisioningTest` creates a server through `ServerCreator` with one spare
+   address (`PROXMOX_TEST_IPV4`, `PROXMOX_TEST_IPV4_GATEWAY`; skipped when empty), then
+   suspends, unsuspends and terminates it. Both delete their VMs afterwards; if a run is
+   interrupted, delete VMs from `PROXMOX_TEST_VMID_FROM` up in the test pool by hand.
+   Run a single one directly (PowerShell:
+   `$env:PROXMOX_INTEGRATION=1; php artisan test --testsuite=Integration --filter=GuestAgentTest`,
+   bash: `PROXMOX_INTEGRATION=1 php artisan test --testsuite=Integration --filter=GuestAgentTest`).
 3. `PowerTest`, `TaskWaiterTest`, `ReinstallTest`, `DriftTest`, `ConsoleTicketTest`.
 4. Optional PowerDNS group.

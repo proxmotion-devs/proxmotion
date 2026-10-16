@@ -29,6 +29,20 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Provisioning
+    |--------------------------------------------------------------------------
+    |
+    | New servers get the first free VMID from min_vmid upwards (0: from
+    | Proxmox's next free ID), e.g. to keep them apart from VMs managed by hand.
+    |
+    */
+
+    'provisioning' => [
+        'min_vmid' => (int) env('PROXMOTION_MIN_VMID', 0),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Drift reports (docs/adr/0005)
     |--------------------------------------------------------------------------
     |

@@ -4,6 +4,7 @@ namespace Tests\Integration;
 
 use App\Domain\Infrastructure\PermissionChecker;
 use App\Models\Cluster;
+use App\Models\Server;
 use App\Proxmox\Data\VmResource;
 use App\Proxmox\ProxmoxClient;
 use App\Proxmox\ProxmoxClientFactory;
@@ -89,7 +90,14 @@ abstract class IntegrationTestCase extends TestCase
     {
         $problems = [];
 
-        foreach (array_reverse($this->trackedVmids) as $vmid) {
+        // Servers the panel created in this test, also when provisioning stopped half-way.
+        if (isset($this->cluster)) {
+            foreach (Server::query()->where('cluster_id', $this->cluster->id)->where('vmid', '>=', $this->vmidFrom())->pluck('vmid') as $vmid) {
+                $this->trackedVmids[] = (int) $vmid;
+            }
+        }
+
+        foreach (array_reverse(array_values(array_unique($this->trackedVmids))) as $vmid) {
             try {
                 $this->deleteTestVm($vmid);
             } catch (Throwable $e) {
@@ -147,6 +155,63 @@ abstract class IntegrationTestCase extends TestCase
         }
 
         return null;
+    }
+
+    /**
+     * The first VMID from PROXMOX_TEST_VMID_FROM up that no guest uses.
+     */
+    protected function freeTestVmid(): int
+    {
+        $cluster = $this->client()->cluster();
+
+        for ($vmid = $this->vmidFrom(); $vmid < $this->vmidFrom() + 100; $vmid++) {
+            if ($cluster->isVmidFree($vmid)) {
+                return $vmid;
+            }
+        }
+
+        $this->fail('No free VMID in the 100 IDs from PROXMOX_TEST_VMID_FROM.');
+    }
+
+    /**
+     * Full-clone the test template into the pool, on the template's node, and
+     * register the clone for deletion. Returns its VMID.
+     */
+    protected function cloneTestVm(string $name): int
+    {
+        $template = $this->guest($this->templateVmid());
+        $this->assertNotNull($template, 'The test template is gone.');
+
+        $vmid = $this->freeTestVmid();
+        $client = $this->client();
+        $upid = $client->qemu($template->node)->clone(
+            templateVmid: $this->templateVmid(),
+            newVmid: $vmid,
+            name: $name,
+            storage: $this->setting('PROXMOX_TEST_STORAGE'),
+            pool: $this->pool(),
+        );
+        $this->trackVm($vmid);
+        $client->taskWaiter()->wait($upid, timeoutSeconds: 1800);
+
+        return $vmid;
+    }
+
+    /**
+     * Wait until the guest agent of a VM answers (first boot runs cloud-init).
+     */
+    protected function waitForAgent(int $vmid, string $node, int $timeoutSeconds = 300): void
+    {
+        $agent = $this->client()->guestAgent($node);
+        $deadline = time() + $timeoutSeconds;
+
+        while (! $agent->ping($vmid)) {
+            if (time() >= $deadline) {
+                $this->fail("The guest agent of VM {$vmid} did not answer within {$timeoutSeconds} seconds. Does the template have qemu-guest-agent?");
+            }
+
+            sleep(5);
+        }
     }
 
     /**
@@ -284,7 +349,7 @@ abstract class IntegrationTestCase extends TestCase
         $fromFile = is_file($file) ? Dotenv::parse((string) file_get_contents($file)) : [];
         $settings = [];
 
-        foreach ([...self::REQUIRED, 'PROXMOX_TEST_PORT', 'PROXMOX_TEST_VERIFY_TLS', 'PROXMOX_TEST_POOL'] as $key) {
+        foreach ([...self::REQUIRED, 'PROXMOX_TEST_PORT', 'PROXMOX_TEST_VERIFY_TLS', 'PROXMOX_TEST_POOL', 'PROXMOX_TEST_IPV4', 'PROXMOX_TEST_IPV4_GATEWAY'] as $key) {
             $value = $fromFile[$key] ?? self::settingFromProcess($key);
 
             if (is_string($value)) {
