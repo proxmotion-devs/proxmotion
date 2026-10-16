@@ -12,7 +12,8 @@
 # those this script added earlier and that are no longer listed (never
 # others). When the primary differs from the configured address, adds it,
 # routes the default route through its gateway and removes the configured
-# address unless it is still listed. Safe to run any number of times.
+# address unless it is still listed. Registers a scheduled task that runs it
+# again at every startup. Safe to run any number of times.
 $ErrorActionPreference = 'Stop'
 
 $dir = 'C:\ProgramData\Proxmotion'
@@ -20,7 +21,43 @@ $state = Join-Path $dir 'addresses.applied'
 $config = Get-Content -Raw -Path (Join-Path $dir 'addresses.json') | ConvertFrom-Json
 
 $mac = ([string]$config.mac).Replace(':', '-').ToUpperInvariant()
-$adapter = Get-NetAdapter | Where-Object { $_.MacAddress -eq $mac } | Select-Object -First 1
+
+# Run again at every startup (like the systemd unit on Linux), so the
+# addresses come back even if this run fails or Windows restarts during setup.
+$taskName = 'Proxmotion addresses'
+try {
+    if (-not (Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue)) {
+        $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument "-NoProfile -NonInteractive -ExecutionPolicy Bypass -File `"$dir\addresses.ps1`""
+        Register-ScheduledTask -TaskName $taskName -Action $action -Trigger (New-ScheduledTaskTrigger -AtStartup) -User 'SYSTEM' -RunLevel Highest -Force | Out-Null
+    }
+} catch {
+    # Task Scheduler not ready yet: the next run registers it.
+}
+
+# Right after an install the guest agent answers while Windows is still setting
+# itself up: cloudbase-init may still rewrite the adapter's addresses, and the
+# network cmdlets may fail ("Critical error"). Wait for both, about 4 minutes.
+$deadline = (Get-Date).AddMinutes(4)
+
+while ((Get-Service -Name 'cloudbase-init' -ErrorAction SilentlyContinue).Status -eq 'Running' -and (Get-Date) -lt $deadline) {
+    Start-Sleep -Seconds 5
+}
+
+$adapter = $null
+
+while ($true) {
+    try {
+        $adapter = Get-NetAdapter -ErrorAction Stop | Where-Object { $_.MacAddress -eq $mac } | Select-Object -First 1
+    } catch {
+        $adapter = $null
+    }
+
+    if ($adapter -or (Get-Date) -ge $deadline) {
+        break
+    }
+
+    Start-Sleep -Seconds 5
+}
 
 if (-not $adapter) {
     [Console]::Error.WriteLine("No network adapter with MAC address $($config.mac).")

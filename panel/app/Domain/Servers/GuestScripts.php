@@ -34,6 +34,9 @@ final readonly class GuestScripts
     /** How long a freshly booted server may take until its guest agent answers. */
     public const AGENT_TIMEOUT_SECONDS = 600;
 
+    /** Runs of a script when the guest restarts while it runs. */
+    private const ATTEMPTS = 3;
+
     /** The largest script one file-write accepts. */
     public const MAX_SCRIPT_BYTES = GuestAgentResource::MAX_WRITE_BYTES;
 
@@ -114,12 +117,23 @@ final readonly class GuestScripts
 
         $inputs = ['server' => $server->uuid, 'hostname' => $server->hostname, 'mac' => $mac] + $this->inputs($server, $platform, $event, $config);
 
-        try {
-            $result = $platform === OsPlatform::Windows
-                ? $this->runOnWindows($agent, $server->vmid, $event, $script, $inputs, $input)
-                : $this->runOnLinux($agent, $server->vmid, $event, $script, $inputs, $input);
-        } catch (ProxmoxException $e) {
-            return $this->failed($task, $event, $e, self::failedNote($event).$e->getMessage());
+        for ($attempt = 1; ; $attempt++) {
+            try {
+                $result = $platform === OsPlatform::Windows
+                    ? $this->runOnWindows($agent, $server->vmid, $event, $script, $inputs, $input)
+                    : $this->runOnLinux($agent, $server->vmid, $event, $script, $inputs, $input);
+
+                break;
+            } catch (ProxmoxException $e) {
+                // The agent went away mid-run: the guest restarted, as Windows does
+                // during its first-boot setup (sysprep, cloudbase-init). Run the
+                // script again once it is back; a critical script is never repeated.
+                $lost = ! $event->isCritical() && $attempt < self::ATTEMPTS && ! $agent->ping($server->vmid);
+
+                if (! $lost || ! $this->waitForAgent($server)) {
+                    return $this->failed($task, $event, $e, self::failedNote($event).$e->getMessage());
+                }
+            }
         }
 
         if (! $result->succeeded()) {

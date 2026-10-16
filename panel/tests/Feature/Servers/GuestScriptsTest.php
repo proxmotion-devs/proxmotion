@@ -17,6 +17,7 @@ use App\Provisioning\ServerCreator;
 use App\Provisioning\ServerSpec;
 use App\Provisioning\TaskRunner;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Sleep;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\Concerns\BuildsInfrastructure;
 use Tests\Support\FakeProxmoxCluster;
@@ -167,6 +168,47 @@ class GuestScriptsTest extends TestCase
             ['powershell.exe', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', 'C:\\ProgramData\\Proxmotion\\disk.ps1'],
             $this->commands(),
         );
+    }
+
+    public function test_a_script_runs_again_when_the_guest_restarts_while_it_runs()
+    {
+        $this->osTemplate->forceFill(['platform' => 'windows'])->save();
+        $vmid = $this->server->vmid;
+        $script = ['powershell.exe', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', 'C:\\ProgramData\\Proxmotion\\addresses.ps1'];
+        $runs = 0;
+        // First run: Windows restarts during its setup, so the agent goes away.
+        $this->proxmox->execHandler = function (array $command) use ($script, $vmid, &$runs) {
+            if ($command === $script && ++$runs === 1) {
+                $this->proxmox->agentDown[$vmid] = true;
+            }
+
+            return [0, '', ''];
+        };
+        Sleep::fake();
+        Sleep::whenFakingSleep(fn () => $this->proxmox->agentDown[$vmid] = false);
+
+        $task = $this->grow(diskMib: 40960, ipv4: 2);
+
+        $this->assertSame(2, $runs);
+        $this->assertNull($this->step($task, 'guest_addresses')['message']);
+    }
+
+    public function test_a_guest_that_stays_away_leaves_a_note()
+    {
+        $vmid = $this->server->vmid;
+        $this->proxmox->execHandler = function (array $command) use ($vmid) {
+            if ($command === ['sh', '/usr/local/sbin/proxmotion-addresses']) {
+                $this->proxmox->agentDown[$vmid] = true;
+            }
+
+            return [0, '', ''];
+        };
+        Sleep::fake(syncWithCarbon: true);
+
+        $task = $this->grow(diskMib: 40960, ipv4: 2);
+
+        $this->assertSame(TaskStatus::Succeeded, $task->status);
+        $this->assertStringStartsWith('The additional addresses could not be configured inside the server:', $this->step($task, 'guest_addresses')['message']);
     }
 
     public function test_the_post_install_script_runs_after_creation_only_when_the_template_has_one()

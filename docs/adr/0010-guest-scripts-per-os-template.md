@@ -25,6 +25,8 @@ Providers build their own templates (`deploy/proxmox`, `docs/guides/iso-template
    | `disk_resized` | Right after a resource change grew the disk, if the agent answers | `resources/guest/{linux,windows}/disk.*` | note |
    | `password_reset` | Instead of the agent's `set-user-password` | none: `set-user-password` for `root` (Linux) or `Administrator` (Windows) | **the task fails** and no new password is stored or shown |
 
+   When the guest agent goes away while a script runs (the guest restarted, as Windows does during its first-boot setup), the panel waits for it and runs the script again, up to three times; critical scripts are never repeated. The Windows defaults also wait for cloudbase-init to finish, and the address script re-runs at every startup through a scheduled task.
+
    A failing script never fails the other operations: the resources, addresses and firewall are already changed in Proxmox, and the step says what to do by hand. A password that may not have been set must never be shown as the new one, hence the exception.
 
 2. **Default plus override per template.** The defaults live in the repository and are updated with releases. An OS template has a `platform` (`linux` or `windows`) that picks the default and the interpreter, and may override the script of any event (`guest_scripts`: one row per template and event). Templates without an override, and adopted servers without a template (treated as Linux), use the default; events without a default and without an override do nothing.

@@ -10,9 +10,27 @@
 # one, or replace this script. Safe to run any number of times.
 $ErrorActionPreference = 'Stop'
 
-Update-HostStorageCache
+# Right after an install the storage cmdlets may fail while Windows is still
+# setting itself up; try again for about 4 minutes.
+$deadline = (Get-Date).AddMinutes(4)
+$partition = $null
 
-$partition = Get-Partition -DriveLetter C
+while ($true) {
+    try {
+        Update-HostStorageCache
+        $partition = Get-Partition -DriveLetter C -ErrorAction Stop
+    } catch {
+        if ((Get-Date) -ge $deadline) {
+            throw
+        }
+    }
+
+    if ($partition) {
+        break
+    }
+
+    Start-Sleep -Seconds 5
+}
 $supported = Get-PartitionSupportedSize -DiskNumber $partition.DiskNumber -PartitionNumber $partition.PartitionNumber
 
 if ($supported.SizeMax -gt $partition.Size + 1MB) {
