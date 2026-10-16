@@ -97,9 +97,9 @@ proxmotion/
 │   │   ├── Models/                       # Eloquent models (Laravel convention), incl. Concerns/HasPublicUuid
 │   │   ├── Enums/                        # UserRole, ClusterType, NodeStatus, NetworkModel, IpVersion, …
 │   │   ├── Domain/                       # Business logic (services/actions), grouped by domain
-│   │   │   ├── Infrastructure/           # ClusterSynchronizer, …
+│   │   │   ├── Infrastructure/           # ClusterSynchronizer, PermissionChecker, DriftDetector (ADR 0005)
 │   │   │   ├── Networking/               # GenerateIpAddresses, ReverseDns drivers (ADR 0003), firewall, NAT port forwards
-│   │   │   ├── Servers/                  # ConsoleSessions (console tickets), power, reinstall, resize
+│   │   │   ├── Servers/                  # ConsoleSessions, ServerPower, GuestAgentProbe, ServerPasswords, ServerReinstaller (resize later)
 │   │   │   ├── Usage/                    # traffic/resource accounting, quotas
 │   │   │   ├── Backups/                  # snapshots, backups
 │   │   │   ├── Apps/                     # RecipeLoader, app installs
@@ -120,12 +120,12 @@ proxmotion/
 │   │   │   ├── Placement/                # NodePlacer (least memory used after placement), Placement
 │   │   │   ├── Network/                  # NetworkConfig: net0, ipconfig0, nameserver, anti-spoofing addresses
 │   │   │   └── Pipelines/                # CreateServer, ReinstallServer, Power (suspend/unsuspend, power actions), ResetPassword, TerminateServer — idempotent
-│   │   ├── Jobs/                         # Queue jobs (run pipelines)
+│   │   ├── Jobs/                         # Queue jobs: RunServerTask (pipelines), SyncCluster, PublishPtr/RemovePtr (rDNS)
 │   │   ├── Http/
 │   │   │   ├── Controllers/Admin/
 │   │   │   ├── Controllers/Client/
 │   │   │   ├── Controllers/Api/V1/       # Billing API
-│   │   │   ├── Requests/                 # FormRequest validation
+│   │   │   ├── Requests/                 # FormRequest validation (shared admin/client ones such as ReinstallRequest, RdnsRequest authorize first)
 │   │   │   └── Resources/                # API JSON transformers
 │   │   ├── Policies/                     # Authorization (clients see only their own servers)
 │   │   └── Console/                      # Scheduled commands (traffic collection, sync…)
@@ -402,7 +402,7 @@ This panel manages customer infrastructure and is internet-facing. Agents **must
 - **i18n:** `TranslationsTest` fails if a key has no entry in `lang/tr.json`, or if a PHP lang file exists for `en` but not `tr`. It detects `$t('…')`, `trans('…')`, `__('…')`, `->toast('…', '…')`, static and bound `title`/`description`/`label`/`hint`/`submit-label` attributes, and `title:`/`label:`/`description:`/`detail:`/`buttonText:` properties. Keys hidden elsewhere (e.g. a `Record` of status labels, `placeholder` props) must be added by hand.
 - **Proxmox:** use `Tests\Concerns\FakesProxmox` (fixtures in `tests/Fixtures/proxmox/`, stray requests prevented). Summaries of test runs must count **errors as well as failures**.
 - **Mass assignment:** columns owned by the sync (node status/resources, storage details, bridge data, templates) are intentionally not fillable; the sync writes them with `forceFill`. `Server`, `Task` and IP assignment (`server_id`) have no fillable columns at all — only provisioning code writes them. Don't add them to `#[Fillable]`.
-- **Provisioning:** use `Tests\Support\FakeProxmoxCluster` (an in-memory Proxmox: clone, config, resize, power, delete, firewall, permissions) with `Tests\Concerns\BuildsInfrastructure`. The test queue is synchronous, so `ServerCreator::create()` runs the whole pipeline.
+- **Provisioning:** use `Tests\Support\FakeProxmoxCluster` (an in-memory Proxmox: clone, config, resize, power incl. reboot, delete, firewall, permissions, active tasks, vncproxy, and a guest agent with files, commands, passwords and `agentDown`; `/cluster/resources` derives `maxcpu`/`maxmem`/`maxdisk` from the config). It answers every URL, so fake other HTTP services (e.g. PowerDNS) in tests that do not install it with `Tests\Concerns\BuildsInfrastructure`. The test queue is synchronous, so `ServerCreator::create()` runs the whole pipeline.
 - **Frontend:** Vitest tests live next to the code as `*.test.ts` (`import { … } from 'vite-plus/test'`); mock `@inertiajs/vue3` and provide `$t` through `global.mocks` when mounting components.
 - **WHMCS module:** functions tested with the panel API mocked.
 - **Integration tests** (`@group integration`, `@group recipes`): require a real test Proxmox, skipped if `PROXMOX_TEST_*` env vars are missing; touch only resources in the `proxmotion-test` pool.
@@ -435,7 +435,7 @@ Never guess ambiguous API behaviour; consult the official API viewer (https://pv
 - [x] **Phase 0 — Skeleton:** Laravel 13 Vue starter kit (Inertia 3, TS, Tailwind 4, Vite+), Fortify auth (2FA, passkeys; registration disabled), admin/client roles, i18n (`en`/`tr`) with language switcher, Pint/PHPStan 8/Pest/Oxlint/Oxfmt/Vitest, CI (GitHub Actions), Docker Compose dev environment (not yet run), `LICENSE` (AGPL-3.0), `README`, `CONTRIBUTING`, `SECURITY`, `CODE_OF_CONDUCT`, Proxmotion logo/favicons, admin 2FA enforcement, self account deletion removed.
 - [x] **Phase 1 — Infrastructure management (admin):** `app/Proxmox` client (token auth, host failover, typed errors) + `TaskWaiter`; locations; clusters (connection tested on save, standalone/cluster auto-detected, encrypted token); `ClusterSynchronizer` + `SyncCluster` job + `infra:sync` (every 5 min) for nodes, storages, bridges, QEMU templates; node placement settings (maintenance, over-commit, max servers); "use for servers" per storage; IP pools (v4/v6, bridged/routed/NAT, IPv4 addresses generated, reserve/MAC/notes); OS templates mapped to Proxmox templates; packages; admin dashboard. **Not yet verified against a real Proxmox server.**
 - [x] **Phase 2 — Provisioning engine:** servers and tasks; per-cluster resource pool (token only needs VM rights on the pool); permission check listing missing **and excess** privileges; placement (online, not in maintenance, bridge, storage, CPU/memory/disk over-commit, max servers); VMID + IP allocation under a per-location lock; idempotent create (full clone → config + cloud-init → grow disk → anti-spoofing ipset → start), suspend/unsuspend, terminate (frees IPs, keeps history); retry after failure; admin server pages with polling progress; customers created by admins; adopt existing VMs from the pool without touching Proxmox; deletion guards; client dashboard lists own servers. Limitations: one IPv4 + one IPv6 configured by cloud-init (extra IPs are assigned/allowed but configured in the OS); routed /32 with on-link gateway relies on cloud-init and needs real-world verification; NAT not yet supported; Horizon not set up yet (`queue:work`).
-- [ ] **Phase 3 — Client panel:** ~~server list/detail~~ (done: paginated dashboard, client server page without internal details such as VMID, node or task errors), ~~power actions~~ (done: start/shutdown/stop/reboot for admins and customers on active servers, customer shutdown never forced, live power state as a deferred prop, `server.power` audit entries; **not yet verified against a real Proxmox server**), ~~noVNC console proxy~~ (done: ADR 0002, `deploy/console-proxy`, admin + client console page, one session per server, 60 min max / 15 min idle, `audit_logs` with `console.opened`, token needs `VM.Console`; **not yet verified against a real Proxmox server**), ~~Guest Agent client~~ (done: `GuestAgentResource` with ping, file-write/read, exec + exec-status + `run()`, set-user-password; agent reachability on the admin server page; permission check asks for the agent privilege of the PVE version; **not yet verified against a real Proxmox server**), ~~reinstall~~ (done: admins and customers pick an OS template available on the cluster and the owner's saved SSH keys and type the hostname to confirm; stop → delete VM and disks → rebuild with the same VMID, IPs and MAC → wait for the guest agent; new root password shown once; failed reinstalls are retried by admins; audited; post-boot hooks not yet used; **not yet verified against a real Proxmox server**), ~~root password reset~~ (done: random password set for `root` through the guest agent, cloud-init password left alone so the next boot is not a new instance; the owner sees a new or initial password once, admins any time; resets and reveals are audited; Linux guests only; **not yet verified against a real Proxmox server**), ~~rDNS~~ (done, ADR 0003: admin-managed `DnsProvider` with `none` (record only: CSV export + mark applied) and `powerdns` drivers, API key write-only; per IP pool provider, reverse zone (must cover the network) and optional forward confirmation; owners and admins set PTRs of the server's own public addresses, published by a queued job and audited; PTRs are removed when addresses are released; PowerDNS not yet verified against a real server), ~~SSH keys~~ (done: `SshKey` per user under Settings, `Support/Ssh/PublicKey` parses and fingerprints keys — ed25519, ECDSA, RSA ≥ 2048, no DSA; admins can add the customer's saved keys when creating a server; reinstall uses them in its own step), ~~admin drift report~~ (done, ADR 0005: `DriftDetector` runs after every cluster sync on the guests it already read — missing VM, other node, other resources, power state, unmanaged VM in the pool; `server_drifts` closes entries by itself; stopped VMs of active servers only after `PROXMOTION_DRIFT_STOPPED_GRACE_MINUTES`; admin list, dashboard card and server page with accept / mark failed / apply power / adopt / dismiss, all audited. Later: "re-apply package" (with ChangePackage) and notifications for new drifts).
+- [x] **Phase 3 — Client panel:** paginated server list and client server page without internal details (VMID, node, task errors); power actions (start/shutdown/stop/reboot, customer shutdown never forced, live power state); noVNC console through `deploy/console-proxy` (ADR 0002: single-use tickets, one session per server, 60 min max / 15 min idle); Guest Agent client (`GuestAgentResource`: ping, file-write/read, exec + `run()`, set-user-password); root password reset through the agent (owner sees a new or initial password once); saved SSH keys under Settings (`Support/Ssh/PublicKey`: ed25519, ECDSA, RSA ≥ 2048, no DSA); reinstall (OS template + owner's keys, hostname typed to confirm, same VMID/IPs/MAC, waits for the guest agent, ADR 0004); rDNS (ADR 0003: `DnsProvider` with `none` and `powerdns`, per-pool reverse zone, optional forward confirmation, PTRs removed on release); admin drift report (ADR 0005); `audit_logs` for console, power, password, reinstall, rDNS and drift actions. Not done here: drift notifications and "re-apply package" (with ChangePackage), app post-boot hooks (Phase 5b), Windows guests. **See the verification list below: nothing in Phases 1–3 has run against a real Proxmox server yet.**
 - [ ] **Phase 4 — Billing integration:** public API v1 + OpenAPI, token scopes, idempotency, SSO, webhooks, **WHMCS module**.
 - [ ] **Phase 5 — App Marketplace:**
   - 5a: recipe schema, `RecipeLoader`, `apps:sync` / `apps:validate`, install-later flow + client panel; first recipes **OpenVPN, WireGuard, Docker**.
@@ -447,6 +447,35 @@ Never guess ambiguous API behaviour; consult the official API viewer (https://pv
 - [ ] **Phase 9 — Expansion:** **NAT VPS** (NAT gateway per node, port ranges — ADR first), LXC, ISO upload/mount, rescue/recovery mode (ADR first), customer-managed firewall rules, live migration within clusters, reseller system, Blesta / HostBill / Paymenter / FOSSBilling modules, optional provider plugins (e.g. OVH vMAC).
 
 Each phase must be usable on its own and complete with passing tests. Do not skip phases without the maintainers' agreement.
+
+### Not yet verified against real systems
+
+Everything above was tested with faked HTTP only (`FakeProxmoxCluster`, `FakesProxmox`, `Http::fake()`). Before customers use the panel, check these on a test Proxmox VE (8.x and 9.x where noted) in the `proxmotion-test` pool, and turn what you can into `@group integration` tests. Strike an item through with the date once it is verified.
+
+**Proxmox API and permissions**
+- [ ] Token with exactly the privileges the permission check asks for (incl. `VM.Console`, `VM.GuestAgent.Unrestricted` on 9.x / `VM.Monitor` on 8.x) can do every operation, and the excess-privilege warning is right.
+- [ ] `/cluster/resources?type=vm` fields used by sync, adoption and drift: `pool`, `maxcpu`, `maxmem`, and whether `maxdisk` is the boot disk size.
+- [ ] `GET /nodes/{node}/tasks?vmid=&source=active` lists running tasks (`waitForVm`).
+- [ ] Form-encoded POST/PUT with repeated keys (the client no longer uses Laravel's `asForm()`), e.g. `agent/exec` `command`.
+
+**Provisioning (Phases 1–2)**
+- [ ] Full clone on local and shared storage, cloud-init (`ciuser=root`, `cipassword`, URL-encoded `sshkeys`), disk grow, `ipfilter`/`macfilter` ipset, start.
+- [ ] Bridged IPv4 + IPv6, and routed `/32` with the on-link gateway (cloud-init network config).
+- [ ] Root login works on templates from `deploy/proxmox` (cloud images may keep `disable_root` / password SSH off) and from `docs/guides/iso-templates.md`.
+- [ ] Suspend/unsuspend, terminate, adoption without touching the VM.
+
+**Phase 3**
+- [ ] Console: `vncwebsocket` with an API token through `deploy/console-proxy`, `generate-password`, heartbeat closing suspended servers' sessions.
+- [ ] Power: shutdown without `forceStop` (120 s timeout fails cleanly), reboot of a running VM, start of a stopped one.
+- [ ] Guest agent: ping, `file-write` with `encode=0` (base64 content), `file-read` decoding, `exec`/`exec-status`, `set-user-password` on Ubuntu, Debian and RHEL-family templates.
+- [ ] Reinstall: delete and re-clone with the same VMID, MAC kept, firewall ipset recreated, agent answers within 10 minutes.
+- [ ] Drift: a VM deleted, migrated, resized, stopped or added to the pool in the Proxmox UI shows up after `infra:sync`.
+- [ ] rDNS with a real PowerDNS: `PATCH` REPLACE/DELETE of PTR rrsets in an existing reverse zone, connection test.
+
+**Deployment and tooling**
+- [ ] Docker Compose stack incl. `console-proxy` behind nginx (`/console-ws`), queue worker (Horizon not set up yet).
+- [ ] `deploy/proxmox` scripts on a real node (`build-templates.sh`) and `prepare-images.sh` natively and via `images.Dockerfile`; shellcheck in CI.
+- [ ] ADR 0004 assumption that snippets cannot be uploaded through the API.
 
 ---
 
