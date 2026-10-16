@@ -92,6 +92,16 @@ pveum user token add proxmotion@pve panel --privsep 0
 > If the panel's permission check later reports a missing or excess privilege that this
 > list does not match, that is a finding: note which operation needed what.
 
+**Alternative with built-in roles** (verified to pass the permission check on Proxmox VE
+9.2.2): instead of the two custom roles, give the user `PVEVMAdmin` and `PVEPoolAdmin` on
+`/pool/proxmotion-test` and `PVEDatastoreUser` on `/storage`. This grants a bit more than the
+panel needs (e.g. migrate, snapshots, backups of the pool's VMs), but nothing outside the pool.
+
+```bash
+pveum acl modify /pool/proxmotion-test --users proxmotion@pve --roles PVEVMAdmin,PVEPoolAdmin
+pveum acl modify /storage --users proxmotion@pve --roles PVEDatastoreUser
+```
+
 ## 3. Prepare the panel
 
 1. *Admin → Locations*: add a test location.
