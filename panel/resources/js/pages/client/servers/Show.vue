@@ -1,17 +1,26 @@
 <script setup lang="ts">
-import { Head, setLayoutProps, usePage, usePoll } from '@inertiajs/vue3';
-import { Monitor } from '@lucide/vue';
-import { computed, watch } from 'vue';
+import {
+    Head,
+    router,
+    setLayoutProps,
+    usePage,
+    usePoll,
+} from '@inertiajs/vue3';
+import { Eye, Monitor } from '@lucide/vue';
+import { computed, ref, watch } from 'vue';
 import ServerStatusBadge from '@/components/admin/ServerStatusBadge.vue';
 import Heading from '@/components/Heading.vue';
 import PowerControls from '@/components/servers/PowerControls.vue';
+import ResetPasswordButton from '@/components/servers/ResetPasswordButton.vue';
 import TaskList from '@/components/servers/TaskList.vue';
 import { Button } from '@/components/ui/button';
 import { formatDateTime, formatMib, formatTraffic } from '@/lib/format';
 import { dashboard } from '@/routes';
 import {
     console as openConsole,
+    password,
     power as powerRoute,
+    resetPassword,
     show,
 } from '@/routes/servers';
 import type { PowerAction, ServerStatus, TaskProgress } from '@/types/admin';
@@ -32,10 +41,14 @@ const props = defineProps<{
         os_template: string | null;
         addresses: { address: string; version: 4 | 6 }[];
         created_at: string | null;
+        password_unrevealed: boolean;
     };
     tasks: TaskProgress[];
     /** Deferred: undefined until loaded, null when unknown. */
     power?: string | null;
+    /** Deferred: whether the guest agent answers; null when unknown. */
+    agent?: boolean | null;
+    revealedPassword: string | null;
 }>();
 
 setLayoutProps({
@@ -50,7 +63,7 @@ const page = usePage();
 // Refresh while a task runs, so progress and the power state show up live.
 const { start, stop } = usePoll(
     3000,
-    { only: ['server', 'tasks', 'power'] },
+    { only: ['server', 'tasks', 'power', 'agent'] },
     { autoStart: false },
 );
 
@@ -66,6 +79,20 @@ watch(busy, (value) => (value ? start() : stop()), { immediate: true });
 
 const powerAction = (action: PowerAction) =>
     powerRoute({ server: props.server.uuid, action });
+
+const reveal = () =>
+    router.visit(password(props.server.uuid), { preserveScroll: true });
+
+// Once a newer password is waiting, the one shown earlier no longer works.
+const shownPassword = ref(props.revealedPassword);
+watch(
+    () => props.revealedPassword,
+    (value) => (shownPassword.value = value),
+);
+watch(
+    () => props.server.password_unrevealed,
+    (unrevealed) => unrevealed && (shownPassword.value = null),
+);
 </script>
 
 <template>
@@ -153,6 +180,50 @@ const powerAction = (action: PowerAction) =>
                 <dt class="text-muted-foreground">{{ $t('Created') }}</dt>
                 <dd>
                     {{ formatDateTime(server.created_at, page.props.locale) }}
+                </dd>
+            </div>
+            <div class="flex flex-col gap-1 sm:col-span-2">
+                <dt class="text-muted-foreground">{{ $t('Root password') }}</dt>
+                <template v-if="shownPassword">
+                    <dd class="font-mono text-xs break-all select-all">
+                        {{ shownPassword }}
+                    </dd>
+                    <dd class="text-xs text-muted-foreground">
+                        {{
+                            $t(
+                                'Copy it now: it will not be shown again. Reset it if you lose it.',
+                            )
+                        }}
+                    </dd>
+                </template>
+                <dd v-else-if="server.password_unrevealed">
+                    <Button variant="outline" size="sm" @click="reveal">
+                        <Eye class="h-4 w-4" />
+                        {{ $t('Show once') }}
+                    </Button>
+                </dd>
+                <dd v-else class="text-xs text-muted-foreground">
+                    {{ $t('Hidden. Reset it to set a new one.') }}
+                </dd>
+                <dd
+                    v-if="server.status === 'active'"
+                    class="flex flex-col gap-1"
+                >
+                    <ResetPasswordButton
+                        :action="resetPassword(server.uuid)"
+                        :disabled="busy || agent === false"
+                        class="self-start"
+                    />
+                    <span
+                        v-if="agent === false"
+                        class="text-xs text-muted-foreground"
+                    >
+                        {{
+                            $t(
+                                'Not available: the server must be running with qemu-guest-agent installed.',
+                            )
+                        }}
+                    </span>
                 </dd>
             </div>
             <div class="sm:col-span-2">

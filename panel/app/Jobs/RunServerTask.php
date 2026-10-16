@@ -11,6 +11,7 @@ use App\Enums\TaskType;
 use App\Models\Task;
 use App\Provisioning\Pipelines\CreateServerPipeline;
 use App\Provisioning\Pipelines\PowerPipeline;
+use App\Provisioning\Pipelines\ResetPasswordPipeline;
 use App\Provisioning\Pipelines\TerminateServerPipeline;
 use App\Proxmox\Exceptions\ProxmoxException;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -31,7 +32,7 @@ class RunServerTask implements ShouldQueue
 
     public function __construct(public Task $task) {}
 
-    public function handle(CreateServerPipeline $create, PowerPipeline $power, TerminateServerPipeline $terminate): void
+    public function handle(CreateServerPipeline $create, PowerPipeline $power, TerminateServerPipeline $terminate, ResetPasswordPipeline $resetPassword): void
     {
         $task = $this->task;
 
@@ -49,6 +50,7 @@ class RunServerTask implements ShouldQueue
                 TaskType::Terminate => $terminate->run($task),
                 TaskType::Adopt => null,
                 TaskType::Start, TaskType::Shutdown, TaskType::Stop, TaskType::Reboot => $power->power($task, PowerAction::from($task->type->value)),
+                TaskType::ResetPassword => $resetPassword->run($task),
             };
         } catch (Throwable $e) {
             $this->fail($task, $e);

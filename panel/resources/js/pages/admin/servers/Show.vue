@@ -14,6 +14,7 @@ import ServerStatusBadge from '@/components/admin/ServerStatusBadge.vue';
 import StatusBadge from '@/components/admin/StatusBadge.vue';
 import Heading from '@/components/Heading.vue';
 import PowerControls from '@/components/servers/PowerControls.vue';
+import ResetPasswordButton from '@/components/servers/ResetPasswordButton.vue';
 import TaskList from '@/components/servers/TaskList.vue';
 import { Button } from '@/components/ui/button';
 import { formatDateTime, formatMib, formatTraffic } from '@/lib/format';
@@ -25,6 +26,7 @@ import {
     index,
     password,
     power as powerRoute,
+    resetPassword,
     retry,
     show,
     suspend,
@@ -88,7 +90,7 @@ const page = usePage();
 // Refresh while a task runs, so progress and the power state show up live.
 const { start, stop } = usePoll(
     3000,
-    { only: ['server', 'tasks', 'power'] },
+    { only: ['server', 'tasks', 'power', 'agent'] },
     { autoStart: false },
 );
 
@@ -299,6 +301,12 @@ const modelLabel =
                     </Button>
                 </dd>
                 <dd v-else>—</dd>
+                <dd v-if="server.status === 'active'" class="mt-1">
+                    <ResetPasswordButton
+                        :action="resetPassword(server.uuid)"
+                        :disabled="busy || agent === false"
+                    />
+                </dd>
             </div>
             <div>
                 <dt class="text-muted-foreground">{{ $t('Created') }}</dt>

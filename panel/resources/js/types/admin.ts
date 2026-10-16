@@ -157,6 +157,7 @@ export type TaskType =
     | 'unsuspend'
     | 'terminate'
     | 'adopt'
+    | 'reset_password'
     | PowerAction;
 
 export type PowerAction = 'start' | 'shutdown' | 'stop' | 'reboot';

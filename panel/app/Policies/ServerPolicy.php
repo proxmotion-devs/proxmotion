@@ -29,6 +29,27 @@ class ServerPolicy
     }
 
     /**
+     * A new root password is set inside the running VM by the guest agent.
+     */
+    public function resetPassword(User $user, Server $server): bool
+    {
+        return $server->status === ServerStatus::Active && $this->view($user, $server);
+    }
+
+    /**
+     * Admins may look at the root password at any time; the owner once after
+     * it was set or reset.
+     */
+    public function revealPassword(User $user, Server $server): bool
+    {
+        if ($server->root_password === null || ! $this->view($user, $server)) {
+            return false;
+        }
+
+        return $user->isAdmin() || $server->root_password_unrevealed;
+    }
+
+    /**
      * The console is only available while the server is active, so a
      * suspended customer cannot use it to keep working on the server.
      */

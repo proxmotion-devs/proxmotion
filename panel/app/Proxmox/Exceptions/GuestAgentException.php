@@ -10,6 +10,11 @@ namespace App\Proxmox\Exceptions;
  */
 class GuestAgentException extends ProxmoxException
 {
+    public static function notReachable(int $vmid): self
+    {
+        return new self("The QEMU guest agent of VM {$vmid} does not answer. Is the VM running and qemu-guest-agent installed?");
+    }
+
     public static function commandTimedOut(int $pid, int $seconds): self
     {
         return new self("The guest agent command (PID {$pid}) did not finish within {$seconds} seconds.");

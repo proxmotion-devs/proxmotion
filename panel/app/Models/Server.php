@@ -45,6 +45,7 @@ use Illuminate\Support\Carbon;
  * @property int|null $port_speed_mbps
  * @property int|null $traffic_bytes
  * @property string|null $root_password
+ * @property bool $root_password_unrevealed the owner has not seen the current root password yet
  * @property string|null $ssh_keys
  * @property string|null $suspension_reason
  * @property string|null $external_id
@@ -82,6 +83,7 @@ class Server extends Model
             'port_speed_mbps' => 'integer',
             'traffic_bytes' => 'integer',
             'root_password' => 'encrypted',
+            'root_password_unrevealed' => 'boolean',
             'provisioned_at' => 'datetime',
             'terminated_at' => 'datetime',
         ];

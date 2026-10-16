@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Client;
 
+use App\Domain\Servers\GuestAgentProbe;
+use App\Domain\Servers\ServerPasswords;
 use App\Domain\Servers\ServerPower;
 use App\Enums\PowerAction;
 use App\Enums\ServerStatus;
@@ -28,7 +30,7 @@ class ServerController extends Controller
      * Show one of the customer's servers. Internal details (VMID, node,
      * cluster, storage, IP pools, task errors) stay on the admin page.
      */
-    public function show(#[CurrentUser] User $user, Server $server): Response|RedirectResponse
+    public function show(#[CurrentUser] User $user, Server $server, GuestAgentProbe $agent): Response|RedirectResponse
     {
         Gate::authorize('view', $server);
 
@@ -57,6 +59,7 @@ class ServerController extends Controller
                     'version' => $address->pool->version,
                 ]),
                 'created_at' => ($server->provisioned_at ?? $server->created_at)?->toIso8601String(),
+                'password_unrevealed' => $server->root_password_unrevealed && $server->root_password !== null,
             ],
             // Progress only: step messages and errors may name nodes or storages.
             'tasks' => $server->tasks()->latest('id')->limit(5)->get()->map(fn (Task $task) => [
@@ -72,7 +75,36 @@ class ServerController extends Controller
             ]),
             // Asked from Proxmox after the page has loaded, so a slow cluster does not block it.
             'power' => Inertia::defer(fn () => $server->status === ServerStatus::Active ? $this->power->state($server) : null),
+            'agent' => Inertia::defer(fn () => $server->status === ServerStatus::Active ? $agent->reachable($server) : null),
+            'revealedPassword' => session('revealed_password'),
         ]);
+    }
+
+    public function resetPassword(Request $request, #[CurrentUser] User $user, Server $server, ServerPasswords $passwords): RedirectResponse
+    {
+        Gate::authorize('resetPassword', $server);
+
+        try {
+            $passwords->requestReset($server, $user, $request->ip());
+        } catch (ProvisioningException $e) {
+            $this->toast('error', $e->getMessage());
+
+            return back();
+        }
+
+        $this->toast('info', 'Setting a new root password…');
+
+        return back();
+    }
+
+    /**
+     * Show the root password once, through the session flash of the next page.
+     */
+    public function revealPassword(Request $request, #[CurrentUser] User $user, Server $server, ServerPasswords $passwords): RedirectResponse
+    {
+        Gate::authorize('revealPassword', $server);
+
+        return back()->with('revealed_password', $passwords->reveal($server, $user, $request->ip()));
     }
 
     public function power(Request $request, #[CurrentUser] User $user, Server $server, PowerAction $action): RedirectResponse

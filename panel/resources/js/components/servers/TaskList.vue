@@ -24,6 +24,7 @@ const taskTypeLabels: Record<TaskType, string> = {
     shutdown: 'Shut down',
     stop: 'Stop',
     reboot: 'Reboot',
+    reset_password: 'Reset root password',
 };
 const taskStatusTone: Record<
     TaskStatus,
@@ -49,6 +50,7 @@ const stepLabels: Record<string, string> = {
     stop: 'Stop',
     shutdown: 'Shut down',
     reboot: 'Reboot',
+    set_password: 'Set new root password',
     destroy: 'Delete VM and disks',
     release_ips: 'Release IP addresses',
     adopt: 'Adopt',

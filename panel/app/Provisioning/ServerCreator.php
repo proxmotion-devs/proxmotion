@@ -90,6 +90,8 @@ final readonly class ServerCreator
             'port_speed_mbps' => $order->spec->portSpeedMbps,
             'traffic_bytes' => $order->spec->trafficBytes,
             'root_password' => $order->rootPassword,
+            // The customer may see the initial password once on their server page.
+            'root_password_unrevealed' => true,
             'ssh_keys' => $order->sshKeys,
             'external_id' => $order->externalId,
         ])->save();

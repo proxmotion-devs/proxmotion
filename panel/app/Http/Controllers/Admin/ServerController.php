@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Controllers\Admin;
 
 use App\Domain\Servers\GuestAgentProbe;
+use App\Domain\Servers\ServerPasswords;
 use App\Domain\Servers\ServerPower;
 use App\Enums\PowerAction;
 use App\Enums\ServerStatus;
@@ -198,9 +199,30 @@ class ServerController extends Controller
         );
     }
 
-    public function revealPassword(Server $server): RedirectResponse
+    public function revealPassword(Request $request, Server $server, #[CurrentUser] User $admin, ServerPasswords $passwords): RedirectResponse
     {
-        return back()->with('revealed_password', $server->root_password);
+        return back()->with('revealed_password', $passwords->reveal($server, $admin, $request->ip()));
+    }
+
+    public function resetPassword(Request $request, Server $server, #[CurrentUser] User $admin, ServerPasswords $passwords): RedirectResponse
+    {
+        if ($server->status !== ServerStatus::Active) {
+            $this->toast('error', 'This action is not possible while the server is :status.', ['status' => __(ucfirst($server->status->value))]);
+
+            return back();
+        }
+
+        try {
+            $passwords->requestReset($server, $admin, $request->ip());
+        } catch (ProvisioningException $e) {
+            $this->toast('error', $e->getMessage());
+
+            return back();
+        }
+
+        $this->toast('info', 'Setting a new root password…');
+
+        return back();
     }
 
     /**
