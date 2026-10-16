@@ -27,6 +27,20 @@ return [
     |
     */
 
+    /*
+    |--------------------------------------------------------------------------
+    | Drift reports (docs/adr/0005)
+    |--------------------------------------------------------------------------
+    |
+    | Customers may shut their servers down themselves, so an active server
+    | whose VM is stopped is only reported after this many minutes.
+    |
+    */
+
+    'drift' => [
+        'stopped_grace_minutes' => (int) env('PROXMOTION_DRIFT_STOPPED_GRACE_MINUTES', 60),
+    ],
+
     'console' => [
         'proxy_secret' => env('CONSOLE_PROXY_SECRET'),
         'websocket_url' => env('CONSOLE_WEBSOCKET_URL'),

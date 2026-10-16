@@ -196,6 +196,26 @@ export type Task = {
     finished_at: string | null;
 };
 
+export type DriftType =
+    | 'missing_vm'
+    | 'node_mismatch'
+    | 'resource_mismatch'
+    | 'power_mismatch'
+    | 'unmanaged_vm';
+
+/** A difference between the panel and Proxmox (ADR 0005). */
+export type Drift = {
+    uuid: string;
+    type: DriftType;
+    vmid: number;
+    expected: Record<string, string | number | null> | null;
+    actual: Record<string, string | number | null> | null;
+    first_seen_at: string;
+    last_seen_at: string;
+    cluster: { uuid: string; name: string };
+    server: { uuid: string; hostname: string; status: ServerStatus } | null;
+};
+
 /** Choices for ReinstallDialog: OS templates of the server's cluster, the owner's saved keys. */
 export type ReinstallOptions = {
     osTemplates: Option[];

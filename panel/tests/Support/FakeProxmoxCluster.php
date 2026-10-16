@@ -392,9 +392,10 @@ class FakeProxmoxCluster
                 'template' => $vm['template'] ? 1 : 0,
                 'status' => $vm['status'],
                 'pool' => $vm['pool'],
-                'maxcpu' => 2,
-                'maxmem' => 2 * 1024 ** 3,
-                'maxdisk' => 20 * 1024 ** 3,
+                // Taken from the config where the panel set it, like Proxmox does.
+                'maxcpu' => (int) ($vm['config']['cores'] ?? 2),
+                'maxmem' => (int) ($vm['config']['memory'] ?? 2048) * 1024 ** 2,
+                'maxdisk' => preg_match('/size=(\d+)M/', (string) ($vm['config']['scsi0'] ?? ''), $size) === 1 ? (int) $size[1] * 1024 ** 2 : 20 * 1024 ** 3,
             ];
         }
 

@@ -1,11 +1,19 @@
 <script setup lang="ts">
 import { Head, Link } from '@inertiajs/vue3';
-import { Disc3, MapPin, Network, Package, Server } from '@lucide/vue';
+import {
+    Disc3,
+    MapPin,
+    Network,
+    Package,
+    Server,
+    TriangleAlert,
+} from '@lucide/vue';
 import type { Component } from 'vue';
 import { computed } from 'vue';
 import Heading from '@/components/Heading.vue';
 import { dashboard } from '@/routes/admin';
 import { index as clusters } from '@/routes/admin/clusters';
+import { index as drifts } from '@/routes/admin/drifts';
 import { index as ipPools } from '@/routes/admin/ip-pools';
 import { index as locations } from '@/routes/admin/locations';
 import { index as osTemplates } from '@/routes/admin/os-templates';
@@ -27,6 +35,7 @@ const props = defineProps<{
         ip_addresses_reserved: number;
         os_templates: number;
         packages: number;
+        drifts: number;
     };
 }>();
 
@@ -40,6 +49,16 @@ type Card = {
 };
 
 const cards = computed<Card[]>(() => [
+    {
+        title: 'Drift report',
+        value: String(props.stats.drifts),
+        detail: props.stats.drifts
+            ? 'Proxmox differs from the panel'
+            : undefined,
+        warning: props.stats.drifts > 0,
+        icon: TriangleAlert,
+        href: drifts(),
+    },
     {
         title: 'Locations',
         value: String(props.stats.locations),

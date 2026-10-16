@@ -170,6 +170,14 @@ class Server extends Model
     }
 
     /**
+     * @return HasMany<ServerDrift, $this>
+     */
+    public function drifts(): HasMany
+    {
+        return $this->hasMany(ServerDrift::class);
+    }
+
+    /**
      * @return HasOne<Task, $this>
      */
     public function latestTask(): HasOne

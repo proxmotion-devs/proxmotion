@@ -3,6 +3,7 @@
 use App\Http\Controllers\Admin\AdoptionController;
 use App\Http\Controllers\Admin\ClusterController;
 use App\Http\Controllers\Admin\DashboardController;
+use App\Http\Controllers\Admin\DriftController;
 use App\Http\Controllers\Admin\IpAddressController;
 use App\Http\Controllers\Admin\IpPoolController;
 use App\Http\Controllers\Admin\LocationController;
@@ -21,6 +22,12 @@ use Illuminate\Support\Facades\Route;
 */
 
 Route::get('/', DashboardController::class)->name('dashboard');
+
+Route::get('drifts', [DriftController::class, 'index'])->name('drifts.index');
+Route::post('drifts/{drift}/accept', [DriftController::class, 'accept'])->name('drifts.accept');
+Route::post('drifts/{drift}/mark-error', [DriftController::class, 'markError'])->name('drifts.mark-error');
+Route::post('drifts/{drift}/apply-power', [DriftController::class, 'applyPower'])->name('drifts.apply-power');
+Route::post('drifts/{drift}/dismiss', [DriftController::class, 'dismiss'])->name('drifts.dismiss');
 
 Route::resource('locations', LocationController::class)->only(['index', 'store', 'update', 'destroy']);
 

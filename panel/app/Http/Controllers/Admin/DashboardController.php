@@ -12,6 +12,7 @@ use App\Models\Location;
 use App\Models\Node;
 use App\Models\OsTemplate;
 use App\Models\Package;
+use App\Models\ServerDrift;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -30,6 +31,7 @@ class DashboardController extends Controller
                 'ip_addresses_reserved' => IpAddress::query()->where('is_reserved', true)->count(),
                 'os_templates' => OsTemplate::query()->where('is_active', true)->count(),
                 'packages' => Package::query()->where('is_active', true)->count(),
+                'drifts' => ServerDrift::query()->visible()->count(),
             ],
         ]);
     }

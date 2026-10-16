@@ -7,6 +7,7 @@ import {
     Network,
     Package,
     Server,
+    TriangleAlert,
     Users,
 } from '@lucide/vue';
 import { computed } from 'vue';
@@ -14,6 +15,7 @@ import type { ComputedRef } from 'vue';
 import { dashboard } from '@/routes';
 import { dashboard as adminDashboard } from '@/routes/admin';
 import { index as clusters } from '@/routes/admin/clusters';
+import { index as drifts } from '@/routes/admin/drifts';
 import { index as ipPools } from '@/routes/admin/ip-pools';
 import { index as locations } from '@/routes/admin/locations';
 import { index as osTemplates } from '@/routes/admin/os-templates';
@@ -44,6 +46,7 @@ export function useMainNavigation(): ComputedRef<NavItem[]> {
                 { title: 'IP pools', href: ipPools(), icon: Network },
                 { title: 'OS templates', href: osTemplates(), icon: Disc3 },
                 { title: 'Packages', href: packages(), icon: Package },
+                { title: 'Drift report', href: drifts(), icon: TriangleAlert },
             ];
         }
 

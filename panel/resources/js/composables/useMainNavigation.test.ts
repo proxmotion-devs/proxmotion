@@ -33,6 +33,7 @@ describe('useMainNavigation', () => {
             '/admin/ip-pools',
             '/admin/os-templates',
             '/admin/packages',
+            '/admin/drifts',
         ]);
     });
 });

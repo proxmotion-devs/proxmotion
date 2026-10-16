@@ -31,6 +31,7 @@ final readonly class ClusterSynchronizer
     public function __construct(
         private ProxmoxClientFactory $clients,
         private ProtectedAddresses $protected,
+        private DriftDetector $drift,
     ) {}
 
     /**
@@ -68,6 +69,8 @@ final readonly class ClusterSynchronizer
             $this->syncTemplates($cluster, $nodeModels, $guests);
             $this->reserveNodeAddresses($cluster);
         });
+
+        $this->drift->detect($cluster, $guests);
     }
 
     /**

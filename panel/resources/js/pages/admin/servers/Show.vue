@@ -3,6 +3,7 @@ import { Head, Link, router, setLayoutProps, usePoll } from '@inertiajs/vue3';
 import { Eye, Monitor, Pause, Play, RotateCcw } from '@lucide/vue';
 import { computed, watch } from 'vue';
 import ConfirmDelete from '@/components/admin/ConfirmDelete.vue';
+import DriftList from '@/components/admin/DriftList.vue';
 import ServerStatusBadge from '@/components/admin/ServerStatusBadge.vue';
 import StatusBadge from '@/components/admin/StatusBadge.vue';
 import Heading from '@/components/Heading.vue';
@@ -32,6 +33,7 @@ import { NETWORK_MODELS } from '@/types/admin';
 import type {
     NetworkModel,
     PowerAction,
+    Drift,
     ReinstallOptions,
     ServerStatus,
     Task,
@@ -70,6 +72,7 @@ const props = defineProps<{
     tasks: Task[];
     revealedPassword: string | null;
     reinstallOptions: ReinstallOptions;
+    drifts: Drift[];
     /** Deferred: undefined until loaded, null when unknown. */
     power?: string | null;
     /** Deferred: whether the guest agent answers; null when unknown. */
@@ -185,6 +188,8 @@ const modelLabel =
                 />
             </div>
         </div>
+
+        <DriftList v-if="drifts.length > 0" :drifts="drifts" />
 
         <PowerControls
             v-if="server.status === 'active'"

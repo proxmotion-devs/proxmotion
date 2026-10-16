@@ -21,6 +21,7 @@ use App\Models\Location;
 use App\Models\OsTemplate;
 use App\Models\Package;
 use App\Models\Server;
+use App\Models\ServerDrift;
 use App\Models\Task;
 use App\Models\User;
 use App\Provisioning\Exceptions\ProvisioningException;
@@ -147,6 +148,8 @@ class ServerController extends Controller
             // Asked from Proxmox after the page has loaded, so a slow cluster does not block it.
             'power' => Inertia::defer(fn () => $server->status === ServerStatus::Active ? $this->power->state($server) : null),
             'reinstallOptions' => fn () => ReinstallOptions::for($server),
+            'drifts' => $server->drifts()->visible()->with(['cluster:id,uuid,name', 'server:id,uuid,hostname,status'])->get()
+                ->map(fn (ServerDrift $drift) => DriftController::present($drift)),
             'agent' => Inertia::defer(fn () => $server->status === ServerStatus::Active ? $agent->reachable($server) : null),
         ]);
     }

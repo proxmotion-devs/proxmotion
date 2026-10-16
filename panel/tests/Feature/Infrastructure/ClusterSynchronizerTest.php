@@ -4,9 +4,12 @@ namespace Tests\Feature\Infrastructure;
 
 use App\Domain\Infrastructure\ClusterSynchronizer;
 use App\Enums\ClusterType;
+use App\Enums\DriftType;
 use App\Enums\NodeStatus;
 use App\Models\Cluster;
 use App\Models\Node;
+use App\Models\Server;
+use App\Models\ServerDrift;
 use App\Proxmox\Exceptions\ProxmoxAuthenticationFailed;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Factory;
@@ -45,6 +48,22 @@ class ClusterSynchronizerTest extends TestCase
 
         // Only QEMU templates are imported; regular VMs and LXC templates are ignored.
         $this->assertSame([9000], $cluster->proxmoxTemplates()->pluck('vmid')->all());
+    }
+
+    public function test_it_reports_drift_after_syncing()
+    {
+        $this->fakeProxmox();
+        $cluster = Cluster::factory()->create();
+        app(ClusterSynchronizer::class)->sync($cluster);
+
+        // A server whose VM is not in the cluster resources.
+        $server = Server::factory()->for($cluster->nodes()->where('name', 'pve1')->sole())->create(['vmid' => 4242]);
+
+        app(ClusterSynchronizer::class)->sync($cluster);
+
+        $drift = ServerDrift::query()->sole();
+        $this->assertSame(DriftType::MissingVm, $drift->type);
+        $this->assertSame($server->id, $drift->server_id);
     }
 
     public function test_it_detects_standalone_nodes()
