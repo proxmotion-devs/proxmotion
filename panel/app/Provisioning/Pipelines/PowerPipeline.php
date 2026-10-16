@@ -8,6 +8,9 @@ use App\Enums\PowerAction;
 use App\Enums\ServerStatus;
 use App\Models\Task;
 use App\Proxmox\ProxmoxClientFactory;
+use App\Proxmox\Resources\QemuResource;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Sleep;
 
 /**
  * Suspending stops the VM (clean shutdown, forced after a timeout) and keeps
@@ -19,6 +22,9 @@ use App\Proxmox\ProxmoxClientFactory;
  */
 final readonly class PowerPipeline
 {
+    /** How long a rebooted VM may take to start again after its shutdown. */
+    private const REBOOT_START_SECONDS = 60;
+
     public function __construct(private ProxmoxClientFactory $clients) {}
 
     public function power(Task $task, PowerAction $action): void
@@ -41,9 +47,34 @@ final readonly class PowerPipeline
         } elseif ($action === PowerAction::Reboot) {
             // Rebooting a stopped VM starts it.
             $waiter->wait($qemu->power($server->vmid, $running ? 'reboot' : 'start'), timeoutSeconds: 300);
+
+            if ($running && ! $this->waitUntilRunning($qemu, $server->vmid)) {
+                $task->completeStep($action->value, 'The server was shut down but had not started again after '.self::REBOOT_START_SECONDS.' seconds.');
+
+                return;
+            }
         }
 
         $task->completeStep($action->value);
+    }
+
+    /**
+     * The reboot task ends once the guest has shut down; Proxmox starts it
+     * again a few seconds later (qmeventd). Seen on PVE 9.2.2.
+     */
+    private function waitUntilRunning(QemuResource $qemu, int $vmid): bool
+    {
+        $deadline = Carbon::now()->addSeconds(self::REBOOT_START_SECONDS);
+
+        while ($qemu->status($vmid)['status'] !== 'running') {
+            if (Carbon::now()->greaterThanOrEqualTo($deadline)) {
+                return false;
+            }
+
+            Sleep::for(2)->seconds();
+        }
+
+        return true;
     }
 
     public function suspend(Task $task): void
