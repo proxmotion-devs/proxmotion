@@ -36,6 +36,9 @@ class GuestAgentTest extends IntegrationTestCase
     {
         $binary = "#!/bin/sh\necho ok\n".random_bytes(256);
         $agent->writeFile($vmid, '/tmp/proxmotion-binary', $binary);
+        // Checked inside the guest first, so a failure tells writing from reading apart.
+        $checksum = $agent->run($vmid, ['sha256sum', '/tmp/proxmotion-binary']);
+        $this->assertStringStartsWith(hash('sha256', $binary), $checksum->stdout, 'file-write changed the content.');
         $this->assertSame(bin2hex($binary), bin2hex($agent->readFile($vmid, '/tmp/proxmotion-binary')->content), 'Binary content changed on the way.');
 
         $large = str_repeat('x', GuestAgentResource::MAX_WRITE_BYTES);

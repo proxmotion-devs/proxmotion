@@ -114,7 +114,6 @@ pveum acl modify /storage --users proxmotion@pve --roles PVEDatastoreUser
 5. *Admin → IP pools*: add a pool with only the spare addresses (list mode).
 6. *Admin → OS templates*: map the templates; *Admin → Packages*: a small package
    (1 vCPU, 1 GiB, 10 GiB).
-7. *Admin → Customers*: a test customer; sign in as them in a second browser profile.
 
 ## 4. Manual checks
 
@@ -147,7 +146,7 @@ The numbers match the groups of the list in AGENTS.md.
 
 | # | Steps | Expected |
 |---|---|---|
-| C1 | Open the console as admin and as customer | Screen appears through `/console-ws`; one session per server; suspending the server closes it within ~15 s |
+| C1 | Open the console from the server page | Screen appears through `/console-ws`; one session per server; suspending the server closes it within ~15 s |
 | C2 | Power: shutdown, start, reboot, stop | States change; a shutdown of a VM that ignores ACPI fails after 2 minutes and Stop works |
 | C3 | Server page "Guest agent" | *Reachable* on agent templates, *Not reachable* on a template without agent |
 | C4 | Reset root password, show it once, log in | New password works; old one does not; second "show" is refused |
@@ -186,7 +185,7 @@ in a browser, logins into the VM, DNS lookups and deployment.
   run (`php artisan test` stays offline; CI does not run it). Run it with
   `php artisan test --testsuite=Integration`.
 - A base `IntegrationTestCase` that **skips** unless all of these are set (in
-  `.env.testing.local`, never committed):
+  `panel/.env.integration`, never committed):
 
   | Variable | Example |
   |---|---|
@@ -242,5 +241,18 @@ deletes one PTR in the test zone.
    Run a single one directly (PowerShell:
    `$env:PROXMOX_INTEGRATION=1; php artisan test --testsuite=Integration --filter=GuestAgentTest`,
    bash: `PROXMOX_INTEGRATION=1 php artisan test --testsuite=Integration --filter=GuestAgentTest`).
-3. `PowerTest`, `TaskWaiterTest`, `ReinstallTest`, `DriftTest`, `ConsoleTicketTest`.
+3. ~~`PowerTest`, `TaskWaiterTest`, `ReinstallTest`, `DriftTest`, `ConsoleTicketTest`~~ —
+   written. Helpers to provision a server (`provisionServer()`, needs the spare address)
+   or adopt a clone of the test template (`adoptTestVm()`, no address needed) live in
+   `tests/Integration/Concerns/ManagesTestServers.php`.
+   - `PowerTest` adopts a clone and checks that adoption starts no Proxmox task and leaves
+     the config unchanged (B6), then start, shutdown (not forced), reboot of a stopped and
+     of a running VM, stop.
+   - `TaskWaiterTest` starts a shutdown, expects it in the active task list and waits for it.
+   - `ConsoleTicketTest` opens a console session on an adopted, running clone and redeems
+     the ticket once.
+   - `DriftTest` stops an adopted server and changes its cores, puts both back, clones an
+     unmanaged VM into the pool, then deletes the server's VM, syncing after each step.
+   - `ReinstallTest` (spare address) reinstalls a provisioned server and checks the VMID,
+     MAC, address, ipset, the guest agent and that a file from the old system is gone.
 4. Optional PowerDNS group.

@@ -6,6 +6,7 @@ use App\Domain\Infrastructure\PermissionChecker;
 use App\Models\Cluster;
 use App\Models\Server;
 use App\Proxmox\Data\VmResource;
+use App\Proxmox\Exceptions\ProxmoxRequestFailed;
 use App\Proxmox\ProxmoxClient;
 use App\Proxmox\ProxmoxClientFactory;
 use App\Rules\Host;
@@ -158,6 +159,26 @@ abstract class IntegrationTestCase extends TestCase
     }
 
     /**
+     * Wait until /cluster/resources shows the guest as expected: Proxmox
+     * refreshes it only every few seconds, so a sync right after a change
+     * can still read the old state.
+     *
+     * @param  callable(VmResource|null): bool  $expected
+     */
+    protected function waitForGuest(int $vmid, callable $expected, int $timeoutSeconds = 60): void
+    {
+        $deadline = time() + $timeoutSeconds;
+
+        while (! $expected($this->guest($vmid))) {
+            if (time() >= $deadline) {
+                $this->fail("/cluster/resources did not show the expected state of VM {$vmid} within {$timeoutSeconds} seconds.");
+            }
+
+            sleep(2);
+        }
+    }
+
+    /**
      * The first VMID from PROXMOX_TEST_VMID_FROM up that no guest uses.
      */
     protected function freeTestVmid(): int
@@ -174,8 +195,8 @@ abstract class IntegrationTestCase extends TestCase
     }
 
     /**
-     * Full-clone the test template into the pool, on the template's node, and
-     * register the clone for deletion. Returns its VMID.
+     * Full-clone the test template into the pool, on the template's node, with
+     * the guest agent enabled, and register the clone for deletion. Returns its VMID.
      */
     protected function cloneTestVm(string $name): int
     {
@@ -194,6 +215,9 @@ abstract class IntegrationTestCase extends TestCase
         $this->trackVm($vmid);
         $client->taskWaiter()->wait($upid, timeoutSeconds: 1800);
 
+        // Like CreateServerPipeline: servers always get the agent, whatever the template says.
+        $client->qemu($template->node)->updateConfig($vmid, ['agent' => 'enabled=1']);
+
         return $vmid;
     }
 
@@ -202,12 +226,25 @@ abstract class IntegrationTestCase extends TestCase
      */
     protected function waitForAgent(int $vmid, string $node, int $timeoutSeconds = 300): void
     {
-        $agent = $this->client()->guestAgent($node);
         $deadline = time() + $timeoutSeconds;
+        $lastError = null;
 
-        while (! $agent->ping($vmid)) {
+        // ping() hides why the agent does not answer; ask Proxmox directly to report it.
+        while (true) {
+            try {
+                $this->client()->post("/nodes/{$node}/qemu/{$vmid}/agent/ping");
+
+                return;
+            } catch (ProxmoxRequestFailed $e) {
+                $lastError = "HTTP {$e->status}: {$e->getMessage()}";
+            }
+
             if (time() >= $deadline) {
-                $this->fail("The guest agent of VM {$vmid} did not answer within {$timeoutSeconds} seconds. Does the template have qemu-guest-agent?");
+                $config = $this->client()->qemu($node)->config($vmid) ?? [];
+                $agent = is_string($config['agent'] ?? null) || is_int($config['agent'] ?? null) ? (string) $config['agent'] : 'not set';
+
+                $this->fail("The guest agent of VM {$vmid} did not answer within {$timeoutSeconds} seconds "
+                    ."(agent option: {$agent}; last answer: {$lastError}). Does the template have qemu-guest-agent installed and enabled?");
             }
 
             sleep(5);
