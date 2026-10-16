@@ -7,8 +7,10 @@ use App\Models\Cluster;
 use App\Proxmox\Data\VmResource;
 use App\Proxmox\ProxmoxClient;
 use App\Proxmox\ProxmoxClientFactory;
+use App\Rules\Host;
 use Dotenv\Dotenv;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Validator;
 use RuntimeException;
 use Tests\TestCase;
 use Throwable;
@@ -68,9 +70,11 @@ abstract class IntegrationTestCase extends TestCase
             $this->fail('PROXMOX_TEST_VMID_FROM must be at least '.self::MIN_VMID_FROM.'.');
         }
 
+        [$hosts, $port] = $this->hostsAndPort();
+
         $this->cluster = Cluster::factory()->create([
-            'hosts' => array_map(trim(...), explode(',', $this->setting('PROXMOX_TEST_HOST'))),
-            'port' => (int) ($this->settings['PROXMOX_TEST_PORT'] ?? 8006),
+            'hosts' => $hosts,
+            'port' => $port,
             'token_id' => $this->setting('PROXMOX_TEST_TOKEN_ID'),
             'token_secret' => $this->setting('PROXMOX_TEST_TOKEN_SECRET'),
             'verify_tls' => filter_var($this->settings['PROXMOX_TEST_VERIFY_TLS'] ?? 'true', FILTER_VALIDATE_BOOL),
@@ -177,6 +181,55 @@ abstract class IntegrationTestCase extends TestCase
         }
 
         $client->taskWaiter()->wait($qemu->destroy($vmid), timeoutSeconds: 600);
+    }
+
+    /**
+     * PROXMOX_TEST_HOST is stored like the cluster form stores hosts: bare
+     * names or IPs, the port separately. "pve:8006" and "https://pve:8006"
+     * are accepted too; a port there must agree with PROXMOX_TEST_PORT.
+     *
+     * @return array{list<string>, int}
+     */
+    private function hostsAndPort(): array
+    {
+        $configuredPort = ($this->settings['PROXMOX_TEST_PORT'] ?? '') !== '' ? (int) $this->settings['PROXMOX_TEST_PORT'] : null;
+        $hosts = [];
+        $ports = [];
+
+        foreach (array_filter(array_map(trim(...), explode(',', $this->setting('PROXMOX_TEST_HOST')))) as $entry) {
+            $value = preg_replace('#^https?://#i', '', $entry) ?? $entry;
+            $value = rtrim(explode('/', $value, 2)[0], '/');
+            $port = null;
+
+            if (preg_match('/^\[(.+)\](?::(\d+))?$/', $value, $match) === 1) {
+                // [IPv6] or [IPv6]:port
+                $value = $match[1];
+                $port = isset($match[2]) ? (int) $match[2] : null;
+            } elseif (substr_count($value, ':') === 1) {
+                [$value, $portText] = explode(':', $value);
+                $port = (int) $portText;
+            }
+
+            $validator = Validator::make(['host' => $value], ['host' => [new Host]]);
+
+            if ($validator->fails()) {
+                $this->fail("PROXMOX_TEST_HOST contains '{$entry}', which is not a hostname or an IP address.");
+            }
+
+            $hosts[] = $value;
+
+            if ($port !== null) {
+                $ports[] = $port;
+            }
+        }
+
+        $ports = array_values(array_unique([...$ports, ...($configuredPort !== null ? [$configuredPort] : [])]));
+
+        if (count($ports) > 1) {
+            $this->fail('PROXMOX_TEST_HOST and PROXMOX_TEST_PORT name different ports: '.implode(', ', $ports).'.');
+        }
+
+        return [$hosts, $ports[0] ?? 8006];
     }
 
     /**
