@@ -83,8 +83,9 @@ final readonly class PermissionChecker
             $requirements[] = ['/vms', 'Must not manage VMs outside the resource pool', [], ['VM.Allocate', 'VM.PowerMgmt', 'VM.Config.Disk']];
         }
 
-        // Templates must be clonable too — with a resource pool, that means they must be in it.
-        foreach ($cluster->proxmoxTemplates()->orderBy('vmid')->pluck('vmid') as $vmid) {
+        // Templates the panel clones (mapped to an OS template) must be clonable — with a
+        // resource pool, that means they must be in it. Other templates on the cluster are not the panel's business.
+        foreach ($cluster->proxmoxTemplates()->whereHas('osTemplates')->orderBy('vmid')->pluck('vmid') as $vmid) {
             $requirements[] = ["/vms/{$vmid}", 'Clone this template (it must be in the resource pool)', ['VM.Clone'], []];
         }
 

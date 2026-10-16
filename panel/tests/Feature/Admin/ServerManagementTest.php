@@ -8,6 +8,7 @@ use App\Enums\TaskStatus;
 use App\Enums\TaskType;
 use App\Models\Cluster;
 use App\Models\IpAddress;
+use App\Models\ProxmoxTemplate;
 use App\Models\Server;
 use App\Models\Task;
 use App\Models\User;
@@ -313,6 +314,24 @@ class ServerManagementTest extends AdminTestCase
             ->assertInertia(fn (Assert $page) => $page
                 ->where('permissionCheck.1.missing', fn ($missing) => in_array('VM.Monitor', [...$missing], true)
                     && ! in_array('VM.GuestAgent.Unrestricted', [...$missing], true)));
+    }
+
+    public function test_permission_check_ignores_templates_the_panel_does_not_use()
+    {
+        // A template on the cluster that no OS template is mapped to (e.g. outside the pool).
+        ProxmoxTemplate::query()->forceCreate([
+            'cluster_id' => $this->cluster->id,
+            'node_id' => $this->node->id,
+            'vmid' => 9100,
+            'name' => 'someone-elses-template',
+        ]);
+
+        $this->post(route('admin.clusters.permissions', $this->cluster));
+
+        $this->get(route('admin.clusters.show', $this->cluster))
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('permissionCheck', fn ($checks) => collect($checks)->pluck('path')->contains('/vms/9000')
+                    && ! collect($checks)->pluck('path')->contains('/vms/9100')));
     }
 
     public function test_permission_check_flags_root_equivalent_tokens()

@@ -4,6 +4,7 @@ namespace Tests\Integration;
 
 use App\Domain\Infrastructure\ClusterSynchronizer;
 use App\Domain\Infrastructure\PermissionChecker;
+use App\Models\OsTemplate;
 
 /**
  * The test token set up as in docs/guides/real-proxmox-verification.md must
@@ -14,8 +15,13 @@ class PermissionTest extends IntegrationTestCase
 {
     public function test_the_token_has_exactly_the_privileges_the_panel_asks_for()
     {
-        // The sync records the Proxmox version (which agent privilege) and the templates (clone rights).
+        // The sync records the Proxmox version (which agent privilege) and the templates.
         app(ClusterSynchronizer::class)->sync($this->cluster);
+
+        // Only templates mapped to an OS template are checked for clone rights: map the test template.
+        $template = $this->cluster->proxmoxTemplates()->where('vmid', $this->templateVmid())->first();
+        $this->assertNotNull($template, 'The test template was not synced.');
+        OsTemplate::factory()->create(['name' => 'Integration test OS'])->proxmoxTemplates()->attach($template);
 
         $results = app(PermissionChecker::class)->check($this->cluster->refresh());
         $this->assertNotEmpty($results);

@@ -455,8 +455,9 @@ Everything above was tested with faked HTTP only (`FakeProxmoxCluster`, `FakesPr
 
 **Proxmox API and permissions**
 - [ ] Token with exactly the privileges the permission check asks for (incl. `VM.Console`, `VM.GuestAgent.Unrestricted` on 9.x / `VM.Monitor` on 8.x) can do every operation, and the excess-privilege warning is right.
-- [ ] `/cluster/resources?type=vm` fields used by sync, adoption and drift: `pool`, `maxcpu`, `maxmem`, and whether `maxdisk` is the boot disk size.
-- [ ] `GET /nodes/{node}/tasks?vmid=&source=active` lists running tasks (`waitForVm`).
+- [ ] `/cluster/resources?type=vm` fields used by sync, adoption and drift: ~~`pool`, `maxcpu`, `maxmem`, `maxdisk` are present~~ (verified 2026-10-16, PVE 9.2.2, `ConnectionTest`); still open: whether `maxdisk` is the boot disk size.
+- [x] ~~`GET /nodes/{node}/tasks?vmid=&source=active` is accepted (`waitForVm`)~~ (verified 2026-10-16, PVE 9.2.2, `ConnectionTest`; listing a task that is really running is still open).
+- [x] ~~Cluster sync of nodes, storages, bridges and templates~~ (verified 2026-10-16, PVE 9.2.2, `ConnectionTest`).
 - [ ] Form-encoded POST/PUT with repeated keys (the client no longer uses Laravel's `asForm()`), e.g. `agent/exec` `command`.
 
 **Provisioning (Phases 1–2)**
