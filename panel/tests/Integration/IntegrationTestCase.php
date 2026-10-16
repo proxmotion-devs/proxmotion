@@ -82,6 +82,7 @@ abstract class IntegrationTestCase extends TestCase
         ]);
 
         $this->refuseRootEquivalentTokens();
+        $this->checkNodeAndPoolExist();
     }
 
     protected function tearDown(): void
@@ -230,6 +231,30 @@ abstract class IntegrationTestCase extends TestCase
         }
 
         return [$hosts, $ports[0] ?? 8006];
+    }
+
+    /**
+     * Wrong PROXMOX_TEST_NODE or PROXMOX_TEST_POOL values otherwise show up as
+     * confusing failures (missing privileges, "hostname lookup failed").
+     */
+    private function checkNodeAndPoolExist(): void
+    {
+        $nodes = array_map(fn ($node) => $node->name, $this->client()->nodes()->list());
+
+        if (! in_array($this->node(), $nodes, true)) {
+            $this->fail("PROXMOX_TEST_NODE is '{$this->node()}', but the nodes are: ".implode(', ', $nodes).'.');
+        }
+
+        $pools = $this->client()->get('/pools');
+        $poolIds = is_array($pools) ? array_values(array_filter(array_map(
+            fn ($pool) => is_array($pool) && is_string($pool['poolid'] ?? null) ? $pool['poolid'] : null,
+            $pools,
+        ))) : [];
+
+        if (! in_array($this->pool(), $poolIds, true)) {
+            $visible = $poolIds === [] ? 'none' : implode(', ', $poolIds);
+            $this->fail("PROXMOX_TEST_POOL is '{$this->pool()}', but that pool does not exist or the token cannot see it (pools it can see: {$visible}).");
+        }
     }
 
     /**
