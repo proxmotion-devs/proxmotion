@@ -97,6 +97,7 @@ final readonly class GuestScripts
             return false;
         }
 
+        $task->startStep($event->step());
         $client = $this->clients->forCluster($server->cluster);
         $agent = $client->guestAgent($server->node->name);
 
@@ -174,6 +175,8 @@ final readonly class GuestScripts
         }
 
         if ($events !== [] && $waitForAgent) {
+            // Waiting for the first boot can take minutes: show it as the first script's step.
+            $task->startStep($events[0]->step());
             $this->waitForAgent($server);
         }
 
@@ -241,7 +244,8 @@ final readonly class GuestScripts
     {
         $path = self::WINDOWS_DIR.'\\'.$event->name().'.ps1';
 
-        $agent->run($vmid, ['powershell.exe', '-NoProfile', '-NonInteractive', '-Command', 'New-Item -ItemType Directory -Force -Path \''.self::WINDOWS_DIR.'\' | Out-Null']);
+        // cmd starts much faster than PowerShell; "already exists" fails harmlessly.
+        $agent->run($vmid, ['cmd.exe', '/c', 'mkdir', self::WINDOWS_DIR]);
         $agent->writeFile($vmid, self::WINDOWS_DIR.'\\'.$event->name().'.json', self::json($inputs));
         $agent->writeFile($vmid, $path, $script);
 

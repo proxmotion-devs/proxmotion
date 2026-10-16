@@ -74,6 +74,7 @@ final readonly class ReinstallServerPipeline
         $server = $task->server;
         $agent = $this->clients->forCluster($server->cluster)->guestAgent($server->node->name);
         $deadline = Carbon::now()->addSeconds(self::AGENT_TIMEOUT_SECONDS);
+        $task->startStep('wait_agent');
 
         while (! $agent->ping($server->vmid)) {
             if (Carbon::now()->greaterThanOrEqualTo($deadline)) {

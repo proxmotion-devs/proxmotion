@@ -85,10 +85,24 @@ const stepRows = (task: TaskProgress) => {
         ...task.steps.map((step) => step.key),
     ];
 
-    return [...new Set(keys)].map((key) => ({
+    const rows = [...new Set(keys)].map((key) => ({
         key,
         step: done.get(key) ?? null,
+        active: false,
     }));
+
+    // One spinner: the step marked running, else the first one not done yet.
+    if (task.status === 'running') {
+        const active =
+            rows.find((row) => row.step?.status === 'running') ??
+            rows.find((row) => row.step?.status !== 'done');
+
+        if (active) {
+            active.active = true;
+        }
+    }
+
+    return rows;
 };
 </script>
 
@@ -125,7 +139,7 @@ const stepRows = (task: TaskProgress) => {
                         class="h-4 w-4 text-emerald-600"
                     />
                     <LoaderCircle
-                        v-else-if="task.status === 'running'"
+                        v-else-if="row.active"
                         class="h-4 w-4 animate-spin text-muted-foreground"
                     />
                     <CircleX
@@ -139,7 +153,7 @@ const stepRows = (task: TaskProgress) => {
                     <span
                         :class="{
                             'text-muted-foreground':
-                                row.step?.status !== 'done',
+                                row.step?.status !== 'done' && !row.active,
                         }"
                     >
                         {{ $t(stepLabels[row.key] ?? row.key) }}

@@ -103,6 +103,23 @@ class GuestScriptsTest extends TestCase
         $this->assertNotContains(['sh', '/usr/local/sbin/proxmotion-disk'], $this->commands());
     }
 
+    public function test_the_step_shows_as_running_while_the_script_runs()
+    {
+        $seen = null;
+        $this->proxmox->execHandler = function (array $command) use (&$seen) {
+            if ($command === ['sh', '/usr/local/sbin/proxmotion-disk']) {
+                $seen = collect(Task::query()->latest('id')->first()->steps)->firstWhere('key', 'guest_disk')['status'] ?? null;
+            }
+
+            return [0, '', ''];
+        };
+
+        $task = $this->grow();
+
+        $this->assertSame('running', $seen);
+        $this->assertSame('done', $this->step($task, 'guest_disk')['status']);
+    }
+
     public function test_without_an_agent_the_disk_step_says_what_to_do()
     {
         $this->proxmox->agentDown[$this->server->vmid] = true;
@@ -145,6 +162,7 @@ class GuestScriptsTest extends TestCase
         $this->assertSame(file_get_contents(resource_path('guest/windows/addresses.ps1')), $files['C:\\ProgramData\\Proxmotion\\addresses.ps1']);
         $this->assertCount(1, json_decode($files['C:\\ProgramData\\Proxmotion\\addresses.json'], true)['addresses']);
         $this->assertArrayNotHasKey('/etc/proxmotion/addresses.vars', $files);
+        $this->assertContains(['cmd.exe', '/c', 'mkdir', 'C:\\ProgramData\\Proxmotion'], $this->commands(), 'cmd starts faster than PowerShell.');
         $this->assertContains(
             ['powershell.exe', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', 'C:\\ProgramData\\Proxmotion\\disk.ps1'],
             $this->commands(),

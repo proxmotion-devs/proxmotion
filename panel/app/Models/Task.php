@@ -56,6 +56,18 @@ class Task extends Model
     }
 
     /**
+     * Record that a slow step started, so progress shows what is happening.
+     * completeStep() replaces the entry.
+     */
+    public function startStep(string $key): void
+    {
+        $steps = array_values(array_filter($this->steps, fn (array $step) => $step['key'] !== $key));
+        $steps[] = ['key' => $key, 'status' => 'running', 'message' => null, 'finished_at' => null];
+
+        $this->forceFill(['steps' => $steps])->save();
+    }
+
+    /**
      * Record that a step finished (or was skipped because it was already done).
      */
     public function completeStep(string $key, ?string $message = null): void
