@@ -1,12 +1,5 @@
 <script setup lang="ts">
-import {
-    Head,
-    Link,
-    router,
-    setLayoutProps,
-    usePage,
-    usePoll,
-} from '@inertiajs/vue3';
+import { Head, Link, router, setLayoutProps, usePoll } from '@inertiajs/vue3';
 import { Eye, Monitor, Pause, Play, RotateCcw } from '@lucide/vue';
 import { computed, watch } from 'vue';
 import ConfirmDelete from '@/components/admin/ConfirmDelete.vue';
@@ -17,7 +10,8 @@ import PowerControls from '@/components/servers/PowerControls.vue';
 import ResetPasswordButton from '@/components/servers/ResetPasswordButton.vue';
 import TaskList from '@/components/servers/TaskList.vue';
 import { Button } from '@/components/ui/button';
-import { formatDateTime, formatMib, formatTraffic } from '@/lib/format';
+import { useDateTime } from '@/composables/useDateTime';
+import { formatMib, formatTraffic } from '@/lib/format';
 import { show as showCluster } from '@/routes/admin/clusters';
 import { show as showPool } from '@/routes/admin/ip-pools';
 import {
@@ -85,7 +79,7 @@ setLayoutProps({
     ],
 });
 
-const page = usePage();
+const { formatDateTime } = useDateTime();
 
 // Refresh while a task runs, so progress and the power state show up live.
 const { start, stop } = usePoll(
@@ -314,7 +308,6 @@ const modelLabel =
                     {{
                         formatDateTime(
                             server.provisioned_at ?? server.created_at,
-                            page.props.locale,
                         )
                     }}
                 </dd>

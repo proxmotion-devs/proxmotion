@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Head, Link, usePage } from '@inertiajs/vue3';
+import { Head, Link } from '@inertiajs/vue3';
 import { Plus, RefreshCw } from '@lucide/vue';
 import { ref } from 'vue';
 import ClusterFormDialog from '@/components/admin/ClusterFormDialog.vue';
@@ -8,7 +8,7 @@ import StatusBadge from '@/components/admin/StatusBadge.vue';
 import Heading from '@/components/Heading.vue';
 import { useClusterSync } from '@/composables/useClusterSync';
 import { Button } from '@/components/ui/button';
-import { formatDateTime } from '@/lib/format';
+import { useDateTime } from '@/composables/useDateTime';
 import { destroy, index, show } from '@/routes/admin/clusters';
 import { index as locationsIndex } from '@/routes/admin/locations';
 import type { Cluster, LocationOption } from '@/types/admin';
@@ -19,7 +19,7 @@ defineOptions({
 
 defineProps<{ clusters: Cluster[]; locations: LocationOption[] }>();
 
-const page = usePage();
+const { formatDateTime } = useDateTime();
 const dialogOpen = ref(false);
 const { syncing, startSync } = useClusterSync();
 </script>
@@ -127,12 +127,7 @@ const { syncing, startSync } = useClusterSync();
                                 </div>
                             </template>
                             <span v-else>
-                                {{
-                                    formatDateTime(
-                                        cluster.last_synced_at,
-                                        page.props.locale,
-                                    )
-                                }}
+                                {{ formatDateTime(cluster.last_synced_at) }}
                             </span>
                         </td>
                         <td class="px-4 py-3">

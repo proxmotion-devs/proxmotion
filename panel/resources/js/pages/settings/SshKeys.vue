@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Head, useForm, usePage } from '@inertiajs/vue3';
+import { Head, useForm } from '@inertiajs/vue3';
 import { KeyRound } from '@lucide/vue';
 import ConfirmDelete from '@/components/admin/ConfirmDelete.vue';
 import FormField from '@/components/admin/FormField.vue';
@@ -7,7 +7,7 @@ import Heading from '@/components/Heading.vue';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Spinner } from '@/components/ui/spinner';
-import { formatDateTime } from '@/lib/format';
+import { useDateTime } from '@/composables/useDateTime';
 import { destroy, index, store } from '@/routes/ssh-keys';
 
 defineOptions({
@@ -31,7 +31,7 @@ defineProps<{
     }[];
 }>();
 
-const page = usePage();
+const { formatDateTime } = useDateTime();
 
 const form = useForm({
     name: '',
@@ -80,10 +80,7 @@ const submit = () =>
                         <p class="text-xs text-muted-foreground">
                             {{
                                 $t('Added :time', {
-                                    time: formatDateTime(
-                                        key.created_at,
-                                        page.props.locale,
-                                    ),
+                                    time: formatDateTime(key.created_at),
                                 })
                             }}
                         </p>

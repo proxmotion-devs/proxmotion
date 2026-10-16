@@ -1,11 +1,5 @@
 <script setup lang="ts">
-import {
-    Head,
-    router,
-    setLayoutProps,
-    usePage,
-    usePoll,
-} from '@inertiajs/vue3';
+import { Head, router, setLayoutProps, usePoll } from '@inertiajs/vue3';
 import { Eye, Monitor } from '@lucide/vue';
 import { computed, ref, watch } from 'vue';
 import ServerStatusBadge from '@/components/admin/ServerStatusBadge.vue';
@@ -14,7 +8,8 @@ import PowerControls from '@/components/servers/PowerControls.vue';
 import ResetPasswordButton from '@/components/servers/ResetPasswordButton.vue';
 import TaskList from '@/components/servers/TaskList.vue';
 import { Button } from '@/components/ui/button';
-import { formatDateTime, formatMib, formatTraffic } from '@/lib/format';
+import { useDateTime } from '@/composables/useDateTime';
+import { formatMib, formatTraffic } from '@/lib/format';
 import { dashboard } from '@/routes';
 import {
     console as openConsole,
@@ -58,7 +53,7 @@ setLayoutProps({
     ],
 });
 
-const page = usePage();
+const { formatDateTime } = useDateTime();
 
 // Refresh while a task runs, so progress and the power state show up live.
 const { start, stop } = usePoll(
@@ -179,7 +174,7 @@ watch(
             <div>
                 <dt class="text-muted-foreground">{{ $t('Created') }}</dt>
                 <dd>
-                    {{ formatDateTime(server.created_at, page.props.locale) }}
+                    {{ formatDateTime(server.created_at) }}
                 </dd>
             </div>
             <div class="flex flex-col gap-1 sm:col-span-2">

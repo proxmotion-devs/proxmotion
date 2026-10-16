@@ -1,4 +1,5 @@
 import { createInertiaApp } from '@inertiajs/vue3';
+import { provideSSRWidth } from '@vueuse/core';
 import { trans } from 'laravel-vue-i18n';
 import { initializeTheme } from '@/composables/useAppearance';
 import AppLayout from '@/layouts/AppLayout.vue';
@@ -27,6 +28,11 @@ void createInertiaApp({
     },
     withApp: (app, { page }) => {
         installI18n(app, page.props.locale);
+
+        // The server cannot know the viewport, so media queries (the sidebar's
+        // mobile mode) are evaluated against a desktop width during SSR and
+        // hydration; the real width takes over once the app has mounted.
+        provideSSRWidth(1024, app);
 
         app.directive('focus', {
             mounted: (el: HTMLElement, shouldFocus) => {

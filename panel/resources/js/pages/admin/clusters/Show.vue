@@ -1,11 +1,5 @@
 <script setup lang="ts">
-import {
-    Head,
-    router,
-    setLayoutProps,
-    useForm,
-    usePage,
-} from '@inertiajs/vue3';
+import { Head, router, setLayoutProps, useForm } from '@inertiajs/vue3';
 import {
     AlertTriangle,
     CircleCheck,
@@ -26,7 +20,8 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { formatBytes, formatDateTime, percentage } from '@/lib/format';
+import { useDateTime } from '@/composables/useDateTime';
+import { formatBytes, percentage } from '@/lib/format';
 import { optionalNumber } from '@/lib/forms';
 import type { OptionalNumber } from '@/lib/forms';
 import { destroy, index, permissions, show } from '@/routes/admin/clusters';
@@ -59,7 +54,7 @@ setLayoutProps({
     ],
 });
 
-const page = usePage();
+const { formatDateTime } = useDateTime();
 const editOpen = ref(false);
 
 const statusTone: Record<NodeStatus, 'success' | 'danger' | 'neutral'> = {
@@ -201,12 +196,7 @@ const submitNode = () => {
             <div>
                 <dt class="text-muted-foreground">{{ $t('Last sync') }}</dt>
                 <dd class="font-medium">
-                    {{
-                        formatDateTime(
-                            cluster.last_synced_at,
-                            page.props.locale,
-                        )
-                    }}
+                    {{ formatDateTime(cluster.last_synced_at) }}
                 </dd>
             </div>
             <div class="sm:col-span-2">

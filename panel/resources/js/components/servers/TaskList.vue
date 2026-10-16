@@ -1,8 +1,7 @@
 <script setup lang="ts">
-import { usePage } from '@inertiajs/vue3';
 import { CircleCheck, CircleDashed, CircleX, LoaderCircle } from '@lucide/vue';
 import StatusBadge from '@/components/admin/StatusBadge.vue';
-import { formatDateTime } from '@/lib/format';
+import { useDateTime } from '@/composables/useDateTime';
 import type { TaskProgress, TaskStatus, TaskType } from '@/types/admin';
 
 /**
@@ -11,7 +10,7 @@ import type { TaskProgress, TaskStatus, TaskType } from '@/types/admin';
  */
 defineProps<{ tasks: TaskProgress[] }>();
 
-const page = usePage();
+const { formatDateTime } = useDateTime();
 
 // English keys, translated in the template.
 const taskTypeLabels: Record<TaskType, string> = {
@@ -92,7 +91,7 @@ const stepRows = (task: TaskProgress) => {
                     />
                 </div>
                 <span class="text-xs text-muted-foreground">
-                    {{ formatDateTime(task.created_at, page.props.locale) }}
+                    {{ formatDateTime(task.created_at) }}
                 </span>
             </div>
 

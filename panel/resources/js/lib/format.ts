@@ -45,10 +45,14 @@ export function percentage(
     return Math.round((used / total) * 100);
 }
 
-/** Localised date and time, e.g. "15 Oct 2026, 21:03". */
+/**
+ * Localised date and time, e.g. "15 Oct 2026, 21:03", in the browser's time
+ * zone unless `timeZone` is given. Components use `useDateTime()` instead.
+ */
 export function formatDateTime(
     iso: string | null | undefined,
     locale: string,
+    timeZone?: string,
 ): string {
     if (!iso) {
         return '—';
@@ -57,5 +61,6 @@ export function formatDateTime(
     return new Intl.DateTimeFormat(locale, {
         dateStyle: 'medium',
         timeStyle: 'short',
+        timeZone,
     }).format(new Date(iso));
 }
