@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace App\Domain\Servers;
 
+use App\Enums\ApiScope;
 use App\Enums\ServerStatus;
+use App\Models\ApiToken;
 use App\Models\AuditLog;
 use App\Models\Server;
 use App\Models\User;
@@ -33,7 +35,7 @@ final readonly class ConsoleSessions
     /**
      * @throws ProxmoxException when Proxmox refuses (e.g. the VM is not running)
      */
-    public function open(Server $server, User $user, ?string $ipAddress = null): ConsoleTicket
+    public function open(Server $server, User|ApiToken $actor, ?string $ipAddress = null): ConsoleTicket
     {
         $server->loadMissing(['cluster', 'node']);
 
@@ -63,10 +65,14 @@ final readonly class ConsoleSessions
             ],
         ])), (int) config('proxmotion.console.ticket_seconds'));
 
-        $this->cache->put($this->sessionKey($session), ['server_id' => $server->id, 'user_id' => $user->id], $expiresAt);
+        $this->cache->put($this->sessionKey($session), [
+            'server_id' => $server->id,
+            // Admins open consoles in the panel; customers through a link from the billing API (docs/adr/0008).
+            $actor instanceof User ? 'user_id' : 'api_token_id' => $actor->id,
+        ], $expiresAt);
         $this->cache->put($this->currentSessionKey($server), $session, $expiresAt);
 
-        AuditLog::record('console.opened', $user, $server, ['hostname' => $server->hostname], $ipAddress);
+        AuditLog::record('console.opened', $actor, $server, ['hostname' => $server->hostname], $ipAddress);
 
         return new ConsoleTicket($ticket, $vnc->password, $expiresAt);
     }
@@ -93,25 +99,29 @@ final readonly class ConsoleSessions
 
     /**
      * Whether a session may continue: it has not expired, it is still the
-     * newest session of its server, the server is active and the user may
-     * still open its console.
+     * newest session of its server, the server is active, and the user may
+     * still open its console (or the API token that issued the link is still
+     * usable for consoles).
      */
     public function isActive(string $session): bool
     {
         $state = $this->cache->get($this->sessionKey($session));
 
-        if (! is_array($state) || ! is_int($state['server_id'] ?? null) || ! is_int($state['user_id'] ?? null)) {
+        if (! is_array($state) || ! is_int($state['server_id'] ?? null)) {
             return false;
         }
 
         $server = Server::query()->find($state['server_id']);
-        $user = User::query()->find($state['user_id']);
 
-        if ($server === null || $user === null || $this->cache->get($this->currentSessionKey($server)) !== $session) {
+        if ($server === null || $server->status !== ServerStatus::Active || $this->cache->get($this->currentSessionKey($server)) !== $session) {
             return false;
         }
 
-        return $server->status === ServerStatus::Active && $user->can('console', $server);
+        if (is_int($state['user_id'] ?? null)) {
+            return User::query()->find($state['user_id'])?->can('console', $server) ?? false;
+        }
+
+        return ApiToken::usableFor($state['api_token_id'] ?? null, ApiScope::ServersSecrets) !== null;
     }
 
     private function maxMinutes(): int

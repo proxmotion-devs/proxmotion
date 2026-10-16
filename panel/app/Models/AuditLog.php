@@ -15,6 +15,7 @@ use Illuminate\Support\Carbon;
  *
  * @property int $id
  * @property int|null $user_id
+ * @property int|null $api_token_id
  * @property string $action
  * @property string|null $subject_type
  * @property int|null $subject_id
@@ -40,11 +41,12 @@ class AuditLog extends Model
     /**
      * @param  array<string, mixed>  $properties
      */
-    public static function record(string $action, ?User $user, ?Model $subject = null, array $properties = [], ?string $ipAddress = null): self
+    public static function record(string $action, User|ApiToken|null $actor, ?Model $subject = null, array $properties = [], ?string $ipAddress = null): self
     {
         $entry = new self;
         $entry->forceFill([
-            'user_id' => $user?->id,
+            'user_id' => $actor instanceof User ? $actor->id : null,
+            'api_token_id' => $actor instanceof ApiToken ? $actor->id : null,
             'action' => $action,
             'subject_type' => $subject?->getMorphClass(),
             'subject_id' => $subject?->getKey(),
@@ -61,6 +63,14 @@ class AuditLog extends Model
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
+    }
+
+    /**
+     * @return BelongsTo<ApiToken, $this>
+     */
+    public function apiToken(): BelongsTo
+    {
+        return $this->belongsTo(ApiToken::class);
     }
 
     /**

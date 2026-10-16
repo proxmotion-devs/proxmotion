@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Domain\Servers;
 
 use App\Enums\TaskType;
+use App\Models\ApiToken;
 use App\Models\AuditLog;
 use App\Models\OsTemplate;
 use App\Models\Server;
@@ -49,7 +50,7 @@ final readonly class ServerReinstaller
      *
      * @throws ProvisioningException when another task is still running for the server
      */
-    public function request(Server $server, OsTemplate $osTemplate, array $sshKeys, User $actor, ?string $ipAddress): Task
+    public function request(Server $server, OsTemplate $osTemplate, array $sshKeys, User|ApiToken $actor, ?string $ipAddress): Task
     {
         return DB::transaction(function () use ($server, $osTemplate, $sshKeys, $actor, $ipAddress) {
             $server->forceFill([

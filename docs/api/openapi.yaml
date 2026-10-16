@@ -1,0 +1,666 @@
+openapi: 3.1.0
+info:
+  title: Proxmotion Billing API
+  version: 1.0.0
+  description: |
+    The API billing systems (WHMCS, WISECP, …) use to create and manage VPS on Proxmotion.
+    Design: docs/adr/0007 and docs/adr/0008.
+
+    - **Authentication:** `Authorization: Bearer pmx_…`. Tokens are created by an administrator
+      under *Admin → API tokens*, have scopes and may be limited to IP addresses.
+    - **Asynchronous operations:** everything that changes Proxmox returns `202` with a task.
+      Poll `GET /tasks/{id}` until `status` is `succeeded` or `failed`.
+    - **Idempotency:** write requests may send `Idempotency-Key`. Repeating a request with the
+      same key returns the first answer (`Idempotent-Replayed: true`) instead of acting again.
+    - **Rate limit:** 120 requests per minute and token; 20 failed authentications per minute
+      and address.
+    - **Units:** memory and disk in MiB, traffic in bytes, port speed in Mbps.
+    - Version 1 only ever gets new fields and endpoints, never breaking changes.
+  license:
+    name: AGPL-3.0-only
+    url: https://www.gnu.org/licenses/agpl-3.0.html
+servers:
+  - url: https://panel.example.com/api/v1
+security:
+  - bearer: []
+tags:
+  - name: Catalog
+  - name: Servers
+  - name: Tasks
+
+paths:
+  /packages:
+    get:
+      tags: [Catalog]
+      summary: Active packages
+      description: 'Scope: `catalog:read`.'
+      operationId: listPackages
+      responses:
+        '200':
+          description: Packages
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: { type: array, items: { $ref: '#/components/schemas/Package' } }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /locations:
+    get:
+      tags: [Catalog]
+      summary: Locations
+      description: 'Scope: `catalog:read`.'
+      operationId: listLocations
+      responses:
+        '200':
+          description: Locations
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: { type: array, items: { $ref: '#/components/schemas/Location' } }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /os-templates:
+    get:
+      tags: [Catalog]
+      summary: Active OS templates
+      description: 'Scope: `catalog:read`.'
+      operationId: listOsTemplates
+      responses:
+        '200':
+          description: OS templates
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: { type: array, items: { $ref: '#/components/schemas/OsTemplate' } }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /servers:
+    get:
+      tags: [Servers]
+      summary: List or find servers
+      description: 'Scope: `servers:read`. 50 per page. `power_state` is not included here.'
+      operationId: listServers
+      parameters:
+        - { name: external_id, in: query, schema: { type: string }, description: Service id in the billing system }
+        - { name: external_client_id, in: query, schema: { type: string }, description: Customer id in the billing system }
+        - { name: status, in: query, schema: { $ref: '#/components/schemas/ServerStatus' } }
+        - { name: page, in: query, schema: { type: integer, minimum: 1 } }
+      responses:
+        '200':
+          description: A page of servers
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, links, meta]
+                properties:
+                  data: { type: array, items: { $ref: '#/components/schemas/Server' } }
+                  links: { type: object }
+                  meta:
+                    type: object
+                    properties:
+                      current_page: { type: integer }
+                      last_page: { type: integer }
+                      per_page: { type: integer }
+                      total: { type: integer }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+    post:
+      tags: [Servers]
+      summary: Create a server
+      description: |
+        Scope: `servers:write`. Resources come from the package; `resources` may override them
+        (configurable options). Placement, VMID and addresses are reserved before the answer; the
+        installation runs as a task. The initial root password is fetched once with
+        `GET /servers/{id}/password`.
+      operationId: createServer
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateServer' }
+      responses:
+        '202': { $ref: '#/components/responses/TaskAccepted' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422':
+          description: |
+            Invalid request (`errors` per field), or the server cannot be placed (`message` only:
+            no capacity, no free addresses, template missing in the location).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ValidationError' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+
+  /servers/{server}:
+    parameters:
+      - $ref: '#/components/parameters/Server'
+    get:
+      tags: [Servers]
+      summary: Show a server
+      description: 'Scope: `servers:read`. Includes the live `power_state` of active servers.'
+      operationId: showServer
+      responses:
+        '200':
+          description: The server
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: { $ref: '#/components/schemas/Server' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [Servers]
+      summary: Terminate a server
+      description: |
+        Scope: `servers:write`. Deletes the VM and its disks and releases the addresses. The
+        server stays visible with status `terminated`. Allowed for `active`, `suspended` and
+        `error` servers.
+      operationId: terminateServer
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '202': { $ref: '#/components/responses/TaskAccepted' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /servers/{server}/suspend:
+    parameters:
+      - $ref: '#/components/parameters/Server'
+    post:
+      tags: [Servers]
+      summary: Suspend an active server
+      description: 'Scope: `servers:write`. Shuts the VM down and keeps it stopped.'
+      operationId: suspendServer
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason: { type: [string, 'null'], maxLength: 255, description: Shown to administrators }
+      responses:
+        '202': { $ref: '#/components/responses/TaskAccepted' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /servers/{server}/unsuspend:
+    parameters:
+      - $ref: '#/components/parameters/Server'
+    post:
+      tags: [Servers]
+      summary: Unsuspend a suspended server
+      description: 'Scope: `servers:write`. Starts the VM again.'
+      operationId: unsuspendServer
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '202': { $ref: '#/components/responses/TaskAccepted' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /servers/{server}/power:
+    parameters:
+      - $ref: '#/components/parameters/Server'
+    post:
+      tags: [Servers]
+      summary: Power action
+      description: |
+        Scope: `servers:write`. Active servers only. `shutdown` asks the guest and is never
+        forced (the task fails after 3 minutes if the guest ignores it; use `stop`). `reboot`
+        of a stopped VM starts it. Actions that match the current state do nothing.
+      operationId: powerServer
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [action]
+              properties:
+                action: { type: string, enum: [start, shutdown, stop, reboot] }
+      responses:
+        '202': { $ref: '#/components/responses/TaskAccepted' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /servers/{server}/reinstall:
+    parameters:
+      - $ref: '#/components/parameters/Server'
+    post:
+      tags: [Servers]
+      summary: Reinstall the operating system
+      description: |
+        Scope: `servers:write`. Active servers only. **Wipes the disks**; ask the customer to
+        confirm first. VMID, addresses and MAC address stay the same. A new root password is
+        generated and can be fetched once with `GET /servers/{id}/password`.
+      operationId: reinstallServer
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [os_template]
+              properties:
+                os_template: { type: string, format: uuid, description: An OS template available on the server's cluster }
+                ssh_keys: { $ref: '#/components/schemas/SshKeys' }
+      responses:
+        '202': { $ref: '#/components/responses/TaskAccepted' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /servers/{server}/password:
+    parameters:
+      - $ref: '#/components/parameters/Server'
+    post:
+      tags: [Servers]
+      summary: Reset the root password
+      description: |
+        Scope: `servers:write`. Active servers only. Sets a new random password through the QEMU
+        guest agent; fetch it once with `GET`.
+      operationId: resetServerPassword
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '202': { $ref: '#/components/responses/TaskAccepted' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+    get:
+      tags: [Servers]
+      summary: Fetch the current root password once
+      description: |
+        Scope: `servers:secrets`. Returns the initial or newly reset root password the first time
+        it is asked for (see `root_password_available`), `410` afterwards. Do not store it in the
+        billing system longer than needed to show it to the customer.
+      operationId: fetchServerPassword
+      responses:
+        '200':
+          description: The password
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    required: [root_password]
+                    properties:
+                      root_password: { type: string }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '410':
+          description: Already fetched; reset it to get a new one.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /servers/{server}/rdns:
+    parameters:
+      - $ref: '#/components/parameters/Server'
+    post:
+      tags: [Servers]
+      summary: Set or remove the reverse DNS of an address
+      description: |
+        Scope: `servers:write`. Active servers only, and only their own public addresses. An
+        empty `hostname` removes the PTR. Pools may require the hostname to resolve to the
+        address first. Publishing to DNS happens shortly after the answer.
+      operationId: setServerRdns
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [address]
+              properties:
+                address: { type: string, examples: ['203.0.113.10'] }
+                hostname: { type: [string, 'null'], maxLength: 253, examples: [mail.example.com] }
+      responses:
+        '200':
+          description: The PTR the panel now has for the address
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    required: [address, ptr]
+                    properties:
+                      address: { type: string }
+                      ptr: { type: [string, 'null'] }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /servers/{server}/console:
+    parameters:
+      - $ref: '#/components/parameters/Server'
+    post:
+      tags: [Servers]
+      summary: Console link for the customer's browser
+      description: |
+        Scope: `servers:secrets`. Active servers only. Returns a signed link that works once and
+        only within 60 seconds; open it in the customer's browser (new window or tab). It opens
+        the noVNC console of this server without a panel login. Request a new link every time.
+      operationId: createConsoleLink
+      responses:
+        '201':
+          description: The link
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    required: [url, expires_at]
+                    properties:
+                      url: { type: string, format: uri }
+                      expires_at: { type: string, format: date-time }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /tasks/{task}:
+    parameters:
+      - name: task
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      tags: [Tasks]
+      summary: Task status
+      description: 'Scope: `servers:read`. Poll every few seconds while `status` is `queued` or `running`.'
+      operationId: showTask
+      responses:
+        '200':
+          description: The task
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: { $ref: '#/components/schemas/Task' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+components:
+  securitySchemes:
+    bearer:
+      type: http
+      scheme: bearer
+      description: 'An API token: `pmx_` followed by 48 characters.'
+
+  parameters:
+    Server:
+      name: server
+      in: path
+      required: true
+      description: The server's `id` (UUID). Find it by service id with `GET /servers?external_id=`.
+      schema: { type: string, format: uuid }
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      description: |
+        1–255 visible ASCII characters, unique per operation (e.g. `whmcs-service-123-create`).
+        Kept for 24 hours per token. Same key and same request: the first answer is returned
+        again. Same key and another request: `422`. First request still running: `409`.
+        Server errors (`5xx`) are not kept, so the request may be retried with the same key.
+      schema: { type: string, minLength: 1, maxLength: 255 }
+
+  responses:
+    TaskAccepted:
+      description: The operation was queued.
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [data]
+            properties:
+              data: { $ref: '#/components/schemas/Task' }
+    Unauthenticated:
+      description: Missing, unknown, revoked or expired token.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Forbidden:
+      description: The token lacks the scope, or may not be used from this address.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    NotFound:
+      description: No such server or task.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Conflict:
+      description: |
+        Not possible in the server's current status, another task is still running for the
+        server, or a request with the same Idempotency-Key is still being processed.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    ValidationError:
+      description: The request is invalid.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ValidationError' }
+    TooManyRequests:
+      description: Rate limit reached; see `Retry-After`.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Unavailable:
+      description: Proxmox could not be reached. Try again later.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+
+  schemas:
+    Error:
+      type: object
+      required: [message]
+      properties:
+        message: { type: string }
+    ValidationError:
+      type: object
+      required: [message]
+      properties:
+        message: { type: string }
+        errors:
+          type: object
+          additionalProperties: { type: array, items: { type: string } }
+    NetworkModel:
+      type: string
+      enum: [bridged, routed, nat]
+      description: '`nat` is not supported yet.'
+    ServerStatus:
+      type: string
+      enum: [pending, provisioning, active, suspended, reinstalling, terminating, terminated, error]
+    SshKeys:
+      type: array
+      maxItems: 20
+      items: { type: string, maxLength: 16384 }
+      description: OpenSSH public keys (ed25519, ECDSA, RSA ≥ 2048 bits; no DSA). An item may hold several lines.
+    Package:
+      type: object
+      required: [id, name, cpu_cores, memory_mib, disk_mib, ipv4_count, ipv6_count, port_speed_mbps, traffic_bytes, network_models]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        cpu_cores: { type: integer }
+        memory_mib: { type: integer }
+        disk_mib: { type: integer }
+        ipv4_count: { type: integer }
+        ipv6_count: { type: integer }
+        port_speed_mbps: { type: [integer, 'null'] }
+        traffic_bytes: { type: [integer, 'null'] }
+        network_models: { type: array, items: { $ref: '#/components/schemas/NetworkModel' } }
+    Location:
+      type: object
+      required: [id, name, code, country_code]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        code: { type: string }
+        country_code: { type: [string, 'null'] }
+    OsTemplate:
+      type: object
+      required: [id, name, family, version]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        family: { type: string, examples: [ubuntu] }
+        version: { type: string, examples: ['24.04'] }
+    CreateServer:
+      type: object
+      required: [external_id, package, location, os_template, hostname]
+      properties:
+        external_id: { type: string, maxLength: 191, description: Service id in the billing system; unique }
+        external_client_id: { type: [string, 'null'], maxLength: 191, description: Customer id in the billing system }
+        package: { type: string, format: uuid }
+        location: { type: string, format: uuid }
+        os_template: { type: string, format: uuid }
+        network_model: { description: 'Default: the first model the package allows.', oneOf: [{ $ref: '#/components/schemas/NetworkModel' }, { type: 'null' }] }
+        hostname: { type: string, maxLength: 253, examples: [web1.example.com] }
+        root_password: { type: [string, 'null'], minLength: 12, maxLength: 128, description: 'Empty: a random password.' }
+        ssh_keys: { $ref: '#/components/schemas/SshKeys' }
+        resources:
+          type: [object, 'null']
+          description: Overrides of the package's resources; each is optional.
+          properties:
+            cpu_cores: { type: integer, minimum: 1, maximum: 512 }
+            memory_mib: { type: integer, minimum: 128, maximum: 4194304 }
+            disk_mib: { type: integer, minimum: 1024, maximum: 67108864 }
+            ipv4_count: { type: integer, minimum: 0, maximum: 64 }
+            ipv6_count: { type: integer, minimum: 0, maximum: 64 }
+            port_speed_mbps: { type: integer, minimum: 1, maximum: 400000 }
+            traffic_bytes: { type: integer, minimum: 1 }
+    Server:
+      type: object
+      required: [id, external_id, external_client_id, hostname, status, suspension_reason, network_model, package, location, os_template, resources, addresses, root_password_available, created_at, provisioned_at, terminated_at]
+      properties:
+        id: { type: string, format: uuid }
+        external_id: { type: [string, 'null'] }
+        external_client_id: { type: [string, 'null'] }
+        hostname: { type: string }
+        status: { $ref: '#/components/schemas/ServerStatus' }
+        suspension_reason: { type: [string, 'null'] }
+        power_state:
+          type: [string, 'null']
+          description: Only on `GET /servers/{id}`. `running`, `stopped`, …; null when the server is not active or Proxmox could not be asked.
+        network_model: { $ref: '#/components/schemas/NetworkModel' }
+        package:
+          type: [object, 'null']
+          properties: { id: { type: string, format: uuid }, name: { type: string } }
+        location:
+          type: object
+          properties: { id: { type: string, format: uuid }, name: { type: string } }
+        os_template:
+          type: [object, 'null']
+          properties: { id: { type: string, format: uuid }, name: { type: string } }
+        resources:
+          type: object
+          required: [cpu_cores, memory_mib, disk_mib, port_speed_mbps, traffic_bytes]
+          properties:
+            cpu_cores: { type: integer }
+            memory_mib: { type: integer }
+            disk_mib: { type: integer }
+            port_speed_mbps: { type: [integer, 'null'] }
+            traffic_bytes: { type: [integer, 'null'] }
+        addresses:
+          type: array
+          items:
+            type: object
+            required: [address, version, prefix, gateway, ptr]
+            properties:
+              address: { type: string }
+              version: { type: integer, enum: [4, 6] }
+              prefix: { type: integer, description: As configured in the guest (routed IPv4 addresses are /32) }
+              gateway: { type: [string, 'null'] }
+              ptr: { type: [string, 'null'] }
+        root_password_available: { type: boolean, description: A new root password can be fetched once }
+        created_at: { type: [string, 'null'], format: date-time }
+        provisioned_at: { type: [string, 'null'], format: date-time }
+        terminated_at: { type: [string, 'null'], format: date-time }
+    Task:
+      type: object
+      required: [id, type, status, server, steps, error, created_at, started_at, finished_at]
+      properties:
+        id: { type: string, format: uuid }
+        type: { type: string, enum: [create, suspend, unsuspend, terminate, adopt, start, shutdown, stop, reboot, reset_password, reinstall] }
+        status: { type: string, enum: [queued, running, succeeded, failed] }
+        server:
+          type: object
+          required: [id, external_id, status]
+          properties:
+            id: { type: string, format: uuid }
+            external_id: { type: [string, 'null'] }
+            status: { $ref: '#/components/schemas/ServerStatus' }
+        steps:
+          type: array
+          items:
+            type: object
+            properties:
+              key: { type: string }
+              status: { type: string }
+              message: { type: [string, 'null'] }
+        error: { type: [string, 'null'] }
+        created_at: { type: [string, 'null'], format: date-time }
+        started_at: { type: [string, 'null'], format: date-time }
+        finished_at: { type: [string, 'null'], format: date-time }

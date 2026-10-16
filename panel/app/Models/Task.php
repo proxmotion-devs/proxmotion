@@ -20,6 +20,7 @@ use Illuminate\Support\Carbon;
  * @property string $uuid
  * @property int $server_id
  * @property int|null $user_id
+ * @property int|null $api_token_id
  * @property TaskType $type
  * @property TaskStatus $status
  * @property list<array{key: string, status: string, message: string|null, finished_at: string|null}> $steps

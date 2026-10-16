@@ -6,6 +6,7 @@ namespace App\Domain\Networking\ReverseDns;
 
 use App\Jobs\PublishPtr;
 use App\Jobs\RemovePtr;
+use App\Models\ApiToken;
 use App\Models\AuditLog;
 use App\Models\IpAddress;
 use App\Models\Server;
@@ -20,7 +21,7 @@ final class ReverseDns
     /**
      * Set (or with null, remove) the PTR of an address.
      */
-    public function update(IpAddress $address, ?string $hostname, User $user, ?string $ipAddress): void
+    public function update(IpAddress $address, ?string $hostname, User|ApiToken $actor, ?string $ipAddress): void
     {
         $hostname = $hostname !== null && trim($hostname) !== '' ? strtolower(rtrim(trim($hostname), '.')) : null;
         $previous = $address->ptr;
@@ -28,7 +29,7 @@ final class ReverseDns
         $address->forceFill(['ptr' => $hostname, 'ptr_synced_at' => null])->save();
         PublishPtr::dispatch($address->id)->afterCommit();
 
-        AuditLog::record('rdns.updated', $user, $address->server, [
+        AuditLog::record('rdns.updated', $actor, $address->server, [
             'address' => $address->address,
             'from' => $previous,
             'to' => $hostname,

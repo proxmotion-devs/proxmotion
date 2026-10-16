@@ -24,7 +24,8 @@ const props = defineProps<{
     console: { url: string; password: string; expires_at: string } | null;
     error: string | null;
     idleMinutes: number;
-    backUrl: string;
+    /** null on the customer console opened from the billing system */
+    backUrl: string | null;
 }>();
 
 const screen = ref<HTMLElement>();
@@ -203,6 +204,7 @@ watch(
             class="flex flex-wrap items-center gap-2 border-b border-white/10 bg-neutral-900 px-3 py-2"
         >
             <Link
+                v-if="backUrl"
                 :href="backUrl"
                 class="inline-flex items-center gap-1 text-sm text-neutral-300 hover:text-white"
             >

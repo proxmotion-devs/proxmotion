@@ -8,6 +8,7 @@ use App\Enums\NetworkModel;
 use App\Enums\ServerOrigin;
 use App\Enums\ServerStatus;
 use App\Enums\TaskType;
+use App\Models\ApiToken;
 use App\Models\Cluster;
 use App\Models\Server;
 use App\Models\User;
@@ -34,7 +35,7 @@ final readonly class ServerCreator
     /**
      * @throws ProvisioningException
      */
-    public function create(NewServer $order, ?User $actor = null): Server
+    public function create(NewServer $order, User|ApiToken|null $actor = null): Server
     {
         if ($order->networkModel === NetworkModel::Nat) {
             throw ProvisioningException::unsupportedNetworkModel();

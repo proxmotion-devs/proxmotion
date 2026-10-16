@@ -2,6 +2,7 @@ import {
     Boxes,
     Disc3,
     Globe,
+    KeyRound,
     LayoutGrid,
     MapPin,
     Network,
@@ -13,6 +14,7 @@ import {
 import { computed } from 'vue';
 import type { ComputedRef } from 'vue';
 import { dashboard } from '@/routes/admin';
+import { index as apiTokens } from '@/routes/admin/api-tokens';
 import { index as clusters } from '@/routes/admin/clusters';
 import { index as dnsProviders } from '@/routes/admin/dns-providers';
 import { index as drifts } from '@/routes/admin/drifts';
@@ -40,5 +42,6 @@ export function useMainNavigation(): ComputedRef<NavItem[]> {
         { title: 'Packages', href: packages(), icon: Package },
         { title: 'Drift report', href: drifts(), icon: TriangleAlert },
         { title: 'Administrators', href: users(), icon: Users },
+        { title: 'API tokens', href: apiTokens(), icon: KeyRound },
     ]);
 }

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Domain\Servers;
 
 use App\Enums\PowerAction;
+use App\Models\ApiToken;
 use App\Models\AuditLog;
 use App\Models\Server;
 use App\Models\Task;
@@ -29,11 +30,11 @@ final readonly class ServerPower
      *
      * @throws ProvisioningException when another task is still running for the server
      */
-    public function request(Server $server, PowerAction $action, User $user, ?string $ipAddress): Task
+    public function request(Server $server, PowerAction $action, User|ApiToken $actor, ?string $ipAddress): Task
     {
-        $task = $this->tasks->start($server, $action->taskType(), $user);
+        $task = $this->tasks->start($server, $action->taskType(), $actor);
 
-        AuditLog::record('server.power', $user, $server, ['action' => $action->value, 'hostname' => $server->hostname], $ipAddress);
+        AuditLog::record('server.power', $actor, $server, ['action' => $action->value, 'hostname' => $server->hostname], $ipAddress);
 
         return $task;
     }

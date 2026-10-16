@@ -97,7 +97,7 @@ proxmotion/
 │   │   ├── Domain/                       # Business logic (services/actions), grouped by domain
 │   │   │   ├── Infrastructure/           # ClusterSynchronizer, PermissionChecker, DriftDetector (ADR 0005)
 │   │   │   ├── Networking/               # GenerateIpAddresses, ReverseDns drivers (ADR 0003), firewall, NAT port forwards
-│   │   │   ├── Servers/                  # ConsoleSessions, ServerPower, GuestAgentProbe, ServerPasswords, ServerReinstaller (resize later)
+│   │   │   ├── Servers/                  # ConsoleSessions, ConsoleLinks, ServerPower, GuestAgentProbe, ServerPasswords, ServerReinstaller (resize later)
 │   │   │   ├── Usage/                    # traffic/resource accounting, quotas
 │   │   │   ├── Backups/                  # snapshots, backups
 │   │   │   ├── Apps/                     # RecipeLoader, app installs
@@ -121,10 +121,11 @@ proxmotion/
 │   │   ├── Jobs/                         # Queue jobs: RunServerTask (pipelines), SyncCluster, PublishPtr/RemovePtr (rDNS)
 │   │   ├── Http/
 │   │   │   ├── Controllers/Admin/
-│   │   │   ├── Controllers/Api/V1/       # Billing API
-│   │   │   ├── Requests/                 # FormRequest validation (ReinstallRequest, RdnsRequest authorize first)
-│   │   │   └── Resources/                # API JSON transformers
-│   │   ├── Policies/                     # Authorization (server state rules; API token scopes from Phase 4)
+│   │   │   ├── Controllers/Api/V1/       # Billing API (ADR 0008); CustomerConsoleController for console links
+│   │   │   ├── Middleware/               # AuthenticateApiToken, RequireApiScope, HandleIdempotency, 2FA, console proxy auth
+│   │   │   ├── Requests/                 # FormRequest validation (ReinstallRequest, RdnsRequest authorize first; Api/V1/*)
+│   │   │   └── Resources/Api/V1/         # API JSON transformers
+│   │   ├── Policies/                     # Authorization (server state rules for admins; API tokens use scopes)
 │   │   └── Console/                      # Scheduled commands (traffic collection, sync…)
 │   ├── recipes/                          # Bundled App Marketplace recipes
 │   │   ├── _schema/recipe.schema.json
@@ -160,7 +161,7 @@ proxmotion/
 8. **No SSH to hypervisors.** The panel uses only the Proxmox API (and the QEMU Guest Agent through it). Anything that seems to need host shell access must be solved differently or escalated to the maintainers.
 
 ### 3.4 Core data models
-`Location`, `Cluster` (one API connection: host(s), port, token id, encrypted token secret, `type: standalone | cluster`), `Node` (belongs to a cluster; capacity limits, active/maintenance), `Storage` (`shared` flag), `NetworkBridge`, `IpPool` (v4/v6, network model, gateway, netmask, VLAN, location, optional per-IP MAC), `IpAddress`, `NatPortForward`, `Package`, `OsTemplate` (template VMID mapped per node/cluster), `Iso`, `Server` (uuid, vmid, node, package, network model, status, suspension reason, `external_id` = billing service id, `external_client_id` = billing customer id, `origin: provisioned | adopted | imported`; no panel owner — ADR 0007), `Task`, `UsageRecord`, `Snapshot`, `Backup`, `User` (staff/administrator, locale), `ApiToken` (scoped), `AuditLog`, `DnsProvider` (rDNS driver + encrypted credentials, ADR 0003), `ServerDrift` (ADR 0005), `AppRecipe`, `AppInstallation`, `AppEntitlement`.
+`Location`, `Cluster` (one API connection: host(s), port, token id, encrypted token secret, `type: standalone | cluster`), `Node` (belongs to a cluster; capacity limits, active/maintenance), `Storage` (`shared` flag), `NetworkBridge`, `IpPool` (v4/v6, network model, gateway, netmask, VLAN, location, optional per-IP MAC), `IpAddress`, `NatPortForward`, `Package`, `OsTemplate` (template VMID mapped per node/cluster), `Iso`, `Server` (uuid, vmid, node, package, network model, status, suspension reason, `external_id` = billing service id, `external_client_id` = billing customer id, `origin: provisioned | adopted | imported`; no panel owner — ADR 0007), `Task`, `UsageRecord`, `Snapshot`, `Backup`, `User` (staff/administrator, locale), `ApiToken` (scoped, hashed; ADR 0008), `IdempotencyKey`, `AuditLog` (actor: user or API token), `DnsProvider` (rDNS driver + encrypted credentials, ADR 0003), `ServerDrift` (ADR 0005), `AppRecipe`, `AppInstallation`, `AppEntitlement`.
 
 `Server.status`: `pending → provisioning → active ⇄ suspended`, `active → reinstalling → active`, `* → terminating → terminated`, `* → error`.
 
@@ -279,21 +280,23 @@ Each `IpPool` declares one network model; each `Package` lists the models it all
 
 ### 4.1 Public API v1 (`/api/v1`, Bearer token)
 
-The API is the only way customers' actions reach the panel (ADR 0007). Every customer-facing feature needs an endpoint here and support in each billing module.
+The API is the only way customers' actions reach the panel (ADR 0007). Every customer-facing feature needs an endpoint here and support in each billing module. Tokens, scopes, idempotency and console links: ADR 0008. Scopes: `catalog:read`, `servers:read`, `servers:write`, `servers:secrets` (Phase 5 adds `apps:*`).
 
 | Endpoint | Description |
 |---|---|
-| `POST /servers` | Create (package, location, os_template, optional app + inputs, hostname, `external_id` (service) + optional `external_client_id`, SSH keys) → `202` + task id |
-| `GET /servers/{id}` | Status, IPs, resources |
-| `POST /servers/{id}/suspend`, `/unsuspend` | Suspend / unsuspend |
+| `POST /servers` | Create (package with optional `resources` overrides, location, os_template, optional app + inputs, hostname, `external_id` (service, required) + optional `external_client_id`, SSH keys) → `202` + task |
+| `GET /servers?external_id=&external_client_id=&status=` | Find servers (paginated) |
+| `GET /servers/{id}` | Status, live power state, IPs, resources |
+| `POST /servers/{id}/suspend`, `/unsuspend` | Suspend (optional reason) / unsuspend |
 | `DELETE /servers/{id}` | Terminate |
-| `POST /servers/{id}/package` | Change package (upgrade/downgrade) |
+| `POST /servers/{id}/package` | Change package (upgrade/downgrade) — Phase 6 |
 | `POST /servers/{id}/power` | `start|shutdown|stop|reboot` |
 | `POST /servers/{id}/reinstall` | Reinstall OS (SSH keys, optionally an app) |
-| `POST /servers/{id}/password` | Reset root password; the new password is handed out once (`root_password_unrevealed`) |
-| `POST /servers/{id}/console` | Signed, single-use console link (≤60 s to open) for the module to open in the customer's browser |
+| `POST /servers/{id}/password` | Reset root password (task) |
+| `GET /servers/{id}/password` | The initial or new root password, once (`root_password_unrevealed`), then `410` — `servers:secrets` |
+| `POST /servers/{id}/console` | Signed, single-use console link (≤60 s to open) for the module to open in the customer's browser — `servers:secrets` |
 | `POST /servers/{id}/rdns` | Set or remove the PTR of one of the server's addresses |
-| `GET /servers/{id}/usage` | Traffic and resource usage |
+| `GET /servers/{id}/usage` | Traffic and resource usage — Phase 6 |
 | `GET /packages`, `/locations`, `/os-templates` | Options for the billing side |
 | `GET /apps?os_template=&package=` | Apps eligible for the given OS and package |
 | `POST /servers/{id}/apps` | Install an app on a running server → `202` + installation id |
@@ -303,7 +306,9 @@ The API is the only way customers' actions reach the panel (ADR 0007). Every cus
 
 - All write endpoints support an **`Idempotency-Key`** header; replaying the same key never creates a second server.
 - Servers can be looked up by `external_id` (WHMCS service id).
-- The API is versioned; never make breaking changes to v1. Keep `docs/api/openapi.yaml` current.
+- The API is versioned; never make breaking changes to v1. Keep `docs/api/openapi.yaml` current (`OpenApiContractTest` fails when a route is missing from it).
+- Operations that change Proxmox answer `202` with the task; state conflicts and running tasks are `409`, unreachable Proxmox `503`. Tasks and audit log entries record the token (`api_token_id`).
+- Code: routes in `routes/api.php` (middleware `AuthenticateApiToken` → `throttle:api` → `api.scope:…` → bindings → `api.idempotent`), controllers in `Http/Controllers/Api/V1`, resources in `Http/Resources/Api/V1`, requests in `Http/Requests/Api/V1`; tokens are managed under *Admin → API tokens*. The customer console is `CustomerConsoleController` (`/console/{server}`).
 - Optional **webhooks** (HMAC-SHA256 signed): `server.provisioned`, `server.failed`, `server.suspended`, `app.installed`, `app.failed`, etc.
 
 ### 4.2 WHMCS server module (`integrations/whmcs/modules/servers/proxmotion/`)
@@ -379,7 +384,7 @@ This panel manages customer infrastructure and is internet-facing. Agents **must
 1. **Tenant isolation:** there are no customer logins (ADR 0007). The billing system decides which customer sees which service; the panel trusts only **scoped API tokens**, and public identifiers are non-guessable **UUIDs** (or the billing `external_id`). Every API endpoint gets wrong-scope and wrong-token tests; console links are signed, single-use and bound to one server.
 2. **Proxmox credentials** (API token secrets) are stored with Laravel's `encrypted` cast and never appear in API responses, Inertia props, logs or error messages. Root passwords are stored encrypted and shown only once.
 3. **Console access:** the customer's browser never connects to Proxmox directly. The panel issues a short-lived single-use console ticket (reached by customers only through a signed single-use link from the API) and proxies the WebSocket (`vncproxy` / `termproxy` + `vncwebsocket`).
-4. **API tokens** are scoped (e.g. `servers:write`, `servers:read`, `apps:secrets`), stored hashed, support IP restrictions; all APIs are rate-limited.
+4. **API tokens** are scoped (`catalog:read`, `servers:read`, `servers:write`, `servers:secrets`; later `apps:secrets`), stored hashed (SHA-256 of a 48-character random secret, shown once), support IP/CIDR restrictions and expiry, can be revoked; the API is rate-limited per token and failed authentications per address (ADR 0008).
 5. **Console links** from the API are single-use, valid ≤60 s and signed; there is no SSO into the panel.
 6. **Network isolation:** Proxmox firewall `ipfilter`/`macfilter` must be enabled for every VPS (anti-spoofing); customers may use only the IPs assigned to them. NAT VPS port forwards are restricted to the customer's allocated range.
 7. **User input** (hostname, rDNS, SSH keys, cloud-init data, app inputs) is strictly validated and never passed raw into Proxmox parameters or a shell.
@@ -439,7 +444,7 @@ Never guess ambiguous API behaviour; consult the official API viewer (https://pv
 - [x] **Phase 1 — Infrastructure management (admin):** `app/Proxmox` client (token auth, host failover, typed errors) + `TaskWaiter`; locations; clusters (connection tested on save, standalone/cluster auto-detected, encrypted token); `ClusterSynchronizer` + `SyncCluster` job + `infra:sync` (every 5 min) for nodes, storages, bridges, QEMU templates; node placement settings (maintenance, over-commit, max servers); "use for servers" per storage; IP pools (v4/v6, bridged/routed/NAT, IPv4 addresses generated, reserve/MAC/notes); OS templates mapped to Proxmox templates; packages; admin dashboard. **Not yet verified against a real Proxmox server.**
 - [x] **Phase 2 — Provisioning engine:** servers and tasks; per-cluster resource pool (token only needs VM rights on the pool); permission check listing missing **and excess** privileges; placement (online, not in maintenance, bridge, storage, CPU/memory/disk over-commit, max servers); VMID + IP allocation under a per-location lock; idempotent create (full clone → config + cloud-init → grow disk → anti-spoofing ipset → start), suspend/unsuspend, terminate (frees IPs, keeps history); retry after failure; admin server pages with polling progress; customers created by admins (replaced by billing ids, ADR 0007); adopt existing VMs from the pool without touching Proxmox; deletion guards. Limitations: one IPv4 + one IPv6 configured by cloud-init (extra IPs are assigned/allowed but configured in the OS); routed /32 with on-link gateway relies on cloud-init and needs real-world verification; NAT not yet supported; Horizon not set up yet (`queue:work`).
 - [x] **Phase 3 — Server operations** (built as a client panel, which was removed again in favour of billing modules — ADR 0007; the features stay in the admin panel and get API endpoints in Phase 4): power actions (start/shutdown/stop/reboot, shutdown never forced, live power state); noVNC console through `deploy/console-proxy` (ADR 0002: single-use tickets, one session per server, 60 min max / 15 min idle); Guest Agent client (`GuestAgentResource`: ping, file-write/read, exec + `run()`, set-user-password); root password reset through the agent; SSH key validation (`Support/Ssh/PublicKey`: ed25519, ECDSA, RSA ≥ 2048, no DSA); reinstall (OS template + pasted keys, hostname typed to confirm, same VMID/IPs/MAC, waits for the guest agent, ADR 0004); rDNS (ADR 0003: `DnsProvider` with `none` and `powerdns`, per-pool reverse zone, optional forward confirmation, PTRs removed on release); admin drift report (ADR 0005); `audit_logs` for console, power, password, reinstall, rDNS and drift actions. Not done here: drift notifications and "re-apply package" (with ChangePackage), app post-boot hooks (Phase 5b), Windows guests. **See the verification list below: nothing in Phases 1–3 has run against a real Proxmox server yet.**
-- [ ] **Phase 4 — Billing integration:** public API v1 + OpenAPI (incl. power, reinstall, password, rDNS and signed console links), token scopes, idempotency, webhooks, **WHMCS module**, then **WISECP module**.
+- [ ] **Phase 4 — Billing integration:** ~~public API v1 + OpenAPI (catalog, servers, tasks, suspend/unsuspend/terminate, power, reinstall, password reset + fetch once, rDNS, signed single-use console links), scoped hashed tokens with IP limits and expiry (admin page), rate limits, idempotency~~ (done, ADR 0008; tested with faked HTTP only); still to do: webhooks, **WHMCS module**, then **WISECP module**.
 - [ ] **Phase 5 — App Marketplace:**
   - 5a: recipe schema, `RecipeLoader`, `apps:sync` / `apps:validate`, install-later flow through the API and billing modules; first recipes **OpenVPN, WireGuard, Docker**.
   - 5b: install at order time and reinstall + app as post-boot hooks (ADR 0004), WHMCS configurable option and paid-app entitlements.

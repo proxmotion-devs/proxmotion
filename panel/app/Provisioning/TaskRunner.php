@@ -8,6 +8,7 @@ use App\Enums\ServerStatus;
 use App\Enums\TaskStatus;
 use App\Enums\TaskType;
 use App\Jobs\RunServerTask;
+use App\Models\ApiToken;
 use App\Models\Server;
 use App\Models\Task;
 use App\Models\User;
@@ -21,7 +22,7 @@ final class TaskRunner
     /**
      * @throws ProvisioningException when another task is still running for the server
      */
-    public function start(Server $server, TaskType $type, ?User $actor = null): Task
+    public function start(Server $server, TaskType $type, User|ApiToken|null $actor = null): Task
     {
         $running = $server->tasks()->whereIn('status', [TaskStatus::Queued, TaskStatus::Running])->exists();
 
@@ -32,7 +33,8 @@ final class TaskRunner
         $task = new Task;
         $task->forceFill([
             'server_id' => $server->id,
-            'user_id' => $actor?->id,
+            'user_id' => $actor instanceof User ? $actor->id : null,
+            'api_token_id' => $actor instanceof ApiToken ? $actor->id : null,
             'type' => $type,
             'status' => TaskStatus::Queued,
             'steps' => [],

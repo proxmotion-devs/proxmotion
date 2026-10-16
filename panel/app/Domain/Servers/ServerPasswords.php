@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Domain\Servers;
 
 use App\Enums\TaskType;
+use App\Models\ApiToken;
 use App\Models\AuditLog;
 use App\Models\Server;
 use App\Models\Task;
@@ -23,11 +24,11 @@ final readonly class ServerPasswords
     /**
      * @throws ProvisioningException when another task is still running for the server
      */
-    public function requestReset(Server $server, User $user, ?string $ipAddress): Task
+    public function requestReset(Server $server, User|ApiToken $actor, ?string $ipAddress): Task
     {
-        $task = $this->tasks->start($server, TaskType::ResetPassword, $user);
+        $task = $this->tasks->start($server, TaskType::ResetPassword, $actor);
 
-        AuditLog::record('server.password_reset', $user, $server, ['hostname' => $server->hostname], $ipAddress);
+        AuditLog::record('server.password_reset', $actor, $server, ['hostname' => $server->hostname], $ipAddress);
 
         return $task;
     }
@@ -36,9 +37,9 @@ final readonly class ServerPasswords
      * The current root password for an administrator. This does not use up
      * the billing system's one fetch of a new password (docs/adr/0007).
      */
-    public function reveal(Server $server, User $user, ?string $ipAddress): ?string
+    public function reveal(Server $server, User|ApiToken $actor, ?string $ipAddress): ?string
     {
-        AuditLog::record('server.password_revealed', $user, $server, ['hostname' => $server->hostname], $ipAddress);
+        AuditLog::record('server.password_revealed', $actor, $server, ['hostname' => $server->hostname], $ipAddress);
 
         return $server->root_password;
     }
