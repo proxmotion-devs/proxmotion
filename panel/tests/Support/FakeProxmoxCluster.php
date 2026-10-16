@@ -254,7 +254,8 @@ class FakeProxmoxCluster
                     return Create::promiseFor(new Psr7Response(500, ['Content-Type' => 'application/json'], '{"data":null}', '1.1', 'guest-file-open failed: No such file or directory'));
                 }
 
-                return $this->ok(['content' => $this->guestFiles[$vmid][$file]]);
+                // Like Proxmox: one character per byte of the file.
+                return $this->ok(['content' => mb_convert_encoding($this->guestFiles[$vmid][$file], 'UTF-8', 'ISO-8859-1')]);
             case 'exec':
                 $commandLine = array_values((array) $data['command']);
                 $input = isset($data['input-data']) ? (string) $data['input-data'] : null;

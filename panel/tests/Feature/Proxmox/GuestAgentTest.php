@@ -62,6 +62,18 @@ class GuestAgentTest extends TestCase
         $this->assertFalse($file->truncated);
     }
 
+    public function test_files_are_read_back_byte_for_byte()
+    {
+        // Proxmox sends one character per byte; seen on PVE 9.2.2.
+        $binary = "\x00\x7f\x80\xf3\xff".random_bytes(256);
+        $utf8 = '{"message":"Kurulum tamamlandı ✓"}';
+        $this->proxmox->guestFiles[100]['/tmp/binary'] = $binary;
+        $this->proxmox->guestFiles[100]['/tmp/utf8.json'] = $utf8;
+
+        $this->assertSame(bin2hex($binary), bin2hex($this->agent()->readFile(100, '/tmp/binary')->content));
+        $this->assertSame($utf8, $this->agent()->readFile(100, '/tmp/utf8.json')->content);
+    }
+
     public function test_files_larger_than_one_write_are_refused_before_calling_proxmox()
     {
         $this->expectException(GuestAgentException::class);
