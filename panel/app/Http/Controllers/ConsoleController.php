@@ -16,8 +16,9 @@ use Inertia\Response;
 use UnexpectedValueException;
 
 /**
- * The noVNC console page, shared by the admin and the client panel. Every
- * page load (and every reconnect) opens a new console session.
+ * The noVNC console page of the admin panel. Every page load (and every
+ * reconnect) opens a new console session. Customers will reach the console
+ * through a signed single-use link from the billing API (docs/adr/0007).
  */
 class ConsoleController extends Controller
 {
@@ -45,7 +46,7 @@ class ConsoleController extends Controller
             'console' => $console,
             'error' => $error,
             'idleMinutes' => (int) config('proxmotion.console.idle_minutes'),
-            'backUrl' => $request->routeIs('admin.*') ? route('admin.servers.show', $server) : route('dashboard'),
+            'backUrl' => route('admin.servers.show', $server),
         ]);
     }
 

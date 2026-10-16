@@ -72,7 +72,6 @@ final readonly class ServerCreator
     {
         $server = new Server;
         $server->forceFill([
-            'user_id' => $order->owner->id,
             'package_id' => $order->package?->id,
             'location_id' => $order->location->id,
             'cluster_id' => $cluster->id,
@@ -90,10 +89,11 @@ final readonly class ServerCreator
             'port_speed_mbps' => $order->spec->portSpeedMbps,
             'traffic_bytes' => $order->spec->trafficBytes,
             'root_password' => $order->rootPassword,
-            // The customer may see the initial password once on their server page.
+            // The billing system may fetch the initial password once (docs/adr/0007).
             'root_password_unrevealed' => true,
             'ssh_keys' => $order->sshKeys,
             'external_id' => $order->externalId,
+            'external_client_id' => $order->externalClientId,
         ])->save();
 
         return $server;

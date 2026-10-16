@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Head, Link, useForm } from '@inertiajs/vue3';
+import { Head, useForm } from '@inertiajs/vue3';
 import { trans } from 'laravel-vue-i18n';
 import { computed, watch } from 'vue';
 import FormField from '@/components/admin/FormField.vue';
@@ -7,13 +7,10 @@ import NativeSelect from '@/components/admin/NativeSelect.vue';
 import Heading from '@/components/Heading.vue';
 import InputError from '@/components/InputError.vue';
 import { Button } from '@/components/ui/button';
-import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Spinner } from '@/components/ui/spinner';
 import { optionalNumber } from '@/lib/forms';
 import type { OptionalNumber } from '@/lib/forms';
-import { index as usersIndex } from '@/routes/admin/users';
 import { create, index, store } from '@/routes/admin/servers';
 import { NETWORK_MODELS } from '@/types/admin';
 import type { NetworkModel, Option } from '@/types/admin';
@@ -28,14 +25,14 @@ defineOptions({
 });
 
 const props = defineProps<{
-    users: Option[];
     locations: Option[];
     packages: (Option & { network_models: NetworkModel[] })[];
     osTemplates: Option[];
 }>();
 
 const form = useForm({
-    user: props.users[0]?.value ?? null,
+    external_id: '',
+    external_client_id: '',
     location: props.locations[0]?.value ?? null,
     // Without packages, custom resources are the only option.
     resource_mode: (props.packages.length > 0 ? 'package' : 'custom') as
@@ -55,7 +52,6 @@ const form = useForm({
     hostname: '',
     root_password: '',
     ssh_keys: '',
-    use_saved_keys: true,
 });
 
 const custom = computed(() => form.resource_mode === 'custom');
@@ -91,10 +87,7 @@ watch(
 );
 
 const missing = computed(
-    () =>
-        props.users.length === 0 ||
-        props.locations.length === 0 ||
-        props.osTemplates.length === 0,
+    () => props.locations.length === 0 || props.osTemplates.length === 0,
 );
 
 // General errors (no capacity, Proxmox unreachable…) come back under the "server" key.
@@ -125,27 +118,38 @@ const submit = () =>
             v-if="missing"
             class="rounded-lg border border-dashed p-4 text-sm text-muted-foreground"
         >
-            {{
-                $t(
-                    'You need at least one customer, location and active OS template.',
-                )
-            }}
-            <Link :href="usersIndex()" class="font-medium underline">{{
-                $t('Customers')
-            }}</Link>
+            {{ $t('You need at least one location and active OS template.') }}
         </p>
 
         <form class="grid gap-4" @submit.prevent="submit">
             <InputError :message="serverError" />
 
-            <FormField label="Customer" for="user" :error="form.errors.user">
-                <NativeSelect
-                    id="user"
-                    v-model="form.user"
-                    :options="users"
-                    placeholder="Choose a customer"
-                />
-            </FormField>
+            <div class="grid gap-4 sm:grid-cols-2">
+                <FormField
+                    label="Billing service ID"
+                    for="external_id"
+                    :error="form.errors.external_id"
+                    hint="Optional. The service ID in your billing system."
+                >
+                    <Input
+                        id="external_id"
+                        v-model="form.external_id"
+                        autocomplete="off"
+                    />
+                </FormField>
+                <FormField
+                    label="Billing client ID"
+                    for="external_client_id"
+                    :error="form.errors.external_client_id"
+                    hint="Optional. The customer's ID in your billing system."
+                >
+                    <Input
+                        id="external_client_id"
+                        v-model="form.external_client_id"
+                        autocomplete="off"
+                    />
+                </FormField>
+            </div>
 
             <div class="grid gap-4 sm:grid-cols-2">
                 <FormField
@@ -354,10 +358,6 @@ const submit = () =>
                     placeholder="ssh-ed25519 AAAA… user@host"
                 />
             </FormField>
-            <Label class="flex items-center gap-3 font-normal">
-                <Checkbox v-model="form.use_saved_keys" />
-                {{ $t("Also add the customer's saved SSH keys") }}
-            </Label>
 
             <div>
                 <Button type="submit" :disabled="form.processing || missing">

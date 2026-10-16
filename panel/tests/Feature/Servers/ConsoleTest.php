@@ -23,6 +23,8 @@ class ConsoleTest extends TestCase
 
     private Server $server;
 
+    private User $admin;
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -31,27 +33,28 @@ class ConsoleTest extends TestCase
 
         $this->buildInfrastructure();
         $this->proxmox = (new FakeProxmoxCluster)->addVm(100, 'web1.example.com')->install();
-        $this->server = Server::factory()->for($this->customer)->for($this->node)->create(['vmid' => 100]);
+        $this->server = Server::factory()->for($this->node)->create(['vmid' => 100]);
+        $this->admin = User::factory()->withTwoFactor()->create();
     }
 
-    public function test_customers_can_open_the_console_of_their_own_server()
+    public function test_admins_can_open_the_console()
     {
-        $this->actingAs($this->customer)
-            ->get(route('servers.console', $this->server))
+        $this->actingAs($this->admin)
+            ->get(route('admin.servers.console', $this->server))
             ->assertOk()
             ->assertInertia(fn (Assert $page) => $page
                 ->component('console/Show')
                 ->where('server.uuid', $this->server->uuid)
                 ->where('console.password', 'fake-vnc-password')
                 ->where('error', null)
-                ->where('backUrl', route('dashboard'))
+                ->where('backUrl', route('admin.servers.show', $this->server))
                 ->where('console.url', fn (string $url) => preg_match('#^ws://[^/]+/console-ws\?ticket=[A-Za-z0-9]{64}$#', $url) === 1));
 
         $this->assertContains('POST /nodes/pve1/qemu/100/vncproxy', $this->proxmox->writePaths());
 
         $log = AuditLog::query()->sole();
         $this->assertSame('console.opened', $log->action);
-        $this->assertSame($this->customer->id, $log->user_id);
+        $this->assertSame($this->admin->id, $log->user_id);
         $this->assertTrue($log->subject?->is($this->server));
     }
 
@@ -59,62 +62,40 @@ class ConsoleTest extends TestCase
     {
         config(['proxmotion.console.websocket_url' => 'wss://console.example.com/ws/']);
 
-        $this->actingAs($this->customer)
-            ->get(route('servers.console', $this->server))
+        $this->actingAs($this->admin)
+            ->get(route('admin.servers.console', $this->server))
             ->assertInertia(fn (Assert $page) => $page
                 ->where('console.url', fn (string $url) => str_starts_with($url, 'wss://console.example.com/ws?ticket=')));
     }
 
     public function test_the_page_never_contains_the_vnc_ticket_or_the_api_token()
     {
-        $response = $this->actingAs($this->customer)->get(route('servers.console', $this->server));
+        $response = $this->actingAs($this->admin)->get(route('admin.servers.console', $this->server));
 
         $response->assertDontSee('fake-ticket');
         $response->assertDontSee($this->cluster->token_secret);
-    }
-
-    public function test_customers_cannot_open_the_console_of_another_users_server()
-    {
-        $this->actingAs(User::factory()->create())
-            ->get(route('servers.console', $this->server))
-            ->assertForbidden();
-
-        $this->assertNotContains('POST /nodes/pve1/qemu/100/vncproxy', $this->proxmox->writePaths());
     }
 
     public function test_the_console_is_not_available_for_suspended_servers()
     {
         $this->server->forceFill(['status' => ServerStatus::Suspended])->save();
 
-        $this->actingAs($this->customer)
-            ->get(route('servers.console', $this->server))
+        $this->actingAs($this->admin)
+            ->get(route('admin.servers.console', $this->server))
             ->assertForbidden();
     }
 
     public function test_guests_are_redirected_to_the_login_page()
     {
-        $this->get(route('servers.console', $this->server))->assertRedirect(route('login'));
-    }
-
-    public function test_admins_can_open_any_console_from_the_admin_panel()
-    {
-        $admin = User::factory()->admin()->withTwoFactor()->create();
-
-        $this->actingAs($admin)
-            ->get(route('admin.servers.console', $this->server))
-            ->assertOk()
-            ->assertInertia(fn (Assert $page) => $page
-                ->component('console/Show')
-                ->where('backUrl', route('admin.servers.show', $this->server))
-                ->has('console.url'));
+        $this->get(route('admin.servers.console', $this->server))->assertRedirect(route('login'));
     }
 
     public function test_a_stopped_vm_shows_an_error_instead_of_a_console()
     {
         $this->proxmox->vms[100]['status'] = 'stopped';
 
-        $this->actingAs($this->customer)
-            ->get(route('servers.console', $this->server))
+        $this->actingAs($this->admin)
+            ->get(route('admin.servers.console', $this->server))
             ->assertOk()
             ->assertInertia(fn (Assert $page) => $page
                 ->where('console', null)
@@ -197,8 +178,8 @@ class ConsoleTest extends TestCase
 
     private function openConsole(): string
     {
-        $page = $this->actingAs($this->customer)
-            ->get(route('servers.console', $this->server))
+        $page = $this->actingAs($this->admin)
+            ->get(route('admin.servers.console', $this->server))
             ->assertOk()
             ->viewData('page');
 

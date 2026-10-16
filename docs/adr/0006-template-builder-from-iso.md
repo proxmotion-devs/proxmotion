@@ -134,4 +134,4 @@ Installers default to DHCP, which many hosting networks do not have. The admin c
   availability on each ISO, Windows Server on SeaBIOS, cloudbase-init with the Proxmox
   ConfigDrive.
 - Placement in the roadmap: an admin feature of its own (**Phase 3b**, after the
-  client panel and before billing), since templates are needed before going live.
+  server operations and before billing), since templates are needed before going live.

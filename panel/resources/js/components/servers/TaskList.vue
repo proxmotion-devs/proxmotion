@@ -5,8 +5,7 @@ import { useDateTime } from '@/composables/useDateTime';
 import type { TaskProgress, TaskStatus, TaskType } from '@/types/admin';
 
 /**
- * Tasks of one server with their steps. Step messages and errors are shown
- * when present; the client page leaves them out.
+ * Tasks of one server with their steps, step messages and errors.
  */
 defineProps<{ tasks: TaskProgress[] }>();
 

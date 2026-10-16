@@ -5,7 +5,6 @@ import { ref } from 'vue';
 import FormField from '@/components/admin/FormField.vue';
 import NativeSelect from '@/components/admin/NativeSelect.vue';
 import { Button } from '@/components/ui/button';
-import { Checkbox } from '@/components/ui/checkbox';
 import {
     Dialog,
     DialogClose,
@@ -16,19 +15,17 @@ import {
     DialogTrigger,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Spinner } from '@/components/ui/spinner';
 import type { RouteDefinition } from '@/wayfinder';
 
 /**
- * Choose an OS and SSH keys, type the hostname, and wipe the server.
+ * Choose an OS, optionally paste SSH keys, type the hostname, and wipe the server.
  */
 const props = defineProps<{
     action: RouteDefinition<'post'>;
     hostname: string;
     options: {
         osTemplates: { value: string; label: string }[];
-        sshKeys: { value: string; label: string; fingerprint: string }[];
     };
     disabled?: boolean;
 }>();
@@ -37,17 +34,9 @@ const open = ref(false);
 
 const form = useForm({
     os_template: props.options.osTemplates[0]?.value ?? null,
-    // All saved keys are selected by default.
-    ssh_keys: props.options.sshKeys.map((key) => key.value),
+    ssh_keys: '',
     confirm_hostname: '',
 });
-
-const toggleKey = (value: string, checked: boolean | 'indeterminate') => {
-    form.ssh_keys =
-        checked === true
-            ? [...form.ssh_keys, value]
-            : form.ssh_keys.filter((key) => key !== value);
-};
 
 const submit = () =>
     form.submit(props.action, {
@@ -78,7 +67,7 @@ const submit = () =>
                 <DialogDescription>
                     {{
                         $t(
-                            'All data on the server is deleted and the chosen operating system is installed. IP addresses and resources stay the same. A new root password is created; you can see it once on this page.',
+                            'All data on the server is deleted and the chosen operating system is installed. IP addresses and resources stay the same. A new root password is created.',
                         )
                     }}
                 </DialogDescription>
@@ -96,37 +85,18 @@ const submit = () =>
                 </FormField>
 
                 <FormField
-                    label="SSH keys"
+                    label="SSH public keys"
+                    for="ssh_keys"
                     :error="form.errors.ssh_keys"
-                    hint="Saved keys are managed under Settings → SSH keys."
+                    hint="Optional. One key per line."
                 >
-                    <div class="flex flex-col gap-2">
-                        <Label
-                            v-for="key in options.sshKeys"
-                            :key="key.value"
-                            class="flex items-start gap-3 font-normal"
-                        >
-                            <Checkbox
-                                :model-value="form.ssh_keys.includes(key.value)"
-                                @update:model-value="
-                                    (checked) => toggleKey(key.value, checked)
-                                "
-                            />
-                            <span class="min-w-0">
-                                {{ key.label }}
-                                <span
-                                    class="block font-mono text-xs break-all text-muted-foreground"
-                                    >{{ key.fingerprint }}</span
-                                >
-                            </span>
-                        </Label>
-                        <p
-                            v-if="options.sshKeys.length === 0"
-                            class="text-sm text-muted-foreground"
-                        >
-                            {{ $t('No SSH keys saved yet.') }}
-                        </p>
-                    </div>
+                    <textarea
+                        id="ssh_keys"
+                        v-model="form.ssh_keys"
+                        rows="3"
+                        class="w-full rounded-md border border-input bg-transparent px-3 py-2 font-mono text-xs shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 dark:bg-input/30"
+                        placeholder="ssh-ed25519 AAAA… user@host"
+                    />
                 </FormField>
 
                 <FormField

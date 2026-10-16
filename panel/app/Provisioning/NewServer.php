@@ -8,7 +8,6 @@ use App\Enums\NetworkModel;
 use App\Models\Location;
 use App\Models\OsTemplate;
 use App\Models\Package;
-use App\Models\User;
 use SensitiveParameter;
 
 /**
@@ -18,7 +17,6 @@ use SensitiveParameter;
 final readonly class NewServer
 {
     public function __construct(
-        public User $owner,
         public Location $location,
         public ServerSpec $spec,
         public OsTemplate $osTemplate,
@@ -28,5 +26,6 @@ final readonly class NewServer
         public ?Package $package = null,
         public ?string $sshKeys = null,
         public ?string $externalId = null,
+        public ?string $externalClientId = null,
     ) {}
 }

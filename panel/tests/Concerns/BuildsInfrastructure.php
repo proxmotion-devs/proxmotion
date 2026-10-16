@@ -13,7 +13,6 @@ use App\Models\OsTemplate;
 use App\Models\Package;
 use App\Models\ProxmoxTemplate;
 use App\Models\Storage;
-use App\Models\User;
 use App\Provisioning\NewServer;
 use App\Provisioning\ServerSpec;
 
@@ -36,8 +35,6 @@ trait BuildsInfrastructure
     protected Package $package;
 
     protected IpPool $ipv4Pool;
-
-    protected User $customer;
 
     protected function buildInfrastructure(): void
     {
@@ -70,8 +67,6 @@ trait BuildsInfrastructure
             'nameservers' => ['192.0.2.53'],
         ]);
         app(GenerateIpAddresses::class)->handle($this->ipv4Pool);
-
-        $this->customer = User::factory()->create();
     }
 
     protected function addNode(string $name, int $memoryGib = 64, int $cores = 16): Node
@@ -109,7 +104,6 @@ trait BuildsInfrastructure
     protected function order(array $overrides = []): NewServer
     {
         return new NewServer(...[
-            'owner' => $this->customer,
             'location' => $this->location,
             'spec' => ServerSpec::fromPackage($this->package),
             'package' => $this->package,

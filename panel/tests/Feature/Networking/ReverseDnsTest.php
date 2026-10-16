@@ -35,7 +35,7 @@ class ReverseDnsTest extends TestCase
         Http::fake(['ns1.example.com*' => Http::response(null, 204)]);
 
         $this->buildInfrastructure();
-        $this->server = Server::factory()->for($this->customer)->for($this->node)->create();
+        $this->server = Server::factory()->for($this->node)->create();
         $this->address = $this->ipv4Pool->addresses()->orderBy('id')->firstOrFail();
         $this->address->forceFill(['server_id' => $this->server->id])->save();
 
@@ -57,14 +57,14 @@ class ReverseDnsTest extends TestCase
         ])->save();
     }
 
-    private function setPtr(?string $hostname, ?User $user = null, ?string $address = null): TestResponse
+    private function setPtr(?string $hostname, ?string $address = null): TestResponse
     {
-        return $this->actingAs($user ?? $this->customer)
-            ->from(route('servers.show', $this->server))
-            ->post(route('servers.rdns', $this->server), ['address' => $address ?? $this->address->address, 'hostname' => $hostname]);
+        return $this->actingAs(User::factory()->withTwoFactor()->create())
+            ->from(route('admin.servers.show', $this->server))
+            ->post(route('admin.servers.rdns', $this->server), ['address' => $address ?? $this->address->address, 'hostname' => $hostname]);
     }
 
-    public function test_customers_publish_the_ptr_of_their_address_through_powerdns()
+    public function test_the_ptr_of_a_server_address_is_published_through_powerdns()
     {
         $this->usePowerDns();
         $ptrName = implode('.', array_reverse(explode('.', $this->address->address))).'.in-addr.arpa.';
@@ -111,7 +111,7 @@ class ReverseDnsTest extends TestCase
         $this->assertNull($address->ptr_synced_at);
         Http::assertNothingSent();
 
-        $admin = User::factory()->admin()->withTwoFactor()->create();
+        $admin = User::factory()->withTwoFactor()->create();
         $csv = $this->actingAs($admin)->get(route('admin.ip-pools.rdns-export', $this->ipv4Pool))->streamedContent();
         $this->assertStringContainsString("{$this->address->address},", $csv);
         $this->assertStringContainsString('mail.example.com.,yes', $csv);
@@ -147,19 +147,12 @@ class ReverseDnsTest extends TestCase
         $this->assertNull($this->address->refresh()->ptr);
     }
 
-    public function test_customers_cannot_set_the_ptr_of_other_addresses()
+    public function test_the_ptr_of_another_servers_address_cannot_be_set()
     {
         $other = $this->ipv4Pool->addresses()->where('id', '!=', $this->address->id)->firstOrFail();
 
         $this->setPtr('mail.example.com', address: $other->address)->assertSessionHasErrors('address');
         $this->assertNull($other->refresh()->ptr);
-    }
-
-    public function test_customers_cannot_touch_another_users_server()
-    {
-        $this->setPtr('mail.example.com', User::factory()->create())->assertForbidden();
-
-        $this->assertNull($this->address->refresh()->ptr);
     }
 
     public function test_released_addresses_lose_their_ptr()
@@ -177,7 +170,7 @@ class ReverseDnsTest extends TestCase
 
     public function test_admins_manage_dns_providers_and_api_keys_stay_write_only()
     {
-        $admin = User::factory()->admin()->withTwoFactor()->create();
+        $admin = User::factory()->withTwoFactor()->create();
         $this->actingAs($admin);
 
         $this->post(route('admin.dns-providers.store'), [
@@ -204,7 +197,7 @@ class ReverseDnsTest extends TestCase
     public function test_providers_in_use_cannot_be_deleted()
     {
         $this->usePowerDns();
-        $this->actingAs(User::factory()->admin()->withTwoFactor()->create());
+        $this->actingAs(User::factory()->withTwoFactor()->create());
 
         $this->delete(route('admin.dns-providers.destroy', $this->powerDns));
 
@@ -213,7 +206,7 @@ class ReverseDnsTest extends TestCase
 
     public function test_the_connection_can_be_tested()
     {
-        $this->actingAs(User::factory()->admin()->withTwoFactor()->create());
+        $this->actingAs(User::factory()->withTwoFactor()->create());
 
         $this->post(route('admin.dns-providers.test', $this->powerDns));
 
@@ -223,7 +216,7 @@ class ReverseDnsTest extends TestCase
 
     public function test_a_pool_with_a_provider_needs_a_reverse_zone_that_covers_its_network()
     {
-        $this->actingAs(User::factory()->admin()->withTwoFactor()->create());
+        $this->actingAs(User::factory()->withTwoFactor()->create());
         $payload = [
             'name' => $this->ipv4Pool->name,
             'network_model' => 'bridged',
@@ -241,13 +234,5 @@ class ReverseDnsTest extends TestCase
         $pool = $this->ipv4Pool->refresh();
         $this->assertSame($this->powerDns->id, $pool->dns_provider_id);
         $this->assertSame('113.0.203.in-addr.arpa', $pool->reverse_zone);
-    }
-
-    public function test_customers_cannot_reach_dns_administration()
-    {
-        $this->actingAs($this->customer);
-
-        $this->get(route('admin.dns-providers.index'))->assertForbidden();
-        $this->get(route('admin.ip-pools.rdns-export', $this->ipv4Pool))->assertForbidden();
     }
 }

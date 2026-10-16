@@ -69,7 +69,7 @@ const toggleTerminated = (value: boolean | 'indeterminate') => {
                             {{ $t('Status') }}
                         </th>
                         <th class="px-4 py-3 font-medium">
-                            {{ $t('Customer') }}
+                            {{ $t('Billing service ID') }}
                         </th>
                         <th class="px-4 py-3 font-medium">
                             {{ $t('IP addresses') }}
@@ -102,7 +102,9 @@ const toggleTerminated = (value: boolean | 'indeterminate') => {
                         <td class="px-4 py-3">
                             <ServerStatusBadge :status="server.status" />
                         </td>
-                        <td class="px-4 py-3">{{ server.user.name }}</td>
+                        <td class="px-4 py-3 font-mono text-xs">
+                            {{ server.external_id ?? '—' }}
+                        </td>
                         <td class="px-4 py-3 font-mono text-xs">
                             {{ server.addresses.join(', ') || '—' }}
                         </td>

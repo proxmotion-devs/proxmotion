@@ -37,7 +37,7 @@ class DriftTest extends TestCase
         $this->buildInfrastructure();
         $this->proxmox = (new FakeProxmoxCluster)->addTemplate(9000)->install();
         $this->server = app(ServerCreator::class)->create($this->order());
-        $this->admin = User::factory()->admin()->withTwoFactor()->create();
+        $this->admin = User::factory()->withTwoFactor()->create();
     }
 
     private function detect(): void
@@ -206,20 +206,5 @@ class DriftTest extends TestCase
             ->where('drifts.data.0.server.uuid', $this->server->uuid));
         $this->get(route('admin.servers.show', $this->server))->assertInertia(fn (Assert $page) => $page
             ->where('drifts.0.type', 'missing_vm'));
-    }
-
-    public function test_customers_cannot_see_or_act_on_drifts()
-    {
-        unset($this->proxmox->vms[$this->server->vmid]);
-        $this->detect();
-        $drift = $this->drift(DriftType::MissingVm);
-        $this->actingAs($this->customer);
-
-        $this->get(route('admin.drifts.index'))->assertForbidden();
-        $this->post(route('admin.drifts.mark-error', $drift))->assertForbidden();
-        $this->post(route('admin.drifts.dismiss', $drift))->assertForbidden();
-
-        $this->assertSame(ServerStatus::Active, $this->server->refresh()->status);
-        $this->assertNull($drift->refresh()->dismissed_at);
     }
 }

@@ -4,9 +4,10 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Admin;
 
-use App\Enums\UserRole;
 use App\Http\Controllers\Controller;
+use App\Models\AuditLog;
 use App\Models\User;
+use Illuminate\Container\Attributes\CurrentUser;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rules\Password;
@@ -14,7 +15,8 @@ use Inertia\Inertia;
 use Inertia\Response;
 
 /**
- * Customer accounts. Until the billing API (Phase 4) exists, admins create them here.
+ * Administrator accounts. There are no customer accounts: customers live in
+ * the billing system (docs/adr/0007).
  */
 class UserController extends Controller
 {
@@ -22,23 +24,19 @@ class UserController extends Controller
     {
         return Inertia::render('admin/users/Index', [
             'users' => User::query()
-                ->withCount(['servers' => fn ($query) => $query->occupying()])
-                ->orderBy('role')
                 ->orderBy('name')
                 ->get()
                 ->map(fn (User $user) => [
                     'uuid' => $user->uuid,
                     'name' => $user->name,
                     'email' => $user->email,
-                    'role' => $user->role,
                     'two_factor' => $user->hasEnabledTwoFactorAuthentication(),
-                    'servers_count' => $user->getAttribute('servers_count'),
                     'created_at' => $user->created_at?->toIso8601String(),
                 ]),
         ]);
     }
 
-    public function store(Request $request): RedirectResponse
+    public function store(Request $request, #[CurrentUser] User $admin): RedirectResponse
     {
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:255'],
@@ -49,12 +47,13 @@ class UserController extends Controller
         $user = new User;
         $user->forceFill([
             ...$validated,
-            'role' => UserRole::Client,
             // Created by an admin: the address doesn't need to be confirmed again.
             'email_verified_at' => now(),
         ])->save();
 
-        $this->toast('success', 'Customer :name created.', ['name' => $user->name]);
+        AuditLog::record('user.created', $admin, $user, ['email' => $user->email], $request->ip());
+
+        $this->toast('success', 'Administrator :name created.', ['name' => $user->name]);
 
         return to_route('admin.users.index');
     }

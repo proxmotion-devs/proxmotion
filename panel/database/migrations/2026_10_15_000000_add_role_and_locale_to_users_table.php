@@ -2,7 +2,6 @@
 
 declare(strict_types=1);
 
-use App\Enums\UserRole;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
@@ -15,7 +14,8 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('users', function (Blueprint $table) {
-            $table->string('role', 16)->default(UserRole::Client->value)->after('password')->index();
+            // Removed again by 2026_10_21_000000_remove_customer_accounts (docs/adr/0007).
+            $table->string('role', 16)->default('client')->after('password')->index();
             $table->string('locale', 8)->nullable()->after('role');
         });
     }

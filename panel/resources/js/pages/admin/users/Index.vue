@@ -11,7 +11,7 @@ import { Input } from '@/components/ui/input';
 import { index, store } from '@/routes/admin/users';
 
 defineOptions({
-    layout: { breadcrumbs: [{ title: 'Customers', href: index() }] },
+    layout: { breadcrumbs: [{ title: 'Administrators', href: index() }] },
 });
 
 defineProps<{
@@ -19,9 +19,7 @@ defineProps<{
         uuid: string;
         name: string;
         email: string;
-        role: 'admin' | 'client';
         two_factor: boolean;
-        servers_count: number;
     }[];
 }>();
 
@@ -43,17 +41,17 @@ const submit = () => {
 </script>
 
 <template>
-    <Head title="Customers" />
+    <Head title="Administrators" />
 
     <div class="flex flex-col gap-6 p-4">
         <div class="flex flex-wrap items-start justify-between gap-4">
             <Heading
-                title="Customers"
-                description="Customer accounts. Later, billing systems will create them automatically."
+                title="Administrators"
+                description="Staff accounts of the panel. Customers use your billing system."
             />
             <Button @click="openForm">
                 <Plus class="h-4 w-4" />
-                {{ $t('Add customer') }}
+                {{ $t('Add administrator') }}
             </Button>
         </div>
 
@@ -63,9 +61,8 @@ const submit = () => {
                     <tr>
                         <th class="px-4 py-3 font-medium">{{ $t('Name') }}</th>
                         <th class="px-4 py-3 font-medium">{{ $t('Email') }}</th>
-                        <th class="px-4 py-3 font-medium">{{ $t('Role') }}</th>
                         <th class="px-4 py-3 font-medium">
-                            {{ $t('Servers') }}
+                            {{ $t('Two-factor authentication') }}
                         </th>
                     </tr>
                 </thead>
@@ -75,25 +72,12 @@ const submit = () => {
                         <td class="px-4 py-3">{{ user.email }}</td>
                         <td class="px-4 py-3">
                             <StatusBadge
-                                :tone="
-                                    user.role === 'admin'
-                                        ? 'warning'
-                                        : 'neutral'
-                                "
+                                :tone="user.two_factor ? 'success' : 'warning'"
                                 :label="
-                                    user.role === 'admin'
-                                        ? 'Administrator'
-                                        : 'Customer'
+                                    user.two_factor ? 'Enabled' : 'Not set up'
                                 "
-                            />
-                            <StatusBadge
-                                v-if="user.two_factor"
-                                tone="success"
-                                label="2FA"
-                                class="ml-1"
                             />
                         </td>
-                        <td class="px-4 py-3">{{ user.servers_count }}</td>
                     </tr>
                 </tbody>
             </table>
@@ -102,7 +86,7 @@ const submit = () => {
 
     <FormDialog
         v-model:open="dialogOpen"
-        title="Add customer"
+        title="Add administrator"
         :processing="form.processing"
         @submit="submit"
     >
@@ -122,7 +106,7 @@ const submit = () => {
             label="Password"
             for="password"
             :error="form.errors.password"
-            hint="The customer can change it in their settings."
+            hint="They must set up two-factor authentication when they first sign in."
         >
             <Input
                 id="password"

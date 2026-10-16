@@ -24,25 +24,28 @@ class PowerTest extends TestCase
 
     private Server $server;
 
+    private User $admin;
+
     protected function setUp(): void
     {
         parent::setUp();
 
         $this->buildInfrastructure();
         $this->proxmox = (new FakeProxmoxCluster)->addVm(100, 'web1.example.com')->install();
-        $this->server = Server::factory()->for($this->customer)->for($this->node)->create(['vmid' => 100]);
+        $this->server = Server::factory()->for($this->node)->create(['vmid' => 100]);
+        $this->admin = User::factory()->withTwoFactor()->create();
     }
 
-    private function power(string $action, ?User $user = null, string $route = 'servers.power'): TestResponse
+    private function power(string $action): TestResponse
     {
-        return $this->actingAs($user ?? $this->customer)
-            ->from(route('servers.show', $this->server))
-            ->post(route($route, ['server' => $this->server, 'action' => $action]));
+        return $this->actingAs($this->admin)
+            ->from(route('admin.servers.show', $this->server))
+            ->post(route('admin.servers.power', ['server' => $this->server, 'action' => $action]));
     }
 
-    public function test_customers_can_stop_and_start_their_server()
+    public function test_admins_can_stop_and_start_a_server()
     {
-        $this->power('stop')->assertRedirect(route('servers.show', $this->server));
+        $this->power('stop')->assertRedirect(route('admin.servers.show', $this->server));
         $this->assertSame('stopped', $this->proxmox->vms[100]['status']);
 
         $this->power('start');
@@ -50,6 +53,7 @@ class PowerTest extends TestCase
 
         $this->assertSame(['stop', 'start'], Task::query()->orderBy('id')->pluck('type')->map->value->all());
         $this->assertSame(2, Task::query()->where('status', TaskStatus::Succeeded)->count());
+        $this->assertSame($this->admin->id, Task::query()->firstOrFail()->user_id);
         $this->assertSame(ServerStatus::Active, $this->server->refresh()->status, 'Power actions never change the server status.');
     }
 
@@ -87,19 +91,9 @@ class PowerTest extends TestCase
 
         $log = AuditLog::query()->sole();
         $this->assertSame('server.power', $log->action);
-        $this->assertSame($this->customer->id, $log->user_id);
+        $this->assertSame($this->admin->id, $log->user_id);
         $this->assertSame('reboot', $log->properties['action'] ?? null);
         $this->assertTrue($log->subject?->is($this->server));
-    }
-
-    public function test_customers_cannot_power_another_users_server()
-    {
-        $this->server->forceFill(['user_id' => User::factory()->create()->id])->save();
-
-        $this->power('stop')->assertForbidden();
-
-        $this->assertSame(0, Task::query()->count());
-        $this->assertSame('running', $this->proxmox->vms[100]['status']);
     }
 
     public function test_suspended_servers_cannot_be_powered_on()
@@ -107,7 +101,7 @@ class PowerTest extends TestCase
         $this->server->forceFill(['status' => ServerStatus::Suspended])->save();
         $this->proxmox->vms[100]['status'] = 'stopped';
 
-        $this->power('start')->assertForbidden();
+        $this->power('start')->assertRedirect(route('admin.servers.show', $this->server));
 
         $this->assertSame('stopped', $this->proxmox->vms[100]['status']);
         $this->assertSame(0, Task::query()->count());
@@ -123,52 +117,25 @@ class PowerTest extends TestCase
         $task = new Task;
         $task->forceFill(['server_id' => $this->server->id, 'type' => TaskType::Create, 'status' => TaskStatus::Running, 'steps' => []])->save();
 
-        $this->power('stop')->assertRedirect(route('servers.show', $this->server));
+        $this->power('stop')->assertRedirect(route('admin.servers.show', $this->server));
 
         $this->assertSame(1, Task::query()->count());
         $this->assertSame('running', $this->proxmox->vms[100]['status']);
         $this->assertSame(0, AuditLog::query()->count());
     }
 
-    public function test_admins_can_power_any_active_server()
-    {
-        $admin = User::factory()->admin()->withTwoFactor()->create();
-
-        $this->power('stop', $admin, 'admin.servers.power');
-
-        $this->assertSame('stopped', $this->proxmox->vms[100]['status']);
-        $this->assertSame($admin->id, Task::query()->sole()->user_id);
-    }
-
-    public function test_customers_cannot_use_the_admin_power_route()
-    {
-        $this->power('stop', route: 'admin.servers.power')->assertForbidden();
-
-        $this->assertSame('running', $this->proxmox->vms[100]['status']);
-    }
-
-    public function test_the_admin_page_loads_power_state_and_guest_agent_reachability()
+    public function test_the_page_loads_power_state_and_guest_agent_reachability_after_rendering()
     {
         $this->proxmox->agentDown[100] = true;
 
-        $this->actingAs(User::factory()->admin()->withTwoFactor()->create())
+        $this->actingAs($this->admin)
             ->get(route('admin.servers.show', $this->server))
             ->assertOk()
             ->assertInertia(fn (Assert $page) => $page
+                ->missing('power')
                 ->missing('agent')
                 ->loadDeferredProps(fn (Assert $reload) => $reload
                     ->where('power', 'running')
                     ->where('agent', false)));
-    }
-
-    public function test_the_page_loads_the_power_state_after_rendering()
-    {
-        $this->proxmox->vms[100]['status'] = 'stopped';
-
-        $this->actingAs($this->customer)
-            ->get(route('servers.show', $this->server))
-            ->assertInertia(fn (Assert $page) => $page
-                ->missing('power')
-                ->loadDeferredProps(fn (Assert $reload) => $reload->where('power', 'stopped')));
     }
 }

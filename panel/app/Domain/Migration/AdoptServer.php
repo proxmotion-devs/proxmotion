@@ -22,7 +22,7 @@ use App\Proxmox\ProxmoxClientFactory;
 use Illuminate\Support\Facades\DB;
 
 /**
- * Takes over an existing Proxmox VM: records it as a server of a customer.
+ * Takes over an existing Proxmox VM: records it as a server managed by the panel.
  * Nothing is changed on Proxmox — the VM is not restarted or reconfigured.
  */
 final readonly class AdoptServer
@@ -52,7 +52,7 @@ final readonly class AdoptServer
      *
      * @throws ProvisioningException
      */
-    public function adopt(Cluster $cluster, int $vmid, User $owner, ?Package $package, NetworkModel $networkModel, array $ipAddressIds, ?User $actor = null): Server
+    public function adopt(Cluster $cluster, int $vmid, ?Package $package, NetworkModel $networkModel, array $ipAddressIds, ?User $actor = null, ?string $externalId = null, ?string $externalClientId = null): Server
     {
         $vm = collect($this->candidates($cluster))->firstWhere('vmid', $vmid)
             ?? throw new ProvisioningException('VM :vmid was not found, is already managed, or is not in the resource pool.', ['vmid' => (string) $vmid]);
@@ -60,7 +60,7 @@ final readonly class AdoptServer
         $node = Node::query()->where('cluster_id', $cluster->id)->where('name', $vm->node)->first()
             ?? throw new ProvisioningException('The node of this VM has not been synced yet. Sync the cluster first.');
 
-        return DB::transaction(function () use ($cluster, $vm, $node, $owner, $package, $networkModel, $ipAddressIds, $actor) {
+        return DB::transaction(function () use ($cluster, $vm, $node, $package, $networkModel, $ipAddressIds, $actor, $externalId, $externalClientId) {
             $addresses = IpAddress::query()
                 ->whereIn('id', $ipAddressIds)
                 ->whereNull('server_id')
@@ -74,7 +74,8 @@ final readonly class AdoptServer
 
             $server = new Server;
             $server->forceFill([
-                'user_id' => $owner->id,
+                'external_id' => $externalId,
+                'external_client_id' => $externalClientId,
                 'package_id' => $package?->id,
                 'location_id' => $cluster->location_id,
                 'cluster_id' => $cluster->id,

@@ -16,7 +16,7 @@ abstract class AdminTestCase extends TestCase
     {
         parent::setUp();
 
-        $this->admin = User::factory()->admin()->withTwoFactor()->create();
+        $this->admin = User::factory()->withTwoFactor()->create();
         $this->actingAs($this->admin);
     }
 }

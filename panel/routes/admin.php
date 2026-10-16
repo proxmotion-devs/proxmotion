@@ -21,7 +21,7 @@ use Illuminate\Support\Facades\Route;
 
 /*
 | Admin routes. Loaded from routes/web.php inside the `admin.` group
-| (auth, verified, role:admin, 2fa).
+| (auth, verified, 2fa).
 */
 
 Route::get('/', DashboardController::class)->name('dashboard');

@@ -5,11 +5,9 @@ declare(strict_types=1);
 namespace App\Http\Requests\Admin;
 
 use App\Enums\NetworkModel;
-use App\Enums\UserRole;
 use App\Models\Location;
 use App\Models\OsTemplate;
 use App\Models\Package;
-use App\Models\User;
 use App\Provisioning\NewServer;
 use App\Provisioning\ServerSpec;
 use App\Rules\Hostname;
@@ -20,7 +18,6 @@ use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator;
-use InvalidArgumentException;
 
 class ServerRequest extends FormRequest
 {
@@ -32,7 +29,9 @@ class ServerRequest extends FormRequest
         $custom = $this->input('resource_mode') === 'custom';
 
         return [
-            'user' => ['required', 'string', Rule::exists('users', 'uuid')->where('role', UserRole::Client->value)],
+            // Ids of the service and the customer in the billing system, if any.
+            'external_id' => ['nullable', 'string', 'max:191', Rule::unique('servers', 'external_id')],
+            'external_client_id' => ['nullable', 'string', 'max:191'],
             'location' => ['required', 'string', Rule::exists('locations', 'uuid')],
             // "package": resources from a package; "custom": entered below (admins only).
             'resource_mode' => ['required', Rule::in(['package', 'custom'])],
@@ -51,8 +50,6 @@ class ServerRequest extends FormRequest
             // Empty: a random password is generated.
             'root_password' => ['nullable', 'string', 'min:12', 'max:128'],
             'ssh_keys' => ['nullable', 'string', 'max:16384', new SshPublicKeys],
-            // Add the SSH keys the customer saved in their settings.
-            'use_saved_keys' => ['boolean'],
         ];
     }
 
@@ -80,10 +77,7 @@ class ServerRequest extends FormRequest
 
     public function toNewServer(): NewServer
     {
-        $owner = User::query()->where('uuid', $this->string('user'))->firstOrFail();
-
         return new NewServer(
-            owner: $owner,
             location: Location::query()->where('uuid', $this->string('location'))->firstOrFail(),
             spec: $this->spec(),
             package: $this->package(),
@@ -91,35 +85,10 @@ class ServerRequest extends FormRequest
             networkModel: NetworkModel::from($this->string('network_model')->toString()),
             hostname: $this->string('hostname')->lower()->toString(),
             rootPassword: $this->filled('root_password') ? $this->string('root_password')->toString() : Str::password(20, symbols: false),
-            sshKeys: $this->sshKeys($owner),
+            sshKeys: PublicKey::implode(PublicKey::parseMany($this->string('ssh_keys')->toString())),
+            externalId: $this->filled('external_id') ? $this->string('external_id')->trim()->toString() : null,
+            externalClientId: $this->filled('external_client_id') ? $this->string('external_client_id')->trim()->toString() : null,
         );
-    }
-
-    /**
-     * The entered keys plus (if chosen) the customer's saved keys, normalized,
-     * each key once.
-     */
-    private function sshKeys(User $owner): ?string
-    {
-        $parsed = PublicKey::parseMany($this->string('ssh_keys')->toString());
-
-        if ($this->boolean('use_saved_keys', true)) {
-            foreach ($owner->sshKeys()->orderBy('id')->pluck('public_key') as $line) {
-                try {
-                    $parsed[] = PublicKey::parse($line);
-                } catch (InvalidArgumentException) {
-                    // Saved under older, looser rules: leave it out rather than fail the order.
-                }
-            }
-        }
-
-        $keys = [];
-
-        foreach ($parsed as $key) {
-            $keys[$key->fingerprint()] ??= $key->toString();
-        }
-
-        return $keys !== [] ? implode("\n", $keys) : null;
     }
 
     /**

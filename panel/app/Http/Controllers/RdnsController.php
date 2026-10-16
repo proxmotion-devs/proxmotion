@@ -12,7 +12,7 @@ use Illuminate\Container\Attributes\CurrentUser;
 use Illuminate\Http\RedirectResponse;
 
 /**
- * Set or remove the PTR of one of a server's addresses (admins and owners).
+ * Set or remove the PTR of one of a server's addresses (admin panel).
  */
 class RdnsController extends Controller
 {

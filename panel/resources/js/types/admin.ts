@@ -177,7 +177,8 @@ export type ServerListItem = {
     hostname: string;
     status: ServerStatus;
     vmid: number;
-    user: { uuid: string; name: string };
+    external_id: string | null;
+    external_client_id: string | null;
     node: string;
     location: string;
     package: string | null;
@@ -219,13 +220,12 @@ export type Drift = {
     server: { uuid: string; hostname: string; status: ServerStatus } | null;
 };
 
-/** Choices for ReinstallDialog: OS templates of the server's cluster, the owner's saved keys. */
+/** Choices for ReinstallDialog: OS templates of the server's cluster. */
 export type ReinstallOptions = {
     osTemplates: Option[];
-    sshKeys: (Option & { fingerprint: string })[];
 };
 
-/** What TaskList needs; customers get no step messages or errors. */
+/** What TaskList needs. */
 export type TaskProgress = {
     uuid: string;
     type: TaskType;

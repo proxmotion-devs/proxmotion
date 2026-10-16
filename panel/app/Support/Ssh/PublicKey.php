@@ -65,7 +65,7 @@ final readonly class PublicKey
     }
 
     /**
-     * Parse one key per line, skipping empty lines.
+     * Parse one key per line, skipping empty lines and keys seen before.
      *
      * @return list<self>
      *
@@ -77,11 +77,22 @@ final readonly class PublicKey
 
         foreach (preg_split('/\R/', $text) ?: [] as $line) {
             if (trim($line) !== '') {
-                $keys[] = self::parse($line);
+                $key = self::parse($line);
+                $keys[$key->fingerprint()] ??= $key;
             }
         }
 
-        return $keys;
+        return array_values($keys);
+    }
+
+    /**
+     * The keys as authorized_keys lines, or null when there are none.
+     *
+     * @param  list<self>  $keys
+     */
+    public static function implode(array $keys): ?string
+    {
+        return $keys !== [] ? implode("\n", array_map(fn (self $key) => $key->toString(), $keys)) : null;
     }
 
     /**

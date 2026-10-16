@@ -13,7 +13,7 @@ PHP-FPM is a poor fit for long-lived WebSockets. Laravel Reverb speaks the Pushe
 
 A small, stateless **Node.js service** (`deploy/console-proxy/`, `ws` library) relays the console. All decisions stay in Laravel:
 
-1. The user opens the console page (`/servers/{uuid}/console` or `/admin/servers/{uuid}/console`). A Policy checks access: admins may open any active server, customers only their own active servers.
+1. The user opens the console page (`/admin/servers/{uuid}/console`). A Policy checks that the server is active. (Since ADR 0007 there is no client panel; customers will reach the console page through a signed single-use link from the billing API.)
 2. Laravel calls `vncproxy` (`websocket=1`, `generate-password=1`) and stores the result under a random **single-use ticket** in the cache for 15 seconds (Proxmox only waits about 10 seconds for the connection). The cached payload, which includes the token header, is encrypted with the app key. The page receives the WebSocket URL with the ticket and the one-time VNC password. It never receives the vncticket or the token.
 3. The browser connects to `wss://<panel>/console-ws?ticket=…`. The proxy redeems the ticket at `POST /internal/console/redeem` (shared secret header `X-Console-Proxy-Secret`). Laravel deletes the ticket while it holds a lock, so a ticket works only once.
 4. The proxy opens `wss://<host>:<port>/api2/json/nodes/{node}/qemu/{vmid}/vncwebsocket` with the token header, trying each cluster host in turn, and relays bytes in both directions.

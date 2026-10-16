@@ -4,16 +4,16 @@
 
 > ⚠️ **Status: early development (Phase 0).** Not ready for production use.
 
-Proxmotion lets hosting providers connect their Proxmox nodes and clusters, sell VPS through billing systems such as WHMCS, and give customers a self-service panel.
+Proxmotion lets hosting providers connect their Proxmox nodes and clusters, and sell VPS through billing systems such as WHMCS and WISECP. Customers manage their servers in the billing system's client area through a Proxmotion module — there is no separate client panel.
 
 ## Planned features
 
 - **Mixed infrastructure:** standalone Proxmox nodes and clusters side by side
 - **Automatic provisioning** from cloud-init templates, triggered by your billing system
 - **Network models:** bridged public IPs, routed/failover IPs, NAT VPS, IPv6
-- **Client panel:** power actions, browser console (noVNC), reinstall, rDNS, SSH keys, graphs
+- **Customer actions in your billing system:** power actions, browser console (noVNC), reinstall, root password, rDNS, graphs — through the API and module
 - **App Marketplace:** one-click OpenVPN, WireGuard, Docker, control panels and web stacks — at order time or later
-- **Billing integration:** REST API + WHMCS module (Blesta, HostBill, Paymenter, FOSSBilling later)
+- **Billing integration:** REST API + WHMCS and WISECP modules (Blesta, HostBill, Paymenter, FOSSBilling later)
 - **Migration:** adopt existing Proxmox VMs, import from Virtualizor
 - Snapshots, backups, traffic accounting and quotas, audit log, 2FA
 - English and Turkish UI
@@ -35,7 +35,7 @@ php artisan db:seed
 composer dev
 ```
 
-The seeder creates two local accounts, `admin@example.com` and `client@example.com`, both with the password `password`. Never run it in production.
+The seeder creates a local administrator, `admin@example.com`, with the password `password`. Never run it in production. Panel accounts are staff only; customers live in your billing system.
 
 Administrators must set up two-factor authentication (TOTP) before they can open the admin panel. For local development only, you can turn this off with `PROXMOTION_REQUIRE_ADMIN_2FA=false` in `.env`.
 

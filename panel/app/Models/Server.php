@@ -19,7 +19,8 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Carbon;
 
 /**
- * A customer VPS. Its resources are copied from the package (or entered as custom
+ * A customer VPS. The customer lives in the billing system; the server only
+ * keeps its ids (external_id, external_client_id). Its resources are copied from the package (or entered as custom
  * resources) at creation time, so later package edits do not change existing servers.
  *
  * Nothing on this model is mass-assignable: servers are only created and
@@ -27,7 +28,6 @@ use Illuminate\Support\Carbon;
  *
  * @property int $id
  * @property string $uuid
- * @property int $user_id
  * @property int|null $package_id
  * @property int $location_id
  * @property int $cluster_id
@@ -45,15 +45,15 @@ use Illuminate\Support\Carbon;
  * @property int|null $port_speed_mbps
  * @property int|null $traffic_bytes
  * @property string|null $root_password
- * @property bool $root_password_unrevealed the owner has not seen the current root password yet
+ * @property bool $root_password_unrevealed the billing system has not fetched the current root password yet
  * @property string|null $ssh_keys
  * @property string|null $suspension_reason
- * @property string|null $external_id
+ * @property string|null $external_id billing service id
+ * @property string|null $external_client_id billing customer id
  * @property Carbon|null $provisioned_at
  * @property Carbon|null $terminated_at
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
- * @property-read User $user
  * @property-read Package|null $package
  * @property-read Location $location
  * @property-read Cluster $cluster
@@ -95,14 +95,6 @@ class Server extends Model
     public function scopeOccupying(Builder $query): void
     {
         $query->whereIn('status', ServerStatus::occupying());
-    }
-
-    /**
-     * @return BelongsTo<User, $this>
-     */
-    public function user(): BelongsTo
-    {
-        return $this->belongsTo(User::class);
     }
 
     /**

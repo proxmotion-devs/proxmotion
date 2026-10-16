@@ -40,7 +40,6 @@ const props = defineProps<{
     cluster: string | null;
     candidates: Candidate[];
     error: string | null;
-    users: Option[];
     packages: Option[];
     addresses: Option<number>[];
 }>();
@@ -73,7 +72,8 @@ const addressFilter = ref('');
 const form = useForm({
     cluster: props.cluster,
     vmid: 0,
-    user: props.users[0]?.value ?? null,
+    external_id: '',
+    external_client_id: '',
     package: '' as string | null,
     network_model: 'bridged' as NetworkModel | null,
     addresses: [] as number[],
@@ -115,7 +115,7 @@ const submit = () => {
     <div class="flex flex-col gap-6 p-4">
         <Heading
             title="Adopt existing VM"
-            description="Assign a VM that already runs on Proxmox to a customer. Nothing is changed on Proxmox: the VM is not restarted or reconfigured."
+            description="Let the panel manage a VM that already runs on Proxmox. Nothing is changed on Proxmox: the VM is not restarted or reconfigured."
         />
 
         <div class="max-w-sm">
@@ -218,14 +218,30 @@ const submit = () => {
         >
             {{ form.errors.vmid }}
         </p>
-        <FormField label="Customer" for="adopt_user" :error="form.errors.user">
-            <NativeSelect
-                id="adopt_user"
-                v-model="form.user"
-                :options="users"
-                placeholder="Choose a customer"
-            />
-        </FormField>
+        <div class="grid gap-4 sm:grid-cols-2">
+            <FormField
+                label="Billing service ID"
+                for="adopt_external_id"
+                :error="form.errors.external_id"
+            >
+                <Input
+                    id="adopt_external_id"
+                    v-model="form.external_id"
+                    autocomplete="off"
+                />
+            </FormField>
+            <FormField
+                label="Billing client ID"
+                for="adopt_external_client_id"
+                :error="form.errors.external_client_id"
+            >
+                <Input
+                    id="adopt_external_client_id"
+                    v-model="form.external_client_id"
+                    autocomplete="off"
+                />
+            </FormField>
+        </div>
         <div class="grid gap-4 sm:grid-cols-2">
             <FormField
                 label="Package"

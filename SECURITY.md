@@ -25,8 +25,8 @@ Proxmotion is in early development. Until the first stable release, only the lat
 
 Particularly relevant areas:
 
-- Tenant isolation (a customer accessing another customer's server or data)
+- Tenant isolation (a customer or billing token reaching another customer's server or data)
 - Exposure of Proxmox API tokens, root passwords or app secrets
-- Console proxy and SSO token handling
+- Console proxy and signed console link handling
 - Command execution inside VPSes through the App Marketplace
 - Billing API authentication and authorization

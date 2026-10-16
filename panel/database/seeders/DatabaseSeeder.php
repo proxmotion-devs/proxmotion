@@ -11,20 +11,15 @@ class DatabaseSeeder extends Seeder
     use WithoutModelEvents;
 
     /**
-     * Seed the application's database with local development accounts.
+     * Seed the application's database with a local development account.
      *
-     * Both accounts use the factory password: "password". Never run this seeder in production.
+     * It uses the factory password: "password". Never run this seeder in production.
      */
     public function run(): void
     {
-        User::factory()->admin()->create([
+        User::factory()->create([
             'name' => 'Admin User',
             'email' => 'admin@example.com',
-        ]);
-
-        User::factory()->create([
-            'name' => 'Client User',
-            'email' => 'client@example.com',
         ]);
     }
 }

@@ -8,7 +8,6 @@ use App\Enums\ServerStatus;
 use App\Models\Node;
 use App\Models\Package;
 use App\Models\Server;
-use App\Models\User;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
 /**
@@ -22,7 +21,6 @@ class ServerFactory extends Factory
     public function definition(): array
     {
         return [
-            'user_id' => User::factory(),
             'package_id' => Package::factory(),
             'node_id' => Node::factory(),
             'cluster_id' => fn (array $attributes) => Node::query()->whereKey($attributes['node_id'])->firstOrFail()->cluster_id,

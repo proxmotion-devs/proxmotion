@@ -33,15 +33,11 @@ final readonly class ServerPasswords
     }
 
     /**
-     * The current root password. When the owner looks at it, it is not
-     * offered again; an admin looking does not use up the owner's view.
+     * The current root password for an administrator. This does not use up
+     * the billing system's one fetch of a new password (docs/adr/0007).
      */
     public function reveal(Server $server, User $user, ?string $ipAddress): ?string
     {
-        if ($server->user_id === $user->id) {
-            $server->forceFill(['root_password_unrevealed' => false])->save();
-        }
-
         AuditLog::record('server.password_revealed', $user, $server, ['hostname' => $server->hostname], $ipAddress);
 
         return $server->root_password;

@@ -4,7 +4,6 @@ namespace Tests\Feature\Admin;
 
 use App\Models\Cluster;
 use App\Models\Location;
-use App\Models\User;
 use Inertia\Testing\AssertableInertia as Assert;
 
 class LocationManagementTest extends AdminTestCase
@@ -69,14 +68,5 @@ class LocationManagementTest extends AdminTestCase
             ->assertRedirect(route('admin.locations.index'));
 
         $this->assertModelMissing($location);
-    }
-
-    public function test_clients_cannot_manage_locations()
-    {
-        $this->actingAs(User::factory()->create());
-
-        $this->get(route('admin.locations.index'))->assertForbidden();
-        $this->post(route('admin.locations.store'), ['name' => 'X', 'code' => 'x'])->assertForbidden();
-        $this->assertDatabaseCount('locations', 0);
     }
 }

@@ -6,14 +6,13 @@ This file is the single source of truth for **every AI coding agent** working in
 
 ## 1. Project Overview
 
-**Proxmotion** is an open-source (**AGPL-3.0**), multi-tenant **VPS management panel for Proxmox VE**, in the spirit of Virtualizor and VirtFusion. Hosting providers connect their Proxmox nodes and clusters; when a customer buys a VPS through a billing system such as WHMCS, the server is provisioned automatically, and the customer manages it from their own panel.
+**Proxmotion** is an open-source (**AGPL-3.0**), multi-tenant **VPS management panel for Proxmox VE**, in the spirit of Virtualizor and VirtFusion. Hosting providers connect their Proxmox nodes and clusters; when a customer buys a VPS through a billing system such as WHMCS or WISECP, the server is provisioned automatically, and the customer manages it from the billing system's client area through a Proxmotion module. **Proxmotion has no client panel and no customer accounts** (ADR 0007): customers only ever see their billing system.
 
 The first deployment is the maintainers' own hosting company, but the project is built as a **general-purpose open-source product**: nothing company-specific (names, IP ranges, branding, provider APIs) may be hard-coded.
 
-### Three faces
-1. **Admin panel:** clusters and nodes, locations, IP pools, packages, OS templates, app recipes, users, servers, tasks, audit logs.
-2. **Client panel:** power actions, browser console (noVNC / xterm.js), reinstall, root password reset, rDNS, SSH keys, snapshots/backups, traffic and resource graphs, **App Marketplace**.
-3. **Billing API + modules:** a REST API and ready-made modules; **WHMCS first**, later Blesta, HostBill, Paymenter, FOSSBilling.
+### Two faces
+1. **Admin panel** (staff only): clusters and nodes, locations, IP pools, packages, OS templates, app recipes, administrators, servers, tasks, audit logs.
+2. **Billing API + modules:** a REST API and ready-made modules for billing systems — **WHMCS first, then WISECP**, later Blesta, HostBill, Paymenter, FOSSBilling. Everything a customer does (power actions, browser console, reinstall, root password reset, rDNS, snapshots/backups, traffic and resource graphs, **App Marketplace**) goes through the API and is shown by the module in the billing system's client area.
 
 ### Core features
 - Manage **mixed infrastructure**: standalone Proxmox nodes and Proxmox clusters side by side (see 3.6)
@@ -27,8 +26,8 @@ The first deployment is the maintainers' own hosting company, but the project is
 - In-browser console via a panel-side WebSocket proxy
 - Traffic accounting; throttle or suspend on quota overrun
 - Snapshots and backups (Proxmox Backup Server later)
-- One-click SSO from the billing system into the client panel
-- **App Marketplace (OVH-style):** one-click install of OpenVPN/WireGuard, control panels, Docker, web/CMS stacks — both at order time and later from the client panel (see 3.5)
+- Browser console for customers through a signed, single-use console link issued by the API (the panel's only customer-facing page)
+- **App Marketplace (OVH-style):** one-click install of OpenVPN/WireGuard, control panels, Docker, web/CMS stacks — both at order time and later from the billing system's client area (see 3.5)
 - **Migration:** adopt existing Proxmox VMs; import from Virtualizor (see 3.8)
 - Audit log, 2FA, scoped API tokens
 - UI in **Turkish and English** from day one (i18n-ready for more)
@@ -70,11 +69,10 @@ Before adding a dependency, check whether existing ones already cover it. Every 
 ### 3.1 High-level flow
 
 ```
-WHMCS / Blesta  ──REST API (token)──▶  Proxmotion Panel (Laravel)
-                                          │   ├── Admin UI (Inertia/Vue)
-Customer browser ──HTTPS / WSS───────▶    │   ├── Client UI (Inertia/Vue)
-                                          │   ├── Public API v1
-                                          │   └── Console WS proxy
+WHMCS / WISECP  ──REST API (token)──▶  Proxmotion Panel (Laravel)
+(client area via module)                  │   ├── Admin UI (Inertia/Vue, staff only)
+Customer browser ──signed console link─▶  │   ├── Public API v1
+                                          │   └── Console page + WS proxy
                                           ▼
                                    Redis queue (Horizon workers)
                                           │
@@ -95,7 +93,7 @@ proxmotion/
 ├── panel/                                # Laravel application
 │   ├── app/
 │   │   ├── Models/                       # Eloquent models (Laravel convention), incl. Concerns/HasPublicUuid
-│   │   ├── Enums/                        # UserRole, ClusterType, NodeStatus, NetworkModel, IpVersion, …
+│   │   ├── Enums/                        # ClusterType, NodeStatus, NetworkModel, IpVersion, …
 │   │   ├── Domain/                       # Business logic (services/actions), grouped by domain
 │   │   │   ├── Infrastructure/           # ClusterSynchronizer, PermissionChecker, DriftDetector (ADR 0005)
 │   │   │   ├── Networking/               # GenerateIpAddresses, ReverseDns drivers (ADR 0003), firewall, NAT port forwards
@@ -123,11 +121,10 @@ proxmotion/
 │   │   ├── Jobs/                         # Queue jobs: RunServerTask (pipelines), SyncCluster, PublishPtr/RemovePtr (rDNS)
 │   │   ├── Http/
 │   │   │   ├── Controllers/Admin/
-│   │   │   ├── Controllers/Client/
 │   │   │   ├── Controllers/Api/V1/       # Billing API
-│   │   │   ├── Requests/                 # FormRequest validation (shared admin/client ones such as ReinstallRequest, RdnsRequest authorize first)
+│   │   │   ├── Requests/                 # FormRequest validation (ReinstallRequest, RdnsRequest authorize first)
 │   │   │   └── Resources/                # API JSON transformers
-│   │   ├── Policies/                     # Authorization (clients see only their own servers)
+│   │   ├── Policies/                     # Authorization (server state rules; API token scopes from Phase 4)
 │   │   └── Console/                      # Scheduled commands (traffic collection, sync…)
 │   ├── recipes/                          # Bundled App Marketplace recipes
 │   │   ├── _schema/recipe.schema.json
@@ -137,11 +134,12 @@ proxmotion/
 │   │       └── (each) recipe.yaml, install.sh, actions/*.sh, README.md
 │   ├── lang/                             # tr.json (UI strings), en.json (empty: keys are English), {en,tr}/*.php
 │   ├── database/migrations, factories, seeders
-│   ├── resources/js/                     # Vue 3 + TS: pages/{admin,client,auth,settings}, components/, layouts/, composables/
+│   ├── resources/js/                     # Vue 3 + TS: pages/{admin,auth,console,settings}, components/, layouts/, composables/
 │   ├── routes/web.php, api.php, channels.php
 │   └── tests/Unit, Feature, Fixtures/proxmox/*.json
 ├── integrations/
 │   ├── whmcs/modules/servers/proxmotion/ # WHMCS server module
+│   ├── wisecp/                           # WISECP product module
 │   └── blesta/                           # later
 ├── deploy/
 │   ├── docker/                           # Dockerfiles + compose.yml (dev and production)
@@ -154,7 +152,7 @@ proxmotion/
 ### 3.3 Layering rules
 1. **The Proxmox API is reached only through `app/Proxmox/`.** Controllers, jobs and models never make HTTP calls themselves.
 2. **Controllers are thin:** validate (FormRequest) → authorize (Policy) → call a domain service or dispatch a job → return a Resource / Inertia response.
-3. **Every operation that changes Proxmox runs in the queue.** HTTP requests never wait on a Proxmox task; they create a `Task` record and return immediately. Pages poll (`usePoll`) while a task runs; Reverb is planned for the client panel.
+3. **Every operation that changes Proxmox runs in the queue.** HTTP requests never wait on a Proxmox task; they create a `Task` record and return immediately. Pages poll (`usePoll`) while a task runs; billing modules poll `GET /tasks/{id}`.
 4. **Pipeline steps are idempotent:** re-running a half-finished pipeline recognizes what already exists and continues. Each step records what it did on the `Task`.
 5. **Resource allocation is atomic:** VMID, IP addresses, NAT ports and node capacity are reserved inside a DB transaction plus a Redis lock, so two concurrent provisions can never get the same IP/VMID/port.
 6. **The panel database is the source of truth.** Proxmox state is reconciled periodically; drift is reported to admins and never auto-deleted.
@@ -162,7 +160,7 @@ proxmotion/
 8. **No SSH to hypervisors.** The panel uses only the Proxmox API (and the QEMU Guest Agent through it). Anything that seems to need host shell access must be solved differently or escalated to the maintainers.
 
 ### 3.4 Core data models
-`Location`, `Cluster` (one API connection: host(s), port, token id, encrypted token secret, `type: standalone | cluster`), `Node` (belongs to a cluster; capacity limits, active/maintenance), `Storage` (`shared` flag), `NetworkBridge`, `IpPool` (v4/v6, network model, gateway, netmask, VLAN, location, optional per-IP MAC), `IpAddress`, `NatPortForward`, `Package`, `OsTemplate` (template VMID mapped per node/cluster), `Iso`, `Server` (uuid, vmid, node, package, user, network model, status, suspension reason, `external_id` = billing service id, `origin: provisioned | adopted | imported`), `Task`, `UsageRecord`, `Snapshot`, `Backup`, `User` (admin/client role, locale), `SshKey`, `ApiToken` (scoped), `AuditLog`, `DnsProvider` (rDNS driver + encrypted credentials, ADR 0003), `ServerDrift` (ADR 0005), `AppRecipe`, `AppInstallation`, `AppEntitlement`.
+`Location`, `Cluster` (one API connection: host(s), port, token id, encrypted token secret, `type: standalone | cluster`), `Node` (belongs to a cluster; capacity limits, active/maintenance), `Storage` (`shared` flag), `NetworkBridge`, `IpPool` (v4/v6, network model, gateway, netmask, VLAN, location, optional per-IP MAC), `IpAddress`, `NatPortForward`, `Package`, `OsTemplate` (template VMID mapped per node/cluster), `Iso`, `Server` (uuid, vmid, node, package, network model, status, suspension reason, `external_id` = billing service id, `external_client_id` = billing customer id, `origin: provisioned | adopted | imported`; no panel owner — ADR 0007), `Task`, `UsageRecord`, `Snapshot`, `Backup`, `User` (staff/administrator, locale), `ApiToken` (scoped), `AuditLog`, `DnsProvider` (rDNS driver + encrypted credentials, ADR 0003), `ServerDrift` (ADR 0005), `AppRecipe`, `AppInstallation`, `AppEntitlement`.
 
 `Server.status`: `pending → provisioning → active ⇄ suspended`, `active → reinstalling → active`, `* → terminating → terminated`, `* → error`.
 
@@ -170,17 +168,17 @@ proxmotion/
 
 ### 3.5 App Marketplace
 
-The equivalent of OVH's "install with an application". A customer can install an app (e.g. OpenVPN) **at order time** or **later from the client panel**. It is a module of the panel, not a separate product.
+The equivalent of OVH's "install with an application". A customer can install an app (e.g. OpenVPN) **at order time** or **later from the billing system's client area** (module → API). It is a module of the panel, not a separate product.
 
 #### Install paths
 | Path | When | Mechanism |
 |---|---|---|
 | **At order time** | `POST /servers` contains an `app` field (WHMCS order form) | After first boot, a post-boot hook runs the same Guest Agent flow as "later" (ADR 0004) — no cloud-init snippets |
-| **Later** | Client panel "Install app" or API | **QEMU Guest Agent**: `file-write` puts the script and inputs into the VPS, `exec` runs it |
+| **Later** | "Install app" in the billing module (API) | **QEMU Guest Agent**: `file-write` puts the script and inputs into the VPS, `exec` runs it |
 | **Reinstall** | An app is selected while reinstalling the OS | Same as at order time |
 
 - **Status tracking is identical for both paths:** the script writes progress to `/var/lib/proxmotion/apps/<installation_uuid>/status.json` inside the VPS; the panel reads it periodically via Guest Agent `file-read`. **No phone-home** HTTP from the VPS to the panel — no panel token is ever placed on the VPS and the VPS needs no network path to the panel.
-- **Outputs** (panel URL, username/password, `.ovpn`/`.conf` files) are written by the script to `outputs.json` and `outputs/`; the panel reads them, stores them **encrypted**, and shows/offers them for download in the client panel.
+- **Outputs** (panel URL, username/password, `.ovpn`/`.conf` files) are written by the script to `outputs.json` and `outputs/`; the panel reads them, stores them **encrypted**, and hands them to the billing module through the API (`apps:secrets` scope) for display/download.
 - If the VPS does not answer the Guest Agent (agent removed, VPS stopped), the "install later" button is disabled with the reason shown.
 - Every panel template must ship `qemu-guest-agent`, with `agent: 1` set on the VM.
 
@@ -226,8 +224,8 @@ timeout_minutes: 15
 
 #### Licensing and pricing
 - `billing: free` → always installable.
-- `billing: paid` → chosen at order time through a WHMCS configurable option; for later installs, the billing system grants the right via `POST /servers/{id}/app-entitlements`. Without an entitlement the client panel shows a "Buy" button linking to WHMCS.
-- `license: external` (cPanel, Plesk) → the panel only installs; the licence is sold as a separate WHMCS product and its activation is not the panel's responsibility. The client panel shows a "Licence required" notice.
+- `billing: paid` → chosen at order time through a WHMCS configurable option; for later installs, the billing system grants the right via `POST /servers/{id}/app-entitlements`. Without an entitlement the module shows a "Buy" button.
+- `license: external` (cPanel, Plesk) → the panel only installs; the licence is sold as a separate WHMCS product and its activation is not the panel's responsibility. The module shows a "Licence required" notice.
 
 #### Initial app list
 | Category | Apps |
@@ -280,18 +278,22 @@ Each `IpPool` declares one network model; each `Package` lists the models it all
 ## 4. Billing API and WHMCS Module
 
 ### 4.1 Public API v1 (`/api/v1`, Bearer token)
+
+The API is the only way customers' actions reach the panel (ADR 0007). Every customer-facing feature needs an endpoint here and support in each billing module.
+
 | Endpoint | Description |
 |---|---|
-| `POST /servers` | Create (package, location, os_template, optional app + inputs, hostname, user email/external id, SSH key) → `202` + task id |
+| `POST /servers` | Create (package, location, os_template, optional app + inputs, hostname, `external_id` (service) + optional `external_client_id`, SSH keys) → `202` + task id |
 | `GET /servers/{id}` | Status, IPs, resources |
 | `POST /servers/{id}/suspend`, `/unsuspend` | Suspend / unsuspend |
 | `DELETE /servers/{id}` | Terminate |
 | `POST /servers/{id}/package` | Change package (upgrade/downgrade) |
 | `POST /servers/{id}/power` | `start|shutdown|stop|reboot` |
-| `POST /servers/{id}/reinstall` | Reinstall OS (optionally with an app) |
-| `POST /servers/{id}/password` | Reset root password |
+| `POST /servers/{id}/reinstall` | Reinstall OS (SSH keys, optionally an app) |
+| `POST /servers/{id}/password` | Reset root password; the new password is handed out once (`root_password_unrevealed`) |
+| `POST /servers/{id}/console` | Signed, single-use console link (≤60 s to open) for the module to open in the customer's browser |
+| `POST /servers/{id}/rdns` | Set or remove the PTR of one of the server's addresses |
 | `GET /servers/{id}/usage` | Traffic and resource usage |
-| `POST /users/{id}/sso` | One-time, short-lived (≤60 s) client panel login URL |
 | `GET /packages`, `/locations`, `/os-templates` | Options for the billing side |
 | `GET /apps?os_template=&package=` | Apps eligible for the given OS and package |
 | `POST /servers/{id}/apps` | Install an app on a running server → `202` + installation id |
@@ -305,12 +307,12 @@ Each `IpPool` declares one network model; each `Package` lists the models it all
 - Optional **webhooks** (HMAC-SHA256 signed): `server.provisioned`, `server.failed`, `server.suspended`, `app.installed`, `app.failed`, etc.
 
 ### 4.2 WHMCS server module (`integrations/whmcs/modules/servers/proxmotion/`)
-Implement: `MetaData`, `ConfigOptions`, `TestConnection`, `CreateAccount`, `SuspendAccount`, `UnsuspendAccount`, `TerminateAccount`, `ChangePackage`, `ChangePassword`, `ClientArea`, `ServiceSingleSignOn`, `AdminServicesTabFields`, `AdminCustomButtonArray`, `UsageUpdate`.
+Implement: `MetaData`, `ConfigOptions`, `TestConnection`, `CreateAccount`, `SuspendAccount`, `UnsuspendAccount`, `TerminateAccount`, `ChangePackage`, `ChangePassword`, `ClientArea` (power, console link, reinstall, password, rDNS, apps, graphs), `AdminServicesTabFields`, `AdminCustomButtonArray`, `UsageUpdate`.
 
 - The module is a thin client of the panel API; business logic stays in the panel.
 - Configurable Options mapping (extra IPs, extra RAM, OS, location, **app**) is supported. Admins can generate/refresh the app configurable option from the panel's app list in module settings.
 - For paid apps, when a WHMCS product addon is activated the module calls `app-entitlements`; on addon cancellation it revokes the right (the installed app is not removed).
-- The WHMCS client area shows installed apps and their outputs (e.g. `.ovpn` download) through the panel via SSO; secrets are never stored in the WHMCS database.
+- The WHMCS client area shows installed apps and their outputs (e.g. `.ovpn` download) by fetching them from the API on demand; secrets are never stored in the WHMCS database.
 - Errors are returned to WHMCS as readable text and logged with `logModuleCall()` (tokens masked).
 - Target the lowest PHP version supported by current WHMCS; no Laravel/Composer dependencies.
 
@@ -321,7 +323,7 @@ Implement: `MetaData`, `ConfigOptions`, `TestConnection`, `CreateAccount`, `Susp
 ```bash
 # inside panel/
 composer setup                    # install deps, .env, key, migrate, build assets
-php artisan migrate --seed        # local accounts: admin@example.com / client@example.com, password "password"
+php artisan migrate --seed        # local admin account: admin@example.com, password "password"
 composer dev                      # serve + queue + vite (concurrently)
 
 # all quality gates at once (same as CI)
@@ -362,8 +364,8 @@ A task is not "done" until `composer ci:check` passes (plus recipe validation an
 - Units are consistent: disk and RAM in **MiB**, traffic in **bytes**, port speed in **Mbps**. Conversions happen in a single helper class.
 - Use native PHP enums (`ServerStatus`, `PowerAction`, `TaskStatus`, `NetworkModel`, `ClusterType`).
 - Domain errors are explicit exception classes (`NodeUnavailable`, `InsufficientCapacity`, `IpPoolExhausted`, `NatPortRangeExhausted`, `ProxmoxTaskFailed`, `RecipeNotEligible`).
-- Frontend: Composition API + `<script setup lang="ts">`; pages under `resources/js/pages/admin/*` and `pages/client/*`, shared components in `components/`, routes imported from Wayfinder (`@/routes/...`), never hard-coded URLs.
-- Roles: `App\Enums\UserRole` (`admin`, `client`). Admin routes live in the `admin.` route group behind the `role:admin` middleware. `role` is deliberately **not** mass-assignable.
+- Frontend: Composition API + `<script setup lang="ts">`; pages under `resources/js/pages/admin/*`, shared components in `components/`, routes imported from Wayfinder (`@/routes/...`), never hard-coded URLs.
+- There are no roles: every panel user is an administrator (ADR 0007). Admin routes live in the `admin.` route group (`auth`, `verified`, `2fa`). Customers exist only in the billing system; servers carry `external_id` / `external_client_id`.
 - Avoid N+1 queries (`with()`); paginate all large lists.
 - No company-specific values (IP ranges, hostnames, provider names, branding) in code, seeds or defaults — use config or admin settings.
 - New source files carry no per-file licence header; the root `LICENSE` (AGPL-3.0) applies.
@@ -374,16 +376,16 @@ A task is not "done" until `composer ci:check` passes (plus recipe validation an
 
 This panel manages customer infrastructure and is internet-facing. Agents **must** follow these rules:
 
-1. **Tenant isolation:** customers can access only their own servers. Every client controller/route is protected by a **Policy**; public identifiers are non-guessable **UUIDs**. Every new client endpoint gets a "cannot access another user's server" test.
+1. **Tenant isolation:** there are no customer logins (ADR 0007). The billing system decides which customer sees which service; the panel trusts only **scoped API tokens**, and public identifiers are non-guessable **UUIDs** (or the billing `external_id`). Every API endpoint gets wrong-scope and wrong-token tests; console links are signed, single-use and bound to one server.
 2. **Proxmox credentials** (API token secrets) are stored with Laravel's `encrypted` cast and never appear in API responses, Inertia props, logs or error messages. Root passwords are stored encrypted and shown only once.
-3. **Console access:** the customer's browser never connects to Proxmox directly. The panel issues a short-lived single-use console ticket and proxies the WebSocket (`vncproxy` / `termproxy` + `vncwebsocket`).
+3. **Console access:** the customer's browser never connects to Proxmox directly. The panel issues a short-lived single-use console ticket (reached by customers only through a signed single-use link from the API) and proxies the WebSocket (`vncproxy` / `termproxy` + `vncwebsocket`).
 4. **API tokens** are scoped (e.g. `servers:write`, `servers:read`, `apps:secrets`), stored hashed, support IP restrictions; all APIs are rate-limited.
-5. **SSO links** are single-use, valid ≤60 s and signed.
+5. **Console links** from the API are single-use, valid ≤60 s and signed; there is no SSO into the panel.
 6. **Network isolation:** Proxmox firewall `ipfilter`/`macfilter` must be enabled for every VPS (anti-spoofing); customers may use only the IPs assigned to them. NAT VPS port forwards are restricted to the customer's allocated range.
 7. **User input** (hostname, rDNS, SSH keys, cloud-init data, app inputs) is strictly validated and never passed raw into Proxmox parameters or a shell.
-8. **Destructive operations** (terminate, reinstall, snapshot rollback, node/cluster removal) require extra confirmation in admin and client UIs and are written to `AuditLog`.
+8. **Destructive operations** (terminate, reinstall, snapshot rollback, node/cluster removal) require extra confirmation in the admin UI (and in the billing modules) and are written to `AuditLog`.
 9. **App Marketplace:** only scripts from recipe files are ever executed inside a VPS via the Guest Agent; free-form commands/scripts from customers or the API are never executed. Inputs are type-validated and passed as `inputs.json`. Secret outputs are stored encrypted and never logged. Custom recipes require `apps.manage` and are audited.
-10. Admins must confirm TOTP 2FA before any admin page opens (`2fa` middleware; `PROXMOTION_REQUIRE_ADMIN_2FA=false` only for local development). Users cannot delete their own accounts — deletion is an admin/billing action. Session cookies `Secure`, `HttpOnly`, `SameSite=Lax`.
+10. Every panel user is an administrator and must confirm TOTP 2FA before any admin page opens (`2fa` middleware; `PROXMOTION_REQUIRE_ADMIN_2FA=false` only for local development). Users cannot delete their own accounts. Creating an administrator is audited. Session cookies `Secure`, `HttpOnly`, `SameSite=Lax`.
 11. `.env` and real credentials are never committed; only `.env.example`.
 12. **Open source hygiene:** no secrets, internal hostnames, real IPs or customer data in code, fixtures, docs, screenshots or commit history. Fixtures use documentation ranges (`192.0.2.0/24`, `198.51.100.0/24`, `203.0.113.0/24`, `2001:db8::/32`) and `example.com`. Vulnerabilities are reported per `SECURITY.md`, not in public issues.
 13. Agents **never perform write operations against a real Proxmox server, a live WHMCS or a live Virtualizor**, unless the user explicitly asks; use faked HTTP tests and the local dev environment.
@@ -396,7 +398,7 @@ This panel manages customer infrastructure and is internet-facing. Agents **must
 - **Provisioning pipelines:** success, failure and "interrupted then re-run" (idempotency) cases for each step; each network model strategy tested separately.
 - **Topology:** placement tests covering standalone nodes, clusters with shared storage, clusters with local storage, nodes in maintenance.
 - **Allocation:** concurrent provisions never receive the same IP, VMID or NAT port range.
-- **Authorization:** unauthorized-access tests for every client and API endpoint (other user, wrong token scope, suspended server).
+- **Authorization:** unauthorized-access tests for every API endpoint (missing/wrong token, wrong token scope, suspended server) and for console links (expired, reused, another server).
 - **API contract:** v1 response shapes are asserted in Feature tests.
 - **App recipes:** all `recipe.yaml` files validated against the JSON Schema (`apps:validate`); input validation, eligibility checks and the Guest Agent flow (`file-write → exec → file-read`) tested with `Http::fake()`. Scripts pass shellcheck. Real install tests for each bundled recipe on each supported OS live in the `recipes` integration group.
 - **Migration:** adoption and Virtualizor import tested with fixtures, including dry-run output and idempotent re-runs.
@@ -433,13 +435,13 @@ Never guess ambiguous API behaviour; consult the official API viewer (https://pv
 
 ## 10. Roadmap
 
-- [x] **Phase 0 — Skeleton:** Laravel 13 Vue starter kit (Inertia 3, TS, Tailwind 4, Vite+), Fortify auth (2FA, passkeys; registration disabled), admin/client roles, i18n (`en`/`tr`) with language switcher, Pint/PHPStan 8/Pest/Oxlint/Oxfmt/Vitest, CI (GitHub Actions), Docker Compose dev environment (not yet run), `LICENSE` (AGPL-3.0), `README`, `CONTRIBUTING`, `SECURITY`, `CODE_OF_CONDUCT`, Proxmotion logo/favicons, admin 2FA enforcement, self account deletion removed.
+- [x] **Phase 0 — Skeleton:** Laravel 13 Vue starter kit (Inertia 3, TS, Tailwind 4, Vite+), Fortify auth (2FA, passkeys; registration disabled), admin/client roles (client role removed later, ADR 0007), i18n (`en`/`tr`) with language switcher, Pint/PHPStan 8/Pest/Oxlint/Oxfmt/Vitest, CI (GitHub Actions), Docker Compose dev environment (not yet run), `LICENSE` (AGPL-3.0), `README`, `CONTRIBUTING`, `SECURITY`, `CODE_OF_CONDUCT`, Proxmotion logo/favicons, admin 2FA enforcement, self account deletion removed.
 - [x] **Phase 1 — Infrastructure management (admin):** `app/Proxmox` client (token auth, host failover, typed errors) + `TaskWaiter`; locations; clusters (connection tested on save, standalone/cluster auto-detected, encrypted token); `ClusterSynchronizer` + `SyncCluster` job + `infra:sync` (every 5 min) for nodes, storages, bridges, QEMU templates; node placement settings (maintenance, over-commit, max servers); "use for servers" per storage; IP pools (v4/v6, bridged/routed/NAT, IPv4 addresses generated, reserve/MAC/notes); OS templates mapped to Proxmox templates; packages; admin dashboard. **Not yet verified against a real Proxmox server.**
-- [x] **Phase 2 — Provisioning engine:** servers and tasks; per-cluster resource pool (token only needs VM rights on the pool); permission check listing missing **and excess** privileges; placement (online, not in maintenance, bridge, storage, CPU/memory/disk over-commit, max servers); VMID + IP allocation under a per-location lock; idempotent create (full clone → config + cloud-init → grow disk → anti-spoofing ipset → start), suspend/unsuspend, terminate (frees IPs, keeps history); retry after failure; admin server pages with polling progress; customers created by admins; adopt existing VMs from the pool without touching Proxmox; deletion guards; client dashboard lists own servers. Limitations: one IPv4 + one IPv6 configured by cloud-init (extra IPs are assigned/allowed but configured in the OS); routed /32 with on-link gateway relies on cloud-init and needs real-world verification; NAT not yet supported; Horizon not set up yet (`queue:work`).
-- [x] **Phase 3 — Client panel:** paginated server list and client server page without internal details (VMID, node, task errors); power actions (start/shutdown/stop/reboot, customer shutdown never forced, live power state); noVNC console through `deploy/console-proxy` (ADR 0002: single-use tickets, one session per server, 60 min max / 15 min idle); Guest Agent client (`GuestAgentResource`: ping, file-write/read, exec + `run()`, set-user-password); root password reset through the agent (owner sees a new or initial password once); saved SSH keys under Settings (`Support/Ssh/PublicKey`: ed25519, ECDSA, RSA ≥ 2048, no DSA); reinstall (OS template + owner's keys, hostname typed to confirm, same VMID/IPs/MAC, waits for the guest agent, ADR 0004); rDNS (ADR 0003: `DnsProvider` with `none` and `powerdns`, per-pool reverse zone, optional forward confirmation, PTRs removed on release); admin drift report (ADR 0005); `audit_logs` for console, power, password, reinstall, rDNS and drift actions. Not done here: drift notifications and "re-apply package" (with ChangePackage), app post-boot hooks (Phase 5b), Windows guests. **See the verification list below: nothing in Phases 1–3 has run against a real Proxmox server yet.**
-- [ ] **Phase 4 — Billing integration:** public API v1 + OpenAPI, token scopes, idempotency, SSO, webhooks, **WHMCS module**.
+- [x] **Phase 2 — Provisioning engine:** servers and tasks; per-cluster resource pool (token only needs VM rights on the pool); permission check listing missing **and excess** privileges; placement (online, not in maintenance, bridge, storage, CPU/memory/disk over-commit, max servers); VMID + IP allocation under a per-location lock; idempotent create (full clone → config + cloud-init → grow disk → anti-spoofing ipset → start), suspend/unsuspend, terminate (frees IPs, keeps history); retry after failure; admin server pages with polling progress; customers created by admins (replaced by billing ids, ADR 0007); adopt existing VMs from the pool without touching Proxmox; deletion guards. Limitations: one IPv4 + one IPv6 configured by cloud-init (extra IPs are assigned/allowed but configured in the OS); routed /32 with on-link gateway relies on cloud-init and needs real-world verification; NAT not yet supported; Horizon not set up yet (`queue:work`).
+- [x] **Phase 3 — Server operations** (built as a client panel, which was removed again in favour of billing modules — ADR 0007; the features stay in the admin panel and get API endpoints in Phase 4): power actions (start/shutdown/stop/reboot, shutdown never forced, live power state); noVNC console through `deploy/console-proxy` (ADR 0002: single-use tickets, one session per server, 60 min max / 15 min idle); Guest Agent client (`GuestAgentResource`: ping, file-write/read, exec + `run()`, set-user-password); root password reset through the agent; SSH key validation (`Support/Ssh/PublicKey`: ed25519, ECDSA, RSA ≥ 2048, no DSA); reinstall (OS template + pasted keys, hostname typed to confirm, same VMID/IPs/MAC, waits for the guest agent, ADR 0004); rDNS (ADR 0003: `DnsProvider` with `none` and `powerdns`, per-pool reverse zone, optional forward confirmation, PTRs removed on release); admin drift report (ADR 0005); `audit_logs` for console, power, password, reinstall, rDNS and drift actions. Not done here: drift notifications and "re-apply package" (with ChangePackage), app post-boot hooks (Phase 5b), Windows guests. **See the verification list below: nothing in Phases 1–3 has run against a real Proxmox server yet.**
+- [ ] **Phase 4 — Billing integration:** public API v1 + OpenAPI (incl. power, reinstall, password, rDNS and signed console links), token scopes, idempotency, webhooks, **WHMCS module**, then **WISECP module**.
 - [ ] **Phase 5 — App Marketplace:**
-  - 5a: recipe schema, `RecipeLoader`, `apps:sync` / `apps:validate`, install-later flow + client panel; first recipes **OpenVPN, WireGuard, Docker**.
+  - 5a: recipe schema, `RecipeLoader`, `apps:sync` / `apps:validate`, install-later flow through the API and billing modules; first recipes **OpenVPN, WireGuard, Docker**.
   - 5b: install at order time and reinstall + app as post-boot hooks (ADR 0004), WHMCS configurable option and paid-app entitlements.
   - 5c: admin custom recipe editor, remaining recipes (Portainer, Coolify, aaPanel, HestiaCP, CyberPanel, cPanel, Plesk, LAMP, LEMP, WordPress, Node.js), app actions (VPN add/revoke client).
 - [ ] **Phase 6 — Usage and quotas:** traffic collection, graphs, throttle/suspend on overrun, `ChangePackage` (upgrade/downgrade), WHMCS `UsageUpdate`.

@@ -56,7 +56,8 @@ const props = defineProps<{
         traffic_bytes: number | null;
         has_password: boolean;
         busy: boolean;
-        user: { uuid: string; name: string; email: string };
+        external_id: string | null;
+        external_client_id: string | null;
         cluster: { uuid: string; name: string };
         node: string;
         storage: string | null;
@@ -206,10 +207,19 @@ const modelLabel =
             class="grid gap-4 rounded-xl border p-4 text-sm sm:grid-cols-2 lg:grid-cols-4"
         >
             <div>
-                <dt class="text-muted-foreground">{{ $t('Customer') }}</dt>
-                <dd class="font-medium">{{ server.user.name }}</dd>
-                <dd class="text-xs text-muted-foreground">
-                    {{ server.user.email }}
+                <dt class="text-muted-foreground">
+                    {{ $t('Billing service ID') }}
+                </dt>
+                <dd class="font-mono font-medium">
+                    {{ server.external_id ?? '—' }}
+                </dd>
+                <dd
+                    v-if="server.external_client_id"
+                    class="text-xs text-muted-foreground"
+                >
+                    {{
+                        $t('Client ID: :id', { id: server.external_client_id })
+                    }}
                 </dd>
             </div>
             <div>

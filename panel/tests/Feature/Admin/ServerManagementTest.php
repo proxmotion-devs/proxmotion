@@ -6,6 +6,7 @@ use App\Enums\ServerOrigin;
 use App\Enums\ServerStatus;
 use App\Enums\TaskStatus;
 use App\Enums\TaskType;
+use App\Models\AuditLog;
 use App\Models\Cluster;
 use App\Models\IpAddress;
 use App\Models\ProxmoxTemplate;
@@ -37,7 +38,6 @@ class ServerManagementTest extends AdminTestCase
     private function payload(array $overrides = []): array
     {
         return [
-            'user' => $this->customer->uuid,
             'location' => $this->location->uuid,
             'resource_mode' => 'package',
             'package' => $this->package->uuid,
@@ -50,14 +50,14 @@ class ServerManagementTest extends AdminTestCase
         ];
     }
 
-    public function test_an_admin_can_create_a_server_for_a_customer()
+    public function test_an_admin_can_create_a_server()
     {
         $response = $this->post(route('admin.servers.store'), $this->payload());
 
         $server = Server::query()->sole();
         $response->assertRedirect(route('admin.servers.show', $server));
         $this->assertSame('web1.example.com', $server->hostname);
-        $this->assertTrue($server->user->is($this->customer));
+        $this->assertNull($server->external_id);
         $this->assertSame(20, strlen((string) $server->root_password), 'A random password is generated.');
         $this->assertSame(ServerStatus::Active, $server->status);
 
@@ -139,7 +139,6 @@ class ServerManagementTest extends AdminTestCase
         $this->post(route('admin.servers.adopt.store'), [
             'cluster' => $this->cluster->uuid,
             'vmid' => 260,
-            'user' => $this->customer->uuid,
             'package' => '',
             'network_model' => 'bridged',
         ])->assertSessionHasNoErrors();
@@ -243,7 +242,6 @@ class ServerManagementTest extends AdminTestCase
         $this->post(route('admin.servers.adopt.store'), [
             'cluster' => $this->cluster->uuid,
             'vmid' => 250,
-            'user' => $this->customer->uuid,
             'package' => $this->package->uuid,
             'network_model' => 'bridged',
             'addresses' => [$address->id],
@@ -269,7 +267,6 @@ class ServerManagementTest extends AdminTestCase
         $this->post(route('admin.servers.adopt.store'), [
             'cluster' => $this->cluster->uuid,
             'vmid' => 251,
-            'user' => $this->customer->uuid,
             'package' => $this->package->uuid,
             'network_model' => 'bridged',
         ])->assertSessionHasErrors('vmid');
@@ -365,43 +362,38 @@ class ServerManagementTest extends AdminTestCase
                 ->where('permissionCheck.5.missing', []));
     }
 
-    public function test_admins_can_create_customers()
+    public function test_admins_can_create_administrators()
     {
         $this->post(route('admin.users.store'), [
             'name' => 'Ayşe Yılmaz',
             'email' => 'ayse@example.com',
             'password' => 'a-strong-password',
-            'role' => 'admin',
         ])->assertRedirect(route('admin.users.index'));
 
         $user = User::query()->where('email', 'ayse@example.com')->sole();
-        $this->assertFalse($user->isAdmin(), 'The role cannot be chosen through the form.');
         $this->assertNotNull($user->email_verified_at);
+        $this->assertFalse($user->hasEnabledTwoFactorAuthentication(), 'They set up 2FA themselves before any admin page opens.');
+        $this->assertSame('user.created', AuditLog::query()->sole()->action);
     }
 
-    public function test_the_customers_saved_ssh_keys_are_added_once()
+    public function test_entered_ssh_keys_are_added_once()
     {
-        $this->actingAs($this->customer)->post(route('ssh-keys.store'), ['name' => 'Laptop', 'public_key' => PublicKeyTest::ED25519]);
-        $this->actingAs($this->customer)->post(route('ssh-keys.store'), ['name' => 'Desktop', 'public_key' => PublicKeyTest::ECDSA]);
-        $this->actingAs($this->admin);
+        $this->post(route('admin.servers.store'), $this->payload(['ssh_keys' => PublicKeyTest::RSA."\n".PublicKeyTest::ED25519."\n".PublicKeyTest::RSA]));
 
-        // The ed25519 key is entered too: it must appear only once.
-        $this->post(route('admin.servers.store'), $this->payload(['ssh_keys' => PublicKeyTest::RSA."\n".PublicKeyTest::ED25519]));
-
-        $this->assertSame(
-            implode("\n", [PublicKeyTest::RSA, PublicKeyTest::ED25519, PublicKeyTest::ECDSA]),
-            Server::query()->sole()->ssh_keys,
-        );
+        $this->assertSame(implode("\n", [PublicKeyTest::RSA, PublicKeyTest::ED25519]), Server::query()->sole()->ssh_keys);
     }
 
-    public function test_saved_ssh_keys_can_be_left_out()
+    public function test_billing_ids_are_stored_and_service_ids_are_unique()
     {
-        $this->actingAs($this->customer)->post(route('ssh-keys.store'), ['name' => 'Laptop', 'public_key' => PublicKeyTest::ED25519]);
-        $this->actingAs($this->admin);
+        $this->post(route('admin.servers.store'), $this->payload(['external_id' => ' 1001 ', 'external_client_id' => '42']))
+            ->assertSessionHasNoErrors();
 
-        $this->post(route('admin.servers.store'), $this->payload(['use_saved_keys' => false]));
+        $server = Server::query()->sole();
+        $this->assertSame('1001', $server->external_id);
+        $this->assertSame('42', $server->external_client_id);
 
-        $this->assertNull(Server::query()->sole()->ssh_keys);
+        $this->post(route('admin.servers.store'), $this->payload(['hostname' => 'web2.example.com', 'external_id' => '1001']))
+            ->assertSessionHasErrors('external_id');
     }
 
     public function test_weak_or_obsolete_ssh_keys_are_refused()
@@ -414,7 +406,7 @@ class ServerManagementTest extends AdminTestCase
 
     public function test_retrying_a_failed_delete_deletes_again()
     {
-        $server = Server::factory()->for($this->node)->for($this->customer)->status(ServerStatus::Error)->create(['vmid' => 4242]);
+        $server = Server::factory()->for($this->node)->status(ServerStatus::Error)->create(['vmid' => 4242]);
         $failed = new Task;
         $failed->forceFill(['server_id' => $server->id, 'type' => TaskType::Terminate, 'status' => TaskStatus::Failed, 'steps' => []])->save();
 
@@ -422,30 +414,6 @@ class ServerManagementTest extends AdminTestCase
 
         $this->assertSame(TaskType::Terminate, Task::query()->latest('id')->firstOrFail()->type);
         $this->assertSame(ServerStatus::Terminated, $server->refresh()->status);
-    }
-
-    public function test_customers_only_see_their_own_servers()
-    {
-        Server::factory()->for($this->node)->for($this->customer)->create(['hostname' => 'mine.example.com']);
-        Server::factory()->for($this->node)->create(['hostname' => 'theirs.example.com']);
-
-        $this->actingAs($this->customer)
-            ->get(route('dashboard'))
-            ->assertInertia(fn (Assert $page) => $page
-                ->component('client/Dashboard')
-                ->has('servers.data', 1)
-                ->where('servers.data.0.hostname', 'mine.example.com'))
-            ->assertDontSee('theirs.example.com');
-    }
-
-    public function test_customers_cannot_reach_server_management()
-    {
-        $server = Server::factory()->for($this->node)->for($this->customer)->create();
-        $this->actingAs($this->customer);
-
-        $this->get(route('admin.servers.show', $server))->assertForbidden();
-        $this->post(route('admin.servers.suspend', $server))->assertForbidden();
-        $this->delete(route('admin.servers.destroy', $server))->assertForbidden();
     }
 
     public function test_cluster_resource_pool_is_validated()

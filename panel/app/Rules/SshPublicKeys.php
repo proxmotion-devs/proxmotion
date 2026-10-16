@@ -10,12 +10,10 @@ use Illuminate\Contracts\Validation\ValidationRule;
 use InvalidArgumentException;
 
 /**
- * Public SSH keys in OpenSSH format, one per line (or exactly one with $single).
+ * Public SSH keys in OpenSSH format, one per line.
  */
 class SshPublicKeys implements ValidationRule
 {
-    public function __construct(private readonly bool $single = false) {}
-
     public function validate(string $attribute, mixed $value, Closure $fail): void
     {
         if (! is_string($value)) {
@@ -25,15 +23,9 @@ class SshPublicKeys implements ValidationRule
         }
 
         try {
-            $keys = PublicKey::parseMany($value);
+            PublicKey::parseMany($value);
         } catch (InvalidArgumentException $e) {
             $fail(__($e->getMessage()));
-
-            return;
-        }
-
-        if ($this->single && count($keys) !== 1) {
-            $fail(__('Paste exactly one public SSH key.'));
         }
     }
 }

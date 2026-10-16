@@ -13,7 +13,7 @@ import {
     SidebarMenuItem,
 } from '@/components/ui/sidebar';
 import { useMainNavigation } from '@/composables/useMainNavigation';
-import { dashboard } from '@/routes';
+import { dashboard } from '@/routes/admin';
 
 const mainNavItems = useMainNavigation();
 </script>

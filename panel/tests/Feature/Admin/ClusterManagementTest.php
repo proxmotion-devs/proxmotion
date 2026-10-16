@@ -8,7 +8,6 @@ use App\Models\Cluster;
 use App\Models\Location;
 use App\Models\Node;
 use App\Models\Storage;
-use App\Models\User;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
@@ -195,14 +194,5 @@ class ClusterManagementTest extends AdminTestCase
 
         $this->assertModelMissing($cluster);
         Http::assertNothingSent();
-    }
-
-    public function test_clients_cannot_see_clusters()
-    {
-        $cluster = Cluster::factory()->create();
-        $this->actingAs(User::factory()->create());
-
-        $this->get(route('admin.clusters.index'))->assertForbidden();
-        $this->get(route('admin.clusters.show', $cluster))->assertForbidden();
     }
 }

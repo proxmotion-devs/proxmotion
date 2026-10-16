@@ -6,7 +6,6 @@ namespace App\Http\Controllers\Admin;
 
 use App\Domain\Migration\AdoptServer;
 use App\Enums\NetworkModel;
-use App\Enums\UserRole;
 use App\Http\Controllers\Controller;
 use App\Models\Cluster;
 use App\Models\IpAddress;
@@ -56,8 +55,6 @@ class AdoptionController extends Controller
             'cluster' => $cluster?->uuid,
             'candidates' => $candidates,
             'error' => $error,
-            'users' => User::query()->where('role', UserRole::Client)->orderBy('name')->get(['uuid', 'name', 'email'])
-                ->map(fn (User $user) => ['value' => $user->uuid, 'label' => "{$user->name} ({$user->email})"]),
             'packages' => Package::query()->orderBy('name')->get(['uuid', 'name'])
                 ->map(fn (Package $package) => ['value' => $package->uuid, 'label' => $package->name]),
             'addresses' => $cluster === null ? [] : IpAddress::query()
@@ -75,7 +72,8 @@ class AdoptionController extends Controller
         $validated = $request->validate([
             'cluster' => ['required', 'string', Rule::exists('clusters', 'uuid')],
             'vmid' => ['required', 'integer', 'min:100'],
-            'user' => ['required', 'string', Rule::exists('users', 'uuid')->where('role', UserRole::Client->value)],
+            'external_id' => ['nullable', 'string', 'max:191', Rule::unique('servers', 'external_id')],
+            'external_client_id' => ['nullable', 'string', 'max:191'],
             'package' => ['nullable', 'string', Rule::exists('packages', 'uuid')],
             'network_model' => ['required', Rule::enum(NetworkModel::class)],
             'addresses' => ['array'],
@@ -86,11 +84,12 @@ class AdoptionController extends Controller
             $server = $adopt->adopt(
                 cluster: Cluster::query()->where('uuid', $validated['cluster'])->firstOrFail(),
                 vmid: (int) $validated['vmid'],
-                owner: User::query()->where('uuid', $validated['user'])->firstOrFail(),
                 package: isset($validated['package']) ? Package::query()->where('uuid', $validated['package'])->firstOrFail() : null,
                 networkModel: NetworkModel::from($validated['network_model']),
                 ipAddressIds: array_values(array_map(intval(...), $validated['addresses'] ?? [])),
                 actor: $admin,
+                externalId: isset($validated['external_id']) ? trim($validated['external_id']) : null,
+                externalClientId: isset($validated['external_client_id']) ? trim($validated['external_client_id']) : null,
             );
         } catch (ProvisioningException $e) {
             throw ValidationException::withMessages(['vmid' => $e->translatedMessage()]);

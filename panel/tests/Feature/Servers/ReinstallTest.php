@@ -9,7 +9,6 @@ use App\Models\AuditLog;
 use App\Models\OsTemplate;
 use App\Models\ProxmoxTemplate;
 use App\Models\Server;
-use App\Models\SshKey;
 use App\Models\Task;
 use App\Models\User;
 use App\Provisioning\ServerCreator;
@@ -32,11 +31,14 @@ class ReinstallTest extends TestCase
 
     private OsTemplate $debian;
 
+    private User $admin;
+
     protected function setUp(): void
     {
         parent::setUp();
 
         Sleep::fake(syncWithCarbon: true);
+        $this->admin = User::factory()->withTwoFactor()->create();
         $this->buildInfrastructure();
         $this->proxmox = (new FakeProxmoxCluster)->addTemplate(9000)->addTemplate(9001)->install();
         $this->server = app(ServerCreator::class)->create($this->order());
@@ -56,38 +58,30 @@ class ReinstallTest extends TestCase
         $vm['config']['scsi0'] .= ',marker=old-disk';
     }
 
-    private function key(string $line, ?User $owner = null): SshKey
-    {
-        $this->actingAs($owner ?? $this->customer)->post(route('ssh-keys.store'), ['name' => 'Key '.SshKey::query()->count(), 'public_key' => $line]);
-
-        return SshKey::query()->latest('id')->firstOrFail();
-    }
-
     /**
      * @param  array<string, mixed>  $overrides
      */
-    private function reinstall(array $overrides = [], ?User $user = null, string $route = 'servers.reinstall'): TestResponse
+    private function reinstall(array $overrides = []): TestResponse
     {
-        return $this->actingAs($user ?? $this->customer)
-            ->from(route('servers.show', $this->server))
-            ->post(route($route, $this->server), [
+        return $this->actingAs($this->admin)
+            ->from(route('admin.servers.show', $this->server))
+            ->post(route('admin.servers.reinstall', $this->server), [
                 'os_template' => $this->debian->uuid,
-                'ssh_keys' => [],
+                'ssh_keys' => '',
                 'confirm_hostname' => $this->server->hostname,
                 ...$overrides,
             ]);
     }
 
-    public function test_customers_can_reinstall_with_another_os_and_their_keys()
+    public function test_admins_can_reinstall_with_another_os_and_new_keys()
     {
-        $laptop = $this->key(PublicKeyTest::ED25519);
-        $this->key(PublicKeyTest::ECDSA);
         $vmid = $this->server->vmid;
         $addresses = $this->server->ipAddresses()->pluck('address')->all();
         $oldPassword = $this->server->root_password;
 
-        $this->reinstall(['ssh_keys' => [$laptop->uuid], 'confirm_hostname' => strtoupper($this->server->hostname)])
-            ->assertRedirect(route('servers.show', $this->server))
+        // The same key twice: it is installed once.
+        $this->reinstall(['ssh_keys' => PublicKeyTest::ED25519."\n\n".PublicKeyTest::ED25519, 'confirm_hostname' => strtoupper($this->server->hostname)])
+            ->assertRedirect(route('admin.servers.show', $this->server))
             ->assertSessionHasNoErrors();
 
         $server = $this->server->refresh();
@@ -113,13 +107,11 @@ class ReinstallTest extends TestCase
 
     public function test_reinstalls_are_audited_without_secrets()
     {
-        $key = $this->key(PublicKeyTest::ED25519);
-
-        $this->reinstall(['ssh_keys' => [$key->uuid]]);
+        $this->reinstall(['ssh_keys' => PublicKeyTest::ED25519]);
 
         $log = AuditLog::query()->where('action', 'server.reinstall')->sole();
         $this->assertSame('Debian 12', $log->properties['os_template'] ?? null);
-        $this->assertSame([$key->fingerprint], $log->properties['ssh_keys'] ?? null);
+        $this->assertSame(['SHA256:nvWikPWjXWJFiw36iQyJQvpJbc5NtwfchOzuV9sx2CI'], $log->properties['ssh_keys'] ?? null);
         $this->assertStringNotContainsString((string) $this->server->refresh()->root_password, (string) json_encode($log->properties));
     }
 
@@ -150,24 +142,6 @@ class ReinstallTest extends TestCase
         $this->reinstall(['os_template' => $elsewhere->uuid])->assertSessionHasErrors('os_template');
     }
 
-    public function test_keys_of_other_users_cannot_be_used()
-    {
-        $theirs = $this->key(PublicKeyTest::ED25519, User::factory()->create());
-
-        $this->reinstall(['ssh_keys' => [$theirs->uuid]])->assertSessionHasErrors('ssh_keys.0');
-
-        $this->assertFalse(Task::query()->where('type', TaskType::Reinstall)->exists());
-    }
-
-    public function test_customers_cannot_reinstall_another_users_server()
-    {
-        $this->server->forceFill(['user_id' => User::factory()->create()->id])->save();
-
-        $this->reinstall()->assertForbidden();
-
-        $this->assertFalse(Task::query()->where('type', TaskType::Reinstall)->exists());
-    }
-
     public function test_suspended_servers_cannot_be_reinstalled()
     {
         $this->server->forceFill(['status' => ServerStatus::Suspended])->save();
@@ -190,7 +164,7 @@ class ReinstallTest extends TestCase
         $this->assertSame(0, AuditLog::query()->where('action', 'server.reinstall')->count());
     }
 
-    public function test_a_failed_reinstall_leaves_the_server_in_error_and_admins_can_retry_it()
+    public function test_a_failed_reinstall_leaves_the_server_in_error_and_can_be_retried()
     {
         $this->proxmox->failClone = 'clone failed: storage full';
 
@@ -199,31 +173,23 @@ class ReinstallTest extends TestCase
         $this->assertSame(ServerStatus::Error, $this->server->refresh()->status);
 
         $this->proxmox->failClone = null;
-        $admin = User::factory()->admin()->withTwoFactor()->create();
-        $this->actingAs($admin)->post(route('admin.servers.retry', $this->server));
+        $this->actingAs($this->admin)->post(route('admin.servers.retry', $this->server));
 
         $this->assertSame(ServerStatus::Active, $this->server->refresh()->status);
         $this->assertSame(TaskType::Reinstall, Task::query()->latest('id')->firstOrFail()->type);
     }
 
-    public function test_admins_can_reinstall_with_the_customers_keys()
+    public function test_invalid_ssh_keys_are_rejected()
     {
-        $key = $this->key(PublicKeyTest::ED25519);
+        $this->reinstall(['ssh_keys' => 'not a key'])->assertSessionHasErrors('ssh_keys');
 
-        $this->reinstall(['ssh_keys' => [$key->uuid]], User::factory()->admin()->withTwoFactor()->create(), 'admin.servers.reinstall');
-
-        $this->assertSame(PublicKeyTest::ED25519, $this->server->refresh()->ssh_keys);
+        $this->assertFalse(Task::query()->where('type', TaskType::Reinstall)->exists());
     }
 
-    public function test_the_page_offers_eligible_templates_and_the_owners_keys()
+    public function test_the_page_offers_the_templates_available_on_the_cluster()
     {
-        $this->key(PublicKeyTest::ED25519);
-
-        $this->actingAs($this->customer)
-            ->get(route('servers.show', $this->server))
-            ->assertInertia(fn (Assert $page) => $page
-                ->has('reinstallOptions.osTemplates', 2)
-                ->where('reinstallOptions.sshKeys.0.fingerprint', 'SHA256:nvWikPWjXWJFiw36iQyJQvpJbc5NtwfchOzuV9sx2CI')
-                ->missing('reinstallOptions.sshKeys.0.public_key'));
+        $this->actingAs($this->admin)
+            ->get(route('admin.servers.show', $this->server))
+            ->assertInertia(fn (Assert $page) => $page->has('reinstallOptions.osTemplates', 2));
     }
 }

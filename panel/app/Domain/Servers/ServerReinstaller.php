@@ -8,11 +8,11 @@ use App\Enums\TaskType;
 use App\Models\AuditLog;
 use App\Models\OsTemplate;
 use App\Models\Server;
-use App\Models\SshKey;
 use App\Models\Task;
 use App\Models\User;
 use App\Provisioning\Exceptions\ProvisioningException;
 use App\Provisioning\TaskRunner;
+use App\Support\Ssh\PublicKey;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -42,21 +42,21 @@ final readonly class ServerReinstaller
     }
 
     /**
-     * Record the new system (OS, a fresh root password, the chosen keys of the
-     * owner) and queue the reinstall. Nothing changes if another task runs.
+     * Record the new system (OS, a fresh root password, the given SSH
+     * keys) and queue the reinstall. Nothing changes if another task runs.
      *
-     * @param  Collection<int, SshKey>  $sshKeys  keys of the server's owner
+     * @param  list<PublicKey>  $sshKeys
      *
      * @throws ProvisioningException when another task is still running for the server
      */
-    public function request(Server $server, OsTemplate $osTemplate, Collection $sshKeys, User $actor, ?string $ipAddress): Task
+    public function request(Server $server, OsTemplate $osTemplate, array $sshKeys, User $actor, ?string $ipAddress): Task
     {
         return DB::transaction(function () use ($server, $osTemplate, $sshKeys, $actor, $ipAddress) {
             $server->forceFill([
                 'os_template_id' => $osTemplate->id,
                 'root_password' => Str::password(20, symbols: false),
                 'root_password_unrevealed' => true,
-                'ssh_keys' => $sshKeys->isNotEmpty() ? $sshKeys->pluck('public_key')->implode("\n") : null,
+                'ssh_keys' => PublicKey::implode($sshKeys),
             ])->save();
 
             $task = $this->tasks->start($server, TaskType::Reinstall, $actor);
@@ -64,7 +64,7 @@ final readonly class ServerReinstaller
             AuditLog::record('server.reinstall', $actor, $server, [
                 'hostname' => $server->hostname,
                 'os_template' => $osTemplate->name,
-                'ssh_keys' => $sshKeys->pluck('fingerprint')->all(),
+                'ssh_keys' => array_map(fn (PublicKey $key) => $key->fingerprint(), $sshKeys),
             ], $ipAddress);
 
             return $task;
