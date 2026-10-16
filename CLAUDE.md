@@ -12,4 +12,4 @@ All shared rules, architecture, commands and security principles for this projec
 - Do not read `.env` or print its contents; work only with `.env.example`.
 - Laravel commands run inside `panel/` (`php artisan …`, `composer …`, `npm …`).
 - Before finishing a task: `composer ci:check` inside `panel/` (plus `php artisan apps:validate` and `shellcheck` on changed scripts once those exist). PHP must be on `PATH` for the frontend commands too (Wayfinder runs `php artisan`).
-- Reply to the user in their language (usually Turkish); everything written to the repo stays in English.
+- Reply to the user in their language (usually Turkish); everything written to the repo stays in English (except Turkish guide translations under `docs/guides/tr/`, see `AGENTS.md` §6).

@@ -149,7 +149,7 @@ proxmotion/
 │   ├── console-proxy/                    # Node.js WebSocket relay for the noVNC console (ADR 0002)
 │   ├── proxmox/                          # Scripts admins run on a Proxmox node (prepare-images.sh: build images off-node, natively or via images.Dockerfile; build-templates.sh: create templates on the node with qm/pvesh only)
 │   └── installer/                        # Native Debian/Ubuntu installer (install.sh, nginx, systemd units)
-└── docs/                                 # Install guide, admin guide, guides/ (os-templates.md, iso-templates.md, real-proxmox-verification.md), API reference (OpenAPI), ADRs
+└── docs/                                 # Install guide, admin guide, guides/ (os-templates.md, iso-templates.md, windows-templates.md, real-proxmox-verification.md; tr/ Turkish translations), API reference (OpenAPI), ADRs
 ```
 
 ### 3.3 Layering rules
@@ -363,7 +363,7 @@ A task is not "done" until `composer ci:check` passes (plus recipe validation an
 
 ## 6. Coding Conventions
 
-- Code, identifiers, comments, commit messages and **all documentation are in English**.
+- Code, identifiers, comments, commit messages and **all documentation are in English**. English is canonical; a guide may also get a Turkish translation under `docs/guides/tr/` with the same file name, linked from the English one, updated in the same change, and the English text wins when they differ.
 - **UI text is always translatable; the key is the English text itself.** In templates use `{{ $t('Save changes') }}` / `:placeholder="$t('Name')"`, in scripts `trans()` from `laravel-vue-i18n`, in PHP `__('Profile updated.')`. Use placeholders instead of concatenation: `$t('Added :time', { time })`. Add every new key with its Turkish translation to `lang/tr.json` (`lang/en.json` stays empty).
 - Page titles (`<Head title>`), layout `title`/`description`, breadcrumb titles, nav item titles and the `title`/`description`/`label`/`hint`/`submit-label` props of `Heading`, `FormField`, `FormDialog`, `StatusBadge`, `ConfirmDelete` are passed as **English keys** and translated by the component that renders them — don't wrap them in `$t()` again.
 - Flash messages: `$this->toast('success', 'Location created.')` in controllers (English key, translated server-side).

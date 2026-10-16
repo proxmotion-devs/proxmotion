@@ -20,7 +20,7 @@ control over the installation. For Ubuntu and Debian, the cloud-image path in
 5. [Prepare the system for cloning](#4-prepare-the-system-for-cloning)
 6. [Turn the VM into a template](#5-turn-the-vm-into-a-template)
 7. [Use it in the panel](#6-use-it-in-the-panel)
-8. [Windows Server](#windows-server-not-yet-supported-by-the-panel)
+8. [Windows Server](#windows-server)
 9. [Updating a template](#updating-a-template)
 
 ## What a Proxmotion template needs
@@ -205,12 +205,11 @@ On a cluster with **local** storage, create the template on every node that shou
    and SSH keys work, the disk has the package size (`df -h /`), and the server page shows the
    guest agent as reachable.
 
-## Windows Server (not yet supported by the panel)
+## Windows Server
 
-> **Important:** the panel currently passes `ciuser=root` and Linux-style network settings, so
-> **servers created from a Windows template will not get their password or network
-> configured**. Windows support in the panel is not implemented yet. The steps below produce a
-> correct Windows template for when it is, or for manual use.
+Set the OS template's *Platform* to **Windows** in the panel. How the panel handles Windows
+servers, and a Cloudbase-Init configuration that avoids an extra restart on the first boot, are in
+[windows-templates.md](windows-templates.md).
 
 You need two ISOs on the storage: the **Windows Server** ISO and the **VirtIO drivers** ISO
 (`virtio-win.iso`, stable release from the Fedora project:
@@ -251,7 +250,8 @@ You need two ISOs on the storage: the **Windows Server** ISO and the **VirtIO dr
    metadata_services=cloudbaseinit.metadata.services.configdrive.ConfigDriveService
    ```
 
-   See also the *Cloud-Init on Windows* section of the Proxmox VE documentation.
+   See also the *Cloud-Init on Windows* section of the Proxmox VE documentation, and the
+   recommended configuration of both files in [windows-templates.md](windows-templates.md#recommended-configuration).
 5. On the last installer page tick **Run Sysprep to create a generalized image** and
    **Shutdown when Sysprep terminates**, then *Finish*. The VM generalizes and powers off. Do
    not start it again.
