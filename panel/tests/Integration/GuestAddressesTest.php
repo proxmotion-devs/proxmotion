@@ -2,7 +2,8 @@
 
 namespace Tests\Integration;
 
-use App\Domain\Servers\GuestAddresses;
+use App\Domain\Servers\GuestScripts;
+use App\Enums\GuestScriptEvent;
 use App\Enums\NetworkModel;
 use App\Enums\TaskStatus;
 use App\Enums\TaskType;
@@ -13,8 +14,8 @@ use App\Models\Task;
 use Tests\Integration\Concerns\ManagesTestServers;
 
 /**
- * ADR 0009 on a real guest: the script configures additional addresses,
- * keeps them across a reboot (systemd unit) and removes released ones. Uses
+ * ADR 0009 and 0010 on a real guest: the default script configures
+ * additional addresses, keeps them across a reboot (systemd unit) and removes released ones. Uses
  * documentation addresses (192.0.2.0/24) on a clone without network access to
  * them; nothing leaves the VM.
  */
@@ -46,12 +47,12 @@ class GuestAddressesTest extends IntegrationTestCase
             $ip->forceFill(['ip_pool_id' => $pool->id, 'address' => $address, 'server_id' => $server->id, 'assigned_at' => now()])->save();
         }
 
-        $guest = app(GuestAddresses::class);
+        $guest = app(GuestScripts::class);
         $agent = $this->client()->guestAgent($node);
         $addresses = fn () => $agent->run($server->vmid, ['ip', '-o', 'addr', 'show'])->stdout;
 
         $task = $this->task($server);
-        $guest->apply($task, $server);
+        $guest->run($task, $server, GuestScriptEvent::AddressesChanged);
         $this->assertNull($task->refresh()->steps[0]['message'] ?? null, (string) json_encode($task->steps));
         $this->assertStringContainsString('192.0.2.11/24', $addresses(), 'The additional address is not configured.');
         $this->assertStringNotContainsString('192.0.2.10/', $addresses(), 'The primary address is cloud-init\'s job.');
@@ -63,7 +64,7 @@ class GuestAddressesTest extends IntegrationTestCase
 
         // Released: removed inside the guest too.
         IpAddress::query()->where('address', '192.0.2.11')->update(['server_id' => null]);
-        $guest->apply($this->task($server), $server);
+        $guest->run($this->task($server), $server, GuestScriptEvent::AddressesChanged);
         $this->assertStringNotContainsString('192.0.2.11/', $addresses(), 'The released address is still configured.');
     }
 

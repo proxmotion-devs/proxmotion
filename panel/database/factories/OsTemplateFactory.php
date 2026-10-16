@@ -19,8 +19,14 @@ class OsTemplateFactory extends Factory
             'name' => 'Ubuntu 24.04',
             'family' => 'ubuntu',
             'version' => '24.04',
+            'platform' => 'linux',
             'is_active' => true,
             'sort_order' => 0,
         ];
+    }
+
+    public function windows(): static
+    {
+        return $this->state(['name' => 'Windows Server 2022', 'family' => 'windows', 'version' => '2022', 'platform' => 'windows']);
     }
 }

@@ -1,6 +1,6 @@
 # 9. Additional IP addresses inside the guest through the guest agent
 
-- **Status:** Accepted
+- **Status:** Accepted; the delivery (script location, input files, overrides per OS template, Windows) is replaced by [ADR 0010](0010-guest-scripts-per-os-template.md)
 - **Date:** 2026-10-16
 
 ## Context

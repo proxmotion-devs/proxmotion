@@ -7,6 +7,7 @@ use App\Http\Controllers\Admin\ClusterController;
 use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Admin\DnsProviderController;
 use App\Http\Controllers\Admin\DriftController;
+use App\Http\Controllers\Admin\GuestScriptController;
 use App\Http\Controllers\Admin\IpAddressController;
 use App\Http\Controllers\Admin\IpPoolController;
 use App\Http\Controllers\Admin\IpPoolRdnsController;
@@ -57,6 +58,10 @@ Route::delete('ip-addresses/{ipAddress}', [IpAddressController::class, 'destroy'
 
 Route::resource('os-templates', OsTemplateController::class)->only(['index', 'store', 'update', 'destroy'])
     ->parameters(['os-templates' => 'osTemplate']);
+Route::get('os-templates/{osTemplate}/scripts', [GuestScriptController::class, 'index'])->name('os-templates.scripts');
+Route::put('os-templates/{osTemplate}/scripts/{event}', [GuestScriptController::class, 'update'])->name('os-templates.scripts.update');
+Route::delete('os-templates/{osTemplate}/scripts/{event}', [GuestScriptController::class, 'destroy'])->name('os-templates.scripts.destroy');
+Route::post('os-templates/{osTemplate}/scripts/{event}/run', [GuestScriptController::class, 'run'])->middleware('throttle:10,1')->name('os-templates.scripts.run');
 
 Route::resource('packages', PackageController::class)->only(['index', 'store', 'update', 'destroy']);
 

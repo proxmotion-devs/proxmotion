@@ -4,7 +4,8 @@ declare(strict_types=1);
 
 namespace App\Provisioning\Pipelines;
 
-use App\Domain\Servers\GuestAddresses;
+use App\Domain\Servers\GuestScripts;
+use App\Enums\GuestScriptEvent;
 use App\Enums\PowerAction;
 use App\Models\IpAddress;
 use App\Models\Server;
@@ -20,8 +21,8 @@ use RuntimeException;
  * Applies a server's new resources (recorded by ResourceChanger) to its VM:
  * cores, memory and port speed → grow the disk → anti-spoofing addresses
  * (new ones in, released ones out) → restart if asked → additional addresses
- * inside the guest (ADR 0009). Every step looks at
- * Proxmox first, so running it again is safe.
+ * inside the guest (ADR 0009) → file system grown inside the guest (ADR 0010).
+ * Every step looks at Proxmox first, so running it again is safe.
  *
  * Cores and memory of a running VM wait for its next start in Proxmox
  * ("pending"); the server is flagged reboot_required until then.
@@ -36,7 +37,7 @@ final readonly class ChangeResourcesPipeline
         private NetworkConfig $network,
         private IpAllocator $ips,
         private PowerPipeline $power,
-        private GuestAddresses $guestAddresses,
+        private GuestScripts $guestScripts,
     ) {}
 
     public function run(Task $task): void
@@ -52,7 +53,12 @@ final readonly class ChangeResourcesPipeline
         $restarted = $this->apply($task, $server, $qemu);
 
         // Additional addresses inside the guest (ADR 0009); also removes released ones there.
-        $this->guestAddresses->apply($task, $server, waitForAgent: $restarted);
+        $this->guestScripts->run($task, $server, GuestScriptEvent::AddressesChanged, waitForAgent: $restarted);
+
+        // The partition and file system to the new disk size (ADR 0010).
+        if (($task->input['grow_disk'] ?? false) === true) {
+            $this->guestScripts->run($task, $server, GuestScriptEvent::DiskResized);
+        }
     }
 
     private function configure(Task $task, Server $server, QemuResource $qemu): void
@@ -83,7 +89,6 @@ final readonly class ChangeResourcesPipeline
             }
         }
 
-        // The file system grows at the next boot (cloud-init growpart).
         $task->completeStep('resize');
     }
 

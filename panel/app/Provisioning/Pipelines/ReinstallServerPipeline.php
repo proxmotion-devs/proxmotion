@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Provisioning\Pipelines;
 
-use App\Domain\Servers\GuestAddresses;
+use App\Domain\Servers\GuestScripts;
 use App\Enums\ServerStatus;
 use App\Models\Task;
 use App\Proxmox\ProxmoxClientFactory;
@@ -28,7 +28,7 @@ final readonly class ReinstallServerPipeline
     public function __construct(
         private ProxmoxClientFactory $clients,
         private CreateServerPipeline $create,
-        private GuestAddresses $guestAddresses,
+        private GuestScripts $guestScripts,
     ) {}
 
     public function run(Task $task): void
@@ -58,11 +58,8 @@ final readonly class ReinstallServerPipeline
         $this->create->build($task, $previousNet0);
         $this->waitForGuestAgent($task);
 
-        if ($this->guestAddresses->additional($server) !== []) {
-            $this->guestAddresses->apply($task, $server);
-        }
-
-        // Post-boot hooks (ADR 0004) run here once there are any, e.g. installing an app.
+        // Additional addresses and the template's script (ADR 0009, 0010); later also app installs (ADR 0004).
+        $this->guestScripts->afterInstall($task, $server, waitForAgent: false);
 
         $server->forceFill(['status' => ServerStatus::Active, 'root_password_unrevealed' => true])->save();
     }

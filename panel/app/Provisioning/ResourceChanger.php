@@ -56,6 +56,7 @@ final readonly class ResourceChanger
                 }
 
                 $release = $this->reserveAddresses($server, $target);
+                $growsDisk = $target->diskMib > $server->disk_mib;
 
                 $server->forceFill([
                     'package_id' => $change->package?->id,
@@ -69,6 +70,7 @@ final readonly class ResourceChanger
                 return $this->tasks->start($server, TaskType::ChangeResources, $actor, input: [
                     'release_address_ids' => $release,
                     'reboot' => $change->reboot,
+                    'grow_disk' => $growsDisk,
                 ]);
             });
         });

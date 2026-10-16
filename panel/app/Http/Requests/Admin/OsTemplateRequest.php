@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Requests\Admin;
 
+use App\Enums\OsPlatform;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -21,6 +22,7 @@ class OsTemplateRequest extends FormRequest
             'name' => ['required', 'string', 'max:100'],
             'family' => ['required', Rule::in(self::FAMILIES)],
             'version' => ['required', 'string', 'max:32'],
+            'platform' => ['sometimes', 'required', Rule::enum(OsPlatform::class)],
             'is_active' => ['required', 'boolean'],
             'sort_order' => ['required', 'integer', 'between:0,65535'],
             'proxmox_template_ids' => ['array'],

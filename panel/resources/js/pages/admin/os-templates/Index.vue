@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Head, Link, useForm } from '@inertiajs/vue3';
-import { Pencil, Plus } from '@lucide/vue';
+import { FileCode, Pencil, Plus } from '@lucide/vue';
 import { computed, ref } from 'vue';
 import ConfirmDelete from '@/components/admin/ConfirmDelete.vue';
 import FormDialog from '@/components/admin/FormDialog.vue';
@@ -13,8 +13,14 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { index as clustersIndex } from '@/routes/admin/clusters';
-import { destroy, index, store, update } from '@/routes/admin/os-templates';
-import type { OsTemplate, ProxmoxTemplate } from '@/types/admin';
+import {
+    destroy,
+    index,
+    scripts,
+    store,
+    update,
+} from '@/routes/admin/os-templates';
+import type { OsPlatform, OsTemplate, ProxmoxTemplate } from '@/types/admin';
 
 defineOptions({
     layout: { breadcrumbs: [{ title: 'OS templates', href: index() }] },
@@ -25,6 +31,11 @@ const props = defineProps<{
     proxmoxTemplates: ProxmoxTemplate[];
     families: string[];
 }>();
+
+const platformOptions: { value: OsPlatform; label: string }[] = [
+    { value: 'linux', label: 'Linux' },
+    { value: 'windows', label: 'Windows' },
+];
 
 const familyOptions = computed(() =>
     props.families.map((family) => ({ value: family, label: family })),
@@ -59,6 +70,7 @@ const form = useForm({
     name: '',
     family: 'ubuntu' as string | null,
     version: '',
+    platform: 'linux' as OsPlatform | null,
     is_active: true,
     sort_order: 0,
     proxmox_template_ids: [] as number[],
@@ -71,12 +83,18 @@ const openForm = (template: OsTemplate | null) => {
         name: template?.name ?? '',
         family: template?.family ?? 'ubuntu',
         version: template?.version ?? '',
+        platform: template?.platform ?? 'linux',
         is_active: template?.is_active ?? true,
         sort_order: template?.sort_order ?? 0,
         proxmox_template_ids: [...(template?.proxmox_template_ids ?? [])],
     });
     form.reset();
     dialogOpen.value = true;
+};
+
+// The platform picks the default guest scripts; follow the family the admin picks.
+const familyChanged = () => {
+    form.platform = form.family === 'windows' ? 'windows' : 'linux';
 };
 
 const toggleMapping = (id: number, value: boolean | 'indeterminate') => {
@@ -156,6 +174,21 @@ const submit = () => {
                                 <Button
                                     variant="ghost"
                                     size="icon"
+                                    as-child
+                                    :aria-label="
+                                        $t('Scripts of :name', {
+                                            name: template.name,
+                                        })
+                                    "
+                                    :title="$t('Scripts')"
+                                >
+                                    <Link :href="scripts(template.uuid)">
+                                        <FileCode class="h-4 w-4" />
+                                    </Link>
+                                </Button>
+                                <Button
+                                    variant="ghost"
+                                    size="icon"
                                     :aria-label="
                                         $t('Edit :name', {
                                             name: template.name,
@@ -199,12 +232,24 @@ const submit = () => {
                 placeholder="Ubuntu 24.04 LTS"
             />
         </FormField>
-        <div class="grid gap-4 sm:grid-cols-3">
+        <div class="grid gap-4 sm:grid-cols-4">
+            <FormField
+                label="Platform"
+                for="platform"
+                :error="form.errors.platform"
+            >
+                <NativeSelect
+                    id="platform"
+                    v-model="form.platform"
+                    :options="platformOptions"
+                />
+            </FormField>
             <FormField label="Family" for="family" :error="form.errors.family">
                 <NativeSelect
                     id="family"
                     v-model="form.family"
                     :options="familyOptions"
+                    @change="familyChanged"
                 />
             </FormField>
             <FormField

@@ -37,6 +37,8 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->encryptCookies(except: ['appearance', 'sidebar_state']);
+        // Guest scripts (admin OS template page) are stored exactly as typed.
+        $middleware->trimStrings(except: ['script']);
 
         $middleware->web(append: [
             SetLocale::class,

@@ -170,9 +170,12 @@ class ResourceChangeTest extends TestCase
         [, $second, $third] = $this->server->ipAddresses()->orderBy('id')->pluck('address')->all();
 
         $files = $this->proxmox->guestFiles[$vmid];
-        $this->assertSame("{$second}/29\n{$third}/29\n", $files['/etc/proxmotion/addresses'], 'Only the additional ones, with the pool prefix.');
-        $this->assertMatchesRegularExpression('/^bc:24:11(:[0-9a-f]{2}){3}\n$/', $files['/etc/proxmotion/mac']);
-        $this->assertSame(file_get_contents(resource_path('guest/proxmotion-addresses.sh')), $files['/usr/local/sbin/proxmotion-addresses']);
+        $inputs = json_decode($files['/etc/proxmotion/addresses.json'], true);
+        $this->assertSame(["{$second}/29", "{$third}/29"], $inputs['addresses'], 'Only the additional ones, with the pool prefix.');
+        $this->assertMatchesRegularExpression('/^bc:24:11(:[0-9a-f]{2}){3}$/', $inputs['mac']);
+        $this->assertSame($this->server->uuid, $inputs['server']);
+        $this->assertStringContainsString("mac={$inputs['mac']}\naddresses={$second}/29\naddresses={$third}/29\n", $files['/etc/proxmotion/addresses.vars']);
+        $this->assertSame(file_get_contents(resource_path('guest/linux/addresses.sh')), $files['/usr/local/sbin/proxmotion-addresses']);
         $this->assertContains(['sh', '/usr/local/sbin/proxmotion-addresses'], array_column($this->proxmox->guestCommands, 'command'));
         $step = collect($task->steps)->firstWhere('key', 'guest_addresses');
         $this->assertNotNull($step, 'The guest step did not run.');
@@ -180,7 +183,8 @@ class ResourceChangeTest extends TestCase
 
         // A downgrade empties the list, so the script removes them inside the guest too.
         $this->change(ipv4: 1);
-        $this->assertSame("\n", $this->proxmox->guestFiles[$vmid]['/etc/proxmotion/addresses']);
+        $this->assertSame([], json_decode($this->proxmox->guestFiles[$vmid]['/etc/proxmotion/addresses.json'], true)['addresses']);
+        $this->assertStringNotContainsString('addresses=', $this->proxmox->guestFiles[$vmid]['/etc/proxmotion/addresses.vars']);
     }
 
     public function test_routed_additional_addresses_are_slash_32()
@@ -190,7 +194,7 @@ class ResourceChangeTest extends TestCase
 
         $this->change(ipv4: 2);
 
-        $this->assertStringEndsWith("/32\n", $this->proxmox->guestFiles[$this->server->vmid]['/etc/proxmotion/addresses']);
+        $this->assertStringEndsWith("/32\n", $this->proxmox->guestFiles[$this->server->vmid]['/etc/proxmotion/addresses.vars']);
     }
 
     public function test_without_a_guest_agent_the_change_still_succeeds_with_a_note()
@@ -226,8 +230,8 @@ class ResourceChangeTest extends TestCase
     {
         $server = app(ServerCreator::class)->create($this->order(['hostname' => 'web2.example.com', 'spec' => new ServerSpec(cpuCores: 1, memoryMib: 1024, diskMib: 10240, ipv4Count: 2, ipv6Count: 0)]))->refresh();
 
-        $this->assertArrayHasKey('/etc/proxmotion/addresses', $this->proxmox->guestFiles[$server->vmid]);
-        $this->assertSame(1, substr_count($this->proxmox->guestFiles[$server->vmid]['/etc/proxmotion/addresses'], '/29'));
+        $this->assertArrayHasKey('/etc/proxmotion/addresses.json', $this->proxmox->guestFiles[$server->vmid]);
+        $this->assertCount(1, json_decode($this->proxmox->guestFiles[$server->vmid]['/etc/proxmotion/addresses.json'], true)['addresses']);
 
         // One address: nothing to do inside the guest.
         $this->assertArrayNotHasKey($this->server->vmid, $this->proxmox->guestFiles);

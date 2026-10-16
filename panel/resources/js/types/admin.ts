@@ -107,9 +107,27 @@ export type OsTemplate = {
     name: string;
     family: string;
     version: string;
+    platform: OsPlatform;
     is_active: boolean;
     sort_order: number;
     proxmox_template_ids: number[];
+};
+
+export type OsPlatform = 'linux' | 'windows';
+
+export type GuestScriptEvent =
+    | 'provisioned'
+    | 'addresses_changed'
+    | 'disk_resized'
+    | 'password_reset';
+
+export type GuestScriptSlot = {
+    event: GuestScriptEvent;
+    content: string | null;
+    default: string | null;
+    inputs: string[];
+    can_be_tried: boolean;
+    critical: boolean;
 };
 
 export type Package = {
@@ -164,6 +182,7 @@ export type TaskType =
     | 'reset_password'
     | 'reinstall'
     | 'change_resources'
+    | 'guest_script'
     | PowerAction;
 
 export type PowerAction = 'start' | 'shutdown' | 'stop' | 'reboot';
