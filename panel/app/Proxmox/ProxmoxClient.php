@@ -10,6 +10,7 @@ use App\Proxmox\Exceptions\ProxmoxTlsVerificationFailed;
 use App\Proxmox\Exceptions\ProxmoxUnreachable;
 use App\Proxmox\Resources\AccessResource;
 use App\Proxmox\Resources\ClusterResource;
+use App\Proxmox\Resources\GuestAgentResource;
 use App\Proxmox\Resources\NodesResource;
 use App\Proxmox\Resources\QemuResource;
 use App\Proxmox\Resources\TasksResource;
@@ -49,6 +50,11 @@ class ProxmoxClient
         return new QemuResource($this, $node);
     }
 
+    public function guestAgent(string $node): GuestAgentResource
+    {
+        return new GuestAgentResource($this, $node);
+    }
+
     public function access(): AccessResource
     {
         return new AccessResource($this);
@@ -78,7 +84,10 @@ class ProxmoxClient
     }
 
     /**
-     * @param  array<string, scalar>  $data
+     * A list value is sent as repeated keys (command=a&command=b), which is
+     * how Proxmox reads array parameters such as the guest agent's command.
+     *
+     * @param  array<string, scalar|list<scalar>>  $data
      */
     public function post(string $path, array $data = []): mixed
     {
@@ -86,7 +95,7 @@ class ProxmoxClient
     }
 
     /**
-     * @param  array<string, scalar>  $data
+     * @param  array<string, scalar|list<scalar>>  $data
      */
     public function put(string $path, array $data = []): mixed
     {
@@ -104,7 +113,7 @@ class ProxmoxClient
     /**
      * Send a request, trying each configured host in turn if it can't be reached.
      *
-     * @param  array<string, scalar>  $params
+     * @param  array<string, scalar|list<scalar>>  $params
      */
     private function request(string $method, string $path, array $params): mixed
     {
@@ -132,7 +141,7 @@ class ProxmoxClient
     }
 
     /**
-     * @param  array<string, scalar>  $params
+     * @param  array<string, scalar|list<scalar>>  $params
      */
     private function send(string $host, string $method, string $path, array $params): Response
     {
@@ -149,10 +158,29 @@ class ProxmoxClient
         return match ($method) {
             'GET' => $request->get($path, $params),
             'DELETE' => $request->delete($params === [] ? $path : $path.'?'.http_build_query($params)),
-            'POST' => $request->asForm()->post($path, $params),
-            'PUT' => $request->asForm()->put($path, $params),
+            'POST' => $request->withBody(self::formEncode($params), 'application/x-www-form-urlencoded')->post($path),
+            'PUT' => $request->withBody(self::formEncode($params), 'application/x-www-form-urlencoded')->put($path),
             default => throw new InvalidArgumentException("Unsupported HTTP method {$method}."),
         };
+    }
+
+    /**
+     * Form-encode parameters, sending a list as repeated keys.
+     *
+     * @param  array<string, scalar|list<scalar>>  $params
+     */
+    private static function formEncode(array $params): string
+    {
+        $pairs = [];
+
+        foreach ($params as $key => $value) {
+            foreach (is_array($value) ? $value : [$value] as $item) {
+                $item = is_bool($item) ? (int) $item : $item;
+                $pairs[] = rawurlencode($key).'='.rawurlencode((string) $item);
+            }
+        }
+
+        return implode('&', $pairs);
     }
 
     private function unwrap(Response $response): mixed

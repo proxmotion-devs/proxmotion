@@ -72,6 +72,8 @@ const props = defineProps<{
     revealedPassword: string | null;
     /** Deferred: undefined until loaded, null when unknown. */
     power?: string | null;
+    /** Deferred: whether the guest agent answers; null when unknown. */
+    agent?: boolean | null;
 }>();
 
 setLayoutProps({
@@ -252,6 +254,31 @@ const modelLabel =
                     >
                 </dd>
                 <dd v-if="server.addresses.length === 0">—</dd>
+            </div>
+            <div v-if="server.status === 'active'">
+                <dt class="text-muted-foreground">{{ $t('Guest agent') }}</dt>
+                <dd class="font-medium">
+                    <template v-if="agent === undefined">{{
+                        $t('Checking…')
+                    }}</template>
+                    <template v-else-if="agent === true">{{
+                        $t('Reachable')
+                    }}</template>
+                    <template v-else-if="agent === false">{{
+                        $t('Not reachable')
+                    }}</template>
+                    <template v-else>{{ $t('Unknown') }}</template>
+                </dd>
+                <dd
+                    v-if="agent === false"
+                    class="text-xs text-muted-foreground"
+                >
+                    {{
+                        $t(
+                            'Password reset, reinstall and apps need a running qemu-guest-agent in the server.',
+                        )
+                    }}
+                </dd>
             </div>
             <div>
                 <dt class="text-muted-foreground">{{ $t('Root password') }}</dt>

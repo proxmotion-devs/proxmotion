@@ -45,7 +45,8 @@ final readonly class ServerPower
     public function state(Server $server): ?string
     {
         try {
-            return $this->clients->forCluster($server->cluster)->qemu($server->node->name)->status($server->vmid)['status'];
+            // Pages load the cluster with only a few columns; the connection needs all of them.
+            return $this->clients->forCluster($server->cluster()->firstOrFail())->qemu($server->node->name)->status($server->vmid)['status'];
         } catch (ProxmoxException) {
             return null;
         }

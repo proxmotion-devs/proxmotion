@@ -50,13 +50,26 @@ final readonly class PermissionChecker
     }
 
     /**
+     * Guest agent commands (exec, file-write, set-user-password) need
+     * VM.GuestAgent.Unrestricted since Proxmox VE 9 (per the API viewer);
+     * Proxmox VE 8 checked VM.Monitor instead (not verified on a real 8.x).
+     */
+    private static function guestAgentPrivilege(?string $pveVersion): string
+    {
+        $major = $pveVersion !== null && preg_match('/^(\d+)\./', $pveVersion, $m) === 1 ? (int) $m[1] : null;
+
+        return $major !== null && $major < 9 ? 'VM.Monitor' : 'VM.GuestAgent.Unrestricted';
+    }
+
+    /**
      * @return list<array{string, string, list<string>, list<string>}>
      */
     private function requirements(Cluster $cluster): array
     {
         $pool = $cluster->resource_pool;
         $vmPath = $pool !== null ? "/pool/{$pool}" : '/vms';
-        $vmPrivileges = $pool !== null ? [...self::VM_PRIVILEGES, 'Pool.Allocate'] : self::VM_PRIVILEGES;
+        $vmPrivileges = [...self::VM_PRIVILEGES, self::guestAgentPrivilege($cluster->pve_version)];
+        $vmPrivileges = $pool !== null ? [...$vmPrivileges, 'Pool.Allocate'] : $vmPrivileges;
 
         $requirements = [
             ['/', 'Read nodes, storages and networks', ['Sys.Audit', 'Datastore.Audit', 'VM.Audit'], self::DANGEROUS_PRIVILEGES],

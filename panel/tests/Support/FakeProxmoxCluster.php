@@ -33,6 +33,31 @@ class FakeProxmoxCluster
     /** @var list<string> UPIDs whose status was requested, in order */
     public array $polledTasks = [];
 
+    /** @var array<int, bool> VMIDs whose guest agent does not answer */
+    public array $agentDown = [];
+
+    /** @var array<int, array<string, string>> files inside each guest, by path */
+    public array $guestFiles = [];
+
+    /** @var array<int, array<string, string>> passwords set through the agent, by user */
+    public array $guestPasswords = [];
+
+    /** @var list<array{vmid: int, command: list<string>, input: string|null}> commands run through the agent */
+    public array $guestCommands = [];
+
+    /**
+     * Decides what a guest command returns: [exitcode, stdout, stderr]. Defaults to success without output.
+     *
+     * @var (callable(list<string>, string|null): array{int, string, string})|null
+     */
+    public $execHandler = null;
+
+    /** How many exec-status polls report a command as still running. */
+    public int $execPollsUntilExited = 0;
+
+    /** @var array<int, array{exitcode: int, out: string, err: string, polls: int}> */
+    private array $processes = [];
+
     public function addTemplate(int $vmid, string $node = 'pve1', ?string $pool = 'proxmotion', int $diskMib = 3584): self
     {
         $this->vms[$vmid] = [
@@ -85,7 +110,7 @@ class FakeProxmoxCluster
         $url = parse_url($request->url());
         $path = (string) preg_replace('#^/api2/json#', '', $url['path'] ?? '');
         parse_str($url['query'] ?? '', $query);
-        $data = $method === 'GET' || $method === 'DELETE' ? $query : $request->data();
+        $data = $method === 'GET' || $method === 'DELETE' ? $query : $this->formData($request->body());
 
         if ($method !== 'GET') {
             $this->writes[] = ['method' => $method, 'path' => $path, 'data' => $data];
@@ -161,6 +186,7 @@ class FakeProxmoxCluster
             $suffix === '/status/current' => $this->ok(['status' => $vm['status']]),
             (bool) preg_match('#^/status/(start|stop|shutdown|reboot)$#', $suffix, $m) => $this->power($node, $vmid, $m[1]),
             $suffix === '/vncproxy' && $method === 'POST' => $this->vncProxy($node, $vmid),
+            str_starts_with($suffix, '/agent/') => $this->agent($vmid, substr($suffix, 7), $data),
             $suffix === '/firewall/options' => $this->firewallOptions($vmid, $data),
             $suffix === '/firewall/ipset' && $method === 'GET' => $this->ok($vm['ipset'] === null ? [] : [['name' => 'ipfilter-net0']]),
             $suffix === '/firewall/ipset' => $this->createIpset($vmid),
@@ -168,6 +194,85 @@ class FakeProxmoxCluster
             $suffix === '/firewall/ipset/ipfilter-net0' => $this->addToIpset($vmid, (string) $data['cidr']),
             default => Http::response(['data' => null], 501),
         };
+    }
+
+    /**
+     * Parse a form body like Proxmox does: a repeated key becomes a list.
+     *
+     * @return array<string, mixed>
+     */
+    private function formData(string $body): array
+    {
+        $data = [];
+
+        foreach ($body === '' ? [] : explode('&', $body) as $pair) {
+            [$key, $value] = array_map('rawurldecode', array_pad(explode('=', str_replace('+', ' ', $pair), 2), 2, ''));
+
+            if (! array_key_exists($key, $data)) {
+                $data[$key] = $value;
+            } else {
+                $data[$key] = [...(array) $data[$key], $value];
+            }
+        }
+
+        return $data;
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    private function agent(int $vmid, string $command, array $data): PromiseInterface
+    {
+        if ($this->vms[$vmid]['status'] !== 'running' || ($this->agentDown[$vmid] ?? false)) {
+            return Create::promiseFor(new Psr7Response(500, ['Content-Type' => 'application/json'], '{"data":null}', '1.1', 'QEMU guest agent is not running'));
+        }
+
+        switch ($command) {
+            case 'ping':
+                return $this->ok(['result' => []]);
+            case 'file-write':
+                $content = (string) $data['content'];
+                $this->guestFiles[$vmid][(string) $data['file']] = ($data['encode'] ?? '1') === '0' ? (string) base64_decode($content, true) : $content;
+
+                return $this->ok(null);
+            case 'file-read':
+                $file = (string) $data['file'];
+
+                if (! isset($this->guestFiles[$vmid][$file])) {
+                    return Create::promiseFor(new Psr7Response(500, ['Content-Type' => 'application/json'], '{"data":null}', '1.1', 'guest-file-open failed: No such file or directory'));
+                }
+
+                return $this->ok(['content' => $this->guestFiles[$vmid][$file]]);
+            case 'exec':
+                $commandLine = array_values((array) $data['command']);
+                $input = isset($data['input-data']) ? (string) $data['input-data'] : null;
+                $this->guestCommands[] = ['vmid' => $vmid, 'command' => $commandLine, 'input' => $input];
+                [$exitCode, $out, $err] = $this->execHandler !== null ? ($this->execHandler)($commandLine, $input) : [0, '', ''];
+                $pid = 1000 + count($this->processes);
+                $this->processes[$pid] = ['exitcode' => $exitCode, 'out' => $out, 'err' => $err, 'polls' => 0];
+
+                return $this->ok(['pid' => $pid]);
+            case 'exec-status':
+                $pid = (int) $data['pid'];
+                $process = &$this->processes[$pid];
+
+                if ($this->execPollsUntilExited > $process['polls']++) {
+                    return $this->ok(['exited' => 0]);
+                }
+
+                return $this->ok(array_filter([
+                    'exited' => 1,
+                    'exitcode' => $process['exitcode'],
+                    'out-data' => $process['out'],
+                    'err-data' => $process['err'],
+                ], fn ($value) => $value !== ''));
+            case 'set-user-password':
+                $this->guestPasswords[$vmid][(string) $data['username']] = (string) $data['password'];
+
+                return $this->ok(['result' => []]);
+            default:
+                return Http::response(['data' => null], 501);
+        }
     }
 
     private function vncProxy(string $node, int $vmid): PromiseInterface

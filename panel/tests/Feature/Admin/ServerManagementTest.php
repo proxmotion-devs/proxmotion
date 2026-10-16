@@ -276,7 +276,7 @@ class ServerManagementTest extends AdminTestCase
     {
         $this->proxmox->permissions = [
             '/' => ['Sys.Audit', 'Datastore.Audit', 'VM.Audit'],
-            '/pool/proxmotion' => ['VM.Audit', 'VM.Allocate', 'VM.Clone', 'VM.PowerMgmt', 'VM.Console', 'VM.Config.CPU', 'VM.Config.Memory', 'VM.Config.Disk', 'VM.Config.Network', 'VM.Config.Cloudinit', 'VM.Config.Options'],
+            '/pool/proxmotion' => ['VM.Audit', 'VM.Allocate', 'VM.Clone', 'VM.PowerMgmt', 'VM.Console', 'VM.Config.CPU', 'VM.Config.Memory', 'VM.Config.Disk', 'VM.Config.Network', 'VM.Config.Cloudinit', 'VM.Config.Options', 'VM.GuestAgent.Unrestricted'],
             '/storage' => ['Datastore.AllocateSpace'],
         ];
 
@@ -293,6 +293,22 @@ class ServerManagementTest extends AdminTestCase
                 // The template isn't clonable (e.g. not in the pool).
                 ->where('permissionCheck.5.path', '/vms/9000')
                 ->where('permissionCheck.5.missing', ['VM.Clone']));
+    }
+
+    public function test_permission_check_asks_for_the_guest_agent_privilege_of_the_proxmox_version()
+    {
+        $this->post(route('admin.clusters.permissions', $this->cluster));
+        $this->get(route('admin.clusters.show', $this->cluster))
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('permissionCheck.1.missing', fn ($missing) => in_array('VM.GuestAgent.Unrestricted', [...$missing], true)));
+
+        $this->cluster->forceFill(['pve_version' => '8.4.1'])->save();
+
+        $this->post(route('admin.clusters.permissions', $this->cluster));
+        $this->get(route('admin.clusters.show', $this->cluster))
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('permissionCheck.1.missing', fn ($missing) => in_array('VM.Monitor', [...$missing], true)
+                    && ! in_array('VM.GuestAgent.Unrestricted', [...$missing], true)));
     }
 
     public function test_permission_check_flags_root_equivalent_tokens()

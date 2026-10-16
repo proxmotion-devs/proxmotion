@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Admin;
 
+use App\Domain\Servers\GuestAgentProbe;
 use App\Domain\Servers\ServerPower;
 use App\Enums\PowerAction;
 use App\Enums\ServerStatus;
@@ -95,7 +96,7 @@ class ServerController extends Controller
         return to_route('admin.servers.show', $server);
     }
 
-    public function show(Server $server): Response
+    public function show(Server $server, GuestAgentProbe $agent): Response
     {
         $server->load(['user:id,uuid,name,email', 'node:id,uuid,name', 'cluster:id,uuid,name', 'location:id,name', 'package:id,name', 'osTemplate:id,name', 'storage:id,name', 'ipAddresses.pool:id,uuid,name,version']);
 
@@ -141,6 +142,7 @@ class ServerController extends Controller
             'revealedPassword' => session('revealed_password'),
             // Asked from Proxmox after the page has loaded, so a slow cluster does not block it.
             'power' => Inertia::defer(fn () => $server->status === ServerStatus::Active ? $this->power->state($server) : null),
+            'agent' => Inertia::defer(fn () => $server->status === ServerStatus::Active ? $agent->reachable($server) : null),
         ]);
     }
 

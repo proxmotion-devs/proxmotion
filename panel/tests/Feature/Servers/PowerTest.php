@@ -147,6 +147,20 @@ class PowerTest extends TestCase
         $this->assertSame('running', $this->proxmox->vms[100]['status']);
     }
 
+    public function test_the_admin_page_loads_power_state_and_guest_agent_reachability()
+    {
+        $this->proxmox->agentDown[100] = true;
+
+        $this->actingAs(User::factory()->admin()->withTwoFactor()->create())
+            ->get(route('admin.servers.show', $this->server))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->missing('agent')
+                ->loadDeferredProps(fn (Assert $reload) => $reload
+                    ->where('power', 'running')
+                    ->where('agent', false)));
+    }
+
     public function test_the_page_loads_the_power_state_after_rendering()
     {
         $this->proxmox->vms[100]['status'] = 'stopped';
