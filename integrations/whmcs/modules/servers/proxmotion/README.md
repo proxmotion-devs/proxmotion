@@ -13,7 +13,7 @@ client area. The module is a thin client of the Proxmotion billing API v1
 | Suspend / Unsuspend | Stops / starts the server (the WHMCS suspension reason is passed on) |
 | Terminate | Deletes the server and its disks; the addresses are released |
 | Change Password | Sets the service password as the root password (at least 12 characters) |
-| Change Package | Not supported yet: change the resources in Proxmotion |
+| Change Package | Upgrades and downgrades: the new product's package and configurable options, with the same rules as ordering. CPU and memory take effect at the server's next restart (the client area says so) unless *Restart after upgrades* is on. The disk only grows. Additional IP addresses come from Proxmotion's pools; with fewer, the newest extra ones are released. |
 | Client area | Status, power state, IP addresses with reverse DNS, start / shut down / reboot / force stop, browser console, root password reset, reinstall |
 | Admin area | Server status and addresses on the service page, a link to the server in Proxmotion, power and password buttons |
 
@@ -45,6 +45,7 @@ service. A password reset in the client area stores the new password there as we
 | Location | Where the server is placed, unless the `location` configurable option is chosen |
 | OS template | The operating system, unless the `os_template` configurable option is chosen |
 | Network model | Bridged or routed; default: the first model the package allows (bridged without a package) |
+| Restart after upgrades | Restart the server right away when an upgrade or downgrade changes CPU or memory |
 
 The lists are loaded from Proxmotion with the product's server.
 
@@ -70,15 +71,15 @@ The ids of OS templates and locations are listed by `GET /api/v1/os-templates` a
 `GET /api/v1/locations`, and shown in the Proxmotion admin panel.
 
 Resources stay within the limits of the Proxmotion admin form; a server needs at least
-one address.
+one address. The same options apply to upgrades and downgrades (*Upgrade/Downgrade
+Options* in WHMCS): WHMCS then runs Change Package with the new values.
 
 **Products without a package** (Package: *No package*) get all resources from
 configurable options: `cpu_cores`, `memory_mib`/`memory_gib` and `disk_mib`/`disk_gib`
 are required (the order fails with a readable error otherwise); addresses default to
 one IPv4 address (`ipv4_count`, `ipv6_count` to change it); port speed and traffic are
 unlimited unless given. `extra_*` options need a package and are refused here. The IP
-addresses always come from Proxmotion's IP pools of the location. Changing configurable options of an existing service (upgrades) arrives
-with package changes in a later version.
+addresses always come from Proxmotion's IP pools of the location.
 
 ### SSH key
 

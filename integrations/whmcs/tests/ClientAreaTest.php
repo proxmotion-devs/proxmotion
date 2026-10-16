@@ -39,6 +39,13 @@ class ClientAreaTest extends ModuleTestCase
         $this->assertFalse($vars['server']['busy']);
     }
 
+    public function test_the_overview_tells_when_a_restart_is_needed()
+    {
+        $this->showsServer(['reboot_required' => true]);
+
+        $this->assertTrue($this->module()->clientArea()['templateVariables']['pmx']['server']['rebootRequired']);
+    }
+
     public function test_the_overview_is_in_the_customers_language()
     {
         $this->showsServer(['status' => 'suspended', 'power_state' => null]);
@@ -180,7 +187,7 @@ class ClientAreaTest extends ModuleTestCase
             $this->assertTrue(function_exists('proxmotion_' . $function), "proxmotion_{$function} is listed but missing.");
         }
 
-        $this->assertSame(['Package', 'Location', 'OS template', 'Network model'], array_keys(proxmotion_ConfigOptions()));
+        $this->assertSame(['Package', 'Location', 'OS template', 'Network model', 'Restart after upgrades'], array_keys(proxmotion_ConfigOptions()));
         $this->assertTrue(is_file(__DIR__ . '/../modules/servers/proxmotion/templates/overview.tpl'));
     }
 }

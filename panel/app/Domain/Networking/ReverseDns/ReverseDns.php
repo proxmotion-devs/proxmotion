@@ -43,8 +43,20 @@ final class ReverseDns
     public function release(Server $server): void
     {
         foreach ($server->ipAddresses()->whereNotNull('ptr')->get() as $address) {
-            RemovePtr::dispatch($address->ip_pool_id, $address->address)->afterCommit();
-            $address->forceFill(['ptr' => null, 'ptr_synced_at' => null])->save();
+            $this->releaseAddress($address);
         }
+    }
+
+    /**
+     * Remove the PTR of an address that leaves its server.
+     */
+    public function releaseAddress(IpAddress $address): void
+    {
+        if ($address->ptr === null) {
+            return;
+        }
+
+        RemovePtr::dispatch($address->ip_pool_id, $address->address)->afterCommit();
+        $address->forceFill(['ptr' => null, 'ptr_synced_at' => null])->save();
     }
 }

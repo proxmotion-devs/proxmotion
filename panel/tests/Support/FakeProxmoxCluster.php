@@ -41,6 +41,12 @@ class FakeProxmoxCluster
     /** @var list<string> UPIDs whose status was requested, in order */
     public array $polledTasks = [];
 
+    /**
+     * @var array<int, array<string, mixed>> per VMID: changes of a running VM that wait for its next start,
+     *                                       like Proxmox without CPU/memory hotplug
+     */
+    public array $pending = [];
+
     /** @var array<int, bool> VMIDs whose guest agent does not answer */
     public array $agentDown = [];
 
@@ -197,6 +203,7 @@ class FakeProxmoxCluster
             $suffix === '' && $method === 'DELETE' => $this->destroyVm($node, $vmid),
             $suffix === '/config' && $method === 'GET' => $this->ok($vm['config']),
             $suffix === '/config' && $method === 'PUT' => $this->updateConfig($vmid, $data),
+            $suffix === '/pending' && $method === 'GET' => $this->pendingOf($vmid),
             $suffix === '/resize' && $method === 'PUT' => $this->resize($vmid, $data),
             $suffix === '/status/current' => $this->ok(['status' => $vm['status']]),
             (bool) preg_match('#^/status/(start|stop|shutdown|reboot)$#', $suffix, $m) => $this->power($node, $vmid, $m[1]),
@@ -207,6 +214,7 @@ class FakeProxmoxCluster
             $suffix === '/firewall/ipset' => $this->createIpset($vmid),
             $suffix === '/firewall/ipset/ipfilter-net0' && $method === 'GET' => $this->ok(array_map(fn ($cidr) => ['cidr' => $cidr], $vm['ipset'] ?? [])),
             $suffix === '/firewall/ipset/ipfilter-net0' => $this->addToIpset($vmid, (string) $data['cidr']),
+            str_starts_with($suffix, '/firewall/ipset/ipfilter-net0/') && $method === 'DELETE' => $this->removeFromIpset($vmid, rawurldecode(substr($suffix, strlen('/firewall/ipset/ipfilter-net0/')))),
             default => Http::response(['data' => null], 501),
         };
     }
@@ -330,6 +338,13 @@ class FakeProxmoxCluster
     private function updateConfig(int $vmid, array $data): PromiseInterface
     {
         foreach ($data as $key => $value) {
+            // Without hotplug, Proxmox keeps CPU and memory changes of a running VM for its next start.
+            if ($this->vms[$vmid]['status'] === 'running' && in_array($key, ['cores', 'sockets', 'memory'], true) && (string) ($this->vms[$vmid]['config'][$key] ?? '') !== (string) $value) {
+                $this->pending[$vmid][$key] = $value;
+
+                continue;
+            }
+
             $this->vms[$vmid]['config'][$key] = $value;
         }
 
@@ -356,6 +371,15 @@ class FakeProxmoxCluster
 
     private function power(string $node, int $vmid, string $action): PromiseInterface
     {
+        if (in_array($action, ['start', 'reboot'], true)) {
+            // A (re)start applies pending changes.
+            foreach ($this->pending[$vmid] ?? [] as $key => $value) {
+                $this->vms[$vmid]['config'][$key] = $value;
+            }
+
+            unset($this->pending[$vmid]);
+        }
+
         $this->vms[$vmid]['status'] = in_array($action, ['start', 'reboot'], true) ? 'running' : 'stopped';
 
         return $this->upid($node, "qm{$action}", $vmid);
@@ -383,6 +407,31 @@ class FakeProxmoxCluster
         $this->vms[$vmid]['ipset'] = [];
 
         return $this->ok(null);
+    }
+
+    private function removeFromIpset(int $vmid, string $cidr): PromiseInterface
+    {
+        $this->vms[$vmid]['ipset'] = array_values(array_filter($this->vms[$vmid]['ipset'] ?? [], fn (string $entry) => $entry !== $cidr));
+
+        return $this->ok(null);
+    }
+
+    /**
+     * Like Proxmox: every config key with its value, and the pending value where one waits.
+     */
+    private function pendingOf(int $vmid): PromiseInterface
+    {
+        $entries = [];
+
+        foreach ($this->vms[$vmid]['config'] as $key => $value) {
+            $entries[$key] = ['key' => $key, 'value' => $value];
+        }
+
+        foreach ($this->pending[$vmid] ?? [] as $key => $value) {
+            $entries[$key] = [...($entries[$key] ?? ['key' => $key]), 'pending' => $value];
+        }
+
+        return $this->ok(array_values($entries));
     }
 
     private function addToIpset(int $vmid, string $cidr): PromiseInterface

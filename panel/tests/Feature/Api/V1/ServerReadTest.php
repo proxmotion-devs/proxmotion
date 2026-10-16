@@ -21,6 +21,7 @@ class ServerReadTest extends ApiTestCase
                 'hostname' => 'web1.example.com',
                 'status' => 'active',
                 'suspension_reason' => null,
+                'reboot_required' => false,
                 'power_state' => 'running',
                 'network_model' => 'bridged',
                 'package' => ['id' => $this->package->uuid, 'name' => $this->package->name],

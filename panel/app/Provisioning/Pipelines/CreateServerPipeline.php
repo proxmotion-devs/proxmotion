@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Provisioning\Pipelines;
 
+use App\Domain\Servers\GuestAddresses;
 use App\Enums\ServerStatus;
 use App\Models\Server;
 use App\Models\Task;
@@ -25,6 +26,7 @@ final readonly class CreateServerPipeline
     public function __construct(
         private ProxmoxClientFactory $clients,
         private NetworkConfig $network,
+        private GuestAddresses $guestAddresses,
     ) {}
 
     public function run(Task $task): void
@@ -33,6 +35,11 @@ final readonly class CreateServerPipeline
         $server->forceFill(['status' => ServerStatus::Provisioning])->save();
 
         $this->build($task);
+
+        // Additional addresses inside the guest once it has booted (ADR 0009).
+        if ($this->guestAddresses->additional($server) !== []) {
+            $this->guestAddresses->apply($task, $server, waitForAgent: true);
+        }
 
         $server->forceFill(['status' => ServerStatus::Active, 'provisioned_at' => now()])->save();
     }

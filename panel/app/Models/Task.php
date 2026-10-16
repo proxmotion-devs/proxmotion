@@ -24,6 +24,7 @@ use Illuminate\Support\Carbon;
  * @property TaskType $type
  * @property TaskStatus $status
  * @property list<array{key: string, status: string, message: string|null, finished_at: string|null}> $steps
+ * @property array<string, mixed>|null $input plain inputs of the task, e.g. addresses to release
  * @property string|null $secret encrypted input of the task (a chosen root password); cleared once used
  * @property string|null $error
  * @property Carbon|null $started_at
@@ -48,6 +49,7 @@ class Task extends Model
             'status' => TaskStatus::class,
             'steps' => 'array',
             'secret' => 'encrypted',
+            'input' => 'array',
             'started_at' => 'datetime',
             'finished_at' => 'datetime',
         ];

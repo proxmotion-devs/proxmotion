@@ -227,9 +227,40 @@ class ProvisioningTest extends ModuleTestCase
         $this->assertSame('This is only possible while the server is active.', $this->runCommand('changePassword'));
     }
 
-    public function test_change_package_is_not_supported_yet()
+    public function test_change_package_sends_the_new_package_and_options()
     {
-        $this->assertStringContainsString('not supported', $this->module()->changePackage());
+        $this->serviceHas($this->server());
+        $this->api->on('GET /packages', 200, ['data' => [['id' => 'bigger-uuid', 'name' => 'VPS L', 'cpu_cores' => 4, 'memory_mib' => 8192, 'disk_mib' => 81920, 'ipv4_count' => 1, 'ipv6_count' => 0]]]);
+        $this->api->on('POST /servers/' . self::SERVER_ID . '/package', 202, $this->task('change_resources'));
+
+        $result = $this->module([
+            'configoption1' => 'bigger-uuid',
+            'configoption5' => 'on',
+            'configoptions' => ['extra_memory_gib' => '2', 'extra_ipv4_count' => '1'],
+        ])->changePackage();
+
+        $this->assertSame('success', $result);
+        $request = $this->api->last('POST /servers/' . self::SERVER_ID . '/package');
+        $this->assertSame(['package' => 'bigger-uuid', 'resources' => ['memory_mib' => 10240, 'ipv4_count' => 2], 'reboot' => true], $request['body']);
+        $this->assertSame(1, preg_match('/^whmcs-42-change-[0-9a-f]{16}$/', $request['headers']['Idempotency-Key']));
+    }
+
+    public function test_change_package_without_options_or_restart()
+    {
+        $this->serviceHas($this->server());
+        $this->api->on('POST /servers/' . self::SERVER_ID . '/package', 202, $this->task('change_resources'));
+
+        $this->module(['configoption1' => 'none', 'configoptions' => ['cpu_cores' => '6']])->changePackage();
+
+        $this->assertSame(['package' => null, 'resources' => ['cpu_cores' => 6], 'reboot' => false], $this->api->last('POST /servers/' . self::SERVER_ID . '/package')['body']);
+    }
+
+    public function test_change_package_shows_proxmotions_refusal()
+    {
+        $this->serviceHas($this->server());
+        $this->api->on('POST /servers/' . self::SERVER_ID . '/package', 422, ['message' => "The server's node does not have enough free capacity for these resources."]);
+
+        $this->assertSame("The server's node does not have enough free capacity for these resources.", $this->runCommand('changePackage'));
     }
 
     public function test_the_connection_test_reads_the_catalog_and_servers()

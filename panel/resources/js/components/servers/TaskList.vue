@@ -24,6 +24,7 @@ const taskTypeLabels: Record<TaskType, string> = {
     reboot: 'Reboot',
     reset_password: 'Reset root password',
     reinstall: 'Reinstall',
+    change_resources: 'Change resources',
 };
 const taskStatusTone: Record<
     TaskStatus,
@@ -54,8 +55,18 @@ const stepLabels: Record<string, string> = {
     release_ips: 'Release IP addresses',
     adopt: 'Adopt',
     wait_agent: 'Wait for the guest agent',
+    addresses: 'Update IP addresses and firewall',
+    apply: 'Apply changes',
+    guest_addresses: 'Configure additional IP addresses in the server',
 };
 const plannedSteps: Partial<Record<TaskType, string[]>> = {
+    change_resources: [
+        'configure',
+        'resize',
+        'addresses',
+        'apply',
+        'guest_addresses',
+    ],
     create: ['clone', 'configure', 'resize', 'firewall', 'start'],
     terminate: ['stop', 'destroy', 'release_ips'],
     reinstall: [

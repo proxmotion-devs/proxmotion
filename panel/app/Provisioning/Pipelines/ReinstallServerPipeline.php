@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Provisioning\Pipelines;
 
+use App\Domain\Servers\GuestAddresses;
 use App\Enums\ServerStatus;
 use App\Models\Task;
 use App\Proxmox\ProxmoxClientFactory;
@@ -27,6 +28,7 @@ final readonly class ReinstallServerPipeline
     public function __construct(
         private ProxmoxClientFactory $clients,
         private CreateServerPipeline $create,
+        private GuestAddresses $guestAddresses,
     ) {}
 
     public function run(Task $task): void
@@ -55,6 +57,10 @@ final readonly class ReinstallServerPipeline
 
         $this->create->build($task, $previousNet0);
         $this->waitForGuestAgent($task);
+
+        if ($this->guestAddresses->additional($server) !== []) {
+            $this->guestAddresses->apply($task, $server);
+        }
 
         // Post-boot hooks (ADR 0004) run here once there are any, e.g. installing an app.
 

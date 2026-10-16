@@ -70,6 +70,11 @@ function proxmotion_ConfigOptions()
             'Default' => 'default',
             'SimpleMode' => true,
         ],
+        'Restart after upgrades' => [
+            'Type' => 'yesno',
+            'Description' => 'Restart the server right away when an upgrade or downgrade changes CPU or memory; otherwise they take effect at its next restart',
+            'SimpleMode' => true,
+        ],
     ];
 }
 

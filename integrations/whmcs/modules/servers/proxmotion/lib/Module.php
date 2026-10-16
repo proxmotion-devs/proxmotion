@@ -116,17 +116,7 @@ class Module
         }
 
         $order = new ServerOrder($this->params);
-        $package = null;
-
-        if ($order->needsPackage() && $order->packageId() !== null) {
-            foreach ($this->client->packages() as $candidate) {
-                if (($candidate['id'] ?? null) === $order->packageId()) {
-                    $package = $candidate;
-                }
-            }
-        }
-
-        $payload = $order->payload($package);
+        $payload = $order->payload($this->packageFor($order));
 
         if (isset($payload['root_password'])) {
             $this->client->addSecret((string) $payload['root_password']);
@@ -203,11 +193,39 @@ class Module
     }
 
     /**
-     * ChangePackage arrives with Proxmotion's package changes (Phase 6).
+     * ChangePackage (upgrade/downgrade): the new product's package and the
+     * configurable options, with the same rules as ordering. CPU and memory
+     * take effect at the server's next restart unless the product restarts it.
      */
     public function changePackage(): string
     {
-        return 'Changing the package is not supported by Proxmotion yet. Change the resources in the Proxmotion admin panel.';
+        $server = $this->requireActiveServer();
+        $order = new ServerOrder($this->params);
+        $payload = $order->changePayload($this->packageFor($order));
+
+        $this->client->changeResources((string) $server['id'], $payload, $this->idempotencyKey('change'));
+
+        return 'success';
+    }
+
+    /**
+     * The product's package from Proxmotion, when extra_* options need its values.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function packageFor(ServerOrder $order): ?array
+    {
+        if (!$order->needsPackage() || $order->packageId() === null) {
+            return null;
+        }
+
+        foreach ($this->client->packages() as $candidate) {
+            if (($candidate['id'] ?? null) === $order->packageId()) {
+                return $candidate;
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -449,6 +467,7 @@ class Module
             'statusLabel' => $this->lang->get('status_' . $status),
             'active' => $status === 'active',
             'busy' => in_array($status, ['pending', 'provisioning', 'reinstalling', 'terminating'], true),
+            'rebootRequired' => !empty($server['reboot_required']),
             'power' => $power,
             'powerLabel' => $this->lang->get($power === 'running' || $power === 'stopped' ? 'power_' . $power : 'power_unknown'),
             'os' => isset($server['os_template']['name']) ? $server['os_template']['name'] : null,

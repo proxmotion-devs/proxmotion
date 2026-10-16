@@ -295,6 +295,60 @@ paths:
         '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/ValidationError' }
 
+  /servers/{server}/package:
+    parameters:
+      - $ref: '#/components/parameters/Server'
+    post:
+      tags: [Servers]
+      summary: Change resources (upgrade or downgrade)
+      description: |
+        Scope: `servers:write`. Active servers only. `package` absent keeps the server's package,
+        `null` makes its resources custom, an id switches to that package. Values not given come
+        from the new package, otherwise from the server's current resources.
+
+        - CPU and memory of a running server take effect at its next restart through Proxmotion
+          (`POST /servers/{id}/power` with `start` or `reboot`); until then the server shows
+          `reboot_required: true`. Send `reboot: true` to restart it right away.
+        - The disk only grows: a smaller `disk_mib` keeps the current size. The file system grows
+          at the next boot.
+        - Additional addresses come from the location's IP pools; with fewer addresses the
+          newest ones are released (with their PTRs). The first address of each IP version
+          always stays.
+        - The server stays on its node: `422` when the node lacks capacity or no addresses are
+          free. The network model does not change.
+      operationId: changeServerResources
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                package: { type: [string, 'null'], format: uuid }
+                resources:
+                  type: [object, 'null']
+                  properties:
+                    cpu_cores: { type: integer, minimum: 1, maximum: 512 }
+                    memory_mib: { type: integer, minimum: 128, maximum: 4194304 }
+                    disk_mib: { type: integer, minimum: 1024, maximum: 67108864 }
+                    ipv4_count: { type: integer, minimum: 0, maximum: 64 }
+                    ipv6_count: { type: integer, minimum: 0, maximum: 64 }
+                    port_speed_mbps: { type: integer, minimum: 1, maximum: 400000 }
+                    traffic_bytes: { type: integer, minimum: 1 }
+                reboot: { type: boolean, default: false }
+      responses:
+        '202': { $ref: '#/components/responses/TaskAccepted' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422':
+          description: Invalid request (`errors` per field), or not enough capacity or free addresses (`message` only).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ValidationError' }
+
   /servers/{server}/password:
     parameters:
       - $ref: '#/components/parameters/Server'
@@ -608,7 +662,7 @@ components:
             traffic_bytes: { type: integer, minimum: 1 }
     Server:
       type: object
-      required: [id, external_id, external_client_id, hostname, status, suspension_reason, network_model, package, location, os_template, resources, addresses, root_password_available, created_at, provisioned_at, terminated_at]
+      required: [id, external_id, external_client_id, hostname, status, suspension_reason, reboot_required, network_model, package, location, os_template, resources, addresses, root_password_available, created_at, provisioned_at, terminated_at]
       properties:
         id: { type: string, format: uuid }
         external_id: { type: [string, 'null'] }
@@ -616,6 +670,7 @@ components:
         hostname: { type: string }
         status: { $ref: '#/components/schemas/ServerStatus' }
         suspension_reason: { type: [string, 'null'] }
+        reboot_required: { type: boolean, description: 'New CPU or memory wait for a restart through Proxmotion (power start or reboot)' }
         power_state:
           type: [string, 'null']
           description: Only on `GET /servers/{id}`. `running`, `stopped`, …; null when the server is not active or Proxmox could not be asked.
@@ -658,7 +713,7 @@ components:
       required: [id, type, status, server, steps, error, created_at, started_at, finished_at]
       properties:
         id: { type: string, format: uuid }
-        type: { type: string, enum: [create, suspend, unsuspend, terminate, adopt, start, shutdown, stop, reboot, reset_password, reinstall] }
+        type: { type: string, enum: [create, suspend, unsuspend, terminate, adopt, start, shutdown, stop, reboot, reset_password, reinstall, change_resources] }
         status: { type: string, enum: [queued, running, succeeded, failed] }
         server:
           type: object

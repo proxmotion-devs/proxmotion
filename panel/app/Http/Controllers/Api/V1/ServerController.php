@@ -9,12 +9,15 @@ use App\Domain\Servers\ServerReinstaller;
 use App\Enums\PowerAction;
 use App\Enums\ServerStatus;
 use App\Enums\TaskType;
+use App\Http\Requests\Api\V1\ChangeResourcesRequest;
 use App\Http\Requests\Api\V1\CreateServerRequest;
 use App\Http\Requests\Api\V1\ReinstallServerRequest;
 use App\Http\Resources\Api\V1\ServerResource;
 use App\Models\AuditLog;
 use App\Models\Server;
 use App\Provisioning\Exceptions\ProvisioningException;
+use App\Provisioning\Exceptions\TaskAlreadyRunning;
+use App\Provisioning\ResourceChanger;
 use App\Provisioning\ServerCreator;
 use App\Provisioning\TaskRunner;
 use App\Proxmox\Exceptions\ProxmoxException;
@@ -129,6 +132,26 @@ class ServerController extends ApiController
             return $this->accepted($reinstaller->request($server, $request->osTemplate(), $request->sshKeys(), $this->token($request), $request->ip()));
         } catch (ProvisioningException $e) {
             return $this->conflict($e->translatedMessage());
+        }
+    }
+
+    /**
+     * Upgrade or downgrade: new resources, applied by a task. CPU and memory
+     * of a running server take effect at its next restart unless "reboot".
+     */
+    public function changeResources(ChangeResourcesRequest $request, Server $server, ResourceChanger $changer): JsonResponse
+    {
+        if ($server->status !== ServerStatus::Active) {
+            return $this->notPossible($server);
+        }
+
+        try {
+            return $this->accepted($changer->request($server, $request->toChange(), $this->token($request), $request->ip()));
+        } catch (TaskAlreadyRunning $e) {
+            return $this->conflict($e->translatedMessage());
+        } catch (ProvisioningException $e) {
+            // Not enough capacity on the server's node, or no free addresses.
+            return response()->json(['message' => $e->translatedMessage()], 422);
         }
     }
 

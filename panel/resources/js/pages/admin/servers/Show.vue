@@ -10,6 +10,7 @@ import Heading from '@/components/Heading.vue';
 import PowerControls from '@/components/servers/PowerControls.vue';
 import RdnsDialog from '@/components/servers/RdnsDialog.vue';
 import ReinstallDialog from '@/components/servers/ReinstallDialog.vue';
+import ResourcesDialog from '@/components/servers/ResourcesDialog.vue';
 import ResetPasswordButton from '@/components/servers/ResetPasswordButton.vue';
 import TaskList from '@/components/servers/TaskList.vue';
 import { Button } from '@/components/ui/button';
@@ -26,6 +27,7 @@ import {
     rdns,
     reinstall,
     resetPassword,
+    resources,
     retry,
     show,
     suspend,
@@ -37,6 +39,7 @@ import type {
     PowerAction,
     Drift,
     ReinstallOptions,
+    ResourceOptions,
     ServerStatus,
     Task,
 } from '@/types/admin';
@@ -56,6 +59,8 @@ const props = defineProps<{
         traffic_bytes: number | null;
         has_password: boolean;
         busy: boolean;
+        /** New CPU or memory wait for a restart. */
+        reboot_required: boolean;
         billing_system: string | null;
         external_id: string | null;
         external_client_id: string | null;
@@ -78,6 +83,7 @@ const props = defineProps<{
     tasks: Task[];
     revealedPassword: string | null;
     reinstallOptions: ReinstallOptions;
+    resourceOptions: ResourceOptions;
     drifts: Drift[];
     /** Deferred: undefined until loaded, null when unknown. */
     power?: string | null;
@@ -168,6 +174,12 @@ const modelLabel =
                     <Play class="h-4 w-4" />
                     {{ $t('Unsuspend') }}
                 </Button>
+                <ResourcesDialog
+                    v-if="server.status === 'active'"
+                    :action="resources(server.uuid)"
+                    :options="resourceOptions"
+                    :disabled="busy"
+                />
                 <ReinstallDialog
                     v-if="server.status === 'active'"
                     :action="reinstall(server.uuid)"
@@ -194,6 +206,18 @@ const modelLabel =
                 />
             </div>
         </div>
+
+        <p
+            v-if="server.reboot_required"
+            class="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm"
+            data-test="reboot-required"
+        >
+            {{
+                $t(
+                    'The new CPU and memory take effect when the server is restarted (Start or Reboot here).',
+                )
+            }}
+        </p>
 
         <DriftList v-if="drifts.length > 0" :drifts="drifts" />
 

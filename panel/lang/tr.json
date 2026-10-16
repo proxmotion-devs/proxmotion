@@ -868,5 +868,21 @@
     "No billing systems yet.": "Henüz faturalama sistemi yok.",
     "None": "Yok",
     "Rename :name": ":name adını değiştir",
-    "Rename billing system": "Faturalama sistemini yeniden adlandır"
+    "Rename billing system": "Faturalama sistemini yeniden adlandır",
+    "Apply": "Uygula",
+    "CPU and memory of a running server take effect when it is restarted. The disk can only grow. With fewer IP addresses, the newest additional ones are released.": "Çalışan bir sunucunun CPU ve belleği yeniden başlatıldığında geçerli olur. Disk yalnızca büyüyebilir. IP adresi azaltılırsa en son eklenen ek adresler bırakılır.",
+    "Change resources": "Kaynakları değiştir",
+    "Changing the resources…": "Kaynaklar değiştiriliyor…",
+    "Disks cannot shrink: the disk keeps its current size.": "Diskler küçülemez: disk mevcut boyutunda kalır.",
+    "Empty: unlimited.": "Boş: sınırsız.",
+    "Restart the server now if CPU or memory change": "CPU veya bellek değişirse sunucuyu şimdi yeniden başlat",
+    "The new CPU and memory take effect when the server is restarted (Start or Reboot here).": "Yeni CPU ve bellek, sunucu yeniden başlatıldığında geçerli olur (buradan Başlat veya Yeniden başlat).",
+    "This package does not allow the network model of the server.": "Bu paket sunucunun ağ modeline izin vermiyor.",
+    "Traffic (GB)": "Trafik (GB)",
+    "vCPU": "vCPU",
+    "Update IP addresses and firewall": "IP adreslerini ve güvenlik duvarını güncelle",
+    "Apply changes": "Değişiklikleri uygula",
+    "The server's node does not have enough free capacity for these resources.": "Sunucunun node'unda bu kaynaklar için yeterli boş kapasite yok.",
+    "The new CPU and memory take effect when the server is restarted.": "Yeni CPU ve bellek, sunucu yeniden başlatıldığında geçerli olur.",
+    "Configure additional IP addresses in the server": "Ek IP adreslerini sunucunun içinde ayarla"
 }

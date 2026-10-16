@@ -45,6 +45,8 @@ class ServerResource extends JsonResource
             'hostname' => $this->hostname,
             'status' => $this->status->value,
             'suspension_reason' => $this->suspension_reason,
+            // New CPU or memory wait for a restart of the server (start/reboot through the API).
+            'reboot_required' => $this->reboot_required,
             // "running", "stopped" or null when Proxmox could not be asked; only on GET /servers/{id}.
             'power_state' => $this->when($this->withPowerState, fn () => $this->powerState),
             'network_model' => $this->network_model->value,

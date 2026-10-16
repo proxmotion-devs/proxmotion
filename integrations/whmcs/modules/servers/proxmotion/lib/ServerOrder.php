@@ -93,6 +93,29 @@ class ServerOrder
     }
 
     /**
+     * A POST /servers/{id}/package payload for ChangePackage: the product's
+     * package (or none) and the resources set by configurable options. Values
+     * not given come from the package, or without one stay as they are.
+     *
+     * @param array<string, mixed>|null $package the package from GET /packages, needed for extra_* options
+     * @return array<string, mixed>
+     */
+    public function changePayload(?array $package): array
+    {
+        $payload = ['package' => $this->packageId()];
+        $resources = $this->resources($package);
+
+        if ($resources !== []) {
+            $payload['resources'] = $resources;
+        }
+
+        // Module setting 5 (yes/no): restart right away so CPU and memory apply at once.
+        $payload['reboot'] = $this->setting(5) === 'on' || $this->setting(5) === '1' || $this->setting(5) === 'yes';
+
+        return $payload;
+    }
+
+    /**
      * Whether the order changes resources relative to the package ("extra_*"
      * options), so the package's values are needed.
      */

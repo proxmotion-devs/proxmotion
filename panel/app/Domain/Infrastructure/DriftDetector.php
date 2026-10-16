@@ -65,9 +65,10 @@ final readonly class DriftDetector
             }
 
             $expected = ['cpu_cores' => $server->cpu_cores, 'memory_mib' => $server->memory_mib, 'disk_mib' => $server->disk_mib];
+            // New cores and memory that wait for a restart are not drift (ChangeResourcesPipeline).
             $actual = [
-                'cpu_cores' => $vm->cpus ?? $server->cpu_cores,
-                'memory_mib' => $vm->memoryBytes !== null ? intdiv($vm->memoryBytes, self::MIB) : $server->memory_mib,
+                'cpu_cores' => $server->reboot_required ? $server->cpu_cores : ($vm->cpus ?? $server->cpu_cores),
+                'memory_mib' => $server->reboot_required || $vm->memoryBytes === null ? $server->memory_mib : intdiv($vm->memoryBytes, self::MIB),
                 'disk_mib' => $vm->diskBytes !== null ? intdiv($vm->diskBytes, self::MIB) : $server->disk_mib,
             ];
 

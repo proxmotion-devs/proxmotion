@@ -30,6 +30,7 @@ return [
     'power_running' => 'Running',
     'power_stopped' => 'Stopped',
     'power_unknown' => 'Unknown',
+    'reboot_required' => 'Your new CPU and memory take effect after a restart. Use the Reboot button below (a restart from inside the server is not enough).',
     'busy' => 'An operation is in progress. This page shows the result when you reload it.',
     'not_found' => 'The server of this service was not found. Please contact support.',
     'unavailable' => 'The server details cannot be shown right now. Please try again later.',

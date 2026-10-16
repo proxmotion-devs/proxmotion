@@ -12,7 +12,7 @@ use App\Models\ApiToken;
 use App\Models\Server;
 use App\Models\Task;
 use App\Models\User;
-use App\Provisioning\Exceptions\ProvisioningException;
+use App\Provisioning\Exceptions\TaskAlreadyRunning;
 use SensitiveParameter;
 
 /**
@@ -21,14 +21,16 @@ use SensitiveParameter;
 final class TaskRunner
 {
     /**
-     * @throws ProvisioningException when another task is still running for the server
+     * @param  array<string, mixed>|null  $input  plain inputs the pipeline reads (Task::$input)
+     *
+     * @throws TaskAlreadyRunning when another task is still running for the server
      */
-    public function start(Server $server, TaskType $type, User|ApiToken|null $actor = null, #[SensitiveParameter] ?string $secret = null): Task
+    public function start(Server $server, TaskType $type, User|ApiToken|null $actor = null, #[SensitiveParameter] ?string $secret = null, ?array $input = null): Task
     {
         $running = $server->tasks()->whereIn('status', [TaskStatus::Queued, TaskStatus::Running])->exists();
 
         if ($running) {
-            throw new ProvisioningException('Another task is still running for this server.');
+            throw new TaskAlreadyRunning;
         }
 
         $task = new Task;
@@ -40,6 +42,7 @@ final class TaskRunner
             'status' => TaskStatus::Queued,
             'steps' => [],
             'secret' => $secret,
+            'input' => $input,
         ])->save();
 
         $status = match ($type) {

@@ -6,6 +6,7 @@ namespace App\Provisioning\Pipelines;
 
 use App\Enums\PowerAction;
 use App\Enums\ServerStatus;
+use App\Models\Server;
 use App\Models\Task;
 use App\Proxmox\ProxmoxClientFactory;
 use App\Proxmox\Resources\QemuResource;
@@ -56,6 +57,20 @@ final readonly class PowerPipeline
         }
 
         $task->completeStep($action->value);
+
+        if ($action === PowerAction::Start || $action === PowerAction::Reboot) {
+            $this->clearRebootRequired($server, $qemu);
+        }
+    }
+
+    /**
+     * A (re)start applies changes Proxmox kept pending (ChangeResourcesPipeline).
+     */
+    private function clearRebootRequired(Server $server, QemuResource $qemu): void
+    {
+        if ($server->reboot_required && $qemu->pendingChanges($server->vmid) === []) {
+            $server->forceFill(['reboot_required' => false])->save();
+        }
     }
 
     /**
@@ -105,5 +120,6 @@ final readonly class PowerPipeline
 
         $task->completeStep('start');
         $server->forceFill(['status' => ServerStatus::Active, 'suspension_reason' => null])->save();
+        $this->clearRebootRequired($server, $qemu);
     }
 }

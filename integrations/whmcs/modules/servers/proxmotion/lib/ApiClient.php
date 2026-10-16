@@ -149,6 +149,17 @@ class ApiClient
     }
 
     /**
+     * Upgrade or downgrade (POST /servers/{id}/package).
+     *
+     * @param array<string, mixed> $payload
+     * @return array<string, mixed> the queued task
+     */
+    public function changeResources(string $id, array $payload, string $idempotencyKey): array
+    {
+        return $this->dataOf($this->request('POST', '/servers/' . rawurlencode($id) . '/package', $payload, $idempotencyKey));
+    }
+
+    /**
      * @param list<string> $sshKeys
      * @return array<string, mixed> the queued task
      */

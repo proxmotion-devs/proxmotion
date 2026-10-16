@@ -38,6 +38,7 @@ class BillingSystemIsolationTest extends ApiTestCase
             'unsuspend' => ['POST', '/unsuspend'],
             'power' => ['POST', '/power'],
             'reinstall' => ['POST', '/reinstall'],
+            'change resources' => ['POST', '/package'],
             'reset the password' => ['POST', '/password'],
             'fetch the password' => ['GET', '/password'],
             'rDNS' => ['POST', '/rdns'],

@@ -6,6 +6,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Domain\Servers\GuestAgentProbe;
 use App\Domain\Servers\ReinstallOptions;
+use App\Domain\Servers\ResourceOptions;
 use App\Domain\Servers\ServerPasswords;
 use App\Domain\Servers\ServerPower;
 use App\Domain\Servers\ServerReinstaller;
@@ -13,6 +14,7 @@ use App\Enums\PowerAction;
 use App\Enums\ServerStatus;
 use App\Enums\TaskType;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Admin\ChangeResourcesRequest;
 use App\Http\Requests\Admin\ServerRequest;
 use App\Http\Requests\ReinstallRequest;
 use App\Models\BillingSystem;
@@ -25,6 +27,7 @@ use App\Models\ServerDrift;
 use App\Models\Task;
 use App\Models\User;
 use App\Provisioning\Exceptions\ProvisioningException;
+use App\Provisioning\ResourceChanger;
 use App\Provisioning\ServerCreator;
 use App\Provisioning\TaskRunner;
 use App\Proxmox\Exceptions\ProxmoxException;
@@ -121,6 +124,7 @@ class ServerController extends Controller
                 'traffic_bytes' => $server->traffic_bytes,
                 'has_password' => $server->root_password !== null,
                 'busy' => $server->status->isBusy(),
+                'reboot_required' => $server->reboot_required,
                 'billing_system' => $server->billingSystem?->name,
                 'external_id' => $server->external_id,
                 'external_client_id' => $server->external_client_id,
@@ -153,6 +157,7 @@ class ServerController extends Controller
             // Asked from Proxmox after the page has loaded, so a slow cluster does not block it.
             'power' => Inertia::defer(fn () => $server->status === ServerStatus::Active ? $this->power->state($server) : null),
             'reinstallOptions' => fn () => ReinstallOptions::for($server),
+            'resourceOptions' => fn () => ResourceOptions::for($server),
             'drifts' => $server->drifts()->visible()->with(['cluster:id,uuid,name', 'server:id,uuid,hostname,status'])->get()
                 ->map(fn (ServerDrift $drift) => DriftController::present($drift)),
             'agent' => Inertia::defer(fn () => $server->status === ServerStatus::Active ? $agent->reachable($server) : null),
@@ -232,6 +237,21 @@ class ServerController extends Controller
         }
 
         $this->toast('info', 'Reinstalling the server…');
+
+        return back();
+    }
+
+    public function changeResources(ChangeResourcesRequest $request, Server $server, #[CurrentUser] User $admin, ResourceChanger $changer): RedirectResponse
+    {
+        try {
+            $changer->request($server, $request->toChange(), $admin, $request->ip());
+        } catch (ProvisioningException $e) {
+            $this->toast('error', $e->getMessage(), ['status' => __(ucfirst($server->status->value))]);
+
+            return back();
+        }
+
+        $this->toast('info', 'Changing the resources…');
 
         return back();
     }

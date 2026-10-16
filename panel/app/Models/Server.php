@@ -46,6 +46,7 @@ use Illuminate\Support\Carbon;
  * @property int|null $traffic_bytes
  * @property string|null $root_password
  * @property bool $root_password_unrevealed the billing system has not fetched the current root password yet
+ * @property bool $reboot_required changed CPU or memory waits for the VM's next restart
  * @property string|null $ssh_keys
  * @property string|null $suspension_reason
  * @property int|null $billing_system_id the billing system that owns the server; only its API tokens see it
@@ -86,6 +87,7 @@ class Server extends Model
             'traffic_bytes' => 'integer',
             'root_password' => 'encrypted',
             'root_password_unrevealed' => 'boolean',
+            'reboot_required' => 'boolean',
             'provisioned_at' => 'datetime',
             'terminated_at' => 'datetime',
         ];

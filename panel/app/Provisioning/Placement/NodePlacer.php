@@ -68,6 +68,39 @@ final class NodePlacer
         return $candidates[0]['placement'];
     }
 
+    /**
+     * Whether the server's node (and storage) can take the server's new
+     * resources: only increases are checked, with the same over-commit rules
+     * as placement. The server itself is already counted in what is booked.
+     */
+    public function fitsChange(Server $server, ServerSpec $target): bool
+    {
+        $node = $server->node;
+        $booked = $this->booked($node);
+        $extraCpu = max(0, $target->cpuCores - $server->cpu_cores);
+        $extraMemory = max(0, $target->memoryMib - $server->memory_mib);
+        $extraDisk = max(0, $target->diskMib - $server->disk_mib);
+
+        if ($extraCpu > 0 && $node->cpu_cores !== null && $node->cpu_cores * (float) $node->cpu_overcommit < $booked['cpu'] + $extraCpu) {
+            return false;
+        }
+
+        if ($extraMemory > 0 && $node->memory_bytes !== null
+            && intdiv($node->memory_bytes, 1024 ** 2) * (float) $node->memory_overcommit < $booked['memory_mib'] + $extraMemory) {
+            return false;
+        }
+
+        $storage = $server->storage;
+
+        if ($extraDisk > 0 && $storage !== null && $storage->total_bytes !== null) {
+            $capacityMib = intdiv($storage->total_bytes, 1024 ** 2) * (float) $node->disk_overcommit;
+
+            return $capacityMib - $this->bookedDiskMib($storage, $node) >= $extraDisk;
+        }
+
+        return true;
+    }
+
     private function fits(Node $node, ServerSpec $spec): bool
     {
         $booked = $this->booked($node);

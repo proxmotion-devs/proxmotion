@@ -11,6 +11,10 @@
             <div class="alert alert-info">{$pmx.lang.busy|escape}</div>
         {/if}
 
+        {if $server.rebootRequired}
+            <div class="alert alert-warning">{$pmx.lang.reboot_required|escape}</div>
+        {/if}
+
         <div class="row">
             <div class="col-sm-6">
                 <table class="table table-condensed">

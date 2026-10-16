@@ -15,6 +15,7 @@ use App\Models\Server;
 use App\Provisioning\Exceptions\ProvisioningException;
 use App\Support\Network\Cidr;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Support\Collection;
 
 /**
@@ -99,6 +100,36 @@ final class IpAllocator
     {
         $this->reverseDns->release($server);
         $server->ipAddresses()->update(['server_id' => null, 'assigned_at' => null]);
+    }
+
+    /**
+     * Addresses to give up when the server keeps only $keep of this version:
+     * the newest ones. The primary address (the first of its version, the one
+     * cloud-init configures) always stays.
+     *
+     * @return EloquentCollection<int, IpAddress>
+     */
+    public function surplus(Server $server, IpVersion $version, int $keep): EloquentCollection
+    {
+        $addresses = $server->ipAddresses()
+            ->whereHas('pool', fn ($query) => $query->where('version', $version))
+            ->orderBy('id')
+            ->get();
+
+        return $addresses->slice(max(1, $keep))->values();
+    }
+
+    /**
+     * Release some of a server's addresses (and their PTRs).
+     *
+     * @param  EloquentCollection<int, IpAddress>  $addresses
+     */
+    public function releaseAddresses(EloquentCollection $addresses): void
+    {
+        foreach ($addresses as $address) {
+            $this->reverseDns->releaseAddress($address);
+            $address->forceFill(['server_id' => null, 'assigned_at' => null])->save();
+        }
     }
 
     /**

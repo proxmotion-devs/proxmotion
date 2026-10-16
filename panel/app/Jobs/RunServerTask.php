@@ -9,6 +9,7 @@ use App\Enums\ServerStatus;
 use App\Enums\TaskStatus;
 use App\Enums\TaskType;
 use App\Models\Task;
+use App\Provisioning\Pipelines\ChangeResourcesPipeline;
 use App\Provisioning\Pipelines\CreateServerPipeline;
 use App\Provisioning\Pipelines\PowerPipeline;
 use App\Provisioning\Pipelines\ReinstallServerPipeline;
@@ -33,7 +34,7 @@ class RunServerTask implements ShouldQueue
 
     public function __construct(public Task $task) {}
 
-    public function handle(CreateServerPipeline $create, PowerPipeline $power, TerminateServerPipeline $terminate, ResetPasswordPipeline $resetPassword, ReinstallServerPipeline $reinstall): void
+    public function handle(CreateServerPipeline $create, PowerPipeline $power, TerminateServerPipeline $terminate, ResetPasswordPipeline $resetPassword, ReinstallServerPipeline $reinstall, ChangeResourcesPipeline $changeResources): void
     {
         $task = $this->task;
 
@@ -53,6 +54,7 @@ class RunServerTask implements ShouldQueue
                 TaskType::Start, TaskType::Shutdown, TaskType::Stop, TaskType::Reboot => $power->power($task, PowerAction::from($task->type->value)),
                 TaskType::ResetPassword => $resetPassword->run($task),
                 TaskType::Reinstall => $reinstall->run($task),
+                TaskType::ChangeResources => $changeResources->run($task),
             };
         } catch (Throwable $e) {
             $this->fail($task, $e);

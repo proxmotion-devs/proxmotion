@@ -32,6 +32,7 @@ Route::middleware(['api.scope:servers:write', 'api.idempotent'])->group(function
     Route::post('servers/{server}/unsuspend', [ServerController::class, 'unsuspend'])->name('servers.unsuspend');
     Route::post('servers/{server}/power', [ServerController::class, 'power'])->name('servers.power');
     Route::post('servers/{server}/reinstall', [ServerController::class, 'reinstall'])->name('servers.reinstall');
+    Route::post('servers/{server}/package', [ServerController::class, 'changeResources'])->name('servers.package');
     Route::post('servers/{server}/password', [ServerPasswordController::class, 'reset'])->name('servers.password.reset');
     Route::post('servers/{server}/rdns', ServerRdnsController::class)->name('servers.rdns');
 });

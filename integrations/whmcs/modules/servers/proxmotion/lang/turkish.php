@@ -30,6 +30,7 @@ return [
     'power_running' => 'Çalışıyor',
     'power_stopped' => 'Durdu',
     'power_unknown' => 'Bilinmiyor',
+    'reboot_required' => 'Yeni CPU ve belleğiniz yeniden başlatmadan sonra geçerli olur. Aşağıdaki Yeniden başlat düğmesini kullanın (sunucunun içinden yeniden başlatmak yetmez).',
     'busy' => 'Bir işlem sürüyor. Sayfayı yenilediğinizde sonucu görürsünüz.',
     'not_found' => 'Bu hizmetin sunucusu bulunamadı. Lütfen destek ile iletişime geçin.',
     'unavailable' => 'Sunucu bilgileri şu anda gösterilemiyor. Lütfen daha sonra tekrar deneyin.',

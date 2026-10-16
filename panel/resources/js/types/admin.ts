@@ -163,6 +163,7 @@ export type TaskType =
     | 'adopt'
     | 'reset_password'
     | 'reinstall'
+    | 'change_resources'
     | PowerAction;
 
 export type PowerAction = 'start' | 'shutdown' | 'stop' | 'reboot';
@@ -219,6 +220,23 @@ export type Drift = {
     last_seen_at: string;
     cluster: { uuid: string; name: string };
     server: { uuid: string; hostname: string; status: ServerStatus } | null;
+};
+
+/** Resources as the ResourcesDialog edits them. */
+export type ResourceValues = {
+    cpu_cores: number;
+    memory_mib: number;
+    disk_gib: number;
+    ipv4_count: number;
+    ipv6_count: number;
+    port_speed_mbps: number | null;
+    traffic_gb: number | null;
+};
+
+/** Choices for ResourcesDialog: packages for the server's network model, and its current resources. */
+export type ResourceOptions = {
+    packages: (ResourceValues & Option)[];
+    current: ResourceValues & { package: string };
 };
 
 /** Choices for ReinstallDialog: OS templates of the server's cluster. */
