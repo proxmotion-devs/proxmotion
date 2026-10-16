@@ -10,6 +10,9 @@ Building them takes two steps:
 
 Nothing is installed on the hypervisor, and the node never needs internet access.
 
+To build a template from an installer ISO by hand instead (other distributions, Windows
+Server, or a custom installation), see [iso-templates.md](iso-templates.md).
+
 > **Status:** this procedure has not yet been tested end to end against a real Proxmox VE
 > node, and the container path (Windows without WSL, macOS) has not been tested at all.
 > Please report problems.

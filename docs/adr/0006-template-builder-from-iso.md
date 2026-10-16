@@ -1,6 +1,6 @@
 # 6. Building OS templates from installer ISOs in the panel
 
-- **Status:** Accepted
+- **Status:** Rejected (2026-10-16): the maintainers do not need a template builder in the panel. Templates are built by hand from ISOs ([iso-templates.md](../guides/iso-templates.md)) or from cloud images ([os-templates.md](../guides/os-templates.md)).
 - **Date:** 2026-10-16
 
 ## Context
