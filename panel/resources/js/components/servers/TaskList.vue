@@ -26,6 +26,7 @@ const taskTypeLabels: Record<TaskType, string> = {
     reinstall: 'Reinstall',
     change_resources: 'Change resources',
     guest_script: 'Run template script',
+    change_primary_address: 'Change primary address',
 };
 const taskStatusTone: Record<
     TaskStatus,
@@ -64,6 +65,7 @@ const stepLabels: Record<string, string> = {
 };
 const plannedSteps: Partial<Record<TaskType, string[]>> = {
     change_resources: ['configure', 'resize', 'addresses', 'apply'],
+    change_primary_address: ['addresses', 'guest_addresses'],
     create: ['clone', 'configure', 'resize', 'firewall', 'start'],
     terminate: ['stop', 'destroy', 'release_ips'],
     reinstall: [

@@ -49,6 +49,8 @@ class ServerRequest extends FormRequest
             'os_template' => ['required', 'string', Rule::exists('os_templates', 'uuid')->where('is_active', true)],
             'network_model' => ['required', Rule::enum(NetworkModel::class)->except([NetworkModel::Nat])],
             'hostname' => ['required', 'string', 'max:253', new Hostname],
+            // Empty: the next free address of the location's pools.
+            'primary_ipv4' => ['nullable', 'ipv4'],
             // Empty: a random password is generated.
             'root_password' => ['nullable', 'string', 'min:12', 'max:128'],
             'ssh_keys' => ['nullable', 'string', 'max:16384', new SshPublicKeys],
@@ -91,6 +93,7 @@ class ServerRequest extends FormRequest
             externalId: $this->filled('external_id') ? $this->string('external_id')->trim()->toString() : null,
             externalClientId: $this->filled('external_client_id') ? $this->string('external_client_id')->trim()->toString() : null,
             billingSystem: $this->billingSystem(),
+            primaryIpv4: $this->filled('primary_ipv4') ? $this->string('primary_ipv4')->trim()->toString() : null,
         );
     }
 

@@ -39,6 +39,7 @@ class BillingSystemIsolationTest extends ApiTestCase
             'power' => ['POST', '/power'],
             'reinstall' => ['POST', '/reinstall'],
             'change resources' => ['POST', '/package'],
+            'primary address' => ['POST', '/primary-address'],
             'reset the password' => ['POST', '/password'],
             'fetch the password' => ['GET', '/password'],
             'rDNS' => ['POST', '/rdns'],

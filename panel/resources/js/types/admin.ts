@@ -183,6 +183,7 @@ export type TaskType =
     | 'reinstall'
     | 'change_resources'
     | 'guest_script'
+    | 'change_primary_address'
     | PowerAction;
 
 export type PowerAction = 'start' | 'shutdown' | 'stop' | 'reboot';

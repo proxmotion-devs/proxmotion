@@ -37,6 +37,7 @@ class ServerReadTest extends ApiTestCase
                 'addresses' => [[
                     'address' => $address->address,
                     'version' => 4,
+                    'primary' => true,
                     'prefix' => 29,
                     'gateway' => '203.0.113.1',
                     'ptr' => null,

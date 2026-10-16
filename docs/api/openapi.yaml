@@ -312,7 +312,7 @@ paths:
         - The disk only grows: a smaller `disk_mib` keeps the current size. The file system grows
           at the next boot.
         - Additional addresses come from the location's IP pools; with fewer addresses the
-          newest ones are released (with their PTRs). The first address of each IP version
+          newest ones are released (with their PTRs). The primary address of each IP version
           always stays.
         - The server stays on its node: `422` when the node lacks capacity or no addresses are
           free. The network model does not change.
@@ -345,6 +345,50 @@ paths:
         '409': { $ref: '#/components/responses/Conflict' }
         '422':
           description: Invalid request (`errors` per field), or not enough capacity or free addresses (`message` only).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ValidationError' }
+
+  /servers/{server}/primary-address:
+    parameters:
+      - $ref: '#/components/parameters/Server'
+    post:
+      tags: [Servers]
+      summary: Change the primary address
+      description: |
+        Scope: `servers:write`. Active servers only. Makes another address the primary one of its
+        IP version (the address the server sends from, `primary: true` in `addresses`). The number
+        of addresses never changes:
+
+        - `address` is one of the server's additional addresses: it becomes the primary and the
+          old primary becomes an additional address.
+        - `address` is a free address of the location's pools (same network model, bridge and
+          VLAN), or `address` is left out and `ip_version` given for the next free one: it becomes
+          the primary and the old primary is released (with its PTR).
+
+        The change is applied inside the server through the guest agent, without a restart;
+        cloud-init's settings stay as they are (a reinstall uses the new primary). `422` when the
+        address is not usable or none is free.
+      operationId: changeServerPrimaryAddress
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                address: { type: [string, 'null'], description: IPv4 or IPv6 address }
+                ip_version: { type: [integer, 'null'], enum: [4, 6, null], description: Required without `address` }
+      responses:
+        '202': { $ref: '#/components/responses/TaskAccepted' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422':
+          description: Invalid request (`errors` per field), or the address cannot be used (`message` only).
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ValidationError' }
@@ -647,6 +691,7 @@ components:
         os_template: { type: string, format: uuid }
         network_model: { description: 'Default: the first model the package allows. Required without a package.', oneOf: [{ $ref: '#/components/schemas/NetworkModel' }, { type: 'null' }] }
         hostname: { type: string, maxLength: 253, examples: [web1.example.com] }
+        primary_ipv4: { type: [string, 'null'], format: ipv4, description: 'A free address of the location''s pools to use as the primary IPv4 address (the other IPv4 addresses come from its pool). Empty: the next free one. `422` when it is not free.' }
         root_password: { type: [string, 'null'], minLength: 12, maxLength: 128, description: 'Empty: a random password.' }
         ssh_keys: { $ref: '#/components/schemas/SshKeys' }
         resources:
@@ -697,10 +742,11 @@ components:
           type: array
           items:
             type: object
-            required: [address, version, prefix, gateway, ptr]
+            required: [address, version, primary, prefix, gateway, ptr]
             properties:
               address: { type: string }
               version: { type: integer, enum: [4, 6] }
+              primary: { type: boolean, description: The primary address of its version; listed first }
               prefix: { type: integer, description: As configured in the guest (routed IPv4 addresses are /32) }
               gateway: { type: [string, 'null'] }
               ptr: { type: [string, 'null'] }
@@ -713,7 +759,7 @@ components:
       required: [id, type, status, server, steps, error, created_at, started_at, finished_at]
       properties:
         id: { type: string, format: uuid }
-        type: { type: string, enum: [create, suspend, unsuspend, terminate, adopt, start, shutdown, stop, reboot, reset_password, reinstall, change_resources, guest_script] }
+        type: { type: string, enum: [create, suspend, unsuspend, terminate, adopt, start, shutdown, stop, reboot, reset_password, reinstall, change_resources, guest_script, change_primary_address] }
         status: { type: string, enum: [queued, running, succeeded, failed] }
         server:
           type: object

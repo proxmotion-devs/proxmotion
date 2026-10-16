@@ -13,6 +13,7 @@ use Illuminate\Support\Carbon;
  * @property int $id
  * @property int $ip_pool_id
  * @property int|null $server_id
+ * @property bool $is_primary the server's primary address of its version (docs/adr/0011); written only by provisioning
  * @property Carbon|null $assigned_at
  * @property string $address
  * @property string|null $mac_address
@@ -35,6 +36,7 @@ class IpAddress extends Model
     {
         return [
             'is_reserved' => 'boolean',
+            'is_primary' => 'boolean',
             'assigned_at' => 'datetime',
             'ptr_synced_at' => 'datetime',
         ];

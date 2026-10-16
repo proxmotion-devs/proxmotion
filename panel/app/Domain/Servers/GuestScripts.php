@@ -105,13 +105,14 @@ final readonly class GuestScripts
             return $this->failed($task, $event, GuestAgentException::notReachable($server->vmid), self::unreachableNote($event));
         }
 
-        $mac = self::macOf($client->qemu($server->node->name)->config($server->vmid) ?? []);
+        $config = $client->qemu($server->node->name)->config($server->vmid) ?? [];
+        $mac = self::macOf($config);
 
         if ($mac === null && $event === GuestScriptEvent::AddressesChanged) {
             return $this->failed($task, $event, new GuestScriptFailed('The MAC address of the network interface is unknown.'), 'The MAC address of the network interface is unknown: configure the additional addresses inside the server.');
         }
 
-        $inputs = ['server' => $server->uuid, 'hostname' => $server->hostname, 'mac' => $mac] + $this->inputs($server, $platform, $event);
+        $inputs = ['server' => $server->uuid, 'hostname' => $server->hostname, 'mac' => $mac] + $this->inputs($server, $platform, $event, $config);
 
         try {
             $result = $platform === OsPlatform::Windows
@@ -209,13 +210,17 @@ final readonly class GuestScripts
      * strings; nothing here comes from customer input other than validated
      * values already stored on the server.
      *
-     * @return array<string, string|int|list<string>>
+     * @param  array<string, mixed>  $config  the VM's configuration
+     * @return array<string, string|int|list<string>|null>
      */
-    public function inputs(Server $server, OsPlatform $platform, GuestScriptEvent $event): array
+    public function inputs(Server $server, OsPlatform $platform, GuestScriptEvent $event, array $config = []): array
     {
         return match ($event) {
             GuestScriptEvent::Provisioned => ['addresses' => $this->addresses->all($server)],
-            GuestScriptEvent::AddressesChanged => ['addresses' => $this->addresses->additional($server)],
+            // The primary may differ from the one cloud-init configured (docs/adr/0011).
+            GuestScriptEvent::AddressesChanged => ['addresses' => $this->addresses->additional($server)]
+                + $this->addresses->primaries($server)
+                + GuestAddresses::cloudInit($config),
             GuestScriptEvent::DiskResized => ['disk_mib' => $server->disk_mib],
             GuestScriptEvent::PasswordReset => ['username' => $platform->administrator()],
         };

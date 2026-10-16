@@ -8,6 +8,7 @@ import ServerStatusBadge from '@/components/admin/ServerStatusBadge.vue';
 import StatusBadge from '@/components/admin/StatusBadge.vue';
 import Heading from '@/components/Heading.vue';
 import PowerControls from '@/components/servers/PowerControls.vue';
+import PrimaryAddressDialog from '@/components/servers/PrimaryAddressDialog.vue';
 import RdnsDialog from '@/components/servers/RdnsDialog.vue';
 import ReinstallDialog from '@/components/servers/ReinstallDialog.vue';
 import ResourcesDialog from '@/components/servers/ResourcesDialog.vue';
@@ -24,6 +25,7 @@ import {
     index,
     password,
     power as powerRoute,
+    primaryAddress,
     rdns,
     reinstall,
     resetPassword,
@@ -73,6 +75,8 @@ const props = defineProps<{
         addresses: {
             address: string;
             version: 4 | 6;
+            /** The primary address of its version (listed first). */
+            primary: boolean;
             pool: { uuid: string; name: string };
             ptr: string | null;
             ptr_pending: boolean;
@@ -304,6 +308,12 @@ const modelLabel =
                     class="font-mono text-xs"
                 >
                     {{ address.address }}
+                    <StatusBadge
+                        v-if="address.primary"
+                        tone="neutral"
+                        label="Primary"
+                        class="mx-1"
+                    />
                     <Link
                         :href="showPool(address.pool.uuid)"
                         class="text-muted-foreground hover:underline"
@@ -326,6 +336,13 @@ const modelLabel =
                     />
                 </dd>
                 <dd v-if="server.addresses.length === 0">—</dd>
+                <dd v-if="server.status === 'active'" class="mt-2">
+                    <PrimaryAddressDialog
+                        :action="primaryAddress(server.uuid)"
+                        :addresses="server.addresses"
+                        :disabled="busy"
+                    />
+                </dd>
             </div>
             <div v-if="server.status === 'active'">
                 <dt class="text-muted-foreground">{{ $t('Guest agent') }}</dt>

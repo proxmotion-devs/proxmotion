@@ -19,4 +19,5 @@ enum TaskType: string
     case Reinstall = 'reinstall';
     case ChangeResources = 'change_resources';
     case GuestScript = 'guest_script';
+    case ChangePrimaryAddress = 'change_primary_address';
 }

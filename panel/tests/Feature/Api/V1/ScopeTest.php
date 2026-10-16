@@ -29,6 +29,7 @@ class ScopeTest extends ApiTestCase
             'power' => ['POST', '/api/v1/servers/{server}/power', ApiScope::ServersWrite],
             'reinstall' => ['POST', '/api/v1/servers/{server}/reinstall', ApiScope::ServersWrite],
             'change resources' => ['POST', '/api/v1/servers/{server}/package', ApiScope::ServersWrite],
+            'primary address' => ['POST', '/api/v1/servers/{server}/primary-address', ApiScope::ServersWrite],
             'reset the password' => ['POST', '/api/v1/servers/{server}/password', ApiScope::ServersWrite],
             'set rDNS' => ['POST', '/api/v1/servers/{server}/rdns', ApiScope::ServersWrite],
             'fetch the password' => ['GET', '/api/v1/servers/{server}/password', ApiScope::ServersSecrets],

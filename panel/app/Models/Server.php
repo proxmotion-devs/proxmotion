@@ -162,7 +162,8 @@ class Server extends Model
      */
     public function ipAddresses(): HasMany
     {
-        return $this->hasMany(IpAddress::class);
+        // The primary address of each version first (docs/adr/0011); without one, the oldest.
+        return $this->hasMany(IpAddress::class)->orderByDesc('is_primary')->orderBy('id');
     }
 
     /**

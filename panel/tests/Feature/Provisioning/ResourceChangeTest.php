@@ -194,7 +194,7 @@ class ResourceChangeTest extends TestCase
 
         $this->change(ipv4: 2);
 
-        $this->assertStringEndsWith("/32\n", $this->proxmox->guestFiles[$this->server->vmid]['/etc/proxmotion/addresses.vars']);
+        $this->assertMatchesRegularExpression('#^addresses=[0-9.]+/32$#m', $this->proxmox->guestFiles[$this->server->vmid]['/etc/proxmotion/addresses.vars']);
     }
 
     public function test_without_a_guest_agent_the_change_still_succeeds_with_a_note()

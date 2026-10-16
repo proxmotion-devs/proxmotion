@@ -96,10 +96,64 @@ final class IpAllocator
         return $assigned;
     }
 
+    /**
+     * One free address of the given version from the active pools of the
+     * location and network model, locked for update: $address when given
+     * (a free, unreserved address of one of those pools; an IPv6 address
+     * inside a pool's network may be new), else the next free one. Caller
+     * holds the allocation lock and assigns it. With $sameNetworkAs, only pools
+     * on the same bridge and VLAN qualify (the VM's net0 stays as it is).
+     *
+     * @throws ProvisioningException
+     */
+    public function freeAddress(Location $location, NetworkModel $model, IpVersion $version, ?string $address = null, ?IpPool $sameNetworkAs = null): IpAddress
+    {
+        $pools = $this->pools($location, $model, $version)->filter(fn (IpPool $pool) => $sameNetworkAs === null
+            || ($pool->bridge === $sameNetworkAs->bridge && $pool->vlan_tag === $sameNetworkAs->vlan_tag));
+        $label = $version === IpVersion::V4 ? 'IPv4' : 'IPv6';
+
+        if ($address === null) {
+            foreach ($pools as $pool) {
+                $free = $version === IpVersion::V4
+                    ? $this->freeIpv4($pool)->orderBy('id')->lockForUpdate()->first()
+                    : $this->nextIpv6OrNull($pool);
+
+                if ($free !== null) {
+                    return $free;
+                }
+            }
+
+            throw ProvisioningException::noAddresses($label);
+        }
+
+        foreach ($pools as $pool) {
+            if (! Cidr::parse($pool->network)->contains($address) || isset($this->protected->for($pool)[$address])) {
+                continue;
+            }
+
+            $existing = IpAddress::query()->where('ip_pool_id', $pool->id)->where('address', $address)->lockForUpdate()->first();
+
+            if ($existing === null && $version === IpVersion::V6) {
+                return $pool->addresses()->create(['address' => $address]);
+            }
+
+            if ($existing !== null && $existing->server_id === null && ! $existing->is_reserved) {
+                return $existing;
+            }
+        }
+
+        throw new ProvisioningException(':address is not a free address of the pools this server can use.', ['address' => $address]);
+    }
+
+    public function freeIpv4Count(IpPool $pool): int
+    {
+        return $this->freeIpv4($pool)->count();
+    }
+
     public function release(Server $server): void
     {
         $this->reverseDns->release($server);
-        $server->ipAddresses()->update(['server_id' => null, 'assigned_at' => null]);
+        $server->ipAddresses()->update(['server_id' => null, 'is_primary' => false, 'assigned_at' => null]);
     }
 
     /**
@@ -128,7 +182,7 @@ final class IpAllocator
     {
         foreach ($addresses as $address) {
             $this->reverseDns->releaseAddress($address);
-            $address->forceFill(['server_id' => null, 'assigned_at' => null])->save();
+            $address->forceFill(['server_id' => null, 'is_primary' => false, 'assigned_at' => null])->save();
         }
     }
 
@@ -187,6 +241,15 @@ final class IpAllocator
         }
 
         throw ProvisioningException::noAddresses('IPv6');
+    }
+
+    private function nextIpv6OrNull(IpPool $pool): ?IpAddress
+    {
+        try {
+            return $this->nextIpv6($pool);
+        } catch (ProvisioningException) {
+            return null;
+        }
     }
 
     private function give(IpAddress $address, Server $server): IpAddress

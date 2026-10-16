@@ -30,5 +30,7 @@ final readonly class NewServer
         public ?string $externalClientId = null,
         /** The billing system that owns the server and its billing ids. */
         public ?BillingSystem $billingSystem = null,
+        /** A free address to use as the primary IPv4 address instead of the next free one (docs/adr/0011). */
+        public ?string $primaryIpv4 = null,
     ) {}
 }

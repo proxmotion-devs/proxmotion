@@ -63,6 +63,8 @@ class ServerResource extends JsonResource
             'addresses' => $this->ipAddresses->map(fn (IpAddress $address) => [
                 'address' => $address->address,
                 'version' => $address->pool->version->value,
+                // The first address of each version is its primary (docs/adr/0011).
+                'primary' => $this->ipAddresses->first(fn (IpAddress $other) => $other->pool->version === $address->pool->version)?->is($address) ?? false,
                 // As configured by cloud-init (NetworkConfig): routed IPv4 addresses are /32.
                 'prefix' => $address->pool->version === IpVersion::V4 && $this->network_model === NetworkModel::Routed
                     ? 32

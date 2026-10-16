@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Provisioning;
 
+use App\Enums\IpVersion;
 use App\Enums\NetworkModel;
 use App\Enums\ServerOrigin;
 use App\Enums\ServerStatus;
@@ -47,8 +48,19 @@ final readonly class ServerCreator
             throw ProvisioningException::noAddresses('IPv4');
         }
 
+        if ($order->primaryIpv4 !== null && $spec->ipv4Count === 0) {
+            throw new ProvisioningException('A primary IPv4 address needs at least one IPv4 address.');
+        }
+
         $server = Cache::lock("provisioning:location:{$order->location->id}", 30)->block(15, function () use ($order, $spec) {
-            $ipv4Pool = $this->ips->ipv4Pool($order->location, $order->networkModel, $spec->ipv4Count);
+            // A chosen primary decides the pool; the other IPv4 addresses come from the same one.
+            $primary = $order->primaryIpv4 === null ? null : $this->ips->freeAddress($order->location, $order->networkModel, IpVersion::V4, $order->primaryIpv4);
+
+            if ($primary !== null && $this->ips->freeIpv4Count($primary->pool) < $spec->ipv4Count) {
+                throw ProvisioningException::noAddresses('IPv4');
+            }
+
+            $ipv4Pool = $primary->pool ?? $this->ips->ipv4Pool($order->location, $order->networkModel, $spec->ipv4Count);
             $ipv6Pool = $this->ips->ipv6Pool($order->location, $order->networkModel, $spec->ipv6Count);
             $bridge = ($ipv4Pool ?? $ipv6Pool)->bridge ?? 'vmbr0';
 
@@ -56,9 +68,14 @@ final readonly class ServerCreator
             $cluster = $placement->node->cluster;
             $vmid = $this->firstFreeVmid($cluster);
 
-            return DB::transaction(function () use ($order, $spec, $placement, $cluster, $vmid, $ipv4Pool, $ipv6Pool) {
+            return DB::transaction(function () use ($order, $spec, $placement, $cluster, $vmid, $ipv4Pool, $ipv6Pool, $primary) {
                 $server = $this->insertServer($order, $placement, $cluster, $vmid);
-                $this->ips->assign($server, $ipv4Pool, $spec->ipv4Count, $ipv6Pool, $spec->ipv6Count);
+
+                if ($primary !== null) {
+                    $primary->forceFill(['server_id' => $server->id, 'is_primary' => true, 'assigned_at' => now()])->save();
+                }
+
+                $this->ips->assign($server, $ipv4Pool, $spec->ipv4Count - ($primary !== null ? 1 : 0), $ipv6Pool, $spec->ipv6Count);
 
                 return $server;
             });

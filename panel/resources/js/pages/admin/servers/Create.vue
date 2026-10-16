@@ -52,6 +52,7 @@ const form = useForm({
     os_template: props.osTemplates[0]?.value ?? null,
     network_model: null as NetworkModel | null,
     hostname: '',
+    primary_ipv4: '',
     root_password: '',
     ssh_keys: '',
 });
@@ -348,6 +349,21 @@ const submit = () =>
                     required
                     class="font-mono"
                     placeholder="web1.example.com"
+                />
+            </FormField>
+
+            <FormField
+                label="Primary IPv4 address"
+                for="primary_ipv4"
+                :error="form.errors.primary_ipv4"
+                hint="Optional. A free address of this location's pools; empty takes the next free one."
+            >
+                <Input
+                    id="primary_ipv4"
+                    v-model="form.primary_ipv4"
+                    class="font-mono"
+                    autocomplete="off"
+                    placeholder="203.0.113.10"
                 />
             </FormField>
 

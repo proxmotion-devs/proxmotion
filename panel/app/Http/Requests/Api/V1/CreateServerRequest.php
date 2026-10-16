@@ -47,6 +47,8 @@ class CreateServerRequest extends FormRequest
             // Default: the first network model the package allows; required without a package.
             'network_model' => ['nullable', 'required_without:package', Rule::enum(NetworkModel::class)->except([NetworkModel::Nat])],
             'hostname' => ['required', 'string', 'max:253', new Hostname],
+            // Empty: the next free address of the location's pools.
+            'primary_ipv4' => ['nullable', 'ipv4'],
             // Empty: a random password, fetched once through GET /servers/{id}/password.
             'root_password' => ['nullable', 'string', 'min:12', 'max:128'],
             'ssh_keys' => ['nullable', 'array', 'max:'.self::MAX_SSH_KEYS],
@@ -101,6 +103,7 @@ class CreateServerRequest extends FormRequest
             externalId: $this->string('external_id')->trim()->toString(),
             externalClientId: $this->filled('external_client_id') ? $this->string('external_client_id')->trim()->toString() : null,
             billingSystem: $billingSystem,
+            primaryIpv4: $this->filled('primary_ipv4') ? $this->string('primary_ipv4')->trim()->toString() : null,
         );
     }
 

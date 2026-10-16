@@ -47,7 +47,8 @@ enum GuestScriptEvent: string
     public function inputKeys(): array
     {
         return match ($this) {
-            self::Provisioned, self::AddressesChanged => ['addresses'],
+            self::Provisioned => ['addresses'],
+            self::AddressesChanged => ['addresses', 'primary_ipv4', 'gateway_ipv4', 'cloudinit_ipv4', 'primary_ipv6', 'gateway_ipv6', 'cloudinit_ipv6'],
             self::DiskResized => ['disk_mib'],
             self::PasswordReset => ['username'],
         };

@@ -13,6 +13,7 @@ use App\Models\Task;
 use App\Provisioning\Pipelines\ChangeResourcesPipeline;
 use App\Provisioning\Pipelines\CreateServerPipeline;
 use App\Provisioning\Pipelines\PowerPipeline;
+use App\Provisioning\Pipelines\PrimaryAddressPipeline;
 use App\Provisioning\Pipelines\ReinstallServerPipeline;
 use App\Provisioning\Pipelines\ResetPasswordPipeline;
 use App\Provisioning\Pipelines\TerminateServerPipeline;
@@ -35,7 +36,7 @@ class RunServerTask implements ShouldQueue
 
     public function __construct(public Task $task) {}
 
-    public function handle(CreateServerPipeline $create, PowerPipeline $power, TerminateServerPipeline $terminate, ResetPasswordPipeline $resetPassword, ReinstallServerPipeline $reinstall, ChangeResourcesPipeline $changeResources, GuestScripts $guestScripts): void
+    public function handle(CreateServerPipeline $create, PowerPipeline $power, TerminateServerPipeline $terminate, ResetPasswordPipeline $resetPassword, ReinstallServerPipeline $reinstall, ChangeResourcesPipeline $changeResources, GuestScripts $guestScripts, PrimaryAddressPipeline $primaryAddress): void
     {
         $task = $this->task;
 
@@ -57,6 +58,7 @@ class RunServerTask implements ShouldQueue
                 TaskType::Reinstall => $reinstall->run($task),
                 TaskType::ChangeResources => $changeResources->run($task),
                 TaskType::GuestScript => $guestScripts->runOnce($task),
+                TaskType::ChangePrimaryAddress => $primaryAddress->run($task),
             };
         } catch (Throwable $e) {
             $this->fail($task, $e);
