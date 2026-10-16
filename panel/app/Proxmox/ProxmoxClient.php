@@ -14,9 +14,11 @@ use App\Proxmox\Resources\GuestAgentResource;
 use App\Proxmox\Resources\NodesResource;
 use App\Proxmox\Resources\QemuResource;
 use App\Proxmox\Resources\TasksResource;
+use GuzzleHttp\Handler\CurlHandler;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Factory as HttpFactory;
 use Illuminate\Http\Client\Response;
+use Illuminate\Support\Sleep;
 use InvalidArgumentException;
 
 /**
@@ -25,6 +27,18 @@ use InvalidArgumentException;
  */
 class ProxmoxClient
 {
+    /**
+     * One curl handler for the whole process, so connections to Proxmox are
+     * kept open and reused (keep-alive) instead of a new TCP and TLS
+     * handshake per request. Polling loops send a request every few seconds;
+     * opening that many new connections can trip connection-rate limits in
+     * front of a node (seen on a hosted test node, 2026-10-16).
+     */
+    private static ?CurlHandler $handler = null;
+
+    /** Connection attempts per host before the next host is tried. */
+    private const CONNECT_ATTEMPTS = 2;
+
     public function __construct(
         private readonly ProxmoxConnection $connection,
         private readonly HttpFactory $http,
@@ -121,16 +135,24 @@ class ProxmoxClient
         $tlsFailedHost = null;
 
         foreach ($this->connection->hosts as $host) {
-            try {
-                $response = $this->send($host, $method, $path, $params);
-            } catch (ConnectionException $e) {
-                $lastError = $this->connectionErrorSummary($e);
-                $tlsFailedHost ??= $this->isTlsVerificationError($e) ? $host : null;
+            $attempt = 1;
 
-                continue;
+            while (true) {
+                try {
+                    return $this->unwrap($this->send($host, $method, $path, $params));
+                } catch (ConnectionException $e) {
+                    $lastError = $this->connectionErrorSummary($e);
+                    $tlsFailedHost ??= $this->isTlsVerificationError($e) ? $host : null;
+
+                    // Not connected means not sent: trying again is safe for any method.
+                    if ($attempt >= self::CONNECT_ATTEMPTS || ! $this->isConnectFailure($e)) {
+                        continue 2;
+                    }
+
+                    $attempt++;
+                    Sleep::for(1)->second();
+                }
             }
-
-            return $this->unwrap($response);
         }
 
         if ($tlsFailedHost !== null) {
@@ -146,6 +168,7 @@ class ProxmoxClient
     private function send(string $host, string $method, string $path, array $params): Response
     {
         $request = $this->http
+            ->setHandler(self::handler())
             ->baseUrl($this->connection->baseUrl($host))
             ->withHeaders(['Authorization' => $this->connection->authorizationHeader()])
             ->acceptJson()
@@ -162,6 +185,11 @@ class ProxmoxClient
             'PUT' => $request->withBody(self::formEncode($params), 'application/x-www-form-urlencoded')->put($path),
             default => throw new InvalidArgumentException("Unsupported HTTP method {$method}."),
         };
+    }
+
+    private static function handler(): CurlHandler
+    {
+        return self::$handler ??= new CurlHandler;
     }
 
     /**
@@ -227,6 +255,17 @@ class ProxmoxClient
     {
         return str_contains($e->getMessage(), 'cURL error 60')
             || str_contains($e->getMessage(), 'SSL certificate problem');
+    }
+
+    /**
+     * The TCP connection was never established (curl 7, or 28 in the connect
+     * phase), so the request did not reach Proxmox. A dropped first packet on
+     * the way to a node shows up like this.
+     */
+    private function isConnectFailure(ConnectionException $e): bool
+    {
+        return str_contains($e->getMessage(), 'cURL error 7:')
+            || (str_contains($e->getMessage(), 'cURL error 28:') && str_contains($e->getMessage(), 'Connection timed out'));
     }
 
     private function connectionErrorSummary(ConnectionException $e): string

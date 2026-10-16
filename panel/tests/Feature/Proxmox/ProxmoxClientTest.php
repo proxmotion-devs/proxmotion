@@ -64,6 +64,45 @@ class ProxmoxClientTest extends TestCase
         $this->assertSame('8.4.1', $this->client(['pve1.example.com', 'pve2.example.com'])->version());
     }
 
+    public function test_a_connection_that_could_not_be_established_is_tried_again_once()
+    {
+        Sleep::fake();
+        $attempts = 0;
+        Http::preventStrayRequests()->fake([
+            '*' => function () use (&$attempts) {
+                if (++$attempts === 1) {
+                    throw new ConnectionException('cURL error 28: Connection timed out after 5003 milliseconds (see https://curl.se/libcurl/c/libcurl-errors.html)');
+                }
+
+                return $this->proxmoxFixture('version');
+            },
+        ]);
+
+        $this->assertSame('8.4.1', $this->client()->post('/version')['version'] ?? null);
+        $this->assertSame(2, $attempts, 'Not connected means not sent: even a POST may be sent again.');
+        Sleep::assertSleptTimes(1);
+    }
+
+    public function test_a_timeout_after_the_request_was_sent_is_not_repeated()
+    {
+        $attempts = 0;
+        Http::preventStrayRequests()->fake([
+            '*' => function () use (&$attempts) {
+                $attempts++;
+
+                throw new ConnectionException('cURL error 28: Operation timed out after 30001 milliseconds with 0 bytes received');
+            },
+        ]);
+
+        try {
+            $this->client()->post('/nodes/pve1/qemu/100/status/start');
+            $this->fail('No exception.');
+        } catch (ProxmoxUnreachable) {
+        }
+
+        $this->assertSame(1, $attempts, 'The request may have reached Proxmox: never send it twice.');
+    }
+
     public function test_it_reports_when_no_host_is_reachable()
     {
         Http::preventStrayRequests()->fake([
