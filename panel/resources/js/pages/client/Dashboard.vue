@@ -1,8 +1,11 @@
 <script setup lang="ts">
 import { Head } from '@inertiajs/vue3';
+import { Monitor } from '@lucide/vue';
 import ServerStatusBadge from '@/components/admin/ServerStatusBadge.vue';
 import Heading from '@/components/Heading.vue';
+import { Button } from '@/components/ui/button';
 import { dashboard } from '@/routes';
+import { console as openConsole } from '@/routes/servers';
 import type { ServerStatus } from '@/types/admin';
 
 defineOptions({
@@ -83,6 +86,22 @@ defineProps<{
                         <dd v-if="server.addresses.length === 0">—</dd>
                     </div>
                 </dl>
+                <Button
+                    v-if="server.status === 'active'"
+                    as-child
+                    variant="outline"
+                    size="sm"
+                    class="self-start"
+                >
+                    <a
+                        :href="openConsole(server.uuid).url"
+                        target="_blank"
+                        rel="noopener"
+                    >
+                        <Monitor class="h-4 w-4" />
+                        {{ $t('Console') }}
+                    </a>
+                </Button>
             </article>
         </div>
 

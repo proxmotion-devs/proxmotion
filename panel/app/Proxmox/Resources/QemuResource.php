@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Proxmox\Resources;
 
 use App\Proxmox\Data\Upid;
+use App\Proxmox\Data\VncProxyTicket;
 use App\Proxmox\Exceptions\ProxmoxRequestFailed;
 use App\Proxmox\ProxmoxClient;
 
@@ -105,6 +106,18 @@ final readonly class QemuResource
         $params = $action === 'shutdown' ? ['forceStop' => 1, 'timeout' => 60] : [];
 
         return $this->upid($this->client->post($this->path($vmid, "status/{$action}"), $params));
+    }
+
+    /**
+     * Open a VNC listener for a websocket console (vncwebsocket). Proxmox only
+     * waits a few seconds for the connection. With generate-password, the VNC
+     * password is separate from the ticket, so the ticket never reaches the browser.
+     */
+    public function vncProxy(int $vmid): VncProxyTicket
+    {
+        $data = $this->client->post($this->path($vmid, 'vncproxy'), ['websocket' => 1, 'generate-password' => 1]);
+
+        return VncProxyTicket::fromApi(is_array($data) ? $data : []);
     }
 
     /**

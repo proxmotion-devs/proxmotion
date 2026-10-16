@@ -18,12 +18,15 @@ void createInertiaApp({
                 return AuthLayout;
             case name.startsWith('settings/'):
                 return [AppLayout, SettingsLayout];
+            case name.startsWith('console/'):
+                // The console uses the whole window.
+                return [];
             default:
                 return AppLayout;
         }
     },
-    withApp: (app) => {
-        installI18n(app);
+    withApp: (app, { page }) => {
+        installI18n(app, page.props.locale);
 
         app.directive('focus', {
             mounted: (el: HTMLElement, shouldFocus) => {

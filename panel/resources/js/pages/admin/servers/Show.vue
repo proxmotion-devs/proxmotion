@@ -13,6 +13,7 @@ import {
     CircleX,
     Eye,
     LoaderCircle,
+    Monitor,
     Pause,
     Play,
     RotateCcw,
@@ -27,6 +28,7 @@ import { formatDateTime, formatMib, formatTraffic } from '@/lib/format';
 import { show as showCluster } from '@/routes/admin/clusters';
 import { show as showPool } from '@/routes/admin/ip-pools';
 import {
+    console as openConsole,
     destroy,
     index,
     password,
@@ -184,6 +186,16 @@ const modelLabel =
                 </div>
             </div>
             <div class="flex flex-wrap gap-2">
+                <Button v-if="server.status === 'active'" as-child>
+                    <a
+                        :href="openConsole(server.uuid).url"
+                        target="_blank"
+                        rel="noopener"
+                    >
+                        <Monitor class="h-4 w-4" />
+                        {{ $t('Console') }}
+                    </a>
+                </Button>
                 <Button
                     v-if="server.status === 'active'"
                     variant="outline"

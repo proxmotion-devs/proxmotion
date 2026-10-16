@@ -12,6 +12,7 @@ use App\Http\Controllers\Admin\PackageController;
 use App\Http\Controllers\Admin\ServerController;
 use App\Http\Controllers\Admin\StorageController;
 use App\Http\Controllers\Admin\UserController;
+use App\Http\Controllers\ConsoleController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -52,3 +53,4 @@ Route::post('servers/{server}/suspend', [ServerController::class, 'suspend'])->n
 Route::post('servers/{server}/unsuspend', [ServerController::class, 'unsuspend'])->name('servers.unsuspend');
 Route::post('servers/{server}/retry', [ServerController::class, 'retry'])->name('servers.retry');
 Route::post('servers/{server}/password', [ServerController::class, 'revealPassword'])->name('servers.password');
+Route::get('servers/{server}/console', ConsoleController::class)->middleware('throttle:20,1')->name('servers.console');

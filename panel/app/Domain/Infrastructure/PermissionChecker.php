@@ -15,7 +15,7 @@ use App\Proxmox\ProxmoxClientFactory;
 final readonly class PermissionChecker
 {
     private const VM_PRIVILEGES = [
-        'VM.Audit', 'VM.Allocate', 'VM.Clone', 'VM.PowerMgmt',
+        'VM.Audit', 'VM.Allocate', 'VM.Clone', 'VM.PowerMgmt', 'VM.Console',
         'VM.Config.CPU', 'VM.Config.Memory', 'VM.Config.Disk',
         'VM.Config.Network', 'VM.Config.Cloudinit', 'VM.Config.Options',
     ];

@@ -99,7 +99,7 @@ proxmotion/
 │   │   ├── Domain/                       # Business logic (services/actions), grouped by domain
 │   │   │   ├── Infrastructure/           # ClusterSynchronizer, …
 │   │   │   ├── Networking/               # GenerateIpAddresses, ReverseDns drivers (ADR 0003), firewall, NAT port forwards
-│   │   │   ├── Servers/                  # power, reinstall, resize
+│   │   │   ├── Servers/                  # ConsoleSessions (console tickets), power, reinstall, resize
 │   │   │   ├── Usage/                    # traffic/resource accounting, quotas
 │   │   │   ├── Backups/                  # snapshots, backups
 │   │   │   ├── Apps/                     # RecipeLoader, app installs
@@ -145,6 +145,7 @@ proxmotion/
 │   └── blesta/                           # later
 ├── deploy/
 │   ├── docker/                           # Dockerfiles + compose.yml (dev and production)
+│   ├── console-proxy/                    # Node.js WebSocket relay for the noVNC console (ADR 0002)
 │   ├── proxmox/                          # Scripts admins run on a Proxmox node (prepare-images.sh: build images off-node, natively or via images.Dockerfile; build-templates.sh: create templates on the node with qm/pvesh only)
 │   └── installer/                        # Native Debian/Ubuntu installer (install.sh, nginx, systemd units)
 └── docs/                                 # Install guide, admin guide, guides/ (os-templates.md, iso-templates.md), API reference (OpenAPI), ADRs
@@ -269,7 +270,7 @@ Each `IpPool` declares one network model; each `Package` lists the models it all
 
 ### 3.9 Deployment
 
-- **Docker Compose (primary):** `deploy/docker/compose.yml` runs `app` (php-fpm + nginx), `horizon`, `scheduler`, `reverb`, `mariadb`, `redis`. Production images are built in CI and published to GHCR.
+- **Docker Compose (primary):** `deploy/docker/compose.yml` runs `app` (php-fpm + nginx), `console-proxy`, `horizon`, `scheduler`, `reverb`, `mariadb`, `redis`. Production images are built in CI and published to GHCR.
 - **Native installer:** `deploy/installer/install.sh` for supported Debian/Ubuntu LTS releases — nginx, php-fpm, MariaDB, Redis, systemd units for Horizon/scheduler/Reverb, Let's Encrypt. Must be idempotent and safe to re-run for upgrades.
 - Both paths share the same `.env` contract and the same `php artisan proxmotion:install` / `proxmotion:upgrade` commands.
 - **Branding** (name, logo, colours, support links) is configurable from the admin panel — no hard-coded company branding.
@@ -335,6 +336,9 @@ composer types:check              # PHPStan level 8
 php artisan test                  # Pest
 php artisan apps:validate         # recipe schema validation (from Phase 5)
 shellcheck recipes/**/*.sh ../deploy/installer/*.sh ../deploy/proxmox/*.sh
+
+# inside deploy/console-proxy/
+npm ci && npm test              # console proxy (node:test)
 ```
 
 - **PHP must be on `PATH` for frontend commands too:** the Wayfinder Vite plugin runs `php artisan wayfinder:generate` during `vp build`, `vp dev` and `vp test`. On Windows, [Laravel Herd](https://herd.laravel.com/windows) provides PHP and Composer (`%USERPROFILE%\.config\herd\bin`).
@@ -431,7 +435,7 @@ Never guess ambiguous API behaviour; consult the official API viewer (https://pv
 - [x] **Phase 0 — Skeleton:** Laravel 13 Vue starter kit (Inertia 3, TS, Tailwind 4, Vite+), Fortify auth (2FA, passkeys; registration disabled), admin/client roles, i18n (`en`/`tr`) with language switcher, Pint/PHPStan 8/Pest/Oxlint/Oxfmt/Vitest, CI (GitHub Actions), Docker Compose dev environment (not yet run), `LICENSE` (AGPL-3.0), `README`, `CONTRIBUTING`, `SECURITY`, `CODE_OF_CONDUCT`, Proxmotion logo/favicons, admin 2FA enforcement, self account deletion removed.
 - [x] **Phase 1 — Infrastructure management (admin):** `app/Proxmox` client (token auth, host failover, typed errors) + `TaskWaiter`; locations; clusters (connection tested on save, standalone/cluster auto-detected, encrypted token); `ClusterSynchronizer` + `SyncCluster` job + `infra:sync` (every 5 min) for nodes, storages, bridges, QEMU templates; node placement settings (maintenance, over-commit, max servers); "use for servers" per storage; IP pools (v4/v6, bridged/routed/NAT, IPv4 addresses generated, reserve/MAC/notes); OS templates mapped to Proxmox templates; packages; admin dashboard. **Not yet verified against a real Proxmox server.**
 - [x] **Phase 2 — Provisioning engine:** servers and tasks; per-cluster resource pool (token only needs VM rights on the pool); permission check listing missing **and excess** privileges; placement (online, not in maintenance, bridge, storage, CPU/memory/disk over-commit, max servers); VMID + IP allocation under a per-location lock; idempotent create (full clone → config + cloud-init → grow disk → anti-spoofing ipset → start), suspend/unsuspend, terminate (frees IPs, keeps history); retry after failure; admin server pages with polling progress; customers created by admins; adopt existing VMs from the pool without touching Proxmox; deletion guards; client dashboard lists own servers. Limitations: one IPv4 + one IPv6 configured by cloud-init (extra IPs are assigned/allowed but configured in the OS); routed /32 with on-link gateway relies on cloud-init and needs real-world verification; NAT not yet supported; Horizon not set up yet (`queue:work`).
-- [ ] **Phase 3 — Client panel:** server list/detail, power actions, noVNC console proxy, Guest Agent client (`ping`, `file-write`/`file-read`, `exec`, `set-user-password`; moved up from 5a per ADR 0004), reinstall (ends with `WaitForGuestAgent` + post-boot hooks), root password reset, rDNS (ADR 0003: `DnsProvider`, `none` + `powerdns` drivers), SSH keys, admin drift report (ADR 0005).
+- [ ] **Phase 3 — Client panel:** server list/detail, power actions, ~~noVNC console proxy~~ (done: ADR 0002, `deploy/console-proxy`, admin + client console page, one session per server, 60 min max / 15 min idle, `audit_logs` with `console.opened`, token needs `VM.Console`; **not yet verified against a real Proxmox server**), Guest Agent client (`ping`, `file-write`/`file-read`, `exec`, `set-user-password`; moved up from 5a per ADR 0004), reinstall (ends with `WaitForGuestAgent` + post-boot hooks), root password reset, rDNS (ADR 0003: `DnsProvider`, `none` + `powerdns` drivers), SSH keys, admin drift report (ADR 0005).
 - [ ] **Phase 4 — Billing integration:** public API v1 + OpenAPI, token scopes, idempotency, SSO, webhooks, **WHMCS module**.
 - [ ] **Phase 5 — App Marketplace:**
   - 5a: recipe schema, `RecipeLoader`, `apps:sync` / `apps:validate`, install-later flow + client panel; first recipes **OpenVPN, WireGuard, Docker**.

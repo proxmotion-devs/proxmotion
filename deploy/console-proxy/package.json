@@ -1,0 +1,19 @@
+{
+    "name": "proxmotion-console-proxy",
+    "version": "0.1.0",
+    "private": true,
+    "description": "Relays browser console WebSockets to Proxmox VE for the Proxmotion panel.",
+    "license": "AGPL-3.0-only",
+    "type": "module",
+    "main": "src/server.js",
+    "engines": {
+        "node": ">=22"
+    },
+    "scripts": {
+        "start": "node src/server.js",
+        "test": "node --test"
+    },
+    "dependencies": {
+        "ws": "^8.18.3"
+    }
+}

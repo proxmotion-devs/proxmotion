@@ -10,12 +10,18 @@ const languages = import.meta.glob<{ default: Record<string, string> }>(
 );
 
 export function initialLocale(): string {
-    return document.documentElement.lang || 'en';
+    // There is no document during server-side rendering.
+    return typeof document !== 'undefined'
+        ? document.documentElement.lang || 'en'
+        : 'en';
 }
 
-export function installI18n(app: App): void {
+/**
+ * @param locale the page's locale; required during server-side rendering
+ */
+export function installI18n(app: App, locale?: string): void {
     app.use(i18nVue, {
-        lang: initialLocale(),
+        lang: locale || initialLocale(),
         fallbackLang: 'en',
         resolve: (lang: string) =>
             languages[`../../../lang/${lang}.json`]?.default ?? {},

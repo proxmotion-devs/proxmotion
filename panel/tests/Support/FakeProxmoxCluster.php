@@ -160,6 +160,7 @@ class FakeProxmoxCluster
             $suffix === '/resize' && $method === 'PUT' => $this->resize($vmid, $data),
             $suffix === '/status/current' => $this->ok(['status' => $vm['status']]),
             (bool) preg_match('#^/status/(start|stop|shutdown)$#', $suffix, $m) => $this->power($node, $vmid, $m[1]),
+            $suffix === '/vncproxy' && $method === 'POST' => $this->vncProxy($node, $vmid),
             $suffix === '/firewall/options' => $this->firewallOptions($vmid, $data),
             $suffix === '/firewall/ipset' && $method === 'GET' => $this->ok($vm['ipset'] === null ? [] : [['name' => 'ipfilter-net0']]),
             $suffix === '/firewall/ipset' => $this->createIpset($vmid),
@@ -167,6 +168,22 @@ class FakeProxmoxCluster
             $suffix === '/firewall/ipset/ipfilter-net0' => $this->addToIpset($vmid, (string) $data['cidr']),
             default => Http::response(['data' => null], 501),
         };
+    }
+
+    private function vncProxy(string $node, int $vmid): PromiseInterface
+    {
+        if ($this->vms[$vmid]['status'] !== 'running') {
+            return Create::promiseFor(new Psr7Response(500, ['Content-Type' => 'application/json'], '{"data":null}', '1.1', "VM {$vmid} not running"));
+        }
+
+        return $this->ok([
+            'port' => '5900',
+            'ticket' => "PVEVNC:{$vmid}:fake-ticket",
+            'password' => 'fake-vnc-password',
+            'cert' => '-----BEGIN CERTIFICATE-----',
+            'user' => 'proxmotion@pve!panel',
+            'upid' => "UPID:{$node}:00001234:00005678:65000000:vncproxy:{$vmid}:proxmotion@pve!panel:",
+        ]);
     }
 
     private function upid(string $node, string $type, int $vmid): PromiseInterface
