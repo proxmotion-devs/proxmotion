@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Provisioning\Pipelines;
 
+use App\Domain\Servers\GuestAddresses;
 use App\Domain\Servers\GuestScripts;
 use App\Enums\GuestScriptEvent;
 use App\Enums\PowerAction;
@@ -38,6 +39,7 @@ final readonly class ChangeResourcesPipeline
         private IpAllocator $ips,
         private PowerPipeline $power,
         private GuestScripts $guestScripts,
+        private GuestAddresses $guestAddresses,
     ) {}
 
     public function run(Task $task): void
@@ -53,7 +55,10 @@ final readonly class ChangeResourcesPipeline
         $restarted = $this->apply($task, $server, $qemu);
 
         // Additional addresses inside the guest (ADR 0009); also removes released ones there.
-        $this->guestScripts->run($task, $server, GuestScriptEvent::AddressesChanged, waitForAgent: $restarted);
+        // A server without any, e.g. after a disk-only upgrade, has nothing to configure.
+        if ($this->guestAddresses->additional($server) !== [] || ($task->input['release_address_ids'] ?? []) !== []) {
+            $this->guestScripts->run($task, $server, GuestScriptEvent::AddressesChanged, waitForAgent: $restarted);
+        }
 
         // The partition and file system to the new disk size (ADR 0010).
         if (($task->input['grow_disk'] ?? false) === true) {

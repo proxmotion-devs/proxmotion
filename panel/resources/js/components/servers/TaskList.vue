@@ -63,13 +63,7 @@ const stepLabels: Record<string, string> = {
     guest_provisioned: "Run the template's script in the server",
 };
 const plannedSteps: Partial<Record<TaskType, string[]>> = {
-    change_resources: [
-        'configure',
-        'resize',
-        'addresses',
-        'apply',
-        'guest_addresses',
-    ],
+    change_resources: ['configure', 'resize', 'addresses', 'apply'],
     create: ['clone', 'configure', 'resize', 'firewall', 'start'],
     terminate: ['stop', 'destroy', 'release_ips'],
     reinstall: [

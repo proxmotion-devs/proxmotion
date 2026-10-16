@@ -21,7 +21,7 @@ Providers build their own templates (`deploy/proxmox`, `docs/guides/iso-template
    | Event | When | Default | On failure |
    |---|---|---|---|
    | `provisioned` | After creation and after a reinstall, once the agent answers | none | note on the task step |
-   | `addresses_changed` | After creation and reinstall (when the server has additional addresses) and after every resource change | `resources/guest/{linux,windows}/addresses.*` (replaces the ADR 0009 script) | note |
+   | `addresses_changed` | After creation and reinstall, and after a resource change, when the server has additional addresses (or the change released some) | `resources/guest/{linux,windows}/addresses.*` (replaces the ADR 0009 script) | note |
    | `disk_resized` | Right after a resource change grew the disk, if the agent answers | `resources/guest/{linux,windows}/disk.*` | note |
    | `password_reset` | Instead of the agent's `set-user-password` | none: `set-user-password` for `root` (Linux) or `Administrator` (Windows) | **the task fails** and no new password is stored or shown |
 

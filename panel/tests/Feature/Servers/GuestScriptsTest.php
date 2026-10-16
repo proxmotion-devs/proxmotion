@@ -86,6 +86,15 @@ class GuestScriptsTest extends TestCase
         $this->assertNull($step['message']);
     }
 
+    public function test_a_disk_only_upgrade_of_a_server_without_additional_addresses_leaves_them_alone()
+    {
+        $task = $this->grow();
+
+        $this->assertNull($this->step($task, 'guest_addresses'), 'Nothing to configure, so no step and no waiting for the agent.');
+        $this->assertNotContains(['sh', '/usr/local/sbin/proxmotion-addresses'], $this->commands());
+        $this->assertContains(['sh', '/usr/local/sbin/proxmotion-disk'], $this->commands());
+    }
+
     public function test_the_disk_script_only_runs_when_the_disk_grew()
     {
         $task = $this->grow(diskMib: 40960, ipv4: 2);
