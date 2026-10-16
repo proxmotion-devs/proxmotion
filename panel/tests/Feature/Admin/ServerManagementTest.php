@@ -146,6 +146,22 @@ class ServerManagementTest extends AdminTestCase
         $this->assertNull(Server::query()->sole()->package_id);
     }
 
+    public function test_adoption_reads_the_disk_size_from_the_config_when_cluster_resources_does_not_know_it()
+    {
+        $this->proxmox->addVm(261, 'stopped-vm');
+        $this->proxmox->vms[261]['config']['scsi0'] = 'local-lvm:vm-261-disk-0,size=3G';
+        $this->proxmox->unknownDiskSize[261] = true;
+
+        $this->post(route('admin.servers.adopt.store'), [
+            'cluster' => $this->cluster->uuid,
+            'vmid' => 261,
+            'package' => '',
+            'network_model' => 'bridged',
+        ])->assertSessionHasNoErrors();
+
+        $this->assertSame(3072, Server::query()->sole()->disk_mib);
+    }
+
     public function test_the_password_is_only_shown_on_request()
     {
         $this->post(route('admin.servers.store'), $this->payload(['root_password' => 'chosen-password-123']));

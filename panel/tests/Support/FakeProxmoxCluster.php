@@ -44,6 +44,9 @@ class FakeProxmoxCluster
     /** @var array<int, bool> VMIDs whose guest agent does not answer */
     public array $agentDown = [];
 
+    /** @var array<int, bool> VMIDs that /cluster/resources lists with maxdisk 0, as Proxmox can for stopped VMs */
+    public array $unknownDiskSize = [];
+
     /** @var array<int, array<string, string>> files inside each guest, by path */
     public array $guestFiles = [];
 
@@ -408,7 +411,7 @@ class FakeProxmoxCluster
                 // Taken from the config where the panel set it, like Proxmox does.
                 'maxcpu' => (int) ($vm['config']['cores'] ?? 2),
                 'maxmem' => (int) ($vm['config']['memory'] ?? 2048) * 1024 ** 2,
-                'maxdisk' => preg_match('/size=(\d+)M/', (string) ($vm['config']['scsi0'] ?? ''), $size) === 1 ? (int) $size[1] * 1024 ** 2 : 20 * 1024 ** 3,
+                'maxdisk' => ($this->unknownDiskSize[$vmid] ?? false) ? 0 : (preg_match('/size=(\d+)M/', (string) ($vm['config']['scsi0'] ?? ''), $size) === 1 ? (int) $size[1] * 1024 ** 2 : 20 * 1024 ** 3),
             ];
         }
 

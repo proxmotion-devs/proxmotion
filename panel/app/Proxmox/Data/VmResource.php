@@ -40,7 +40,8 @@ final readonly class VmResource
             pool: $string('pool'),
             cpus: $int('maxcpu'),
             memoryBytes: $int('maxmem'),
-            diskBytes: $int('maxdisk'),
+            // 0 means "not known yet" (seen on PVE 9.2.2 for a stopped, freshly cloned VM).
+            diskBytes: $int('maxdisk') ?: null,
         );
     }
 }

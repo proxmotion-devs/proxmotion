@@ -64,6 +64,16 @@ class DriftTest extends TestCase
         $this->assertSame(0, ServerDrift::query()->count());
     }
 
+    public function test_an_unknown_disk_size_is_not_reported_as_a_resource_change()
+    {
+        // Proxmox can list a VM with maxdisk 0 (seen on PVE 9.2.2).
+        $this->proxmox->unknownDiskSize[$this->server->vmid] = true;
+
+        $this->detect();
+
+        $this->assertSame(0, ServerDrift::query()->count());
+    }
+
     public function test_a_deleted_vm_is_reported_and_the_server_can_be_marked_as_failed()
     {
         unset($this->proxmox->vms[$this->server->vmid]);

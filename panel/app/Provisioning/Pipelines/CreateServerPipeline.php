@@ -8,6 +8,7 @@ use App\Enums\ServerStatus;
 use App\Models\Server;
 use App\Models\Task;
 use App\Provisioning\Network\NetworkConfig;
+use App\Proxmox\Data\BootDisk;
 use App\Proxmox\ProxmoxClient;
 use App\Proxmox\ProxmoxClientFactory;
 use App\Proxmox\Resources\QemuResource;
@@ -21,8 +22,6 @@ use RuntimeException;
  */
 final readonly class CreateServerPipeline
 {
-    private const DISK_KEYS = ['scsi0', 'virtio0', 'sata0', 'ide0'];
-
     public function __construct(
         private ProxmoxClientFactory $clients,
         private NetworkConfig $network,
@@ -132,10 +131,10 @@ final readonly class CreateServerPipeline
      */
     private function growDisk(Task $task, Server $server, ProxmoxClient $client, QemuResource $qemu, array $config): void
     {
-        [$disk, $currentMib] = $this->bootDisk($config);
+        $disk = BootDisk::fromConfig($config) ?? throw new RuntimeException('Could not find the boot disk of the VM.');
 
-        if ($currentMib < $server->disk_mib) {
-            $upid = $qemu->resize($server->vmid, $disk, $server->disk_mib);
+        if ($disk->sizeMib < $server->disk_mib) {
+            $upid = $qemu->resize($server->vmid, $disk->key, $server->disk_mib);
 
             if ($upid !== null) {
                 $client->taskWaiter()->wait($upid, timeoutSeconds: 600);
@@ -143,41 +142,5 @@ final readonly class CreateServerPipeline
         }
 
         $task->completeStep('resize');
-    }
-
-    /**
-     * The disk the VM boots from and its size in MiB.
-     *
-     * @param  array<string, mixed>  $config
-     * @return array{string, int}
-     */
-    private function bootDisk(array $config): array
-    {
-        $candidates = self::DISK_KEYS;
-
-        if (is_string($config['boot'] ?? null) && preg_match('/order=([^,]+)/', $config['boot'], $match) === 1) {
-            $candidates = [...explode(';', $match[1]), ...$candidates];
-        }
-
-        foreach ($candidates as $key) {
-            $value = $config[$key] ?? null;
-
-            if (is_string($value) && ! str_contains($value, 'media=cdrom') && preg_match('/size=([\d.]+)([KMGT]?)/', $value, $size) === 1) {
-                return [$key, self::toMib((float) $size[1], $size[2])];
-            }
-        }
-
-        throw new RuntimeException('Could not find the boot disk of the VM.');
-    }
-
-    private static function toMib(float $value, string $unit): int
-    {
-        return (int) round(match ($unit) {
-            'K' => $value / 1024,
-            'G' => $value * 1024,
-            'T' => $value * 1024 * 1024,
-            'M' => $value,
-            default => $value / 1024 / 1024, // bytes
-        });
     }
 }

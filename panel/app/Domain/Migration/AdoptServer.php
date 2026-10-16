@@ -17,6 +17,7 @@ use App\Models\Server;
 use App\Models\Task;
 use App\Models\User;
 use App\Provisioning\Exceptions\ProvisioningException;
+use App\Proxmox\Data\BootDisk;
 use App\Proxmox\Data\VmResource;
 use App\Proxmox\ProxmoxClientFactory;
 use Illuminate\Support\Facades\DB;
@@ -60,7 +61,12 @@ final readonly class AdoptServer
         $node = Node::query()->where('cluster_id', $cluster->id)->where('name', $vm->node)->first()
             ?? throw new ProvisioningException('The node of this VM has not been synced yet. Sync the cluster first.');
 
-        return DB::transaction(function () use ($cluster, $vm, $node, $package, $networkModel, $ipAddressIds, $actor, $externalId, $externalClientId) {
+        // /cluster/resources does not always know the disk size; the config does (read only).
+        $diskMib = $vm->diskBytes !== null
+            ? intdiv($vm->diskBytes, 1024 ** 2)
+            : BootDisk::fromConfig($this->clients->forCluster($cluster)->qemu($vm->node)->config($vm->vmid) ?? [])?->sizeMib;
+
+        return DB::transaction(function () use ($cluster, $vm, $node, $package, $networkModel, $ipAddressIds, $actor, $externalId, $externalClientId, $diskMib) {
             $addresses = IpAddress::query()
                 ->whereIn('id', $ipAddressIds)
                 ->whereNull('server_id')
@@ -88,7 +94,7 @@ final readonly class AdoptServer
                 // Record what the VM really has; the package is what the customer pays for.
                 'cpu_cores' => $vm->cpus ?? $package->cpu_cores ?? 1,
                 'memory_mib' => $vm->memoryBytes !== null ? intdiv($vm->memoryBytes, 1024 ** 2) : ($package->memory_mib ?? 0),
-                'disk_mib' => $vm->diskBytes !== null ? intdiv($vm->diskBytes, 1024 ** 2) : ($package->disk_mib ?? 0),
+                'disk_mib' => $diskMib ?? $package->disk_mib ?? 0,
                 'port_speed_mbps' => $package?->port_speed_mbps,
                 'traffic_bytes' => $package?->traffic_bytes,
                 'provisioned_at' => now(),
