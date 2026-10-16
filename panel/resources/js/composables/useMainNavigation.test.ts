@@ -31,6 +31,7 @@ describe('useMainNavigation', () => {
             '/admin/locations',
             '/admin/clusters',
             '/admin/ip-pools',
+            '/admin/dns-providers',
             '/admin/os-templates',
             '/admin/packages',
             '/admin/drifts',

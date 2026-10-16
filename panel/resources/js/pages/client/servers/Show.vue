@@ -5,6 +5,7 @@ import { computed, ref, watch } from 'vue';
 import ServerStatusBadge from '@/components/admin/ServerStatusBadge.vue';
 import Heading from '@/components/Heading.vue';
 import PowerControls from '@/components/servers/PowerControls.vue';
+import RdnsDialog from '@/components/servers/RdnsDialog.vue';
 import ReinstallDialog from '@/components/servers/ReinstallDialog.vue';
 import ResetPasswordButton from '@/components/servers/ResetPasswordButton.vue';
 import TaskList from '@/components/servers/TaskList.vue';
@@ -16,6 +17,7 @@ import {
     console as openConsole,
     password,
     power as powerRoute,
+    rdns,
     reinstall,
     resetPassword,
     show,
@@ -41,7 +43,12 @@ const props = defineProps<{
         location: string;
         package: string | null;
         os_template: string | null;
-        addresses: { address: string; version: 4 | 6 }[];
+        addresses: {
+            address: string;
+            version: 4 | 6;
+            ptr: string | null;
+            ptr_pending: boolean;
+        }[];
         created_at: string | null;
         password_unrevealed: boolean;
     };
@@ -244,12 +251,26 @@ watch(
                 <dd
                     v-for="address in server.addresses"
                     :key="address.address"
-                    class="font-mono text-xs select-all"
+                    class="flex flex-wrap items-center gap-x-2 font-mono text-xs"
                 >
-                    {{ address.address }}
+                    <span class="select-all">{{ address.address }}</span>
                     <span class="text-muted-foreground"
                         >IPv{{ address.version }}</span
                     >
+                    <span v-if="address.ptr" class="text-muted-foreground"
+                        >→ {{ address.ptr }}</span
+                    >
+                    <span
+                        v-if="address.ptr_pending"
+                        class="text-amber-700 dark:text-amber-400"
+                        >({{ $t('pending') }})</span
+                    >
+                    <RdnsDialog
+                        v-if="server.status === 'active'"
+                        :action="rdns(server.uuid)"
+                        :address="address.address"
+                        :ptr="address.ptr"
+                    />
                 </dd>
                 <dd v-if="server.addresses.length === 0">—</dd>
             </div>

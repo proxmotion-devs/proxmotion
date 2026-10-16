@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Provisioning;
 
 use App\Domain\Networking\ProtectedAddresses;
+use App\Domain\Networking\ReverseDns\ReverseDns;
 use App\Enums\IpVersion;
 use App\Enums\NetworkModel;
 use App\Models\IpAddress;
@@ -27,7 +28,10 @@ final class IpAllocator
      */
     private const MAX_IPV6_OFFSET = 65535;
 
-    public function __construct(private readonly ProtectedAddresses $protected) {}
+    public function __construct(
+        private readonly ProtectedAddresses $protected,
+        private readonly ReverseDns $reverseDns,
+    ) {}
 
     /**
      * The IPv4 pool with enough free addresses (or null when no IPv4 is needed).
@@ -93,6 +97,7 @@ final class IpAllocator
 
     public function release(Server $server): void
     {
+        $this->reverseDns->release($server);
         $server->ipAddresses()->update(['server_id' => null, 'assigned_at' => null]);
     }
 

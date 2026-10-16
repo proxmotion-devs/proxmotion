@@ -38,6 +38,14 @@ class ServerPolicy
     }
 
     /**
+     * Reverse DNS of the server's addresses, while it is active.
+     */
+    public function updateRdns(User $user, Server $server): bool
+    {
+        return $server->status === ServerStatus::Active && $this->view($user, $server);
+    }
+
+    /**
      * A new root password is set inside the running VM by the guest agent.
      */
     public function resetPassword(User $user, Server $server): bool

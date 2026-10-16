@@ -3,9 +3,11 @@
 use App\Http\Controllers\Admin\AdoptionController;
 use App\Http\Controllers\Admin\ClusterController;
 use App\Http\Controllers\Admin\DashboardController;
+use App\Http\Controllers\Admin\DnsProviderController;
 use App\Http\Controllers\Admin\DriftController;
 use App\Http\Controllers\Admin\IpAddressController;
 use App\Http\Controllers\Admin\IpPoolController;
+use App\Http\Controllers\Admin\IpPoolRdnsController;
 use App\Http\Controllers\Admin\LocationController;
 use App\Http\Controllers\Admin\NodeController;
 use App\Http\Controllers\Admin\OsTemplateController;
@@ -14,6 +16,7 @@ use App\Http\Controllers\Admin\ServerController;
 use App\Http\Controllers\Admin\StorageController;
 use App\Http\Controllers\Admin\UserController;
 use App\Http\Controllers\ConsoleController;
+use App\Http\Controllers\RdnsController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -39,6 +42,11 @@ Route::patch('storages/{storage}', [StorageController::class, 'update'])->name('
 
 Route::resource('ip-pools', IpPoolController::class)->only(['index', 'store', 'show', 'update', 'destroy'])
     ->parameters(['ip-pools' => 'ipPool']);
+Route::get('ip-pools/{ipPool}/rdns.csv', [IpPoolRdnsController::class, 'export'])->name('ip-pools.rdns-export');
+Route::post('ip-pools/{ipPool}/rdns/mark-applied', [IpPoolRdnsController::class, 'markApplied'])->name('ip-pools.rdns-mark-applied');
+Route::resource('dns-providers', DnsProviderController::class)->only(['index', 'store', 'update', 'destroy'])
+    ->parameters(['dns-providers' => 'dnsProvider']);
+Route::post('dns-providers/{dnsProvider}/test', [DnsProviderController::class, 'test'])->middleware('throttle:10,1')->name('dns-providers.test');
 Route::post('ip-pools/{ipPool}/addresses', [IpAddressController::class, 'store'])->name('ip-addresses.store');
 Route::post('ip-pools/{ipPool}/addresses/bulk', [IpAddressController::class, 'bulk'])->name('ip-addresses.bulk');
 Route::post('ip-pools/{ipPool}/addresses/keep-only', [IpAddressController::class, 'keepOnly'])->name('ip-addresses.keep-only');
@@ -61,6 +69,7 @@ Route::post('servers/{server}/unsuspend', [ServerController::class, 'unsuspend']
 Route::post('servers/{server}/power/{action}', [ServerController::class, 'power'])->middleware('throttle:20,1')->name('servers.power');
 Route::post('servers/{server}/retry', [ServerController::class, 'retry'])->name('servers.retry');
 Route::post('servers/{server}/password', [ServerController::class, 'revealPassword'])->middleware('throttle:20,1')->name('servers.password');
+Route::post('servers/{server}/rdns', RdnsController::class)->middleware('throttle:30,1')->name('servers.rdns');
 Route::post('servers/{server}/reinstall', [ServerController::class, 'reinstall'])->middleware('throttle:10,1')->name('servers.reinstall');
 Route::post('servers/{server}/reset-password', [ServerController::class, 'resetPassword'])->middleware('throttle:10,1')->name('servers.reset-password');
 Route::get('servers/{server}/console', ConsoleController::class)->middleware('throttle:20,1')->name('servers.console');

@@ -28,18 +28,27 @@ import {
     store as storeAddresses,
     update as updateAddress,
 } from '@/routes/admin/ip-addresses';
-import { destroy, index, show } from '@/routes/admin/ip-pools';
+import {
+    destroy,
+    index,
+    rdnsExport,
+    rdnsMarkApplied,
+    show,
+} from '@/routes/admin/ip-pools';
 import { show as showServer } from '@/routes/admin/servers';
 import { NETWORK_MODELS } from '@/types/admin';
 import type {
     IpAddress,
     IpPool,
     LocationOption,
+    Option,
     Paginated,
 } from '@/types/admin';
 
 type Address = IpAddress & {
     server: { uuid: string; hostname: string } | null;
+    ptr: string | null;
+    ptr_pending: boolean;
 };
 
 const props = defineProps<{
@@ -48,6 +57,8 @@ const props = defineProps<{
     search: string;
     protected: Record<string, string>;
     addresses: Paginated<Address>;
+    dnsProviders: Option[];
+    rdns: { provider: string | null; record_only: boolean; pending: number };
 }>();
 
 setLayoutProps({
@@ -305,6 +316,53 @@ const submitAddress = () => {
             </div>
         </div>
 
+        <div
+            class="flex flex-wrap items-center justify-between gap-3 rounded-xl border p-4 text-sm"
+        >
+            <div>
+                <p class="font-medium">{{ $t('Reverse DNS') }}</p>
+                <p class="text-muted-foreground">
+                    {{
+                        rdns.record_only
+                            ? $t(
+                                  'Record only: PTRs are kept here; export them and apply them by hand.',
+                              )
+                            : $t('Published through :provider in :zone.', {
+                                  provider: rdns.provider ?? '',
+                                  zone: pool.reverse_zone ?? '',
+                              })
+                    }}
+                    <template v-if="rdns.pending > 0">
+                        ·
+                        {{
+                            $t(':count pending', {
+                                count: String(rdns.pending),
+                            })
+                        }}
+                    </template>
+                </p>
+            </div>
+            <div v-if="rdns.record_only" class="flex flex-wrap gap-2">
+                <Button as-child variant="outline" size="sm">
+                    <a :href="rdnsExport(pool.uuid).url">{{
+                        $t('Export CSV')
+                    }}</a>
+                </Button>
+                <Button
+                    v-if="rdns.pending > 0"
+                    variant="outline"
+                    size="sm"
+                    @click="
+                        router.visit(rdnsMarkApplied(pool.uuid), {
+                            preserveScroll: true,
+                        })
+                    "
+                >
+                    {{ $t('Mark all as applied') }}
+                </Button>
+            </div>
+        </div>
+
         <div class="overflow-x-auto rounded-xl border">
             <table class="w-full text-sm">
                 <thead class="bg-muted/50 text-left text-muted-foreground">
@@ -326,6 +384,9 @@ const submitAddress = () => {
                             {{ $t('MAC address') }}
                         </th>
                         <th class="px-4 py-2 font-medium">{{ $t('Notes') }}</th>
+                        <th class="px-4 py-2 font-medium">
+                            {{ $t('Reverse DNS') }}
+                        </th>
                         <th class="px-4 py-2" />
                     </tr>
                 </thead>
@@ -372,6 +433,14 @@ const submitAddress = () => {
                         </td>
                         <td class="px-4 py-2 text-muted-foreground">
                             {{ address.notes ?? '' }}
+                        </td>
+                        <td class="px-4 py-2 font-mono text-xs">
+                            {{ address.ptr ?? '' }}
+                            <span
+                                v-if="address.ptr_pending"
+                                class="text-amber-700 dark:text-amber-400"
+                                >({{ $t('pending') }})</span
+                            >
                         </td>
                         <td class="px-4 py-2">
                             <div class="flex justify-end gap-1">
@@ -434,6 +503,7 @@ const submitAddress = () => {
         v-model:open="editOpen"
         :pool="pool"
         :locations="locations"
+        :dns-providers="dnsProviders"
     />
 
     <FormDialog

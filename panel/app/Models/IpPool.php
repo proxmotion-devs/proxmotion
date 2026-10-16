@@ -28,11 +28,15 @@ use Illuminate\Support\Carbon;
  * @property int|null $vlan_tag
  * @property list<string>|null $nameservers
  * @property bool $is_active
+ * @property int|null $dns_provider_id
+ * @property string|null $reverse_zone e.g. 2.0.192.in-addr.arpa
+ * @property bool $rdns_require_forward PTRs only for names that resolve to the address
+ * @property-read DnsProvider|null $dnsProvider
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  * @property-read Location $location
  */
-#[Fillable(['location_id', 'name', 'version', 'network_model', 'network', 'gateway', 'bridge', 'vlan_tag', 'nameservers', 'is_active'])]
+#[Fillable(['location_id', 'name', 'version', 'network_model', 'network', 'gateway', 'bridge', 'vlan_tag', 'nameservers', 'is_active', 'dns_provider_id', 'reverse_zone', 'rdns_require_forward'])]
 class IpPool extends Model
 {
     /** @use HasFactory<IpPoolFactory> */
@@ -49,6 +53,7 @@ class IpPool extends Model
             'vlan_tag' => 'integer',
             'nameservers' => 'array',
             'is_active' => 'boolean',
+            'rdns_require_forward' => 'boolean',
         ];
     }
 
@@ -58,6 +63,14 @@ class IpPool extends Model
     public function location(): BelongsTo
     {
         return $this->belongsTo(Location::class);
+    }
+
+    /**
+     * @return BelongsTo<DnsProvider, $this>
+     */
+    public function dnsProvider(): BelongsTo
+    {
+        return $this->belongsTo(DnsProvider::class);
     }
 
     /**

@@ -86,6 +86,9 @@ export type IpPool = {
     vlan_tag: number | null;
     nameservers: string[];
     is_active: boolean;
+    dns_provider: string | null;
+    reverse_zone: string | null;
+    rdns_require_forward: boolean;
     addresses_count?: number;
     reserved_count?: number;
     assigned_count?: number;

@@ -2,6 +2,7 @@ import { usePage } from '@inertiajs/vue3';
 import {
     Boxes,
     Disc3,
+    Globe,
     LayoutGrid,
     MapPin,
     Network,
@@ -15,6 +16,7 @@ import type { ComputedRef } from 'vue';
 import { dashboard } from '@/routes';
 import { dashboard as adminDashboard } from '@/routes/admin';
 import { index as clusters } from '@/routes/admin/clusters';
+import { index as dnsProviders } from '@/routes/admin/dns-providers';
 import { index as drifts } from '@/routes/admin/drifts';
 import { index as ipPools } from '@/routes/admin/ip-pools';
 import { index as locations } from '@/routes/admin/locations';
@@ -44,6 +46,7 @@ export function useMainNavigation(): ComputedRef<NavItem[]> {
                 { title: 'Locations', href: locations(), icon: MapPin },
                 { title: 'Clusters', href: clusters(), icon: Boxes },
                 { title: 'IP pools', href: ipPools(), icon: Network },
+                { title: 'DNS providers', href: dnsProviders(), icon: Globe },
                 { title: 'OS templates', href: osTemplates(), icon: Disc3 },
                 { title: 'Packages', href: packages(), icon: Package },
                 { title: 'Drift report', href: drifts(), icon: TriangleAlert },

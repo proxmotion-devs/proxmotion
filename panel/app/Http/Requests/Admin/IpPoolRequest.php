@@ -5,8 +5,10 @@ declare(strict_types=1);
 namespace App\Http\Requests\Admin;
 
 use App\Domain\Networking\AddressInput;
+use App\Domain\Networking\ReverseDns\PtrName;
 use App\Enums\IpVersion;
 use App\Enums\NetworkModel;
+use App\Models\DnsProvider;
 use App\Models\IpPool;
 use App\Models\Location;
 use App\Support\Network\Cidr;
@@ -41,6 +43,10 @@ class IpPoolRequest extends FormRequest
             'nameservers' => ['array', 'max:4'],
             'nameservers.*' => ['required', 'ip'],
             'is_active' => ['required', 'boolean'],
+            // Reverse DNS (docs/adr/0003): no provider means "record only".
+            'dns_provider' => ['nullable', 'string', Rule::exists('dns_providers', 'uuid')],
+            'reverse_zone' => [Rule::requiredIf($this->filled('dns_provider')), 'nullable', 'string', 'max:255', 'regex:/^([a-z0-9-]+\.)+(in-addr|ip6)\.arpa\.?$/i'],
+            'rdns_require_forward' => ['boolean'],
             // Creating only: which addresses to add right away.
             'add_mode' => [$creating ? 'required' : 'nullable', Rule::in(self::ADD_MODES)],
             'addresses' => ['nullable', 'string', 'max:65535'],
@@ -79,6 +85,12 @@ class IpPoolRequest extends FormRequest
 
             if ($network->version !== $version) {
                 $validator->errors()->add('network', __('The network does not match the selected IP version.'));
+            }
+
+            $zone = $this->input('reverse_zone');
+
+            if (is_string($zone) && $zone !== '' && ! PtrName::inZone(PtrName::for($network->address), $zone)) {
+                $validator->errors()->add('reverse_zone', __('The reverse zone does not cover this network.'));
             }
 
             $gateway = $this->input('gateway');
@@ -137,8 +149,13 @@ class IpPoolRequest extends FormRequest
      */
     public function poolData(): array
     {
-        $data = $this->safe()->except(['location', 'version', 'network', 'add_mode', 'addresses']);
+        $data = $this->safe()->except(['location', 'version', 'network', 'add_mode', 'addresses', 'dns_provider']);
         $data['nameservers'] = array_values($this->array('nameservers'));
+        $data['dns_provider_id'] = $this->filled('dns_provider')
+            ? DnsProvider::query()->where('uuid', $this->string('dns_provider'))->value('id')
+            : null;
+        $data['reverse_zone'] = $this->filled('reverse_zone') ? strtolower(rtrim($this->string('reverse_zone')->toString(), '.')) : null;
+        $data['rdns_require_forward'] = $this->boolean('rdns_require_forward');
         $data['gateway'] = $this->filled('gateway') ? $this->string('gateway')->toString() : null;
 
         if ($this->pool() === null) {

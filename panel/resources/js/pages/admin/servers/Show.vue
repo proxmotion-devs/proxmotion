@@ -8,6 +8,7 @@ import ServerStatusBadge from '@/components/admin/ServerStatusBadge.vue';
 import StatusBadge from '@/components/admin/StatusBadge.vue';
 import Heading from '@/components/Heading.vue';
 import PowerControls from '@/components/servers/PowerControls.vue';
+import RdnsDialog from '@/components/servers/RdnsDialog.vue';
 import ReinstallDialog from '@/components/servers/ReinstallDialog.vue';
 import ResetPasswordButton from '@/components/servers/ResetPasswordButton.vue';
 import TaskList from '@/components/servers/TaskList.vue';
@@ -22,6 +23,7 @@ import {
     index,
     password,
     power as powerRoute,
+    rdns,
     reinstall,
     resetPassword,
     retry,
@@ -65,6 +67,8 @@ const props = defineProps<{
             address: string;
             version: 4 | 6;
             pool: { uuid: string; name: string };
+            ptr: string | null;
+            ptr_pending: boolean;
         }[];
         provisioned_at: string | null;
         created_at: string | null;
@@ -264,6 +268,21 @@ const modelLabel =
                         class="text-muted-foreground hover:underline"
                         >({{ address.pool.name }})</Link
                     >
+                    <span v-if="address.ptr" class="text-muted-foreground">
+                        → {{ address.ptr }}</span
+                    >
+                    <span
+                        v-if="address.ptr_pending"
+                        class="text-amber-700 dark:text-amber-400"
+                    >
+                        ({{ $t('pending') }})</span
+                    >
+                    <RdnsDialog
+                        v-if="server.status === 'active'"
+                        :action="rdns(server.uuid)"
+                        :address="address.address"
+                        :ptr="address.ptr"
+                    />
                 </dd>
                 <dd v-if="server.addresses.length === 0">—</dd>
             </div>

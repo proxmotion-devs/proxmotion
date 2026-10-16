@@ -60,6 +60,8 @@ class ServerController extends Controller
                 'addresses' => $server->ipAddresses->map(fn (IpAddress $address) => [
                     'address' => $address->address,
                     'version' => $address->pool->version,
+                    'ptr' => $address->ptr,
+                    'ptr_pending' => $address->ptr !== null && $address->ptr_synced_at === null,
                 ]),
                 'created_at' => ($server->provisioned_at ?? $server->created_at)?->toIso8601String(),
                 'password_unrevealed' => $server->root_password_unrevealed && $server->root_password !== null,

@@ -18,6 +18,8 @@ use Illuminate\Support\Carbon;
  * @property string|null $mac_address
  * @property bool $is_reserved
  * @property string|null $notes
+ * @property string|null $ptr reverse DNS name requested for the address (docs/adr/0003)
+ * @property Carbon|null $ptr_synced_at when the driver published the current PTR; null while pending
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  * @property-read IpPool $pool
@@ -34,6 +36,7 @@ class IpAddress extends Model
         return [
             'is_reserved' => 'boolean',
             'assigned_at' => 'datetime',
+            'ptr_synced_at' => 'datetime',
         ];
     }
 

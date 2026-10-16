@@ -13,11 +13,17 @@ import { optionalNumber } from '@/lib/forms';
 import type { OptionalNumber } from '@/lib/forms';
 import { store, update } from '@/routes/admin/ip-pools';
 import { NETWORK_MODELS } from '@/types/admin';
-import type { IpPool, LocationOption, NetworkModel } from '@/types/admin';
+import type {
+    IpPool,
+    LocationOption,
+    NetworkModel,
+    Option,
+} from '@/types/admin';
 
 const props = defineProps<{
     pool: IpPool | null;
     locations: LocationOption[];
+    dnsProviders: Option[];
 }>();
 
 const open = defineModel<boolean>('open', { required: true });
@@ -33,6 +39,9 @@ const form = useForm({
     vlan_tag: '' as OptionalNumber,
     nameservers: '',
     is_active: true,
+    dns_provider: '' as string | null,
+    reverse_zone: '',
+    rdns_require_forward: false,
     add_mode: 'list' as 'list' | 'network' | 'none' | null,
     addresses: '',
 });
@@ -84,6 +93,9 @@ watch(open, (isOpen) => {
         vlan_tag: pool?.vlan_tag ?? '',
         nameservers: pool?.nameservers.join('\n') ?? '',
         is_active: pool?.is_active ?? true,
+        dns_provider: pool?.dns_provider ?? '',
+        reverse_zone: pool?.reverse_zone ?? '',
+        rdns_require_forward: pool?.rdns_require_forward ?? false,
         add_mode: 'list',
         addresses: '',
     });
@@ -256,6 +268,49 @@ const submit = () => {
         <Label class="flex items-center gap-3 font-normal">
             <Checkbox v-model="form.is_active" />
             {{ $t('Active (used for new servers)') }}
+        </Label>
+
+        <div class="grid gap-4 sm:grid-cols-2">
+            <FormField
+                label="Reverse DNS provider"
+                for="dns_provider"
+                :error="form.errors.dns_provider"
+                hint="Empty: PTRs are kept in the panel for export."
+            >
+                <NativeSelect
+                    id="dns_provider"
+                    v-model="form.dns_provider"
+                    :options="[
+                        { value: '', label: $t('Record only') },
+                        ...dnsProviders,
+                    ]"
+                />
+            </FormField>
+            <FormField
+                label="Reverse zone"
+                for="reverse_zone"
+                :error="form.errors.reverse_zone"
+                hint="Required with a provider."
+            >
+                <Input
+                    id="reverse_zone"
+                    v-model="form.reverse_zone"
+                    class="font-mono"
+                    :placeholder="
+                        form.version === 4
+                            ? '113.0.203.in-addr.arpa'
+                            : '0.0.1.0.8.b.d.0.1.0.0.2.ip6.arpa'
+                    "
+                />
+            </FormField>
+        </div>
+        <Label class="flex items-center gap-3 font-normal">
+            <Checkbox v-model="form.rdns_require_forward" />
+            {{
+                $t(
+                    'Only allow names that resolve to the address (forward-confirmed)',
+                )
+            }}
         </Label>
 
         <template v-if="!pool">

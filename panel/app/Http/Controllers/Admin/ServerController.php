@@ -131,6 +131,8 @@ class ServerController extends Controller
                     'address' => $address->address,
                     'version' => $address->pool->version,
                     'pool' => ['uuid' => $address->pool->uuid, 'name' => $address->pool->name],
+                    'ptr' => $address->ptr,
+                    'ptr_pending' => $address->ptr !== null && $address->ptr_synced_at === null,
                 ]),
                 'provisioned_at' => $server->provisioned_at?->toIso8601String(),
                 'created_at' => $server->created_at?->toIso8601String(),

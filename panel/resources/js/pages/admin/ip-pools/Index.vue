@@ -10,13 +10,17 @@ import { Button } from '@/components/ui/button';
 import { destroy, index, show } from '@/routes/admin/ip-pools';
 import { index as locationsIndex } from '@/routes/admin/locations';
 import { NETWORK_MODELS } from '@/types/admin';
-import type { IpPool, LocationOption } from '@/types/admin';
+import type { IpPool, LocationOption, Option } from '@/types/admin';
 
 defineOptions({
     layout: { breadcrumbs: [{ title: 'IP pools', href: index() }] },
 });
 
-defineProps<{ pools: IpPool[]; locations: LocationOption[] }>();
+defineProps<{
+    pools: IpPool[];
+    locations: LocationOption[];
+    dnsProviders: Option[];
+}>();
 
 const dialogOpen = ref(false);
 const modelLabel = (value: string) =>
@@ -156,5 +160,6 @@ const modelLabel = (value: string) =>
         v-model:open="dialogOpen"
         :pool="null"
         :locations="locations"
+        :dns-providers="dnsProviders"
     />
 </template>

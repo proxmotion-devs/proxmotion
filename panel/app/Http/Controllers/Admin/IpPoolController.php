@@ -10,6 +10,7 @@ use App\Domain\Networking\ProtectedAddresses;
 use App\Http\Controllers\Admin\Concerns\ReportsAddedAddresses;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\IpPoolRequest;
+use App\Models\DnsProvider;
 use App\Models\IpAddress;
 use App\Models\IpPool;
 use App\Models\Location;
@@ -28,8 +29,9 @@ class IpPoolController extends Controller
     public function index(): Response
     {
         return Inertia::render('admin/ip-pools/Index', [
+            'dnsProviders' => $this->dnsProviderOptions(),
             'pools' => IpPool::query()
-                ->with('location:id,uuid,name')
+                ->with(['location:id,uuid,name', 'dnsProvider:id,uuid'])
                 ->withCount([
                     'addresses',
                     'addresses as reserved_count' => fn ($query) => $query->whereNull('server_id')->where('is_reserved', true),
@@ -82,11 +84,17 @@ class IpPoolController extends Controller
 
     public function show(Request $request, IpPool $ipPool, ProtectedAddresses $protected): Response
     {
-        $ipPool->load('location:id,uuid,name');
+        $ipPool->load(['location:id,uuid,name', 'dnsProvider:id,uuid,name,driver']);
         $search = trim($request->string('search')->toString());
 
         return Inertia::render('admin/ip-pools/Show', [
             'pool' => $this->poolProps($ipPool),
+            'dnsProviders' => $this->dnsProviderOptions(),
+            'rdns' => [
+                'provider' => $ipPool->dnsProvider?->name,
+                'record_only' => $ipPool->dnsProvider === null || $ipPool->dnsProvider->driver === 'none',
+                'pending' => $ipPool->addresses()->whereNotNull('ptr')->whereNull('ptr_synced_at')->count(),
+            ],
             'counts' => [
                 'total' => $ipPool->addresses()->count(),
                 'assigned' => $ipPool->addresses()->whereNotNull('server_id')->count(),
@@ -108,6 +116,8 @@ class IpPoolController extends Controller
                     'mac_address' => $address->mac_address,
                     'is_reserved' => $address->is_reserved,
                     'notes' => $address->notes,
+                    'ptr' => $address->ptr,
+                    'ptr_pending' => $address->ptr !== null && $address->ptr_synced_at === null,
                     'server' => $address->server === null ? null : [
                         'uuid' => $address->server->uuid,
                         'hostname' => $address->server->hostname,
@@ -159,6 +169,19 @@ class IpPoolController extends Controller
             'vlan_tag' => $pool->vlan_tag,
             'nameservers' => $pool->nameservers ?? [],
             'is_active' => $pool->is_active,
+            'dns_provider' => $pool->dnsProvider?->uuid,
+            'reverse_zone' => $pool->reverse_zone,
+            'rdns_require_forward' => $pool->rdns_require_forward,
         ];
+    }
+
+    /**
+     * @return list<array{value: string, label: string}>
+     */
+    private function dnsProviderOptions(): array
+    {
+        return array_values(DnsProvider::query()->orderBy('name')->get(['uuid', 'name'])
+            ->map(fn (DnsProvider $provider) => ['value' => $provider->uuid, 'label' => $provider->name])
+            ->all());
     }
 }
