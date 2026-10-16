@@ -11,4 +11,8 @@ enum TaskType: string
     case Unsuspend = 'unsuspend';
     case Terminate = 'terminate';
     case Adopt = 'adopt';
+    case Start = 'start';
+    case Shutdown = 'shutdown';
+    case Stop = 'stop';
+    case Reboot = 'reboot';
 }

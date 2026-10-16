@@ -4,19 +4,26 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Client;
 
+use App\Domain\Servers\ServerPower;
+use App\Enums\PowerAction;
+use App\Enums\ServerStatus;
 use App\Http\Controllers\Controller;
 use App\Models\IpAddress;
 use App\Models\Server;
 use App\Models\Task;
 use App\Models\User;
+use App\Provisioning\Exceptions\ProvisioningException;
 use Illuminate\Container\Attributes\CurrentUser;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
 use Inertia\Inertia;
 use Inertia\Response;
 
 class ServerController extends Controller
 {
+    public function __construct(private readonly ServerPower $power) {}
+
     /**
      * Show one of the customer's servers. Internal details (VMID, node,
      * cluster, storage, IP pools, task errors) stay on the admin page.
@@ -63,6 +70,25 @@ class ServerController extends Controller
                 'created_at' => $task->created_at?->toIso8601String(),
                 'finished_at' => $task->finished_at?->toIso8601String(),
             ]),
+            // Asked from Proxmox after the page has loaded, so a slow cluster does not block it.
+            'power' => Inertia::defer(fn () => $server->status === ServerStatus::Active ? $this->power->state($server) : null),
         ]);
+    }
+
+    public function power(Request $request, #[CurrentUser] User $user, Server $server, PowerAction $action): RedirectResponse
+    {
+        Gate::authorize('power', $server);
+
+        try {
+            $this->power->request($server, $action, $user, $request->ip());
+        } catch (ProvisioningException $e) {
+            $this->toast('error', $e->getMessage());
+
+            return back();
+        }
+
+        $this->toast('info', $action->startedMessage());
+
+        return back();
     }
 }

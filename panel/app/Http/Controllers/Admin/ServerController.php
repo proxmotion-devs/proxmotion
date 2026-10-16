@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Admin;
 
+use App\Domain\Servers\ServerPower;
+use App\Enums\PowerAction;
 use App\Enums\ServerStatus;
 use App\Enums\TaskType;
 use App\Enums\UserRole;
@@ -29,7 +31,10 @@ use Inertia\Response;
 
 class ServerController extends Controller
 {
-    public function __construct(private readonly TaskRunner $tasks) {}
+    public function __construct(
+        private readonly TaskRunner $tasks,
+        private readonly ServerPower $power,
+    ) {}
 
     public function index(Request $request): Response
     {
@@ -134,6 +139,8 @@ class ServerController extends Controller
                 'finished_at' => $task->finished_at?->toIso8601String(),
             ]),
             'revealedPassword' => session('revealed_password'),
+            // Asked from Proxmox after the page has loaded, so a slow cluster does not block it.
+            'power' => Inertia::defer(fn () => $server->status === ServerStatus::Active ? $this->power->state($server) : null),
         ]);
     }
 
@@ -150,6 +157,27 @@ class ServerController extends Controller
     /**
      * Run the create pipeline again after a failure; it continues where it stopped.
      */
+    public function power(Request $request, Server $server, PowerAction $action, #[CurrentUser] User $admin): RedirectResponse
+    {
+        if ($server->status !== ServerStatus::Active) {
+            $this->toast('error', 'This action is not possible while the server is :status.', ['status' => __(ucfirst($server->status->value))]);
+
+            return back();
+        }
+
+        try {
+            $this->power->request($server, $action, $admin, $request->ip());
+        } catch (ProvisioningException $e) {
+            $this->toast('error', $e->getMessage());
+
+            return back();
+        }
+
+        $this->toast('info', $action->startedMessage());
+
+        return back();
+    }
+
     public function retry(Server $server, #[CurrentUser] User $admin): RedirectResponse
     {
         $type = $server->tasks()->latest('id')->value('type') === TaskType::Terminate->value ? TaskType::Terminate : TaskType::Create;

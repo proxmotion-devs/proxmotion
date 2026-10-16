@@ -51,6 +51,7 @@ Route::post('servers/adopt', [AdoptionController::class, 'store'])->name('server
 Route::resource('servers', ServerController::class)->only(['index', 'create', 'store', 'show', 'destroy']);
 Route::post('servers/{server}/suspend', [ServerController::class, 'suspend'])->name('servers.suspend');
 Route::post('servers/{server}/unsuspend', [ServerController::class, 'unsuspend'])->name('servers.unsuspend');
+Route::post('servers/{server}/power/{action}', [ServerController::class, 'power'])->middleware('throttle:20,1')->name('servers.power');
 Route::post('servers/{server}/retry', [ServerController::class, 'retry'])->name('servers.retry');
 Route::post('servers/{server}/password', [ServerController::class, 'revealPassword'])->name('servers.password');
 Route::get('servers/{server}/console', ConsoleController::class)->middleware('throttle:20,1')->name('servers.console');

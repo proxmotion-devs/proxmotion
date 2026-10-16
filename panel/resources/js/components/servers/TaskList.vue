@@ -20,6 +20,10 @@ const taskTypeLabels: Record<TaskType, string> = {
     unsuspend: 'Unsuspend',
     terminate: 'Delete',
     adopt: 'Adopt',
+    start: 'Start',
+    shutdown: 'Shut down',
+    stop: 'Stop',
+    reboot: 'Reboot',
 };
 const taskStatusTone: Record<
     TaskStatus,
@@ -43,6 +47,8 @@ const stepLabels: Record<string, string> = {
     firewall: 'Enable anti-spoofing firewall',
     start: 'Start',
     stop: 'Stop',
+    shutdown: 'Shut down',
+    reboot: 'Reboot',
     destroy: 'Delete VM and disks',
     release_ips: 'Release IP addresses',
     adopt: 'Adopt',

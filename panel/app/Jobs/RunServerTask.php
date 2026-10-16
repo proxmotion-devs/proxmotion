@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Jobs;
 
+use App\Enums\PowerAction;
 use App\Enums\ServerStatus;
 use App\Enums\TaskStatus;
 use App\Enums\TaskType;
@@ -47,6 +48,7 @@ class RunServerTask implements ShouldQueue
                 TaskType::Unsuspend => $power->unsuspend($task),
                 TaskType::Terminate => $terminate->run($task),
                 TaskType::Adopt => null,
+                TaskType::Start, TaskType::Shutdown, TaskType::Stop, TaskType::Reboot => $power->power($task, PowerAction::from($task->type->value)),
             };
         } catch (Throwable $e) {
             $this->fail($task, $e);

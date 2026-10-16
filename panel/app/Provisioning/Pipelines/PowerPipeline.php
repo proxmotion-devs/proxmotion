@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Provisioning\Pipelines;
 
+use App\Enums\PowerAction;
 use App\Enums\ServerStatus;
 use App\Models\Task;
 use App\Proxmox\ProxmoxClientFactory;
@@ -11,10 +12,39 @@ use App\Proxmox\ProxmoxClientFactory;
 /**
  * Suspending stops the VM (clean shutdown, forced after a timeout) and keeps
  * it stopped; unsuspending starts it again. Disks and IPs are kept.
+ *
+ * Power actions (start, shutdown, stop, reboot) change only the VM's power
+ * state, never the server's status. They do nothing when the VM is already in
+ * the requested state, so re-running them is safe.
  */
 final readonly class PowerPipeline
 {
     public function __construct(private ProxmoxClientFactory $clients) {}
+
+    public function power(Task $task, PowerAction $action): void
+    {
+        $server = $task->server;
+        $client = $this->clients->forCluster($server->cluster);
+        $qemu = $client->qemu($server->node->name);
+        $waiter = $client->taskWaiter();
+        $waiter->waitForVm($server->node->name, $server->vmid);
+
+        $running = $qemu->status($server->vmid)['status'] === 'running';
+
+        if ($action === PowerAction::Start && ! $running) {
+            $waiter->wait($qemu->power($server->vmid, 'start'), timeoutSeconds: 300);
+        } elseif ($action === PowerAction::Shutdown && $running) {
+            // Never forced: if the guest ignores it, the task fails and Stop is the way out.
+            $waiter->wait($qemu->power($server->vmid, 'shutdown', forceStop: false), timeoutSeconds: 180);
+        } elseif ($action === PowerAction::Stop && $running) {
+            $waiter->wait($qemu->power($server->vmid, 'stop'), timeoutSeconds: 120);
+        } elseif ($action === PowerAction::Reboot) {
+            // Rebooting a stopped VM starts it.
+            $waiter->wait($qemu->power($server->vmid, $running ? 'reboot' : 'start'), timeoutSeconds: 300);
+        }
+
+        $task->completeStep($action->value);
+    }
 
     public function suspend(Task $task): void
     {

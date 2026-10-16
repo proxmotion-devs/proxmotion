@@ -1,15 +1,20 @@
 <script setup lang="ts">
 import { Head, setLayoutProps, usePage, usePoll } from '@inertiajs/vue3';
 import { Monitor } from '@lucide/vue';
-import { watch } from 'vue';
+import { computed, watch } from 'vue';
 import ServerStatusBadge from '@/components/admin/ServerStatusBadge.vue';
 import Heading from '@/components/Heading.vue';
+import PowerControls from '@/components/servers/PowerControls.vue';
 import TaskList from '@/components/servers/TaskList.vue';
 import { Button } from '@/components/ui/button';
 import { formatDateTime, formatMib, formatTraffic } from '@/lib/format';
 import { dashboard } from '@/routes';
-import { console as openConsole, show } from '@/routes/servers';
-import type { ServerStatus, TaskProgress } from '@/types/admin';
+import {
+    console as openConsole,
+    power as powerRoute,
+    show,
+} from '@/routes/servers';
+import type { PowerAction, ServerStatus, TaskProgress } from '@/types/admin';
 
 const props = defineProps<{
     server: {
@@ -29,6 +34,8 @@ const props = defineProps<{
         created_at: string | null;
     };
     tasks: TaskProgress[];
+    /** Deferred: undefined until loaded, null when unknown. */
+    power?: string | null;
 }>();
 
 setLayoutProps({
@@ -40,22 +47,25 @@ setLayoutProps({
 
 const page = usePage();
 
-// Refresh while a task runs, so progress shows up live.
+// Refresh while a task runs, so progress and the power state show up live.
 const { start, stop } = usePoll(
     3000,
-    { only: ['server', 'tasks'] },
+    { only: ['server', 'tasks', 'power'] },
     { autoStart: false },
 );
 
-watch(
+const busy = computed(
     () =>
         props.server.busy ||
         props.tasks.some(
             (task) => task.status === 'queued' || task.status === 'running',
         ),
-    (busy) => (busy ? start() : stop()),
-    { immediate: true },
 );
+
+watch(busy, (value) => (value ? start() : stop()), { immediate: true });
+
+const powerAction = (action: PowerAction) =>
+    powerRoute({ server: props.server.uuid, action });
 </script>
 
 <template>
@@ -67,6 +77,12 @@ watch(
                 <Heading :title="server.hostname" />
                 <ServerStatusBadge :status="server.status" />
             </div>
+            <PowerControls
+                v-if="server.status === 'active'"
+                :power="power"
+                :busy="busy"
+                :action="powerAction"
+            />
             <Button v-if="server.status === 'active'" as-child>
                 <a
                     :href="openConsole(server.uuid).url"

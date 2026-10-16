@@ -8,11 +8,12 @@ import {
     usePoll,
 } from '@inertiajs/vue3';
 import { Eye, Monitor, Pause, Play, RotateCcw } from '@lucide/vue';
-import { watch } from 'vue';
+import { computed, watch } from 'vue';
 import ConfirmDelete from '@/components/admin/ConfirmDelete.vue';
 import ServerStatusBadge from '@/components/admin/ServerStatusBadge.vue';
 import StatusBadge from '@/components/admin/StatusBadge.vue';
 import Heading from '@/components/Heading.vue';
+import PowerControls from '@/components/servers/PowerControls.vue';
 import TaskList from '@/components/servers/TaskList.vue';
 import { Button } from '@/components/ui/button';
 import { formatDateTime, formatMib, formatTraffic } from '@/lib/format';
@@ -23,13 +24,19 @@ import {
     destroy,
     index,
     password,
+    power as powerRoute,
     retry,
     show,
     suspend,
     unsuspend,
 } from '@/routes/admin/servers';
 import { NETWORK_MODELS } from '@/types/admin';
-import type { NetworkModel, ServerStatus, Task } from '@/types/admin';
+import type {
+    NetworkModel,
+    PowerAction,
+    ServerStatus,
+    Task,
+} from '@/types/admin';
 
 const props = defineProps<{
     server: {
@@ -63,6 +70,8 @@ const props = defineProps<{
     };
     tasks: Task[];
     revealedPassword: string | null;
+    /** Deferred: undefined until loaded, null when unknown. */
+    power?: string | null;
 }>();
 
 setLayoutProps({
@@ -74,22 +83,25 @@ setLayoutProps({
 
 const page = usePage();
 
-// Refresh while a task runs, so progress shows up live.
+// Refresh while a task runs, so progress and the power state show up live.
 const { start, stop } = usePoll(
     3000,
-    { only: ['server', 'tasks'] },
+    { only: ['server', 'tasks', 'power'] },
     { autoStart: false },
 );
 
-watch(
+const busy = computed(
     () =>
         props.server.busy ||
         props.tasks.some(
             (task) => task.status === 'queued' || task.status === 'running',
         ),
-    (busy) => (busy ? start() : stop()),
-    { immediate: true },
 );
+
+watch(busy, (value) => (value ? start() : stop()), { immediate: true });
+
+const powerAction = (action: PowerAction) =>
+    powerRoute({ server: props.server.uuid, action });
 
 const post = (action: ReturnType<typeof suspend>) =>
     router.visit(action, { preserveScroll: true });
@@ -164,6 +176,13 @@ const modelLabel =
                 />
             </div>
         </div>
+
+        <PowerControls
+            v-if="server.status === 'active'"
+            :power="power"
+            :busy="busy"
+            :action="powerAction"
+        />
 
         <dl
             class="grid gap-4 rounded-xl border p-4 text-sm sm:grid-cols-2 lg:grid-cols-4"

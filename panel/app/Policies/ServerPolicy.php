@@ -20,6 +20,15 @@ class ServerPolicy
     }
 
     /**
+     * Power actions need an active server: a suspended server stays off
+     * until it is unsuspended.
+     */
+    public function power(User $user, Server $server): bool
+    {
+        return $server->status === ServerStatus::Active && $this->view($user, $server);
+    }
+
+    /**
      * The console is only available while the server is active, so a
      * suspended customer cannot use it to keep working on the server.
      */

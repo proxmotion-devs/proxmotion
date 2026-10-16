@@ -156,7 +156,10 @@ export type TaskType =
     | 'suspend'
     | 'unsuspend'
     | 'terminate'
-    | 'adopt';
+    | 'adopt'
+    | PowerAction;
+
+export type PowerAction = 'start' | 'shutdown' | 'stop' | 'reboot';
 
 export type Option<T extends string | number = string> = {
     value: T;

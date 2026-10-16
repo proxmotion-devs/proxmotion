@@ -99,11 +99,18 @@ final readonly class QemuResource
     }
 
     /**
+     * A shutdown is forced (hard stop) after 60 seconds unless $forceStop is
+     * false; then it waits up to 120 seconds and fails if the guest is still on.
+     *
      * @param  'start'|'stop'|'shutdown'|'reboot'  $action
      */
-    public function power(int $vmid, string $action): Upid
+    public function power(int $vmid, string $action, bool $forceStop = true): Upid
     {
-        $params = $action === 'shutdown' ? ['forceStop' => 1, 'timeout' => 60] : [];
+        $params = match ($action) {
+            'shutdown' => $forceStop ? ['forceStop' => 1, 'timeout' => 60] : ['timeout' => 120],
+            'reboot' => ['timeout' => 120],
+            default => [],
+        };
 
         return $this->upid($this->client->post($this->path($vmid, "status/{$action}"), $params));
     }

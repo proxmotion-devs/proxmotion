@@ -159,7 +159,7 @@ class FakeProxmoxCluster
             $suffix === '/config' && $method === 'PUT' => $this->updateConfig($vmid, $data),
             $suffix === '/resize' && $method === 'PUT' => $this->resize($vmid, $data),
             $suffix === '/status/current' => $this->ok(['status' => $vm['status']]),
-            (bool) preg_match('#^/status/(start|stop|shutdown)$#', $suffix, $m) => $this->power($node, $vmid, $m[1]),
+            (bool) preg_match('#^/status/(start|stop|shutdown|reboot)$#', $suffix, $m) => $this->power($node, $vmid, $m[1]),
             $suffix === '/vncproxy' && $method === 'POST' => $this->vncProxy($node, $vmid),
             $suffix === '/firewall/options' => $this->firewallOptions($vmid, $data),
             $suffix === '/firewall/ipset' && $method === 'GET' => $this->ok($vm['ipset'] === null ? [] : [['name' => 'ipfilter-net0']]),
@@ -235,7 +235,7 @@ class FakeProxmoxCluster
 
     private function power(string $node, int $vmid, string $action): PromiseInterface
     {
-        $this->vms[$vmid]['status'] = $action === 'start' ? 'running' : 'stopped';
+        $this->vms[$vmid]['status'] = in_array($action, ['start', 'reboot'], true) ? 'running' : 'stopped';
 
         return $this->upid($node, "qm{$action}", $vmid);
     }
