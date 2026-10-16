@@ -13,6 +13,11 @@ final readonly class AccessResource
     /**
      * Privileges the API token itself has on a path (inherited ACLs included).
      *
+     * Proxmox answers { path: { privilege: propagate } }: the value is the
+     * propagate flag, not whether the privilege is granted. Privileges a VM
+     * gets from its pool, or that were granted without propagation, come with
+     * 0 and are still granted.
+     *
      * @return list<string>
      */
     public function privilegesOn(string $path): array
@@ -20,6 +25,6 @@ final readonly class AccessResource
         $data = $this->client->get('/access/permissions', ['path' => $path]);
         $privileges = is_array($data) && is_array($data[$path] ?? null) ? $data[$path] : [];
 
-        return array_map(strval(...), array_keys(array_filter($privileges)));
+        return array_map(strval(...), array_keys($privileges));
     }
 }

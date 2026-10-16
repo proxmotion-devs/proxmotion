@@ -24,6 +24,14 @@ class FakeProxmoxCluster
     /** @var array<string, list<string>> privileges per ACL path */
     public array $permissions = [];
 
+    /**
+     * Privileges per path that Proxmox reports with propagate = 0, like those a
+     * VM inherits from its pool. They are granted all the same.
+     *
+     * @var array<string, list<string>>
+     */
+    public array $unpropagatedPermissions = [];
+
     /** When set, clone tasks of this VMID fail with this exit status. */
     public ?string $failClone = null;
 
@@ -119,7 +127,11 @@ class FakeProxmoxCluster
         return match (true) {
             $path === '/version' => $this->ok(['version' => '9.2.2']),
             $path === '/cluster/nextid' => $this->nextId($query),
-            $path === '/access/permissions' => $this->ok([$query['path'] => array_fill_keys($this->permissions[$query['path']] ?? [], 1)]),
+            // Proxmox maps each privilege to its propagate flag.
+            $path === '/access/permissions' => $this->ok([$query['path'] => [
+                ...array_fill_keys($this->permissions[$query['path']] ?? [], 1),
+                ...array_fill_keys($this->unpropagatedPermissions[$query['path']] ?? [], 0),
+            ]]),
             $path === '/cluster/resources' => $this->ok($this->resources()),
             (bool) preg_match('#^/nodes/([^/]+)/tasks$#', $path) => $this->ok(array_map(
                 fn (string $upid) => ['upid' => $upid],

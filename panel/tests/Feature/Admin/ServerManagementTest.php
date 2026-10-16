@@ -347,6 +347,24 @@ class ServerManagementTest extends AdminTestCase
                 ->where('permissionCheck.4.excess', ['VM.Allocate', 'VM.PowerMgmt', 'VM.Config.Disk']));
     }
 
+    public function test_privileges_reported_without_propagation_still_count()
+    {
+        // Proxmox reports a VM's pool-inherited privileges with propagate = 0 (seen on PVE 9.2.2).
+        $this->proxmox->unpropagatedPermissions = [
+            '/vms/9000' => ['VM.Clone'],
+            '/' => ['Sys.Modify'],
+        ];
+
+        $this->post(route('admin.clusters.permissions', $this->cluster));
+
+        $this->get(route('admin.clusters.show', $this->cluster))
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('permissionCheck.0.path', '/')
+                ->where('permissionCheck.0.excess', ['Sys.Modify'])
+                ->where('permissionCheck.5.path', '/vms/9000')
+                ->where('permissionCheck.5.missing', []));
+    }
+
     public function test_admins_can_create_customers()
     {
         $this->post(route('admin.users.store'), [
