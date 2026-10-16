@@ -11,11 +11,12 @@ use App\Models\User;
 class ServerPolicy
 {
     /**
-     * Admins may see every server, customers only their own.
+     * Admins may see every server, customers only their own that still exist.
      */
     public function view(User $user, Server $server): bool
     {
-        return $user->isAdmin() || $server->user_id === $user->id;
+        return $user->isAdmin()
+            || ($server->user_id === $user->id && $server->status !== ServerStatus::Terminated);
     }
 
     /**

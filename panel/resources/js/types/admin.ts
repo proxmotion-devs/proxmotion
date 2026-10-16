@@ -190,6 +190,16 @@ export type Task = {
     finished_at: string | null;
 };
 
+/** What TaskList needs; customers get no step messages or errors. */
+export type TaskProgress = {
+    uuid: string;
+    type: TaskType;
+    status: TaskStatus;
+    steps: { key: string; status: string; message?: string | null }[];
+    error?: string | null;
+    created_at: string | null;
+};
+
 export type PermissionCheck = {
     path: string;
     purpose: string;

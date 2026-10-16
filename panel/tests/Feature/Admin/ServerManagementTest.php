@@ -331,8 +331,8 @@ class ServerManagementTest extends AdminTestCase
             ->get(route('dashboard'))
             ->assertInertia(fn (Assert $page) => $page
                 ->component('client/Dashboard')
-                ->has('servers', 1)
-                ->where('servers.0.hostname', 'mine.example.com'))
+                ->has('servers.data', 1)
+                ->where('servers.data.0.hostname', 'mine.example.com'))
             ->assertDontSee('theirs.example.com');
     }
 

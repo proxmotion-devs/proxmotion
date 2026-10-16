@@ -28,8 +28,8 @@ class DashboardController extends Controller
                 ->occupying()
                 ->with(['location:id,name', 'package:id,name', 'osTemplate:id,name', 'ipAddresses:id,server_id,address'])
                 ->latest()
-                ->get()
-                ->map(fn (Server $server) => [
+                ->paginate(12)
+                ->through(fn (Server $server) => [
                     'uuid' => $server->uuid,
                     'hostname' => $server->hostname,
                     'status' => $server->status,
