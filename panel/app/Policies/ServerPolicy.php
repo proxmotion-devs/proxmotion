@@ -29,6 +29,15 @@ class ServerPolicy
     }
 
     /**
+     * Reinstalling wipes the disks; it needs an active server. Admins retry a
+     * failed reinstall with the retry action instead.
+     */
+    public function reinstall(User $user, Server $server): bool
+    {
+        return $server->status === ServerStatus::Active && $this->view($user, $server);
+    }
+
+    /**
      * A new root password is set inside the running VM by the guest agent.
      */
     public function resetPassword(User $user, Server $server): bool

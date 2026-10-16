@@ -41,6 +41,7 @@ final class TaskRunner
         $status = match ($type) {
             TaskType::Create => ServerStatus::Pending,
             TaskType::Terminate => ServerStatus::Terminating,
+            TaskType::Reinstall => ServerStatus::Reinstalling,
             default => null,
         };
 
@@ -48,7 +49,8 @@ final class TaskRunner
             $server->forceFill(['status' => $status])->save();
         }
 
-        RunServerTask::dispatch($task);
+        // Inside a transaction, a worker must not pick the task up before the data it needs is committed.
+        RunServerTask::dispatch($task)->afterCommit();
 
         return $task;
     }

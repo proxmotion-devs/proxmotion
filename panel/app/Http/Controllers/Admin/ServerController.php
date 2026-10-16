@@ -5,14 +5,17 @@ declare(strict_types=1);
 namespace App\Http\Controllers\Admin;
 
 use App\Domain\Servers\GuestAgentProbe;
+use App\Domain\Servers\ReinstallOptions;
 use App\Domain\Servers\ServerPasswords;
 use App\Domain\Servers\ServerPower;
+use App\Domain\Servers\ServerReinstaller;
 use App\Enums\PowerAction;
 use App\Enums\ServerStatus;
 use App\Enums\TaskType;
 use App\Enums\UserRole;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\ServerRequest;
+use App\Http\Requests\ReinstallRequest;
 use App\Models\IpAddress;
 use App\Models\Location;
 use App\Models\OsTemplate;
@@ -143,6 +146,7 @@ class ServerController extends Controller
             'revealedPassword' => session('revealed_password'),
             // Asked from Proxmox after the page has loaded, so a slow cluster does not block it.
             'power' => Inertia::defer(fn () => $server->status === ServerStatus::Active ? $this->power->state($server) : null),
+            'reinstallOptions' => fn () => ReinstallOptions::for($server),
             'agent' => Inertia::defer(fn () => $server->status === ServerStatus::Active ? $agent->reachable($server) : null),
         ]);
     }
@@ -183,7 +187,12 @@ class ServerController extends Controller
 
     public function retry(Server $server, #[CurrentUser] User $admin): RedirectResponse
     {
-        $type = $server->tasks()->latest('id')->value('type') === TaskType::Terminate->value ? TaskType::Terminate : TaskType::Create;
+        // Retry whatever left the server in error: a delete, a reinstall or (by default) the creation.
+        $type = match ($server->tasks()->latest('id')->first()?->type) {
+            TaskType::Terminate => TaskType::Terminate,
+            TaskType::Reinstall => TaskType::Reinstall,
+            default => TaskType::Create,
+        };
 
         return $this->startTask($server, $type, $admin, [ServerStatus::Error], 'Retrying…');
     }
@@ -202,6 +211,21 @@ class ServerController extends Controller
     public function revealPassword(Request $request, Server $server, #[CurrentUser] User $admin, ServerPasswords $passwords): RedirectResponse
     {
         return back()->with('revealed_password', $passwords->reveal($server, $admin, $request->ip()));
+    }
+
+    public function reinstall(ReinstallRequest $request, Server $server, #[CurrentUser] User $admin, ServerReinstaller $reinstaller): RedirectResponse
+    {
+        try {
+            $reinstaller->request($server, $request->osTemplate(), $request->sshKeys(), $admin, $request->ip());
+        } catch (ProvisioningException $e) {
+            $this->toast('error', $e->getMessage());
+
+            return back();
+        }
+
+        $this->toast('info', 'Reinstalling the server…');
+
+        return back();
     }
 
     public function resetPassword(Request $request, Server $server, #[CurrentUser] User $admin, ServerPasswords $passwords): RedirectResponse

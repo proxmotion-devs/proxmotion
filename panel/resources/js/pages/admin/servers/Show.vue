@@ -7,6 +7,7 @@ import ServerStatusBadge from '@/components/admin/ServerStatusBadge.vue';
 import StatusBadge from '@/components/admin/StatusBadge.vue';
 import Heading from '@/components/Heading.vue';
 import PowerControls from '@/components/servers/PowerControls.vue';
+import ReinstallDialog from '@/components/servers/ReinstallDialog.vue';
 import ResetPasswordButton from '@/components/servers/ResetPasswordButton.vue';
 import TaskList from '@/components/servers/TaskList.vue';
 import { Button } from '@/components/ui/button';
@@ -20,6 +21,7 @@ import {
     index,
     password,
     power as powerRoute,
+    reinstall,
     resetPassword,
     retry,
     show,
@@ -30,6 +32,7 @@ import { NETWORK_MODELS } from '@/types/admin';
 import type {
     NetworkModel,
     PowerAction,
+    ReinstallOptions,
     ServerStatus,
     Task,
 } from '@/types/admin';
@@ -66,6 +69,7 @@ const props = defineProps<{
     };
     tasks: Task[];
     revealedPassword: string | null;
+    reinstallOptions: ReinstallOptions;
     /** Deferred: undefined until loaded, null when unknown. */
     power?: string | null;
     /** Deferred: whether the guest agent answers; null when unknown. */
@@ -155,6 +159,13 @@ const modelLabel =
                     <Play class="h-4 w-4" />
                     {{ $t('Unsuspend') }}
                 </Button>
+                <ReinstallDialog
+                    v-if="server.status === 'active'"
+                    :action="reinstall(server.uuid)"
+                    :hostname="server.hostname"
+                    :options="reinstallOptions"
+                    :disabled="busy"
+                />
                 <Button
                     v-if="server.status === 'error'"
                     variant="outline"

@@ -145,6 +145,7 @@ export type ServerStatus =
     | 'provisioning'
     | 'active'
     | 'suspended'
+    | 'reinstalling'
     | 'terminating'
     | 'terminated'
     | 'error';
@@ -158,6 +159,7 @@ export type TaskType =
     | 'terminate'
     | 'adopt'
     | 'reset_password'
+    | 'reinstall'
     | PowerAction;
 
 export type PowerAction = 'start' | 'shutdown' | 'stop' | 'reboot';
@@ -192,6 +194,12 @@ export type Task = {
     error: string | null;
     created_at: string | null;
     finished_at: string | null;
+};
+
+/** Choices for ReinstallDialog: OS templates of the server's cluster, the owner's saved keys. */
+export type ReinstallOptions = {
+    osTemplates: Option[];
+    sshKeys: (Option & { fingerprint: string })[];
 };
 
 /** What TaskList needs; customers get no step messages or errors. */

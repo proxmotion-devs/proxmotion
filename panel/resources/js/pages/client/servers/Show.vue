@@ -5,6 +5,7 @@ import { computed, ref, watch } from 'vue';
 import ServerStatusBadge from '@/components/admin/ServerStatusBadge.vue';
 import Heading from '@/components/Heading.vue';
 import PowerControls from '@/components/servers/PowerControls.vue';
+import ReinstallDialog from '@/components/servers/ReinstallDialog.vue';
 import ResetPasswordButton from '@/components/servers/ResetPasswordButton.vue';
 import TaskList from '@/components/servers/TaskList.vue';
 import { Button } from '@/components/ui/button';
@@ -15,10 +16,16 @@ import {
     console as openConsole,
     password,
     power as powerRoute,
+    reinstall,
     resetPassword,
     show,
 } from '@/routes/servers';
-import type { PowerAction, ServerStatus, TaskProgress } from '@/types/admin';
+import type {
+    PowerAction,
+    ReinstallOptions,
+    ServerStatus,
+    TaskProgress,
+} from '@/types/admin';
 
 const props = defineProps<{
     server: {
@@ -44,6 +51,7 @@ const props = defineProps<{
     /** Deferred: whether the guest agent answers; null when unknown. */
     agent?: boolean | null;
     revealedPassword: string | null;
+    reinstallOptions: ReinstallOptions;
 }>();
 
 setLayoutProps({
@@ -99,12 +107,22 @@ watch(
                 <Heading :title="server.hostname" />
                 <ServerStatusBadge :status="server.status" />
             </div>
-            <PowerControls
+            <div
                 v-if="server.status === 'active'"
-                :power="power"
-                :busy="busy"
-                :action="powerAction"
-            />
+                class="flex flex-wrap items-center gap-2"
+            >
+                <PowerControls
+                    :power="power"
+                    :busy="busy"
+                    :action="powerAction"
+                />
+                <ReinstallDialog
+                    :action="reinstall(server.uuid)"
+                    :hostname="server.hostname"
+                    :options="reinstallOptions"
+                    :disabled="busy"
+                />
+            </div>
             <Button v-if="server.status === 'active'" as-child>
                 <a
                     :href="openConsole(server.uuid).url"

@@ -5,11 +5,14 @@ declare(strict_types=1);
 namespace App\Http\Controllers\Client;
 
 use App\Domain\Servers\GuestAgentProbe;
+use App\Domain\Servers\ReinstallOptions;
 use App\Domain\Servers\ServerPasswords;
 use App\Domain\Servers\ServerPower;
+use App\Domain\Servers\ServerReinstaller;
 use App\Enums\PowerAction;
 use App\Enums\ServerStatus;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\ReinstallRequest;
 use App\Models\IpAddress;
 use App\Models\Server;
 use App\Models\Task;
@@ -77,7 +80,23 @@ class ServerController extends Controller
             'power' => Inertia::defer(fn () => $server->status === ServerStatus::Active ? $this->power->state($server) : null),
             'agent' => Inertia::defer(fn () => $server->status === ServerStatus::Active ? $agent->reachable($server) : null),
             'revealedPassword' => session('revealed_password'),
+            'reinstallOptions' => fn () => ReinstallOptions::for($server),
         ]);
+    }
+
+    public function reinstall(ReinstallRequest $request, #[CurrentUser] User $user, Server $server, ServerReinstaller $reinstaller): RedirectResponse
+    {
+        try {
+            $reinstaller->request($server, $request->osTemplate(), $request->sshKeys(), $user, $request->ip());
+        } catch (ProvisioningException $e) {
+            $this->toast('error', $e->getMessage());
+
+            return back();
+        }
+
+        $this->toast('info', 'Reinstalling the server…');
+
+        return back();
     }
 
     public function resetPassword(Request $request, #[CurrentUser] User $user, Server $server, ServerPasswords $passwords): RedirectResponse

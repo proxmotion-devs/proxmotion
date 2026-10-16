@@ -16,4 +16,5 @@ enum TaskType: string
     case Stop = 'stop';
     case Reboot = 'reboot';
     case ResetPassword = 'reset_password';
+    case Reinstall = 'reinstall';
 }

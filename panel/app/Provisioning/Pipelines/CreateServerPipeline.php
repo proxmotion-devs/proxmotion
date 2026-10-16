@@ -33,11 +33,25 @@ final readonly class CreateServerPipeline
         $server = $task->server;
         $server->forceFill(['status' => ServerStatus::Provisioning])->save();
 
+        $this->build($task);
+
+        $server->forceFill(['status' => ServerStatus::Active, 'provisioned_at' => now()])->save();
+    }
+
+    /**
+     * Build the VM from the server's OS template and start it. Reinstalling
+     * runs this too, after deleting the old VM.
+     *
+     * @param  string|null  $previousNet0  net0 of a deleted VM, to keep its MAC address
+     */
+    public function build(Task $task, ?string $previousNet0 = null): void
+    {
+        $server = $task->server;
         $client = $this->clients->forCluster($server->cluster);
         $qemu = $client->qemu($server->node->name);
 
         $this->cloneVm($task, $server, $client, $qemu);
-        $config = $this->configure($task, $server, $qemu);
+        $config = $this->configure($task, $server, $qemu, $previousNet0);
         $this->growDisk($task, $server, $client, $qemu, $config);
 
         $qemu->enableAntiSpoofing($server->vmid, $this->network->allowedAddresses($server));
@@ -48,8 +62,6 @@ final readonly class CreateServerPipeline
         }
 
         $task->completeStep('start');
-
-        $server->forceFill(['status' => ServerStatus::Active, 'provisioned_at' => now()])->save();
     }
 
     private function cloneVm(Task $task, Server $server, ProxmoxClient $client, QemuResource $qemu): void
@@ -82,10 +94,10 @@ final readonly class CreateServerPipeline
     /**
      * @return array<string, mixed> the configuration after the update
      */
-    private function configure(Task $task, Server $server, QemuResource $qemu): array
+    private function configure(Task $task, Server $server, QemuResource $qemu, ?string $previousNet0): array
     {
         $current = $qemu->config($server->vmid) ?? [];
-        $net0 = is_string($current['net0'] ?? null) ? $current['net0'] : null;
+        $net0 = $previousNet0 ?? (is_string($current['net0'] ?? null) ? $current['net0'] : null);
 
         $params = [
             'name' => $server->hostname,

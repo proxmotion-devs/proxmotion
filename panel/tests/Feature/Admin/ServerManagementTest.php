@@ -4,9 +4,12 @@ namespace Tests\Feature\Admin;
 
 use App\Enums\ServerOrigin;
 use App\Enums\ServerStatus;
+use App\Enums\TaskStatus;
+use App\Enums\TaskType;
 use App\Models\Cluster;
 use App\Models\IpAddress;
 use App\Models\Server;
+use App\Models\Task;
 use App\Models\User;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\Concerns\BuildsInfrastructure;
@@ -370,6 +373,18 @@ class ServerManagementTest extends AdminTestCase
 
         $this->post(route('admin.servers.store'), $this->payload(['ssh_keys' => $dss]))
             ->assertSessionHasErrors('ssh_keys');
+    }
+
+    public function test_retrying_a_failed_delete_deletes_again()
+    {
+        $server = Server::factory()->for($this->node)->for($this->customer)->status(ServerStatus::Error)->create(['vmid' => 4242]);
+        $failed = new Task;
+        $failed->forceFill(['server_id' => $server->id, 'type' => TaskType::Terminate, 'status' => TaskStatus::Failed, 'steps' => []])->save();
+
+        $this->post(route('admin.servers.retry', $server));
+
+        $this->assertSame(TaskType::Terminate, Task::query()->latest('id')->firstOrFail()->type);
+        $this->assertSame(ServerStatus::Terminated, $server->refresh()->status);
     }
 
     public function test_customers_only_see_their_own_servers()

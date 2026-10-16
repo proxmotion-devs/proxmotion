@@ -10,6 +10,7 @@ enum ServerStatus: string
     case Provisioning = 'provisioning';
     case Active = 'active';
     case Suspended = 'suspended';
+    case Reinstalling = 'reinstalling';
     case Terminating = 'terminating';
     case Terminated = 'terminated';
     case Error = 'error';
@@ -29,6 +30,6 @@ enum ServerStatus: string
      */
     public function isBusy(): bool
     {
-        return in_array($this, [self::Pending, self::Provisioning, self::Terminating], true);
+        return in_array($this, [self::Pending, self::Provisioning, self::Reinstalling, self::Terminating], true);
     }
 }

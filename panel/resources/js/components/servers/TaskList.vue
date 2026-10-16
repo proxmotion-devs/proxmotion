@@ -24,6 +24,7 @@ const taskTypeLabels: Record<TaskType, string> = {
     stop: 'Stop',
     reboot: 'Reboot',
     reset_password: 'Reset root password',
+    reinstall: 'Reinstall',
 };
 const taskStatusTone: Record<
     TaskStatus,
@@ -53,10 +54,21 @@ const stepLabels: Record<string, string> = {
     destroy: 'Delete VM and disks',
     release_ips: 'Release IP addresses',
     adopt: 'Adopt',
+    wait_agent: 'Wait for the guest agent',
 };
 const plannedSteps: Partial<Record<TaskType, string[]>> = {
     create: ['clone', 'configure', 'resize', 'firewall', 'start'],
     terminate: ['stop', 'destroy', 'release_ips'],
+    reinstall: [
+        'stop',
+        'destroy',
+        'clone',
+        'configure',
+        'resize',
+        'firewall',
+        'start',
+        'wait_agent',
+    ],
 };
 
 const stepRows = (task: TaskProgress) => {
