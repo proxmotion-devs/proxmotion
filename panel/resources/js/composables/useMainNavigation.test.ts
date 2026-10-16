@@ -17,7 +17,7 @@ describe('useMainNavigation', () => {
             '/admin/packages',
             '/admin/drifts',
             '/admin/users',
-            '/admin/api-tokens',
+            '/admin/billing-systems',
         ]);
     });
 });

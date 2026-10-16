@@ -4,6 +4,7 @@ namespace Tests\Feature\Api\V1;
 
 use App\Enums\ApiScope;
 use App\Models\ApiToken;
+use App\Models\BillingSystem;
 use App\Models\Server;
 use App\Provisioning\ServerCreator;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -22,6 +23,8 @@ abstract class ApiTestCase extends TestCase
 
     protected FakeProxmoxCluster $proxmox;
 
+    protected BillingSystem $billingSystem;
+
     protected ApiToken $token;
 
     protected string $secret;
@@ -32,17 +35,20 @@ abstract class ApiTestCase extends TestCase
 
         $this->buildInfrastructure();
         $this->proxmox = (new FakeProxmoxCluster)->addTemplate(9000)->install();
+        $this->billingSystem = BillingSystem::factory()->create(['name' => 'WHMCS']);
         [$this->token, $this->secret] = $this->issueToken();
     }
 
     /**
+     * A token of the test's billing system (or another one).
+     *
      * @param  list<ApiScope>|null  $scopes  null: every scope
      * @param  list<string>|null  $allowedIps
      * @return array{ApiToken, string}
      */
-    protected function issueToken(?array $scopes = null, ?array $allowedIps = null): array
+    protected function issueToken(?array $scopes = null, ?array $allowedIps = null, ?BillingSystem $billingSystem = null): array
     {
-        return ApiToken::issue('WHMCS', $scopes ?? ApiScope::cases(), $allowedIps);
+        return ApiToken::issue($billingSystem ?? $this->billingSystem, 'Token', $scopes ?? ApiScope::cases(), $allowedIps);
     }
 
     /**
@@ -57,9 +63,13 @@ abstract class ApiTestCase extends TestCase
     /**
      * A server created through the panel's own pipeline (on the fake Proxmox).
      */
-    protected function provisionedServer(string $externalId = 'whmcs-1001'): Server
+    protected function provisionedServer(string $externalId = 'whmcs-1001', ?BillingSystem $billingSystem = null): Server
     {
-        $server = app(ServerCreator::class)->create($this->order(['externalId' => $externalId, 'externalClientId' => 'client-7']));
+        $server = app(ServerCreator::class)->create($this->order([
+            'externalId' => $externalId,
+            'externalClientId' => 'client-7',
+            'billingSystem' => $billingSystem ?? $this->billingSystem,
+        ]));
 
         return $server->refresh();
     }

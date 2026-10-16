@@ -22,6 +22,7 @@ use Illuminate\Support\Str;
  * @property int $id
  * @property string $uuid
  * @property string $name
+ * @property int $billing_system_id the billing system whose servers the token manages
  * @property string $token_hash
  * @property string $token_prefix
  * @property list<string> $scopes
@@ -34,6 +35,7 @@ use Illuminate\Support\Str;
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  * @property-read User|null $creator
+ * @property-read BillingSystem $billingSystem
  */
 class ApiToken extends Model
 {
@@ -65,12 +67,13 @@ class ApiToken extends Model
      * @param  list<string>|null  $allowedIps
      * @return array{ApiToken, string}
      */
-    public static function issue(string $name, array $scopes, ?array $allowedIps = null, ?DateTimeInterface $expiresAt = null, ?User $creator = null): array
+    public static function issue(BillingSystem $billingSystem, string $name, array $scopes, ?array $allowedIps = null, ?DateTimeInterface $expiresAt = null, ?User $creator = null): array
     {
         $secret = self::PREFIX.Str::random(48);
 
         $token = new self;
         $token->forceFill([
+            'billing_system_id' => $billingSystem->id,
             'name' => $name,
             'token_hash' => self::hash($secret),
             'token_prefix' => substr($secret, 0, 12),
@@ -145,6 +148,14 @@ class ApiToken extends Model
         }
 
         return false;
+    }
+
+    /**
+     * @return BelongsTo<BillingSystem, $this>
+     */
+    public function billingSystem(): BelongsTo
+    {
+        return $this->belongsTo(BillingSystem::class);
     }
 
     /**

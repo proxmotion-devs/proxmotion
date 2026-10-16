@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace App\Http\Requests\Api\V1;
 
 use App\Enums\NetworkModel;
+use App\Models\ApiToken;
+use App\Models\BillingSystem;
 use App\Models\Location;
 use App\Models\OsTemplate;
 use App\Models\Package;
@@ -34,8 +36,8 @@ class CreateServerRequest extends FormRequest
     public function rules(): array
     {
         return [
-            // The billing system's service id: unique, it is how the module finds the server again.
-            'external_id' => ['required', 'string', 'max:191', Rule::unique('servers', 'external_id')],
+            // The service id: unique within the token's billing system; it is how the module finds the server again.
+            'external_id' => ['required', 'string', 'max:191', Rule::unique('servers', 'external_id')->where('billing_system_id', $this->billingSystemId())],
             'external_client_id' => ['nullable', 'string', 'max:191'],
             'package' => ['required', 'string', Rule::exists('packages', 'uuid')->where('is_active', true)],
             'location' => ['required', 'string', Rule::exists('locations', 'uuid')],
@@ -82,7 +84,7 @@ class CreateServerRequest extends FormRequest
         }];
     }
 
-    public function toNewServer(): NewServer
+    public function toNewServer(BillingSystem $billingSystem): NewServer
     {
         return new NewServer(
             location: Location::query()->where('uuid', $this->string('location'))->firstOrFail(),
@@ -95,6 +97,7 @@ class CreateServerRequest extends FormRequest
             sshKeys: PublicKey::implode($this->sshKeys()),
             externalId: $this->string('external_id')->trim()->toString(),
             externalClientId: $this->filled('external_client_id') ? $this->string('external_client_id')->trim()->toString() : null,
+            billingSystem: $billingSystem,
         );
     }
 
@@ -110,6 +113,13 @@ class CreateServerRequest extends FormRequest
         }
 
         return $keys;
+    }
+
+    private function billingSystemId(): int
+    {
+        $token = $this->attributes->get('api_token');
+
+        return $token instanceof ApiToken ? $token->billing_system_id : abort(401);
     }
 
     private function package(): Package

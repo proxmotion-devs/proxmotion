@@ -7,7 +7,11 @@ info:
     Design: docs/adr/0007 and docs/adr/0008.
 
     - **Authentication:** `Authorization: Bearer pmx_…`. Tokens are created by an administrator
-      under *Admin → API tokens*, have scopes and may be limited to IP addresses.
+      under *Admin → Billing systems*, have scopes and may be limited to IP addresses.
+    - **Billing systems:** every token belongs to one billing system and only sees that system's
+      servers (and their tasks); any other server answers `404` like one that does not exist.
+      Servers created with a token belong to its billing system, and `external_id` is unique
+      within it.
     - **Asynchronous operations:** everything that changes Proxmox returns `202` with a task.
       Poll `GET /tasks/{id}` until `status` is `succeeded` or `failed`.
     - **Idempotency:** write requests may send `Idempotency-Key`. Repeating a request with the
@@ -571,7 +575,7 @@ components:
       type: object
       required: [external_id, package, location, os_template, hostname]
       properties:
-        external_id: { type: string, maxLength: 191, description: Service id in the billing system; unique }
+        external_id: { type: string, maxLength: 191, description: Service id in the billing system; unique within the token's billing system }
         external_client_id: { type: [string, 'null'], maxLength: 191, description: Customer id in the billing system }
         package: { type: string, format: uuid }
         location: { type: string, format: uuid }

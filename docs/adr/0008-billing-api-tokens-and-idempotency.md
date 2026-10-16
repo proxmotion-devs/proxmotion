@@ -9,6 +9,7 @@ With no client panel (ADR 0007), every customer action reaches the panel through
 
 ## Decision
 
+0. **Billing systems.** Every token belongs to a **billing system** (`billing_systems`: a name such as "WHMCS"), and every server ordered through the API to the billing system of its token (`servers.billing_system_id`). A token only reaches servers and tasks of its own billing system; others answer exactly like a server that does not exist (`404`). `external_id` is unique per billing system, so two billing systems may both have a service 1001. Tokens can be replaced (revoke and create a new one) without servers changing hands. Admins may assign servers they create or adopt to a billing system; billing ids require one. Servers without a billing system are not reachable through the API.
 1. **Own token model, no Sanctum.** Tokens belong to an integration, not to a panel user, so they live in their own `api_tokens` table: name, `token_hash` (SHA-256 of the secret, unique), the first characters for display, scopes, optional allowed IPs/CIDRs, optional expiry, `last_used_at`/`last_used_ip`, `revoked_at` and the administrator who created it. The secret has the form `pmx_<48 random characters>` and is shown once. A random 48-character secret has enough entropy that a fast hash is safe; no password hashing is needed. Sanctum would tie tokens to an authenticatable model and adds nothing we need.
 2. **Scopes** (`ApiScope` enum), medium-grained:
    | Scope | Allows |
@@ -27,6 +28,7 @@ With no client panel (ADR 0007), every customer action reaches the panel through
 
 ## Consequences
 
-- One more table pair to maintain (`api_tokens`, `idempotency_keys`) and an admin page to create and revoke tokens.
+- More tables to maintain (`billing_systems`, `api_tokens`, `idempotency_keys`) and an admin page for billing systems and their tokens.
+- Moving a server to another billing system (e.g. when switching from WHMCS to WISECP) is an admin action, not an API one; it is not built yet.
 - Domain services accept a `User|ApiToken` actor instead of only a `User`.
 - The console page is reachable without a panel login, but only through a signed link that the billing system requests with `servers:secrets`, and only for one server.

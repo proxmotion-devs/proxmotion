@@ -45,6 +45,7 @@ class ServerController extends ApiController
         ]);
 
         $servers = Server::query()
+            ->where('billing_system_id', $this->token($request)->billing_system_id)
             ->with(self::WITH)
             ->when($filters['external_id'] ?? null, fn ($query, $id) => $query->where('external_id', $id))
             ->when($filters['external_client_id'] ?? null, fn ($query, $id) => $query->where('external_client_id', $id))
@@ -61,7 +62,7 @@ class ServerController extends ApiController
         $token = $this->token($request);
 
         try {
-            $server = $creator->create($request->toNewServer(), $token);
+            $server = $creator->create($request->toNewServer($token->billingSystem), $token);
         } catch (ProvisioningException $e) {
             return response()->json(['message' => $e->translatedMessage()], 422);
         } catch (ProxmoxException) {

@@ -25,12 +25,14 @@ defineOptions({
 });
 
 const props = defineProps<{
+    billingSystems: Option[];
     locations: Option[];
     packages: (Option & { network_models: NetworkModel[] })[];
     osTemplates: Option[];
 }>();
 
 const form = useForm({
+    billing_system: '' as string | null,
     external_id: '',
     external_client_id: '',
     location: props.locations[0]?.value ?? null,
@@ -55,6 +57,12 @@ const form = useForm({
 });
 
 const custom = computed(() => form.resource_mode === 'custom');
+
+// "" = none: the server belongs to no billing system and has no billing ids.
+const billingSystemOptions = computed(() => [
+    { value: '', label: trans('None') },
+    ...props.billingSystems,
+]);
 
 const resourceModes = computed(() => [
     { value: 'package' as const, label: trans('From a package') },
@@ -123,6 +131,19 @@ const submit = () =>
 
         <form class="grid gap-4" @submit.prevent="submit">
             <InputError :message="serverError" />
+
+            <FormField
+                label="Billing system"
+                for="billing_system"
+                :error="form.errors.billing_system"
+                hint="Needed for billing IDs. Only this billing system's API tokens can manage the server."
+            >
+                <NativeSelect
+                    id="billing_system"
+                    v-model="form.billing_system"
+                    :options="billingSystemOptions"
+                />
+            </FormField>
 
             <div class="grid gap-4 sm:grid-cols-2">
                 <FormField

@@ -40,6 +40,7 @@ const props = defineProps<{
     cluster: string | null;
     candidates: Candidate[];
     error: string | null;
+    billingSystems: Option[];
     packages: Option[];
     addresses: Option<number>[];
 }>();
@@ -54,6 +55,12 @@ const pool = computed(
 const chooseCluster = (uuid: string | null) => {
     router.visit(adopt({ query: uuid ? { cluster: uuid } : {} }));
 };
+
+// "" = none: the server belongs to no billing system and has no billing ids.
+const billingSystemOptions = computed(() => [
+    { value: '', label: trans('None') },
+    ...props.billingSystems,
+]);
 
 // "" = no package: the server keeps the VM's own resources.
 const packageOptions = computed(() => [
@@ -72,6 +79,7 @@ const addressFilter = ref('');
 const form = useForm({
     cluster: props.cluster,
     vmid: 0,
+    billing_system: '' as string | null,
     external_id: '',
     external_client_id: '',
     package: '' as string | null,
@@ -218,6 +226,18 @@ const submit = () => {
         >
             {{ form.errors.vmid }}
         </p>
+        <FormField
+            label="Billing system"
+            for="adopt_billing_system"
+            :error="form.errors.billing_system"
+            hint="Needed for billing IDs. Only this billing system's API tokens can manage the server."
+        >
+            <NativeSelect
+                id="adopt_billing_system"
+                v-model="form.billing_system"
+                :options="billingSystemOptions"
+            />
+        </FormField>
         <div class="grid gap-4 sm:grid-cols-2">
             <FormField
                 label="Billing service ID"

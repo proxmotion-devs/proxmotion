@@ -20,7 +20,7 @@ use Illuminate\Support\Carbon;
 
 /**
  * A customer VPS. The customer lives in the billing system; the server only
- * keeps its ids (external_id, external_client_id). Its resources are copied from the package (or entered as custom
+ * keeps its ids (billing system, external_id, external_client_id). Its resources are copied from the package (or entered as custom
  * resources) at creation time, so later package edits do not change existing servers.
  *
  * Nothing on this model is mass-assignable: servers are only created and
@@ -48,13 +48,15 @@ use Illuminate\Support\Carbon;
  * @property bool $root_password_unrevealed the billing system has not fetched the current root password yet
  * @property string|null $ssh_keys
  * @property string|null $suspension_reason
- * @property string|null $external_id billing service id
+ * @property int|null $billing_system_id the billing system that owns the server; only its API tokens see it
+ * @property string|null $external_id billing service id, unique within the billing system
  * @property string|null $external_client_id billing customer id
  * @property Carbon|null $provisioned_at
  * @property Carbon|null $terminated_at
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  * @property-read Package|null $package
+ * @property-read BillingSystem|null $billingSystem
  * @property-read Location $location
  * @property-read Cluster $cluster
  * @property-read Node $node
@@ -95,6 +97,14 @@ class Server extends Model
     public function scopeOccupying(Builder $query): void
     {
         $query->whereIn('status', ServerStatus::occupying());
+    }
+
+    /**
+     * @return BelongsTo<BillingSystem, $this>
+     */
+    public function billingSystem(): BelongsTo
+    {
+        return $this->belongsTo(BillingSystem::class);
     }
 
     /**

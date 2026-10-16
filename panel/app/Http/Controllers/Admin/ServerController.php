@@ -15,6 +15,7 @@ use App\Enums\TaskType;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\ServerRequest;
 use App\Http\Requests\ReinstallRequest;
+use App\Models\BillingSystem;
 use App\Models\IpAddress;
 use App\Models\Location;
 use App\Models\OsTemplate;
@@ -48,7 +49,7 @@ class ServerController extends Controller
         return Inertia::render('admin/servers/Index', [
             'servers' => Server::query()
                 ->when(! $showTerminated, fn ($query) => $query->occupying())
-                ->with(['node:id,name', 'location:id,name', 'package:id,name', 'ipAddresses:id,server_id,address'])
+                ->with(['node:id,name', 'location:id,name', 'package:id,name', 'billingSystem:id,name', 'ipAddresses:id,server_id,address'])
                 ->latest()
                 ->paginate(50)
                 ->withQueryString()
@@ -57,6 +58,7 @@ class ServerController extends Controller
                     'hostname' => $server->hostname,
                     'status' => $server->status,
                     'vmid' => $server->vmid,
+                    'billing_system' => $server->billingSystem?->name,
                     'external_id' => $server->external_id,
                     'external_client_id' => $server->external_client_id,
                     'node' => $server->node->name,
@@ -71,6 +73,7 @@ class ServerController extends Controller
     public function create(): Response
     {
         return Inertia::render('admin/servers/Create', [
+            'billingSystems' => BillingSystem::options(),
             'locations' => Location::query()->orderBy('name')->get(['uuid', 'name'])
                 ->map(fn (Location $location) => ['value' => $location->uuid, 'label' => $location->name]),
             'packages' => Package::query()->where('is_active', true)->orderBy('sort_order')->orderBy('name')->get()
@@ -101,7 +104,7 @@ class ServerController extends Controller
 
     public function show(Server $server, GuestAgentProbe $agent): Response
     {
-        $server->load(['node:id,uuid,name', 'cluster:id,uuid,name', 'location:id,name', 'package:id,name', 'osTemplate:id,name', 'storage:id,name', 'ipAddresses.pool:id,uuid,name,version']);
+        $server->load(['node:id,uuid,name', 'cluster:id,uuid,name', 'location:id,name', 'package:id,name', 'billingSystem:id,name', 'osTemplate:id,name', 'storage:id,name', 'ipAddresses.pool:id,uuid,name,version']);
 
         return Inertia::render('admin/servers/Show', [
             'server' => [
@@ -118,6 +121,7 @@ class ServerController extends Controller
                 'traffic_bytes' => $server->traffic_bytes,
                 'has_password' => $server->root_password !== null,
                 'busy' => $server->status->isBusy(),
+                'billing_system' => $server->billingSystem?->name,
                 'external_id' => $server->external_id,
                 'external_client_id' => $server->external_client_id,
                 'cluster' => ['uuid' => $server->cluster->uuid, 'name' => $server->cluster->name],

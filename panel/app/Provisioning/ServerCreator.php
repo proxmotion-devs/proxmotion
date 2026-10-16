@@ -93,6 +93,7 @@ final readonly class ServerCreator
             // The billing system may fetch the initial password once (docs/adr/0007).
             'root_password_unrevealed' => true,
             'ssh_keys' => $order->sshKeys,
+            'billing_system_id' => $order->billingSystem?->id,
             'external_id' => $order->externalId,
             'external_client_id' => $order->externalClientId,
         ])->save();

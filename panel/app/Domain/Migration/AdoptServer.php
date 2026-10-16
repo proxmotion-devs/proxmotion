@@ -9,6 +9,7 @@ use App\Enums\ServerOrigin;
 use App\Enums\ServerStatus;
 use App\Enums\TaskStatus;
 use App\Enums\TaskType;
+use App\Models\BillingSystem;
 use App\Models\Cluster;
 use App\Models\IpAddress;
 use App\Models\Node;
@@ -53,7 +54,7 @@ final readonly class AdoptServer
      *
      * @throws ProvisioningException
      */
-    public function adopt(Cluster $cluster, int $vmid, ?Package $package, NetworkModel $networkModel, array $ipAddressIds, ?User $actor = null, ?string $externalId = null, ?string $externalClientId = null): Server
+    public function adopt(Cluster $cluster, int $vmid, ?Package $package, NetworkModel $networkModel, array $ipAddressIds, ?User $actor = null, ?string $externalId = null, ?string $externalClientId = null, ?BillingSystem $billingSystem = null): Server
     {
         $vm = collect($this->candidates($cluster))->firstWhere('vmid', $vmid)
             ?? throw new ProvisioningException('VM :vmid was not found, is already managed, or is not in the resource pool.', ['vmid' => (string) $vmid]);
@@ -66,7 +67,7 @@ final readonly class AdoptServer
             ? intdiv($vm->diskBytes, 1024 ** 2)
             : BootDisk::fromConfig($this->clients->forCluster($cluster)->qemu($vm->node)->config($vm->vmid) ?? [])?->sizeMib;
 
-        return DB::transaction(function () use ($cluster, $vm, $node, $package, $networkModel, $ipAddressIds, $actor, $externalId, $externalClientId, $diskMib) {
+        return DB::transaction(function () use ($cluster, $vm, $node, $package, $networkModel, $ipAddressIds, $actor, $externalId, $externalClientId, $diskMib, $billingSystem) {
             $addresses = IpAddress::query()
                 ->whereIn('id', $ipAddressIds)
                 ->whereNull('server_id')
@@ -80,6 +81,7 @@ final readonly class AdoptServer
 
             $server = new Server;
             $server->forceFill([
+                'billing_system_id' => $billingSystem?->id,
                 'external_id' => $externalId,
                 'external_client_id' => $externalClientId,
                 'package_id' => $package?->id,

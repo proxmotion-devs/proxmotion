@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Admin\AdoptionController;
 use App\Http\Controllers\Admin\ApiTokenController;
+use App\Http\Controllers\Admin\BillingSystemController;
 use App\Http\Controllers\Admin\ClusterController;
 use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Admin\DnsProviderController;
@@ -60,8 +61,10 @@ Route::resource('os-templates', OsTemplateController::class)->only(['index', 'st
 Route::resource('packages', PackageController::class)->only(['index', 'store', 'update', 'destroy']);
 
 Route::resource('users', UserController::class)->only(['index', 'store']);
+Route::resource('billing-systems', BillingSystemController::class)->only(['index', 'store', 'update']);
+Route::post('billing-systems/{billingSystem}/tokens', [ApiTokenController::class, 'store'])->name('billing-systems.tokens.store');
 // Revoking ("destroy") keeps the token for the audit log; it can never be used again.
-Route::resource('api-tokens', ApiTokenController::class)->only(['index', 'store', 'destroy']);
+Route::delete('api-tokens/{apiToken}', [ApiTokenController::class, 'destroy'])->name('api-tokens.destroy');
 
 // Adoption routes come before the resource so "adopt" isn't taken for a server UUID.
 Route::get('servers/adopt', [AdoptionController::class, 'create'])->name('servers.adopt');

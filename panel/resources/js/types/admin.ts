@@ -177,6 +177,7 @@ export type ServerListItem = {
     hostname: string;
     status: ServerStatus;
     vmid: number;
+    billing_system: string | null;
     external_id: string | null;
     external_client_id: string | null;
     node: string;

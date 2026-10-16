@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Requests\Admin;
 
 use App\Enums\NetworkModel;
+use App\Models\BillingSystem;
 use App\Models\Location;
 use App\Models\OsTemplate;
 use App\Models\Package;
@@ -29,8 +30,9 @@ class ServerRequest extends FormRequest
         $custom = $this->input('resource_mode') === 'custom';
 
         return [
-            // Ids of the service and the customer in the billing system, if any.
-            'external_id' => ['nullable', 'string', 'max:191', Rule::unique('servers', 'external_id')],
+            // The billing system that owns the server, and the ids of the service and customer there.
+            'billing_system' => ['nullable', 'required_with:external_id,external_client_id', 'string', Rule::exists('billing_systems', 'uuid')],
+            'external_id' => ['nullable', 'string', 'max:191', Rule::unique('servers', 'external_id')->where('billing_system_id', $this->billingSystem()?->id)],
             'external_client_id' => ['nullable', 'string', 'max:191'],
             'location' => ['required', 'string', Rule::exists('locations', 'uuid')],
             // "package": resources from a package; "custom": entered below (admins only).
@@ -88,7 +90,13 @@ class ServerRequest extends FormRequest
             sshKeys: PublicKey::implode(PublicKey::parseMany($this->string('ssh_keys')->toString())),
             externalId: $this->filled('external_id') ? $this->string('external_id')->trim()->toString() : null,
             externalClientId: $this->filled('external_client_id') ? $this->string('external_client_id')->trim()->toString() : null,
+            billingSystem: $this->billingSystem(),
         );
+    }
+
+    private function billingSystem(): ?BillingSystem
+    {
+        return $this->filled('billing_system') ? BillingSystem::query()->where('uuid', $this->string('billing_system'))->first() : null;
     }
 
     /**

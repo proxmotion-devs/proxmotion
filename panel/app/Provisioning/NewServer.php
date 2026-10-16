@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Provisioning;
 
 use App\Enums\NetworkModel;
+use App\Models\BillingSystem;
 use App\Models\Location;
 use App\Models\OsTemplate;
 use App\Models\Package;
@@ -27,5 +28,7 @@ final readonly class NewServer
         public ?string $sshKeys = null,
         public ?string $externalId = null,
         public ?string $externalClientId = null,
+        /** The billing system that owns the server and its billing ids. */
+        public ?BillingSystem $billingSystem = null,
     ) {}
 }

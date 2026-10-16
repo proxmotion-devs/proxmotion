@@ -7,6 +7,7 @@ use App\Http\Middleware\HandleAppearance;
 use App\Http\Middleware\HandleIdempotency;
 use App\Http\Middleware\HandleInertiaRequests;
 use App\Http\Middleware\RequireApiScope;
+use App\Http\Middleware\ScopeToBillingSystem;
 use App\Http\Middleware\SetLocale;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
@@ -23,7 +24,7 @@ return Application::configure(basePath: dirname(__DIR__))
         commands: __DIR__.'/../routes/console.php',
         health: '/up',
         then: function (): void {
-            Route::middleware([AuthenticateApiToken::class, 'throttle:api', SubstituteBindings::class])
+            Route::middleware([AuthenticateApiToken::class, 'throttle:api', SubstituteBindings::class, ScopeToBillingSystem::class])
                 ->prefix('api/v1')
                 ->name('api.v1.')
                 ->group(base_path('routes/api.php'));

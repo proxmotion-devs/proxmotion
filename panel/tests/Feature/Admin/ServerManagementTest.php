@@ -7,6 +7,7 @@ use App\Enums\ServerStatus;
 use App\Enums\TaskStatus;
 use App\Enums\TaskType;
 use App\Models\AuditLog;
+use App\Models\BillingSystem;
 use App\Models\Cluster;
 use App\Models\IpAddress;
 use App\Models\ProxmoxTemplate;
@@ -144,6 +145,32 @@ class ServerManagementTest extends AdminTestCase
         ])->assertSessionHasNoErrors();
 
         $this->assertNull(Server::query()->sole()->package_id);
+    }
+
+    public function test_adopted_vms_can_be_given_to_a_billing_system()
+    {
+        $whmcs = BillingSystem::factory()->create();
+        $this->proxmox->addVm(262, 'whmcs-vm');
+        $this->proxmox->addVm(263, 'no-system-vm');
+
+        $this->post(route('admin.servers.adopt.store'), [
+            'cluster' => $this->cluster->uuid,
+            'vmid' => 262,
+            'billing_system' => $whmcs->uuid,
+            'external_id' => '1001',
+            'network_model' => 'bridged',
+        ])->assertSessionHasNoErrors();
+
+        $server = Server::query()->sole();
+        $this->assertSame($whmcs->id, $server->billing_system_id);
+        $this->assertSame('1001', $server->external_id);
+
+        $this->post(route('admin.servers.adopt.store'), [
+            'cluster' => $this->cluster->uuid,
+            'vmid' => 263,
+            'external_id' => '1002',
+            'network_model' => 'bridged',
+        ])->assertSessionHasErrors('billing_system');
     }
 
     public function test_adoption_reads_the_disk_size_from_the_config_when_cluster_resources_does_not_know_it()
@@ -399,17 +426,36 @@ class ServerManagementTest extends AdminTestCase
         $this->assertSame(implode("\n", [PublicKeyTest::RSA, PublicKeyTest::ED25519]), Server::query()->sole()->ssh_keys);
     }
 
-    public function test_billing_ids_are_stored_and_service_ids_are_unique()
+    public function test_billing_ids_are_stored_and_service_ids_are_unique_per_billing_system()
     {
-        $this->post(route('admin.servers.store'), $this->payload(['external_id' => ' 1001 ', 'external_client_id' => '42']))
+        $whmcs = BillingSystem::factory()->create();
+        $wisecp = BillingSystem::factory()->create();
+
+        $this->post(route('admin.servers.store'), $this->payload(['billing_system' => $whmcs->uuid, 'external_id' => ' 1001 ', 'external_client_id' => '42']))
             ->assertSessionHasNoErrors();
 
         $server = Server::query()->sole();
+        $this->assertSame($whmcs->id, $server->billing_system_id);
         $this->assertSame('1001', $server->external_id);
         $this->assertSame('42', $server->external_client_id);
 
-        $this->post(route('admin.servers.store'), $this->payload(['hostname' => 'web2.example.com', 'external_id' => '1001']))
+        $this->post(route('admin.servers.store'), $this->payload(['hostname' => 'web2.example.com', 'billing_system' => $whmcs->uuid, 'external_id' => '1001']))
             ->assertSessionHasErrors('external_id');
+
+        // The same service id in another billing system is a different service.
+        $this->post(route('admin.servers.store'), $this->payload(['hostname' => 'web3.example.com', 'billing_system' => $wisecp->uuid, 'external_id' => '1001']))
+            ->assertSessionHasNoErrors();
+    }
+
+    public function test_billing_ids_need_a_billing_system()
+    {
+        $this->post(route('admin.servers.store'), $this->payload(['external_id' => '1001']))
+            ->assertSessionHasErrors('billing_system');
+
+        $this->post(route('admin.servers.store'), $this->payload(['billing_system' => 'unknown']))
+            ->assertSessionHasErrors('billing_system');
+
+        $this->assertDatabaseCount('servers', 0);
     }
 
     public function test_weak_or_obsolete_ssh_keys_are_refused()

@@ -56,6 +56,7 @@ const props = defineProps<{
         traffic_bytes: number | null;
         has_password: boolean;
         busy: boolean;
+        billing_system: string | null;
         external_id: string | null;
         external_client_id: string | null;
         cluster: { uuid: string; name: string };
@@ -220,6 +221,12 @@ const modelLabel =
                     {{
                         $t('Client ID: :id', { id: server.external_client_id })
                     }}
+                </dd>
+                <dd
+                    v-if="server.billing_system"
+                    class="text-xs text-muted-foreground"
+                >
+                    {{ server.billing_system }}
                 </dd>
             </div>
             <div>

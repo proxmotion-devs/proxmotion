@@ -104,6 +104,12 @@ const toggleTerminated = (value: boolean | 'indeterminate') => {
                         </td>
                         <td class="px-4 py-3 font-mono text-xs">
                             {{ server.external_id ?? '—' }}
+                            <div
+                                v-if="server.billing_system"
+                                class="font-sans text-muted-foreground"
+                            >
+                                {{ server.billing_system }}
+                            </div>
                         </td>
                         <td class="px-4 py-3 font-mono text-xs">
                             {{ server.addresses.join(', ') || '—' }}

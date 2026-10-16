@@ -7,6 +7,7 @@ namespace App\Http\Controllers\Admin;
 use App\Domain\Migration\AdoptServer;
 use App\Enums\NetworkModel;
 use App\Http\Controllers\Controller;
+use App\Models\BillingSystem;
 use App\Models\Cluster;
 use App\Models\IpAddress;
 use App\Models\Package;
@@ -55,6 +56,7 @@ class AdoptionController extends Controller
             'cluster' => $cluster?->uuid,
             'candidates' => $candidates,
             'error' => $error,
+            'billingSystems' => BillingSystem::options(),
             'packages' => Package::query()->orderBy('name')->get(['uuid', 'name'])
                 ->map(fn (Package $package) => ['value' => $package->uuid, 'label' => $package->name]),
             'addresses' => $cluster === null ? [] : IpAddress::query()
@@ -69,10 +71,13 @@ class AdoptionController extends Controller
 
     public function store(Request $request, AdoptServer $adopt, #[CurrentUser] User $admin): RedirectResponse
     {
+        $billingSystem = $request->filled('billing_system') ? BillingSystem::query()->where('uuid', $request->string('billing_system'))->first() : null;
+
         $validated = $request->validate([
             'cluster' => ['required', 'string', Rule::exists('clusters', 'uuid')],
             'vmid' => ['required', 'integer', 'min:100'],
-            'external_id' => ['nullable', 'string', 'max:191', Rule::unique('servers', 'external_id')],
+            'billing_system' => ['nullable', 'required_with:external_id,external_client_id', 'string', Rule::exists('billing_systems', 'uuid')],
+            'external_id' => ['nullable', 'string', 'max:191', Rule::unique('servers', 'external_id')->where('billing_system_id', $billingSystem?->id)],
             'external_client_id' => ['nullable', 'string', 'max:191'],
             'package' => ['nullable', 'string', Rule::exists('packages', 'uuid')],
             'network_model' => ['required', Rule::enum(NetworkModel::class)],
@@ -90,6 +95,7 @@ class AdoptionController extends Controller
                 actor: $admin,
                 externalId: isset($validated['external_id']) ? trim($validated['external_id']) : null,
                 externalClientId: isset($validated['external_client_id']) ? trim($validated['external_client_id']) : null,
+                billingSystem: $billingSystem,
             );
         } catch (ProvisioningException $e) {
             throw ValidationException::withMessages(['vmid' => $e->translatedMessage()]);
