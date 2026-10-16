@@ -11,6 +11,7 @@ use App\Models\User;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\Concerns\BuildsInfrastructure;
 use Tests\Support\FakeProxmoxCluster;
+use Tests\Unit\PublicKeyTest;
 
 class ServerManagementTest extends AdminTestCase
 {
@@ -336,6 +337,39 @@ class ServerManagementTest extends AdminTestCase
         $user = User::query()->where('email', 'ayse@example.com')->sole();
         $this->assertFalse($user->isAdmin(), 'The role cannot be chosen through the form.');
         $this->assertNotNull($user->email_verified_at);
+    }
+
+    public function test_the_customers_saved_ssh_keys_are_added_once()
+    {
+        $this->actingAs($this->customer)->post(route('ssh-keys.store'), ['name' => 'Laptop', 'public_key' => PublicKeyTest::ED25519]);
+        $this->actingAs($this->customer)->post(route('ssh-keys.store'), ['name' => 'Desktop', 'public_key' => PublicKeyTest::ECDSA]);
+        $this->actingAs($this->admin);
+
+        // The ed25519 key is entered too: it must appear only once.
+        $this->post(route('admin.servers.store'), $this->payload(['ssh_keys' => PublicKeyTest::RSA."\n".PublicKeyTest::ED25519]));
+
+        $this->assertSame(
+            implode("\n", [PublicKeyTest::RSA, PublicKeyTest::ED25519, PublicKeyTest::ECDSA]),
+            Server::query()->sole()->ssh_keys,
+        );
+    }
+
+    public function test_saved_ssh_keys_can_be_left_out()
+    {
+        $this->actingAs($this->customer)->post(route('ssh-keys.store'), ['name' => 'Laptop', 'public_key' => PublicKeyTest::ED25519]);
+        $this->actingAs($this->admin);
+
+        $this->post(route('admin.servers.store'), $this->payload(['use_saved_keys' => false]));
+
+        $this->assertNull(Server::query()->sole()->ssh_keys);
+    }
+
+    public function test_weak_or_obsolete_ssh_keys_are_refused()
+    {
+        $dss = 'ssh-dss '.base64_encode(pack('N', 7).'ssh-dss'.pack('N', 1).'x');
+
+        $this->post(route('admin.servers.store'), $this->payload(['ssh_keys' => $dss]))
+            ->assertSessionHasErrors('ssh_keys');
     }
 
     public function test_customers_only_see_their_own_servers()
