@@ -10,6 +10,7 @@ use App\Models\AuditLog;
 use App\Models\IdempotencyKey;
 use App\Models\Server;
 use App\Models\Task;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\Route;
 use Tests\Unit\PublicKeyTest;
 
@@ -86,11 +87,48 @@ class CreateServerTest extends ApiTestCase
         $this->assertSame(2, $server->ipAddresses()->count());
     }
 
+    public function test_a_server_can_be_created_without_a_package()
+    {
+        $payload = $this->payload([
+            'package' => null,
+            'network_model' => 'bridged',
+            'resources' => ['cpu_cores' => 3, 'memory_mib' => 3072, 'disk_mib' => 30720, 'traffic_bytes' => 5 * 1000 ** 4],
+        ]);
+
+        $this->api('POST', '/api/v1/servers', $payload)->assertAccepted()->assertJsonPath('data.status', 'succeeded');
+
+        $server = Server::query()->sole();
+        $this->assertNull($server->package_id);
+        $this->assertSame(3, $server->cpu_cores);
+        $this->assertSame(3072, $server->memory_mib);
+        $this->assertSame(30720, $server->disk_mib);
+        $this->assertSame(5 * 1000 ** 4, $server->traffic_bytes);
+        $this->assertNull($server->port_speed_mbps, 'Not given: unlimited.');
+        $this->assertSame(1, $server->ipAddresses()->count(), 'One IPv4 address unless given.');
+
+        $this->api('GET', "/api/v1/servers/{$server->uuid}")->assertJsonPath('data.package', null);
+    }
+
+    public function test_without_a_package_the_resources_and_network_model_are_required()
+    {
+        $this->api('POST', '/api/v1/servers', $this->payload(['package' => null]))
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['network_model', 'resources.cpu_cores', 'resources.memory_mib', 'resources.disk_mib']);
+
+        $this->api('POST', '/api/v1/servers', $this->payload([
+            'package' => null,
+            'network_model' => 'bridged',
+            'resources' => ['cpu_cores' => 1, 'memory_mib' => 1024, 'disk_mib' => 10240, 'ipv4_count' => 0],
+        ]))->assertUnprocessable()->assertJsonValidationErrors(['resources.ipv4_count']);
+
+        $this->assertDatabaseCount('servers', 0);
+    }
+
     public function test_the_request_is_validated()
     {
         $this->api('POST', '/api/v1/servers', [])
             ->assertUnprocessable()
-            ->assertJsonValidationErrors(['external_id', 'package', 'location', 'os_template', 'hostname']);
+            ->assertJsonValidationErrors(['external_id', 'location', 'os_template', 'hostname', 'network_model', 'resources.cpu_cores']);
 
         $this->api('POST', '/api/v1/servers', $this->payload([
             'hostname' => 'not a hostname',
@@ -127,6 +165,23 @@ class CreateServerTest extends ApiTestCase
             ->assertJsonValidationErrors(['external_id']);
 
         $this->assertDatabaseCount('servers', 1);
+    }
+
+    public function test_a_service_can_get_a_new_server_once_its_old_one_is_terminated()
+    {
+        $this->api('POST', '/api/v1/servers', $this->payload())->assertAccepted();
+        $old = Server::query()->sole();
+
+        $this->api('DELETE', "/api/v1/servers/{$old->uuid}")->assertAccepted();
+        $this->assertSame(ServerStatus::Terminated, $old->refresh()->status);
+
+        $this->api('POST', '/api/v1/servers', $this->payload())->assertAccepted();
+        $this->assertSame(2, Server::query()->where('external_id', 'whmcs-2001')->count());
+
+        // The database refuses a second live server for the service too.
+        $this->expectException(UniqueConstraintViolationException::class);
+        $copy = Server::query()->where('status', '!=', ServerStatus::Terminated)->sole()->replicate(['uuid', 'live_external_id']);
+        $copy->forceFill(['vmid' => 999])->save();
     }
 
     public function test_placement_problems_are_reported_without_a_server()

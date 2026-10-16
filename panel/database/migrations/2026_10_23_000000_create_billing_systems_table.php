@@ -27,9 +27,17 @@ return new class extends Migration
             $table->foreignId('billing_system_id')->nullable()->after('name')->constrained()->restrictOnDelete();
         });
 
+        // Separate steps: SQLite rebuilds the table for a new foreign key and
+        // would lose an index created in the same step.
         Schema::table('servers', function (Blueprint $table) {
             $table->foreignId('billing_system_id')->nullable()->after('package_id')->constrained()->restrictOnDelete();
+        });
+
+        Schema::table('servers', function (Blueprint $table) {
             $table->dropUnique(['external_id']);
+        });
+
+        Schema::table('servers', function (Blueprint $table) {
             $table->unique(['billing_system_id', 'external_id']);
         });
 
@@ -56,7 +64,13 @@ return new class extends Migration
     {
         Schema::table('servers', function (Blueprint $table) {
             $table->dropUnique(['billing_system_id', 'external_id']);
+        });
+
+        Schema::table('servers', function (Blueprint $table) {
             $table->dropConstrainedForeignId('billing_system_id');
+        });
+
+        Schema::table('servers', function (Blueprint $table) {
             $table->unique('external_id');
         });
 

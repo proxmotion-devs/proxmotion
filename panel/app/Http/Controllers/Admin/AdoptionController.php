@@ -77,7 +77,7 @@ class AdoptionController extends Controller
             'cluster' => ['required', 'string', Rule::exists('clusters', 'uuid')],
             'vmid' => ['required', 'integer', 'min:100'],
             'billing_system' => ['nullable', 'required_with:external_id,external_client_id', 'string', Rule::exists('billing_systems', 'uuid')],
-            'external_id' => ['nullable', 'string', 'max:191', Rule::unique('servers', 'external_id')->where('billing_system_id', $billingSystem?->id)],
+            'external_id' => ['nullable', 'string', 'max:191', Rule::unique('servers', 'live_external_id')->where('billing_system_id', $billingSystem?->id)],
             'external_client_id' => ['nullable', 'string', 'max:191'],
             'package' => ['nullable', 'string', Rule::exists('packages', 'uuid')],
             'network_model' => ['required', Rule::enum(NetworkModel::class)],

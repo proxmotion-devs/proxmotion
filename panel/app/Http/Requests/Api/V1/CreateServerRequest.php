@@ -24,7 +24,8 @@ use Illuminate\Validation\Validator;
 /**
  * POST /api/v1/servers. Resources come from the package; "resources" may
  * override them (configurable options of the billing system) within the
- * limits of the admin form.
+ * limits of the admin form. Without a package, "resources" gives CPU, memory
+ * and disk (one IPv4 address unless given) and "network_model" is required.
  */
 class CreateServerRequest extends FormRequest
 {
@@ -37,22 +38,24 @@ class CreateServerRequest extends FormRequest
     {
         return [
             // The service id: unique within the token's billing system; it is how the module finds the server again.
-            'external_id' => ['required', 'string', 'max:191', Rule::unique('servers', 'external_id')->where('billing_system_id', $this->billingSystemId())],
+            'external_id' => ['required', 'string', 'max:191', Rule::unique('servers', 'live_external_id')->where('billing_system_id', $this->billingSystemId())],
             'external_client_id' => ['nullable', 'string', 'max:191'],
-            'package' => ['required', 'string', Rule::exists('packages', 'uuid')->where('is_active', true)],
+            // Without a package, the resources below are given in full (custom resources).
+            'package' => ['nullable', 'string', Rule::exists('packages', 'uuid')->where('is_active', true)],
             'location' => ['required', 'string', Rule::exists('locations', 'uuid')],
             'os_template' => ['required', 'string', Rule::exists('os_templates', 'uuid')->where('is_active', true)],
-            // Default: the first network model the package allows.
-            'network_model' => ['nullable', Rule::enum(NetworkModel::class)->except([NetworkModel::Nat])],
+            // Default: the first network model the package allows; required without a package.
+            'network_model' => ['nullable', 'required_without:package', Rule::enum(NetworkModel::class)->except([NetworkModel::Nat])],
             'hostname' => ['required', 'string', 'max:253', new Hostname],
             // Empty: a random password, fetched once through GET /servers/{id}/password.
             'root_password' => ['nullable', 'string', 'min:12', 'max:128'],
             'ssh_keys' => ['nullable', 'array', 'max:'.self::MAX_SSH_KEYS],
             'ssh_keys.*' => ['string', 'max:16384', new SshPublicKeys],
             'resources' => ['nullable', 'array'],
-            'resources.cpu_cores' => ['nullable', 'integer', 'between:1,512'],
-            'resources.memory_mib' => ['nullable', 'integer', 'between:128,4194304'],
-            'resources.disk_mib' => ['nullable', 'integer', 'between:1024,67108864'],
+            'resources.cpu_cores' => ['nullable', 'required_without:package', 'integer', 'between:1,512'],
+            'resources.memory_mib' => ['nullable', 'required_without:package', 'integer', 'between:128,4194304'],
+            'resources.disk_mib' => ['nullable', 'required_without:package', 'integer', 'between:1024,67108864'],
+            // Without a package: one IPv4 address unless given.
             'resources.ipv4_count' => ['nullable', 'integer', 'between:0,64'],
             'resources.ipv6_count' => ['nullable', 'integer', 'between:0,64'],
             'resources.port_speed_mbps' => ['nullable', 'integer', 'between:1,400000'],
@@ -72,7 +75,7 @@ class CreateServerRequest extends FormRequest
 
             $package = $this->package();
 
-            if (! $package->network_models->contains($this->networkModel())) {
+            if ($package !== null && ! $package->network_models->contains($this->networkModel())) {
                 $validator->errors()->add('network_model', __('This package does not allow the selected network model.'));
             }
 
@@ -122,9 +125,12 @@ class CreateServerRequest extends FormRequest
         return $token instanceof ApiToken ? $token->billing_system_id : abort(401);
     }
 
-    private function package(): Package
+    /**
+     * The chosen package, or null for custom resources.
+     */
+    private function package(): ?Package
     {
-        return Package::query()->where('uuid', $this->string('package'))->firstOrFail();
+        return $this->filled('package') ? Package::query()->where('uuid', $this->string('package'))->firstOrFail() : null;
     }
 
     private function networkModel(): NetworkModel
@@ -133,12 +139,14 @@ class CreateServerRequest extends FormRequest
             return NetworkModel::from($this->string('network_model')->toString());
         }
 
-        return $this->package()->network_models->first(fn (NetworkModel $model) => $model !== NetworkModel::Nat) ?? NetworkModel::Bridged;
+        return $this->package()?->network_models->first(fn (NetworkModel $model) => $model !== NetworkModel::Nat) ?? NetworkModel::Bridged;
     }
 
     private function spec(): ServerSpec
     {
-        $package = ServerSpec::fromPackage($this->package());
+        $package = $this->package();
+        // Without a package, missing values are the defaults of a custom server (validation requires CPU, memory and disk).
+        $package = $package !== null ? ServerSpec::fromPackage($package) : new ServerSpec(cpuCores: 0, memoryMib: 0, diskMib: 0, ipv4Count: 1, ipv6Count: 0);
         $override = fn (string $key, ?int $default): ?int => $this->filled("resources.{$key}") ? $this->integer("resources.{$key}") : $default;
 
         return new ServerSpec(

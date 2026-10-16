@@ -13,6 +13,7 @@ use App\Models\Server;
 use App\Models\Task;
 use App\Models\User;
 use App\Provisioning\Exceptions\ProvisioningException;
+use SensitiveParameter;
 
 /**
  * Creates a Task for a server operation and queues it.
@@ -22,7 +23,7 @@ final class TaskRunner
     /**
      * @throws ProvisioningException when another task is still running for the server
      */
-    public function start(Server $server, TaskType $type, User|ApiToken|null $actor = null): Task
+    public function start(Server $server, TaskType $type, User|ApiToken|null $actor = null, #[SensitiveParameter] ?string $secret = null): Task
     {
         $running = $server->tasks()->whereIn('status', [TaskStatus::Queued, TaskStatus::Running])->exists();
 
@@ -38,6 +39,7 @@ final class TaskRunner
             'type' => $type,
             'status' => TaskStatus::Queued,
             'steps' => [],
+            'secret' => $secret,
         ])->save();
 
         $status = match ($type) {

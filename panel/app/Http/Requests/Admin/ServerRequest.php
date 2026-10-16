@@ -32,7 +32,7 @@ class ServerRequest extends FormRequest
         return [
             // The billing system that owns the server, and the ids of the service and customer there.
             'billing_system' => ['nullable', 'required_with:external_id,external_client_id', 'string', Rule::exists('billing_systems', 'uuid')],
-            'external_id' => ['nullable', 'string', 'max:191', Rule::unique('servers', 'external_id')->where('billing_system_id', $this->billingSystem()?->id)],
+            'external_id' => ['nullable', 'string', 'max:191', Rule::unique('servers', 'live_external_id')->where('billing_system_id', $this->billingSystem()?->id)],
             'external_client_id' => ['nullable', 'string', 'max:191'],
             'location' => ['required', 'string', Rule::exists('locations', 'uuid')],
             // "package": resources from a package; "custom": entered below (admins only).

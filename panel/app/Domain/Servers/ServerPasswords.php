@@ -12,6 +12,7 @@ use App\Models\Task;
 use App\Models\User;
 use App\Provisioning\Exceptions\ProvisioningException;
 use App\Provisioning\TaskRunner;
+use SensitiveParameter;
 
 /**
  * Root password resets and the one-time display of the current password.
@@ -22,13 +23,16 @@ final readonly class ServerPasswords
     public function __construct(private TaskRunner $tasks) {}
 
     /**
+     * Queue a reset to a random password, or (billing API only) to the
+     * password the customer chose in the billing system.
+     *
      * @throws ProvisioningException when another task is still running for the server
      */
-    public function requestReset(Server $server, User|ApiToken $actor, ?string $ipAddress): Task
+    public function requestReset(Server $server, User|ApiToken $actor, ?string $ipAddress, #[SensitiveParameter] ?string $chosenPassword = null): Task
     {
-        $task = $this->tasks->start($server, TaskType::ResetPassword, $actor);
+        $task = $this->tasks->start($server, TaskType::ResetPassword, $actor, $chosenPassword);
 
-        AuditLog::record('server.password_reset', $actor, $server, ['hostname' => $server->hostname], $ipAddress);
+        AuditLog::record('server.password_reset', $actor, $server, ['hostname' => $server->hostname, 'chosen' => $chosenPassword !== null], $ipAddress);
 
         return $task;
     }

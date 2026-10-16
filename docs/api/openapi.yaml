@@ -128,7 +128,9 @@ paths:
       summary: Create a server
       description: |
         Scope: `servers:write`. Resources come from the package; `resources` may override them
-        (configurable options). Placement, VMID and addresses are reserved before the answer; the
+        (configurable options). Without a package (custom resources), `resources` must give
+        `cpu_cores`, `memory_mib` and `disk_mib` (one IPv4 address unless given) and
+        `network_model` is required. Placement, VMID and addresses are reserved before the answer; the
         installation runs as a task. The initial root password is fetched once with
         `GET /servers/{id}/password`.
       operationId: createServer
@@ -300,11 +302,20 @@ paths:
       tags: [Servers]
       summary: Reset the root password
       description: |
-        Scope: `servers:write`. Active servers only. Sets a new random password through the QEMU
-        guest agent; fetch it once with `GET`.
+        Scope: `servers:write`. Active servers only. Sets the root password through the QEMU guest
+        agent: the one given in `root_password` (chosen by the customer in the billing system), or
+        a random one that can be fetched once with `GET`. A chosen password is kept only until the
+        task has used it and is never handed out again.
       operationId: resetServerPassword
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                root_password: { type: [string, 'null'], minLength: 12, maxLength: 128, description: 'Empty: a random password.' }
       responses:
         '202': { $ref: '#/components/responses/TaskAccepted' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
@@ -573,20 +584,20 @@ components:
         version: { type: string, examples: ['24.04'] }
     CreateServer:
       type: object
-      required: [external_id, package, location, os_template, hostname]
+      required: [external_id, location, os_template, hostname]
       properties:
         external_id: { type: string, maxLength: 191, description: Service id in the billing system; unique within the token's billing system }
         external_client_id: { type: [string, 'null'], maxLength: 191, description: Customer id in the billing system }
-        package: { type: string, format: uuid }
+        package: { type: [string, 'null'], format: uuid, description: 'Empty: custom resources from esources.' }
         location: { type: string, format: uuid }
         os_template: { type: string, format: uuid }
-        network_model: { description: 'Default: the first model the package allows.', oneOf: [{ $ref: '#/components/schemas/NetworkModel' }, { type: 'null' }] }
+        network_model: { description: 'Default: the first model the package allows. Required without a package.', oneOf: [{ $ref: '#/components/schemas/NetworkModel' }, { type: 'null' }] }
         hostname: { type: string, maxLength: 253, examples: [web1.example.com] }
         root_password: { type: [string, 'null'], minLength: 12, maxLength: 128, description: 'Empty: a random password.' }
         ssh_keys: { $ref: '#/components/schemas/SshKeys' }
         resources:
           type: [object, 'null']
-          description: Overrides of the package's resources; each is optional.
+          description: Overrides of the package's resources; each is optional. Without a package, cpu_cores, memory_mib and disk_mib are required and ipv4_count defaults to 1.
           properties:
             cpu_cores: { type: integer, minimum: 1, maximum: 512 }
             memory_mib: { type: integer, minimum: 128, maximum: 4194304 }

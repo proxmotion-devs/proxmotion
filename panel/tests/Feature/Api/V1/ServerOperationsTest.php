@@ -176,6 +176,48 @@ class ServerOperationsTest extends ApiTestCase
         $this->api('GET', $this->url('/password'))->assertGone();
     }
 
+    public function test_the_root_password_can_be_set_to_one_chosen_in_the_billing_system()
+    {
+        $this->api('GET', $this->url('/password'))->assertOk();
+
+        $this->api('POST', $this->url('/password'), ['root_password' => 'Chosen-by-the-customer-1'])
+            ->assertAccepted()
+            ->assertJsonPath('data.status', 'succeeded')
+            ->assertDontSee('Chosen-by-the-customer-1');
+
+        $this->assertSame('Chosen-by-the-customer-1', $this->proxmox->guestPasswords[$this->server->vmid]['root']);
+        $this->server->refresh();
+        $this->assertSame('Chosen-by-the-customer-1', $this->server->root_password);
+        $this->assertFalse($this->server->root_password_unrevealed, 'The billing system already knows it.');
+        $this->api('GET', $this->url('/password'))->assertGone();
+
+        $task = Task::query()->where('type', TaskType::ResetPassword)->sole();
+        $this->assertNull($task->secret, 'The chosen password was kept on the task.');
+        $this->assertStringNotContainsString('Chosen-by-the-customer-1', (string) json_encode(AuditLog::query()->get()->toArray()));
+        $this->assertTrue(AuditLog::query()->where('action', 'server.password_reset')->sole()->properties['chosen'] ?? false);
+    }
+
+    public function test_a_chosen_password_is_dropped_when_the_agent_does_not_answer()
+    {
+        $this->proxmox->agentDown[$this->server->vmid] = true;
+
+        $this->api('POST', $this->url('/password'), ['root_password' => 'Chosen-by-the-customer-1'])
+            ->assertAccepted()
+            ->assertJsonPath('data.status', 'failed');
+
+        $this->assertNull(Task::query()->where('type', TaskType::ResetPassword)->sole()->secret);
+        $this->assertSame('a-very-long-password', $this->server->refresh()->root_password);
+    }
+
+    public function test_a_chosen_password_must_be_long_enough()
+    {
+        $this->api('POST', $this->url('/password'), ['root_password' => 'short'])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['root_password']);
+
+        $this->assertSame(1, $this->server->tasks()->count());
+    }
+
     public function test_reverse_dns_of_the_servers_own_address_can_be_set_and_removed()
     {
         $address = $this->server->ipAddresses()->firstOrFail();

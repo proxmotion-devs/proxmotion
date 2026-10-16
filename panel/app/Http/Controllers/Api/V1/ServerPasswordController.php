@@ -18,14 +18,20 @@ use Illuminate\Http\Request;
  */
 class ServerPasswordController extends ApiController
 {
+    /**
+     * A random password (fetch it once with GET), or the one chosen in the
+     * billing system ("root_password"), which then is not handed out again.
+     */
     public function reset(Request $request, Server $server, ServerPasswords $passwords): JsonResponse
     {
+        $chosen = $request->validate(['root_password' => ['nullable', 'string', 'min:12', 'max:128']])['root_password'] ?? null;
+
         if ($server->status !== ServerStatus::Active) {
             return $this->notPossible($server);
         }
 
         try {
-            return $this->accepted($passwords->requestReset($server, $this->token($request), $request->ip()));
+            return $this->accepted($passwords->requestReset($server, $this->token($request), $request->ip(), $chosen));
         } catch (ProvisioningException $e) {
             return $this->conflict($e->translatedMessage());
         }

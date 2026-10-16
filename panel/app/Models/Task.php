@@ -24,6 +24,7 @@ use Illuminate\Support\Carbon;
  * @property TaskType $type
  * @property TaskStatus $status
  * @property list<array{key: string, status: string, message: string|null, finished_at: string|null}> $steps
+ * @property string|null $secret encrypted input of the task (a chosen root password); cleared once used
  * @property string|null $error
  * @property Carbon|null $started_at
  * @property Carbon|null $finished_at
@@ -35,6 +36,8 @@ class Task extends Model
 {
     use HasPublicUuid;
 
+    protected $hidden = ['secret'];
+
     /**
      * @return array<string, string>
      */
@@ -44,6 +47,7 @@ class Task extends Model
             'type' => TaskType::class,
             'status' => TaskStatus::class,
             'steps' => 'array',
+            'secret' => 'encrypted',
             'started_at' => 'datetime',
             'finished_at' => 'datetime',
         ];
