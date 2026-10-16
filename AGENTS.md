@@ -148,7 +148,7 @@ proxmotion/
 │   ├── console-proxy/                    # Node.js WebSocket relay for the noVNC console (ADR 0002)
 │   ├── proxmox/                          # Scripts admins run on a Proxmox node (prepare-images.sh: build images off-node, natively or via images.Dockerfile; build-templates.sh: create templates on the node with qm/pvesh only)
 │   └── installer/                        # Native Debian/Ubuntu installer (install.sh, nginx, systemd units)
-└── docs/                                 # Install guide, admin guide, guides/ (os-templates.md, iso-templates.md), API reference (OpenAPI), ADRs
+└── docs/                                 # Install guide, admin guide, guides/ (os-templates.md, iso-templates.md, real-proxmox-verification.md), API reference (OpenAPI), ADRs
 ```
 
 ### 3.3 Layering rules
@@ -405,7 +405,7 @@ This panel manages customer infrastructure and is internet-facing. Agents **must
 - **Provisioning:** use `Tests\Support\FakeProxmoxCluster` (an in-memory Proxmox: clone, config, resize, power incl. reboot, delete, firewall, permissions, active tasks, vncproxy, and a guest agent with files, commands, passwords and `agentDown`; `/cluster/resources` derives `maxcpu`/`maxmem`/`maxdisk` from the config). It answers every URL, so fake other HTTP services (e.g. PowerDNS) in tests that do not install it with `Tests\Concerns\BuildsInfrastructure`. The test queue is synchronous, so `ServerCreator::create()` runs the whole pipeline.
 - **Frontend:** Vitest tests live next to the code as `*.test.ts` (`import { … } from 'vite-plus/test'`); mock `@inertiajs/vue3` and provide `$t` through `global.mocks` when mounting components.
 - **WHMCS module:** functions tested with the panel API mocked.
-- **Integration tests** (`@group integration`, `@group recipes`): require a real test Proxmox, skipped if `PROXMOX_TEST_*` env vars are missing; touch only resources in the `proxmotion-test` pool.
+- **Integration tests** (planned: `tests/Integration`, suite `Integration`, run with `php artisan test --testsuite=Integration`; later `@group recipes`): require a real test Proxmox, skipped if `PROXMOX_TEST_*` env vars are missing; touch only VMIDs from `PROXMOX_TEST_VMID_FROM` up in the `proxmotion-test` pool, refuse root-equivalent tokens and clean up after themselves. Design and test list: [docs/guides/real-proxmox-verification.md](docs/guides/real-proxmox-verification.md).
 
 ---
 
@@ -450,7 +450,7 @@ Each phase must be usable on its own and complete with passing tests. Do not ski
 
 ### Not yet verified against real systems
 
-Everything above was tested with faked HTTP only (`FakeProxmoxCluster`, `FakesProxmox`, `Http::fake()`). Before customers use the panel, check these on a test Proxmox VE (8.x and 9.x where noted) in the `proxmotion-test` pool, and turn what you can into `@group integration` tests. Strike an item through with the date once it is verified.
+Everything above was tested with faked HTTP only (`FakeProxmoxCluster`, `FakesProxmox`, `Http::fake()`). Before customers use the panel, check these on a test Proxmox VE (8.x and 9.x where noted) in the `proxmotion-test` pool — step by step in [docs/guides/real-proxmox-verification.md](docs/guides/real-proxmox-verification.md) — and turn what you can into integration tests. Strike an item through with the date once it is verified.
 
 **Proxmox API and permissions**
 - [ ] Token with exactly the privileges the permission check asks for (incl. `VM.Console`, `VM.GuestAgent.Unrestricted` on 9.x / `VM.Monitor` on 8.x) can do every operation, and the excess-privilege warning is right.
