@@ -1,0 +1,9 @@
+# PHPStan for the WHMCS module, run from panel/ (composer types:check).
+# phpVersion 7.2: WHMCS 8.0 still runs on PHP 7.2, so newer syntax is reported.
+parameters:
+    level: 6
+    phpVersion: 70200
+    paths:
+        - modules
+    scanFiles:
+        - phpstan/whmcs.stub

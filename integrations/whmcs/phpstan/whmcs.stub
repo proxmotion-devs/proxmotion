@@ -1,0 +1,22 @@
+<?php
+
+// Signatures of the WHMCS functions the module calls (for PHPStan only).
+
+/**
+ * @param mixed $request
+ * @param mixed $response
+ * @param mixed $processedData
+ * @param array<int, string> $replaceVars
+ */
+function logModuleCall(string $module, string $action, $request, $response, $processedData = '', array $replaceVars = []): void
+{
+}
+
+/**
+ * @param array<string, mixed> $values
+ * @return array<string, mixed>
+ */
+function localAPI(string $command, array $values = [], string $adminUser = ''): array
+{
+    return [];
+}

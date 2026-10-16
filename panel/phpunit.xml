@@ -8,6 +8,10 @@
         <testsuite name="Unit">
             <directory>tests/Unit</directory>
         </testsuite>
+        <!-- WHMCS module (integrations/whmcs), with the Proxmotion API faked. -->
+        <testsuite name="Whmcs">
+            <directory>../integrations/whmcs/tests</directory>
+        </testsuite>
         <testsuite name="Feature">
             <directory>tests/Feature</directory>
         </testsuite>
