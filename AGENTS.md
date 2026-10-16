@@ -333,7 +333,8 @@ npm run types:check               # vue-tsc
 npm run test                      # Vitest (frontend)
 composer lint:check               # Pint (`composer lint` to fix)
 composer types:check              # PHPStan level 8
-php artisan test                  # Pest
+php artisan test                  # Pest (the Integration suite is skipped here)
+composer test:integration         # real TEST Proxmox from .env.integration (see .env.integration.example)
 php artisan apps:validate         # recipe schema validation (from Phase 5)
 shellcheck recipes/**/*.sh ../deploy/installer/*.sh ../deploy/proxmox/*.sh
 
@@ -405,7 +406,7 @@ This panel manages customer infrastructure and is internet-facing. Agents **must
 - **Provisioning:** use `Tests\Support\FakeProxmoxCluster` (an in-memory Proxmox: clone, config, resize, power incl. reboot, delete, firewall, permissions, active tasks, vncproxy, and a guest agent with files, commands, passwords and `agentDown`; `/cluster/resources` derives `maxcpu`/`maxmem`/`maxdisk` from the config). It answers every URL, so fake other HTTP services (e.g. PowerDNS) in tests that do not install it with `Tests\Concerns\BuildsInfrastructure`. The test queue is synchronous, so `ServerCreator::create()` runs the whole pipeline.
 - **Frontend:** Vitest tests live next to the code as `*.test.ts` (`import { … } from 'vite-plus/test'`); mock `@inertiajs/vue3` and provide `$t` through `global.mocks` when mounting components.
 - **WHMCS module:** functions tested with the panel API mocked.
-- **Integration tests** (planned: `tests/Integration`, suite `Integration`, run with `php artisan test --testsuite=Integration`; later `@group recipes`): require a real test Proxmox, skipped if `PROXMOX_TEST_*` env vars are missing; touch only VMIDs from `PROXMOX_TEST_VMID_FROM` up in the `proxmotion-test` pool, refuse root-equivalent tokens and clean up after themselves. Design and test list: [docs/guides/real-proxmox-verification.md](docs/guides/real-proxmox-verification.md).
+- **Integration tests** (`tests/Integration`, suite `Integration`, extend `IntegrationTestCase`; later `@group recipes`): run only with `composer test:integration` (sets `PROXMOX_INTEGRATION=1`) and settings in the uncommitted `panel/.env.integration`, otherwise skipped — never run them unless the user asks. They touch only VMIDs from `PROXMOX_TEST_VMID_FROM` up in the test pool (register created VMs with `trackVm()`; `tearDown` deletes them), and refuse root-equivalent tokens. Written so far: `ConnectionTest`, `PermissionTest`. Design and test list: [docs/guides/real-proxmox-verification.md](docs/guides/real-proxmox-verification.md).
 
 ---
 

@@ -23,7 +23,7 @@ final readonly class PermissionChecker
     /**
      * Privileges that let a token take over the whole Proxmox installation.
      */
-    private const DANGEROUS_PRIVILEGES = ['Permissions.Modify', 'User.Modify', 'Realm.Allocate', 'Sys.Modify', 'Sys.Console'];
+    public const DANGEROUS_PRIVILEGES = ['Permissions.Modify', 'User.Modify', 'Realm.Allocate', 'Sys.Modify', 'Sys.Console'];
 
     public function __construct(private ProxmoxClientFactory $clients) {}
 

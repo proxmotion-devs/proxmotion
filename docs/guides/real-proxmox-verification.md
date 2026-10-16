@@ -219,8 +219,10 @@ deletes one PTR in the test zone.
 
 ### 6.3 Order of work
 
-1. Base class, env handling, safety checks and cleanup, plus `ConnectionTest` and
-   `PermissionTest` — they need no VM and prove the setup.
+1. ~~Base class, env handling, safety checks and cleanup, plus `ConnectionTest` and
+   `PermissionTest`~~ — done (`tests/Integration`). Copy `panel/.env.integration.example`
+   to `panel/.env.integration`, fill it in and run `composer test:integration` inside
+   `panel/`. Without that file (or without the composer script) every test is skipped.
 2. `ProvisioningTest` and `GuestAgentTest` — they cover most of the risky code.
 3. `PowerTest`, `TaskWaiterTest`, `ReinstallTest`, `DriftTest`, `ConsoleTicketTest`.
 4. Optional PowerDNS group.
