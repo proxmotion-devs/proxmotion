@@ -27,6 +27,12 @@ class FakeProxmoxCluster
     /** When set, clone tasks of this VMID fail with this exit status. */
     public ?string $failClone = null;
 
+    /** @var array<int, list<string>> UPIDs reported as running per VMID; they finish once polled */
+    public array $activeTasks = [];
+
+    /** @var list<string> UPIDs whose status was requested, in order */
+    public array $polledTasks = [];
+
     public function addTemplate(int $vmid, string $node = 'pve1', ?string $pool = 'proxmotion', int $diskMib = 3584): self
     {
         $this->vms[$vmid] = [
@@ -90,6 +96,10 @@ class FakeProxmoxCluster
             $path === '/cluster/nextid' => $this->nextId($query),
             $path === '/access/permissions' => $this->ok([$query['path'] => array_fill_keys($this->permissions[$query['path']] ?? [], 1)]),
             $path === '/cluster/resources' => $this->ok($this->resources()),
+            (bool) preg_match('#^/nodes/([^/]+)/tasks$#', $path) => $this->ok(array_map(
+                fn (string $upid) => ['upid' => $upid],
+                $this->activeTasks[(int) ($query['vmid'] ?? 0)] ?? [],
+            )),
             (bool) preg_match('#^/nodes/([^/]+)/tasks/(.+)/status$#', $path, $m) => $this->taskStatus(urldecode($m[2])),
             (bool) preg_match('#^/nodes/([^/]+)/qemu/(\d+)(.*)$#', $path, $m) => $this->qemu($method, $m[1], (int) $m[2], $m[3], $data),
             default => Http::response(['data' => null], 501),
@@ -167,6 +177,11 @@ class FakeProxmoxCluster
     private function taskStatus(string $upid): PromiseInterface
     {
         $failed = str_contains($upid, ':qmclone-fail:');
+        $this->polledTasks[] = $upid;
+
+        foreach ($this->activeTasks as $vmid => $upids) {
+            $this->activeTasks[$vmid] = array_values(array_diff($upids, [$upid]));
+        }
 
         return $this->ok(['status' => 'stopped', 'exitstatus' => $failed ? (string) $this->failClone : 'OK']);
     }

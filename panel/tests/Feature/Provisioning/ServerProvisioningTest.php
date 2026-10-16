@@ -204,6 +204,20 @@ class ServerProvisioningTest extends TestCase
         $this->assertSame(0, IpAddress::query()->whereNotNull('server_id')->count());
     }
 
+    public function test_terminating_waits_for_running_proxmox_tasks_that_hold_the_vm_lock()
+    {
+        $server = app(ServerCreator::class)->create($this->order());
+        $shutdown = "UPID:pve1:00005678:00ABCDEF:6512ABCD:qmshutdown:{$server->vmid}:root@pam:";
+        $this->proxmox->activeTasks[$server->vmid] = [$shutdown];
+        $this->proxmox->polledTasks = [];
+
+        app(TaskRunner::class)->start($server, TaskType::Terminate);
+
+        $this->assertSame(ServerStatus::Terminated, $server->refresh()->status);
+        $this->assertSame($shutdown, $this->proxmox->polledTasks[0]);
+        $this->assertStringContainsString(':qmstop:', $this->proxmox->polledTasks[1]);
+    }
+
     public function test_only_one_task_runs_at_a_time()
     {
         $server = Server::factory()->for($this->node)->create();

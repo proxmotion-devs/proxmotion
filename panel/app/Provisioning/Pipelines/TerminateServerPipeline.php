@@ -27,6 +27,9 @@ final readonly class TerminateServerPipeline
         $qemu = $client->qemu($server->node->name);
 
         if ($qemu->config($server->vmid) !== null) {
+            // A shutdown, backup or other job may still hold the VM lock.
+            $client->taskWaiter()->waitForVm($server->node->name, $server->vmid);
+
             if ($qemu->status($server->vmid)['status'] === 'running') {
                 $client->taskWaiter()->wait($qemu->power($server->vmid, 'stop'), timeoutSeconds: 120);
             }

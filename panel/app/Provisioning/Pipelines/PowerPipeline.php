@@ -21,6 +21,7 @@ final readonly class PowerPipeline
         $server = $task->server;
         $client = $this->clients->forCluster($server->cluster);
         $qemu = $client->qemu($server->node->name);
+        $client->taskWaiter()->waitForVm($server->node->name, $server->vmid);
 
         if ($qemu->status($server->vmid)['status'] === 'running') {
             $client->taskWaiter()->wait($qemu->power($server->vmid, 'shutdown'), timeoutSeconds: 180);
@@ -35,6 +36,7 @@ final readonly class PowerPipeline
         $server = $task->server;
         $client = $this->clients->forCluster($server->cluster);
         $qemu = $client->qemu($server->node->name);
+        $client->taskWaiter()->waitForVm($server->node->name, $server->vmid);
 
         if ($qemu->status($server->vmid)['status'] !== 'running') {
             $client->taskWaiter()->wait($qemu->power($server->vmid, 'start'), timeoutSeconds: 300);

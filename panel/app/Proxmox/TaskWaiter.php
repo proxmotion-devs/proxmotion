@@ -44,4 +44,24 @@ final readonly class TaskWaiter
             Sleep::for($pollSeconds)->seconds();
         }
     }
+
+    /**
+     * Wait until no task runs for the guest, so the next operation does not
+     * fail with "can't lock file ... got timeout". Whether those tasks
+     * succeeded does not matter.
+     *
+     * @throws ProxmoxTaskFailed when a task does not finish in time
+     */
+    public function waitForVm(string $node, int $vmid, int $timeoutSeconds = 300, int $pollSeconds = 2): void
+    {
+        foreach ($this->client->tasks()->activeForVm($node, $vmid) as $upid) {
+            try {
+                $this->wait($upid, $timeoutSeconds, $pollSeconds);
+            } catch (ProxmoxTaskFailed $e) {
+                if ($this->client->tasks()->status($upid)['running']) {
+                    throw $e;
+                }
+            }
+        }
+    }
 }

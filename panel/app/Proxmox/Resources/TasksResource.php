@@ -24,4 +24,24 @@ final readonly class TasksResource
             'exitStatus' => is_scalar($data['exitstatus'] ?? null) ? (string) $data['exitstatus'] : null,
         ];
     }
+
+    /**
+     * Tasks still running for one guest (e.g. a shutdown started from the
+     * Proxmox UI). They hold the VM lock until they finish.
+     *
+     * @return list<Upid>
+     */
+    public function activeForVm(string $node, int $vmid): array
+    {
+        $data = $this->client->get('/nodes/'.rawurlencode($node).'/tasks', ['vmid' => $vmid, 'source' => 'active']);
+        $upids = [];
+
+        foreach (is_array($data) ? $data : [] as $task) {
+            if (is_array($task) && is_string($task['upid'] ?? null)) {
+                $upids[] = Upid::parse($task['upid']);
+            }
+        }
+
+        return $upids;
+    }
 }
