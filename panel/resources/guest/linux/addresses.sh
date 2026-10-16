@@ -89,6 +89,37 @@ done < "$WANTED"
 
 cp "$WANTED" "$STATE"
 
+# Make an IPv4 address the first one of the interface: the kernel's primary
+# address of its subnet, which tools such as `hostname -I` and control panels
+# report. The addresses listed before it are removed and added back after it
+# (promote_secondaries keeps the others in place meanwhile).
+make_first_ipv4() {
+    sysctl -qw "net.ipv4.conf.$iface.promote_secondaries=1" || true
+    moved=""
+    rounds=0
+
+    while [ "$rounds" -lt 64 ]; do
+        first=$(ip -4 -o addr show dev "$iface" scope global | while read -r _ _ _ address _; do
+            echo "$address"
+            break
+        done)
+
+        if [ -z "$first" ] || [ "${first%/*}" = "${1%/*}" ]; then
+            break
+        fi
+
+        ip -4 addr del "$first" dev "$iface"
+        moved="$moved $first"
+        rounds=$((rounds + 1))
+    done
+
+    for address in $moved; do
+        if valid "$address"; then
+            ip -4 addr replace "$address" dev "$iface"
+        fi
+    done
+}
+
 # The primary address of one IP version (4 or 6), when it is not the address
 # cloud-init configured: cloud-init's settings are never changed on a running
 # server, because it would treat the next boot as a new instance (ADR 0011).
@@ -109,6 +140,9 @@ apply_primary() {
         # Back to cloud-init's own address: restore its default route once.
         if [ -n "$previous" ]; then
             ip -"$family" addr replace "$cloud" dev "$iface"
+            if [ "$family" = 4 ]; then
+                make_first_ipv4 "$cloud"
+            fi
             if valid_gateway "$gateway"; then
                 ip -"$family" route replace default via "$gateway" dev "$iface" onlink src "${primary%/*}"
             fi
@@ -126,6 +160,9 @@ apply_primary() {
     fi
 
     ip -"$family" addr replace "$primary" dev "$iface"
+    if [ "$family" = 4 ]; then
+        make_first_ipv4 "$primary"
+    fi
     if valid_gateway "$gateway"; then
         ip -"$family" route replace default via "$gateway" dev "$iface" onlink src "${primary%/*}"
     fi

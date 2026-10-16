@@ -50,6 +50,8 @@ class PrimaryAddressTest extends IntegrationTestCase
         $agent = $client->guestAgent($node);
         $addresses = fn () => $agent->run($server->vmid, ['ip', '-o', '-4', 'addr', 'show', 'scope', 'global'])->stdout;
         $route = fn () => $agent->run($server->vmid, ['ip', '-4', 'route', 'show', 'default'])->stdout;
+        // The kernel's primary (first, not "secondary") address: what `hostname -I` and panels report.
+        $first = fn () => strtok($addresses(), "\n");
         $changer = app(PrimaryAddressChanger::class);
         $admin = User::factory()->create();
         $ipconfig = $client->qemu($node)->config($server->vmid)['ipconfig0'] ?? null;
@@ -61,6 +63,7 @@ class PrimaryAddressTest extends IntegrationTestCase
         $this->assertNotNull($step, (string) json_encode($task->steps));
         $this->assertNull($step['message'], (string) $step['message']);
         $this->assertStringContainsString('src 192.0.2.11', $route(), 'The default route does not use the new primary.');
+        $this->assertStringContainsString('192.0.2.11/24', (string) $first(), 'The new primary is not the first address.');
         $this->assertStringContainsString('192.0.2.10/24', $addresses(), 'The old primary must stay as an additional address.');
         $this->assertSame($ipconfig, $client->qemu($node)->config($server->vmid)['ipconfig0'] ?? null, 'cloud-init settings were changed.');
 
@@ -68,11 +71,13 @@ class PrimaryAddressTest extends IntegrationTestCase
         $this->runTask($server, TaskType::Reboot);
         $this->waitForAgent($server->vmid, $node, 600);
         $this->assertStringContainsString('src 192.0.2.11', $route(), 'The primary did not survive the reboot.');
+        $this->assertStringContainsString('192.0.2.11/24', (string) $first(), 'After the reboot the new primary is not the first address.');
 
         // Replaced by a free address: the old primary is released and removed inside the guest.
         $task = $changer->request($server->refresh(), IpVersion::V4, '192.0.2.12', $admin, null)->refresh();
         $this->assertSame(TaskStatus::Succeeded, $task->status, (string) $task->error);
         $this->assertStringContainsString('src 192.0.2.12', $route());
+        $this->assertStringContainsString('192.0.2.12/24', (string) $first());
         $this->assertStringNotContainsString('192.0.2.11/', $addresses(), 'The released primary is still configured.');
         $this->assertStringContainsString('192.0.2.10/24', $addresses());
     }
