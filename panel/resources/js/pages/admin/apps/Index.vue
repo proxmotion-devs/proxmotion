@@ -1,14 +1,20 @@
 <script setup lang="ts">
-import { Head, router, usePage } from '@inertiajs/vue3';
+import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3';
+import { Pencil, Plus } from '@lucide/vue';
+import { ref } from 'vue';
+import FormDialog from '@/components/admin/FormDialog.vue';
+import FormField from '@/components/admin/FormField.vue';
 import StatusBadge from '@/components/admin/StatusBadge.vue';
 import Heading from '@/components/Heading.vue';
 import { Button } from '@/components/ui/button';
-import { index, update } from '@/routes/admin/apps';
+import { Input } from '@/components/ui/input';
+import { edit, index, store, update } from '@/routes/admin/apps';
 import type { AppText } from '@/types/admin';
 
 /**
- * App recipes synced from panel/recipes with `php artisan apps:sync`
- * (docs/adr/0015). Inactive apps are neither listed nor installable.
+ * Apps: bundled recipes synced from panel/recipes with `php artisan apps:sync`
+ * (docs/adr/0015) and custom apps written in the editor (docs/adr/0018).
+ * Inactive apps are neither listed nor installable.
  */
 defineOptions({
     layout: { breadcrumbs: [{ title: 'Apps', href: index() }] },
@@ -41,16 +47,41 @@ const toggle = (slug: string, active: boolean) =>
         data: { is_active: active },
         preserveScroll: true,
     });
+
+const createOpen = ref(false);
+const createForm = useForm({ slug: '', name: '' });
+
+const submitCreate = () =>
+    createForm.submit(store(), {
+        onSuccess: () => {
+            const slug = createForm.slug;
+            createOpen.value = false;
+            router.visit(edit(slug));
+        },
+    });
 </script>
 
 <template>
     <Head title="Apps" />
 
     <div class="flex flex-col gap-6 p-4">
-        <Heading
-            title="Apps"
-            description="Apps customers can install on their servers through the billing system. New and updated recipes are added with php artisan apps:sync."
-        />
+        <div class="flex flex-wrap items-start justify-between gap-4">
+            <Heading
+                title="Apps"
+                description="Apps customers can install on their servers through the billing system. Bundled apps come with the panel (php artisan apps:sync); write your own or copy a bundled one to change it."
+            />
+            <Button
+                data-test="new-app"
+                @click="
+                    createForm.reset();
+                    createForm.clearErrors();
+                    createOpen = true;
+                "
+            >
+                <Plus class="h-4 w-4" />
+                {{ $t('New app') }}
+            </Button>
+        </div>
 
         <div class="overflow-x-auto rounded-xl border">
             <table class="w-full text-sm">
@@ -105,8 +136,24 @@ const toggle = (slug: string, active: boolean) =>
                             <div v-for="os in app.os" :key="os">{{ os }}</div>
                         </td>
                         <td class="px-4 py-3">{{ app.installed_count }}</td>
-                        <td class="px-4 py-3 text-right">
+                        <td class="px-4 py-3 text-right whitespace-nowrap">
                             <Button
+                                as-child
+                                variant="outline"
+                                size="sm"
+                                class="mr-2"
+                            >
+                                <Link :href="edit(app.slug)">
+                                    <Pencil class="h-4 w-4" />
+                                    {{
+                                        app.source === 'custom'
+                                            ? $t('Edit')
+                                            : $t('View')
+                                    }}
+                                </Link>
+                            </Button>
+                            <Button
+                                v-if="app.published"
                                 variant="outline"
                                 size="sm"
                                 @click="toggle(app.slug, !app.is_active)"
@@ -135,4 +182,25 @@ const toggle = (slug: string, active: boolean) =>
             </table>
         </div>
     </div>
+
+    <FormDialog
+        v-model:open="createOpen"
+        title="New app"
+        description="A custom app starts as a draft made from the recipe skeleton. It is offered to customers once you publish it."
+        submit-label="Create"
+        :processing="createForm.processing"
+        @submit="submitCreate"
+    >
+        <FormField
+            label="Slug"
+            for="new_slug"
+            hint="Lower-case letters, digits and dashes, e.g. uptime-kuma. It cannot be changed later."
+            :error="createForm.errors.slug"
+        >
+            <Input id="new_slug" v-model="createForm.slug" class="font-mono" />
+        </FormField>
+        <FormField label="Name" for="new_name" :error="createForm.errors.name">
+            <Input id="new_name" v-model="createForm.name" />
+        </FormField>
+    </FormDialog>
 </template>

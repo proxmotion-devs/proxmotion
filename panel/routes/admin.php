@@ -73,6 +73,8 @@ Route::get('apps', [AppController::class, 'index'])->name('apps.index');
 Route::patch('apps/{appRecipe}', [AppController::class, 'update'])->name('apps.update');
 // Recipe editor (docs/adr/0018).
 Route::post('apps', [AppRecipeController::class, 'store'])->name('apps.store');
+Route::get('apps/{appRecipe}/edit', [AppRecipeController::class, 'edit'])->name('apps.edit');
+Route::get('apps/{appRecipe}/diff', [AppRecipeController::class, 'diff'])->name('apps.diff');
 Route::post('apps/{appRecipe}/copy', [AppRecipeController::class, 'copy'])->name('apps.copy');
 Route::put('apps/{appRecipe}/draft', [AppRecipeController::class, 'saveDraft'])->name('apps.draft.save');
 Route::delete('apps/{appRecipe}/draft', [AppRecipeController::class, 'discardDraft'])->name('apps.draft.discard');

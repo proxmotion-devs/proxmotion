@@ -193,6 +193,46 @@ class RecipeEditorTest extends AdminTestCase
             ->where('apps.2.version', null));
     }
 
+    public function test_the_editor_opens_bundled_apps_read_only_and_custom_drafts_with_their_errors()
+    {
+        $this->get(route('admin.apps.edit', $this->app('wireguard')))->assertOk()->assertInertia(fn ($page) => $page
+            ->component('admin/apps/Edit')
+            ->where('app.editable', false)
+            ->where('app.source', 'bundled')
+            ->where('draft', null)
+            ->where('published.version', '1.2.0')
+            ->where('published.definition.slug', 'wireguard')
+            ->where('published.files', fn ($files) => collect($files)->has('lib.sh'))
+            ->where('library', fn ($library) => collect($library)->has('proxmotion.sh'))
+            ->where('capabilities', fn ($capabilities) => collect($capabilities)->contains('dnf')));
+
+        $this->post(route('admin.apps.copy', $this->app('wireguard')), ['slug' => 'my-vpn', 'name' => 'My VPN']);
+
+        $this->get(route('admin.apps.edit', $this->app('my-vpn')))->assertInertia(fn ($page) => $page
+            ->where('app.editable', true)
+            ->where('app.copied_from', ['slug' => 'wireguard', 'name' => 'WireGuard', 'version' => '1.2.0'])
+            ->where('app.upstream_version', null)
+            ->where('draft.version', '1.0.0')
+            ->where('draft.errors', [])
+            ->where('versions.0.status', 'draft'));
+    }
+
+    public function test_versions_are_compared_in_the_history()
+    {
+        $this->post(route('admin.apps.copy', $this->app('docker')), ['slug' => 'my-docker', 'name' => 'My Docker']);
+        $app = $this->app('my-docker');
+        $this->post(route('admin.apps.publish', $app), ['bump' => 'patch']);
+        $published = $app->refresh()->current();
+        $files = $published->files;
+        $files['install.sh'] .= "echo changed\n";
+        $this->save($app, Yaml::dump($published->definition, 6, 4), $files);
+
+        $this->getJson(route('admin.apps.diff', ['appRecipe' => $app, 'from' => '1.0.0', 'to' => 'draft']))
+            ->assertOk()
+            ->assertJsonPath('diff', fn (string $diff) => str_contains($diff, '+echo changed') && str_contains($diff, '--- a/install.sh'));
+        $this->getJson(route('admin.apps.diff', ['appRecipe' => $app, 'from' => '9.9.9', 'to' => 'draft']))->assertNotFound();
+    }
+
     public function test_sync_never_replaces_a_custom_app_with_the_same_slug()
     {
         // A custom app made before a panel update brought a bundled recipe with its slug.

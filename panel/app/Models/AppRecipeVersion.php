@@ -59,6 +59,16 @@ class AppRecipeVersion extends Model
     }
 
     /**
+     * The administrator who published (or reviewed) the version.
+     *
+     * @return BelongsTo<User, $this>
+     */
+    public function reviewer(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'reviewed_by');
+    }
+
+    /**
      * @return HasMany<AppInstallation, $this>
      */
     public function installations(): HasMany

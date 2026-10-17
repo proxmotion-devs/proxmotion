@@ -357,6 +357,14 @@ final readonly class RecipeEditor
     }
 
     /**
+     * The diff between two stored versions (either may be the draft), for the editor's history.
+     */
+    public function diffBetween(AppRecipeVersion $from, AppRecipeVersion $to): string
+    {
+        return $this->diff($from, $to->definition, $to->files);
+    }
+
+    /**
      * The diff of recipe.yaml and every file against a version (or against nothing).
      *
      * @param  array<string, mixed>  $definition

@@ -1,6 +1,6 @@
 # 18. Admin recipe editor: custom apps, copies, drafts and trial runs
 
-- **Status:** Accepted (phase 1 built 2026-10-17)
+- **Status:** Accepted (phases 1 and 2 built 2026-10-17)
 - **Date:** 2026-10-17
 - **Builds on:** ADR 0015 (App Marketplace), ADR 0016 (recipe format v2, stored versions, uninstall and actions). Distribution between panels: ADR 0017.
 
@@ -66,7 +66,7 @@ Saving a draft, publishing, copying, deactivating and deleting are written to `A
 ## Phases
 
 1. **Back end:** sources and copy, version statuses and publish, in-memory validation, deactivate and delete rules, audit with diffs; admin endpoints and tests. *Built 2026-10-17:* `RecipeEditor` (create from `RecipeSkeleton`, copy, save and discard the draft, publish with a patch/minor/major bump, delete), `RecipeLoader::validate()` for recipes in memory, `TextDiff` for the audit diffs (recipe.yaml without its version, and every file), `app_recipes.copied_from_version_id`, statuses `draft`, `published`, `archived` (earlier `approved` versions migrated), `apps:sync` archives the previous bundled version and skips a slug a custom app holds. Admin routes under `admin.apps.*` (`store`, `copy`, `draft.save` with YAML or a mapping plus files, `draft.discard`, `publish`, `destroy`) answer like the other admin forms (redirect, errors per field); the editor page comes with phase 2.
-2. **Editor UI:** app list (bundled/custom, copy, new), editor with builders and code editor, YAML view, history and diffs.
+2. **Editor UI:** app list (bundled/custom, copy, new), editor with builders and code editor, YAML view, history and diffs. *Built 2026-10-17:* *Admin → Apps* has *New app* and *Edit/View*; `admin/apps/Edit` has tabs General, Compatibility, Inputs and outputs, Scripts (file list, lifecycle and includes, `_lib` helpers read-only), Actions, YAML (js-yaml) and History (versions and `admin.apps.diff`); code is edited in CodeMirror 6. The page sends recipe.yaml as YAML text with the files; bundled apps open read-only with *Copy*.
 3. **Trial runs and logs:** test server flag, trial installations of drafts, `run.log` viewer.
 4. **Import/export** as zip.
 5. Then **order-time and reinstall installs** (ADR 0016 phase 4 = Phase 5b) and the **catalog** of ADR 0017.

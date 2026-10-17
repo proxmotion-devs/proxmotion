@@ -7,15 +7,22 @@ namespace App\Http\Controllers\Admin;
 use App\Domain\Apps\RecipeEditor;
 use App\Domain\Apps\RecipeEditRefused;
 use App\Domain\Apps\RecipeInvalid;
+use App\Domain\Apps\RecipeLoader;
 use App\Enums\AppRecipeVersionStatus;
+use App\Enums\TemplateCapability;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Admin\OsTemplateRequest;
 use App\Models\AppRecipe;
+use App\Models\AppRecipeVersion;
 use App\Models\User;
 use Illuminate\Container\Attributes\CurrentUser;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
+use Inertia\Inertia;
+use Inertia\Response;
 use Symfony\Component\Yaml\Exception\ParseException;
 use Symfony\Component\Yaml\Yaml;
 
@@ -27,6 +34,71 @@ use Symfony\Component\Yaml\Yaml;
 class AppRecipeController extends Controller
 {
     public function __construct(private readonly RecipeEditor $editor) {}
+
+    /**
+     * The editor: the draft (or the published version to start one from),
+     * the versions and what the forms offer. Bundled apps open read-only.
+     */
+    public function edit(AppRecipe $appRecipe, RecipeLoader $loader): Response
+    {
+        $appRecipe->load(['latestVersion', 'copiedFrom.app.latestVersion']);
+        $draft = $appRecipe->draft();
+        $published = $appRecipe->latestVersion;
+        $origin = $appRecipe->copiedFrom;
+        $newer = $origin?->app->latestVersion;
+
+        return Inertia::render('admin/apps/Edit', [
+            'app' => [
+                'slug' => $appRecipe->slug,
+                'name' => $appRecipe->name,
+                'source' => $appRecipe->source,
+                'is_active' => $appRecipe->is_active,
+                'editable' => $appRecipe->isCustom(),
+                'installed' => $appRecipe->installations()->exists(),
+                'copied_from' => $origin === null ? null : ['slug' => $origin->app->slug, 'name' => $origin->app->name, 'version' => $origin->version],
+                // The original got a newer version since the copy (docs/adr/0018 §2).
+                'upstream_version' => $newer !== null && version_compare($newer->version, $origin->version ?? '0', '>') ? $newer->version : null,
+            ],
+            'draft' => $draft === null ? null : [
+                'version' => $draft->version,
+                'definition' => $draft->definition,
+                'files' => (object) $draft->files,
+                'errors' => $this->editor->errors($draft),
+            ],
+            'published' => $published === null ? null : [
+                'version' => $published->version,
+                'definition' => $published->definition,
+                'files' => (object) $published->files,
+            ],
+            'versions' => $appRecipe->versions()->with('reviewer:id,name')->orderByDesc('id')->get()->map(fn (AppRecipeVersion $version) => [
+                'version' => $version->version,
+                'status' => $version->status->value,
+                'published_by' => $version->reviewer?->name,
+                'published_at' => $version->reviewed_at?->toIso8601String(),
+                'created_at' => $version->created_at?->toIso8601String(),
+            ]),
+            'capabilities' => TemplateCapability::values(),
+            'families' => OsTemplateRequest::FAMILIES,
+            'library' => $loader->library(),
+        ]);
+    }
+
+    /**
+     * The diff between two versions of the app (or a version and the draft).
+     */
+    public function diff(Request $request, AppRecipe $appRecipe): JsonResponse
+    {
+        $data = $request->validate(['from' => ['required', 'string', 'max:20'], 'to' => ['required', 'string', 'max:20']]);
+        $find = fn (string $version) => $version === 'draft'
+            ? $appRecipe->draft()
+            : $appRecipe->versions()->where('version', $version)->where('status', '!=', AppRecipeVersionStatus::Draft)->first();
+        $from = $find($data['from']);
+        $to = $find($data['to']);
+
+        abort_if($from === null || $to === null, 404);
+
+        return response()->json(['diff' => $this->editor->diffBetween($from, $to)]);
+    }
 
     public function store(Request $request, #[CurrentUser] User $admin): RedirectResponse
     {
