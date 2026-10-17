@@ -73,15 +73,17 @@ class Module
     }
 
     /**
-     * The API token: the WHMCS server's password field, or its access hash.
+     * The API token: the WHMCS server's password field, or its access hash
+     * unless that holds the webhook signing secret (whsec_…).
      *
      * @param array<string, mixed> $params
      */
     private static function token(array $params): string
     {
         $password = isset($params['serverpassword']) ? trim((string) $params['serverpassword']) : '';
+        $accessHash = trim(isset($params['serveraccesshash']) ? (string) $params['serveraccesshash'] : '');
 
-        return $password !== '' ? $password : trim(isset($params['serveraccesshash']) ? (string) $params['serveraccesshash'] : '');
+        return $password !== '' || WebhookReceiver::isSecret($accessHash) ? $password : $accessHash;
     }
 
     public function client(): ApiClient

@@ -7,3 +7,4 @@ parameters:
         - modules
     scanFiles:
         - phpstan/whmcs.stub
+        - phpstan/capsule.stub

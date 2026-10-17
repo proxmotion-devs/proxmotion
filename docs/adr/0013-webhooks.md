@@ -32,6 +32,6 @@ AGENTS.md 4.1 plans optional HMAC-SHA256 signed webhooks.
 ## Consequences
 
 - Billing modules can stop polling for operations they did not start and can react to failures; polling `GET /tasks/{id}` keeps working and remains the fallback.
-- The WHMCS module has no receiver yet; it keeps polling. A receiver (a small script in the module directory that checks the signature and updates the service) comes with a later change, as does one for WISECP.
+- The WHMCS module receives them in `modules/servers/proxmotion/webhook.php` (signing secret in the WHMCS server's access hash; see the module's README) and still polls the tasks it started itself. A receiver for WISECP comes with that module.
 - Endpoints are not disabled automatically after repeated failures; the failure counter is shown to administrators instead.
 - Two new tables and a queue job; each finished task of a server with endpoints adds up to two rows per endpoint.

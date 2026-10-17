@@ -34,6 +34,7 @@ service. A password reset in the client area stores the new password there as we
    - **Secure:** checked (the panel must have a valid TLS certificate)
    - **Test Connection** must succeed.
 4. Put the server into a server group and use that group in your products.
+5. Optionally, [receive webhooks](#webhooks).
 
 ## Products
 
@@ -96,6 +97,43 @@ to `lang/<WHMCS language name>.php` and translating it.
 The **console** opens in a new tab through a link that is valid for 60 seconds and
 works once; it opens only this server's console.
 
+## Webhooks
+
+Without webhooks, WHMCS only learns what happens to a server when it asks
+(the client area, the admin service page). With them, Proxmotion tells WHMCS when
+a task finishes, also for operations an administrator started in Proxmotion.
+
+1. In Proxmotion: *Admin → Billing systems* → your billing system → **Add webhook**:
+   - **URL:** `https://<your WHMCS>/modules/servers/proxmotion/webhook.php`
+     (your WHMCS system URL followed by `modules/servers/proxmotion/webhook.php`)
+   - **Events:** `server.provisioned`, `server.suspended`, `server.unsuspended`,
+     `server.terminated`, `server.failed` (the others are only logged)
+   - Copy the **signing secret** (`whsec_…`): it is shown once.
+2. In WHMCS: *System Settings → Servers* → the Proxmotion server → **Access Hash**:
+   paste the signing secret. Keep the API token in the **Password** field. If several
+   WHMCS servers point to the same billing system, give each the same secret.
+3. In Proxmotion, **Send test event**: the delivery log must show `200`, and
+   *Utilities → Logs → Module Log* in WHMCS a `webhook ping` entry.
+
+The receiver checks the signature, refuses requests signed more than 5 minutes
+ago (keep the clocks of both servers in sync, e.g. with NTP) and ignores repeats of
+an event. It acts only on services of the Proxmotion server whose secret signed the
+event (the service id is the server's `external_id`):
+
+| Event | In WHMCS |
+|---|---|
+| `server.provisioned` | A *Pending* service becomes *Active*; the domain follows the server's hostname |
+| `server.suspended` / `server.unsuspended` | The service becomes *Suspended* / *Active*, if the server still is (events can arrive late, so the module asks Proxmotion first). A suspension WHMCS itself started changes nothing more. |
+| `server.terminated` | The service is **not** changed: an email to administrators and an activity log entry say that it is still billed. Terminate or cancel it in WHMCS if it should not be. |
+| `server.failed` | An email to administrators (WHMCS *account* notifications) and an activity log entry with the error |
+| others | Logged only |
+
+Every event is written to the module log (the secret masked). Status changes and
+notifications also appear in the activity log. Seen event ids are kept for a week in
+the table `mod_proxmotion_webhook_events`, which the receiver creates on its first
+event. When Proxmotion cannot be reached to check a server's state, the receiver
+answers `503` and Proxmotion sends the event again later.
+
 ## Troubleshooting
 
 - *Utilities → Logs → Module Log*: every API call is logged. The token and root
@@ -104,6 +142,9 @@ works once; it opens only this server's console.
 - "Unauthenticated.": the token is wrong, revoked or expired.
 - "This token may not be used from your address.": add the WHMCS server's address
   to the token in Proxmotion.
+- Webhook deliveries fail with `401`: the access hash of the WHMCS server is not the
+  endpoint's current signing secret (it changes when it is replaced in Proxmotion).
+  With `400` and "too old": the clocks of WHMCS and Proxmotion differ.
 - 404 for a server: each billing system only sees its own servers; the service
   must have been created through this billing system's token (or assigned to the
   billing system in Proxmotion).
