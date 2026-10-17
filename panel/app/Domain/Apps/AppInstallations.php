@@ -6,6 +6,7 @@ namespace App\Domain\Apps;
 
 use App\Domain\Webhooks\Webhooks;
 use App\Enums\AppInstallationStatus;
+use App\Enums\AppRunStatus;
 use App\Models\AppInstallation;
 use App\Models\Server;
 use Illuminate\Support\Str;
@@ -56,6 +57,11 @@ final readonly class AppInstallations
     public function serverWiped(Server $server, string $reason): void
     {
         foreach ($server->appInstallations()->with('recipe')->get() as $installation) {
+            // Uninstalls and actions end with the system they ran on (docs/adr/0016 §4).
+            foreach ($installation->runs()->whereIn('status', [AppRunStatus::Queued, AppRunStatus::Running])->get() as $run) {
+                $run->forceFill(['status' => AppRunStatus::Failed, 'error' => Str::limit($reason, 997), 'finished_at' => now()])->save();
+            }
+
             if ($installation->status->isBusy()) {
                 $this->failed($installation, $reason);
             }

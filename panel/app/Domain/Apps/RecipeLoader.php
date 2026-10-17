@@ -231,17 +231,26 @@ final class RecipeLoader
             }
         }
 
-        $actions = array_map(fn (array $action) => (string) ($action['key'] ?? ''), $recipe->actions);
+        $actions = array_map(fn (RecipeAction $action) => $action->key, $recipe->actions);
 
         if (count($actions) !== count(array_unique($actions))) {
             $errors[] = 'Action keys must be unique.';
         }
 
         foreach ($recipe->actions as $action) {
-            $inputs = array_column(is_array($action['inputs'] ?? null) ? $action['inputs'] : [], 'key');
+            $inputs = array_map(fn (RecipeInput $input) => $input->key, $action->inputs);
+            $outputs = array_map(fn (RecipeOutput $output) => $output->key, $action->outputs);
 
-            if (count($inputs) !== count(array_unique($inputs))) {
-                $errors[] = 'Action '.($action['key'] ?? '?').': input keys must be unique.';
+            if (count($inputs) !== count(array_unique($inputs)) || count($outputs) !== count(array_unique($outputs))) {
+                $errors[] = "Action {$action->key}: input and output keys must be unique.";
+            }
+
+            foreach ($action->inputs as $input) {
+                $problem = $input->default === null ? null : (new InputValidator)->problemWithDefault($input);
+
+                if ($problem !== null) {
+                    $errors[] = "Action {$action->key}, input {$input->key}: the default is invalid ({$problem}).";
+                }
             }
         }
 

@@ -1,7 +1,7 @@
 format: 2
 slug: docker
 name: Docker
-version: 1.1.0
+version: 1.2.0
 category: container
 description:
     en: Docker Engine with the Compose and Buildx plugins from Docker's official package repository.
@@ -23,3 +23,4 @@ outputs:
       label: { en: Docker version, tr: Docker sürümü }
 lifecycle:
     install: { script: install.sh, timeout_minutes: 15 }
+    uninstall: { script: uninstall.sh, timeout_minutes: 10 }

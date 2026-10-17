@@ -61,6 +61,7 @@ const taskTypeLabels: Record<TaskType, string> = {
     change_primary_address: 'Change primary address',
     change_hostname: 'Change hostname',
     install_app: 'Install app',
+    app_run: 'App action or uninstall',
 };
 const taskStatusTone: Record<
     TaskStatus,

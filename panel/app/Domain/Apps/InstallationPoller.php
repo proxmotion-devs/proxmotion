@@ -8,8 +8,6 @@ use App\Enums\AppInstallationStatus;
 use App\Models\AppInstallation;
 use App\Proxmox\Exceptions\ProxmoxException;
 use App\Proxmox\ProxmoxClientFactory;
-use App\Proxmox\Resources\GuestAgentResource;
-use Illuminate\Support\Str;
 
 /**
  * Follows a running installer (docs/adr/0015) by reading its status.json
@@ -20,7 +18,7 @@ use Illuminate\Support\Str;
 final readonly class InstallationPoller
 {
     /** The largest output file stored. */
-    public const MAX_OUTPUT_FILE_BYTES = 1048576;
+    public const MAX_OUTPUT_FILE_BYTES = GuestOutputs::MAX_FILE_BYTES;
 
     public function __construct(
         private ProxmoxClientFactory $clients,
@@ -36,9 +34,10 @@ final readonly class InstallationPoller
         $server = $installation->server;
         $agent = $this->clients->forCluster($server->cluster)->guestAgent($server->node->name);
         $timedOut = $installation->deadline()?->isPast() ?? false;
+        $directory = $installation->guestDirectory();
 
         try {
-            $status = json_decode($agent->readFile($server->vmid, $installation->guestDirectory().'/status.json')->content, true);
+            $status = GuestOutputs::status($agent, $server->vmid, $directory);
         } catch (ProxmoxException) {
             // Stopped, rebooting or the agent is down: try again next time, unless it is too late.
             $timedOut && $this->timedOut($installation);
@@ -46,26 +45,22 @@ final readonly class InstallationPoller
             return;
         }
 
-        $state = is_array($status) && is_string($status['status'] ?? null) ? $status['status'] : null;
-        $step = is_array($status) && is_string($status['step'] ?? null) && $status['step'] !== '' ? Str::limit($status['step'], 197) : null;
-
-        if ($state === 'failed') {
-            $message = is_string($status['message'] ?? null) && $status['message'] !== '' ? $status['message'] : 'The installer failed.';
-            $this->installations->failed($installation, $message, $step);
+        if ($status['state'] === 'failed') {
+            $this->installations->failed($installation, $status['message'] ?? 'The installer failed.', $status['step']);
 
             return;
         }
 
-        if ($state === 'installed') {
+        if ($status['state'] === 'installed') {
             try {
-                $outputs = $this->outputs($agent, $server->vmid, $installation);
+                $outputs = GuestOutputs::read($agent, $server->vmid, $directory, $installation->version->recipe()->outputs);
             } catch (ProxmoxException) {
                 $timedOut && $this->timedOut($installation);
 
                 return;
             }
 
-            $this->installations->installed($installation, $outputs, $step);
+            $this->installations->installed($installation, $outputs, $status['step']);
 
             return;
         }
@@ -76,56 +71,7 @@ final readonly class InstallationPoller
             return;
         }
 
-        $progress = is_array($status) && is_int($status['progress'] ?? null) ? max(0, min(99, $status['progress'])) : $installation->progress;
-        $installation->forceFill(['progress' => $progress, 'step' => $step ?? $installation->step])->save();
-    }
-
-    /**
-     * The declared outputs the installer left: texts from outputs.json, files from outputs/.
-     *
-     * @return array<string, array{type: string, value: string, filename?: string|null}>
-     *
-     * @throws ProxmoxException
-     */
-    private function outputs(GuestAgentResource $agent, int $vmid, AppInstallation $installation): array
-    {
-        $recipe = $installation->version->recipe();
-        $directory = $installation->guestDirectory();
-        $texts = [];
-        $outputs = [];
-
-        if (array_filter($recipe->outputs, fn (RecipeOutput $output) => ! $output->isFile()) !== []) {
-            try {
-                $decoded = json_decode($agent->readFile($vmid, $directory.'/outputs.json')->content, true);
-                $texts = is_array($decoded) ? $decoded : [];
-            } catch (ProxmoxException) {
-                $texts = [];
-            }
-        }
-
-        foreach ($recipe->outputs as $output) {
-            if ($output->isFile()) {
-                try {
-                    $file = $agent->readFile($vmid, $directory.'/outputs/'.$output->filename);
-                } catch (ProxmoxException) {
-                    continue;
-                }
-
-                if (! $file->truncated && strlen($file->content) <= self::MAX_OUTPUT_FILE_BYTES) {
-                    $outputs[$output->key] = ['type' => 'file', 'value' => base64_encode($file->content), 'filename' => $output->filename];
-                }
-
-                continue;
-            }
-
-            $value = $texts[$output->key] ?? null;
-
-            if (is_string($value) || is_int($value)) {
-                $outputs[$output->key] = ['type' => $output->type, 'value' => Str::limit((string) $value, 2000)];
-            }
-        }
-
-        return $outputs;
+        $installation->forceFill(['progress' => $status['progress'] ?? $installation->progress, 'step' => $status['step'] ?? $installation->step])->save();
     }
 
     private function timedOut(AppInstallation $installation): void

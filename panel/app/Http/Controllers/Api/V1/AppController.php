@@ -7,12 +7,15 @@ namespace App\Http\Controllers\Api\V1;
 use App\Domain\Apps\AppEligibility;
 use App\Domain\Apps\AppInstallConflict;
 use App\Domain\Apps\AppInstaller;
+use App\Domain\Apps\AppRunner;
 use App\Enums\ApiScope;
 use App\Http\Requests\Api\V1\InstallAppRequest;
 use App\Http\Resources\Api\V1\AppInstallationResource;
 use App\Http\Resources\Api\V1\AppResource;
+use App\Http\Resources\Api\V1\AppRunResource;
 use App\Models\AppInstallation;
 use App\Models\AppRecipe;
+use App\Models\AppRun;
 use App\Models\OsTemplate;
 use App\Models\Package;
 use App\Models\Server;
@@ -101,6 +104,74 @@ class AppController extends ApiController
         }
 
         return $this->installationAccepted($installation);
+    }
+
+    /**
+     * Uninstall (docs/adr/0016 §4): 202 with the run; the installation is
+     * removed when it succeeds (app.uninstalled / app.uninstall_failed).
+     */
+    public function uninstall(Request $request, Server $server, AppInstallation $installation, AppRunner $runner): JsonResponse
+    {
+        $this->ensureBelongs($server, $installation);
+
+        return $this->runResponse(fn () => $runner->uninstall($installation, $this->token($request), $request->ip()));
+    }
+
+    /**
+     * Run an action of an installed app with its inputs: 202 with the run.
+     */
+    public function action(Request $request, Server $server, AppInstallation $installation, string $action, AppRunner $runner): JsonResponse
+    {
+        $this->ensureBelongs($server, $installation);
+        $request->validate(['inputs' => ['nullable', 'array']]);
+        $inputs = $request->input('inputs');
+
+        return $this->runResponse(fn () => $runner->action($installation, $action, is_array($inputs) ? $inputs : [], $this->token($request), $request->ip()));
+    }
+
+    /**
+     * The installation's latest uninstalls and actions (at most 10), newest
+     * first; outputs only with the apps:secrets scope.
+     */
+    public function runs(Request $request, Server $server, AppInstallation $installation): AnonymousResourceCollection
+    {
+        $this->ensureBelongs($server, $installation);
+        $outputs = $this->token($request)->hasScope(ApiScope::AppsSecrets);
+        $runs = $installation->runs()->with(['installation.version', 'task'])->latest('id')->limit(10)->get();
+
+        return AppRunResource::collection($runs->map(fn (AppRun $run) => (new AppRunResource($run))->withOutputs($outputs)));
+    }
+
+    /**
+     * An uninstall or action with its status; outputs only with the apps:secrets scope.
+     */
+    public function run(Request $request, Server $server, AppInstallation $installation, AppRun $run): JsonResponse
+    {
+        $this->ensureBelongs($server, $installation);
+
+        if ($run->app_installation_id !== $installation->id) {
+            throw (new ModelNotFoundException)->setModel(AppRun::class, [$run->uuid]);
+        }
+
+        return (new AppRunResource($run->load(['installation.version', 'task'])))
+            ->withOutputs($this->token($request)->hasScope(ApiScope::AppsSecrets))
+            ->response();
+    }
+
+    /**
+     * @param  callable(): AppRun  $start
+     */
+    private function runResponse(callable $start): JsonResponse
+    {
+        try {
+            $run = $start();
+        } catch (TaskAlreadyRunning|AppInstallConflict $e) {
+            return $this->conflict($e->translatedMessage());
+        } catch (ProvisioningException $e) {
+            return response()->json(['message' => $e->translatedMessage()], 422);
+        }
+
+        return (new AppRunResource($run->refresh()->load(['installation.version', 'task'])))->response()->setStatusCode(202);
     }
 
     /**

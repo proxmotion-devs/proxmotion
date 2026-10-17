@@ -81,6 +81,35 @@ class AppManagementTest extends AdminTestCase
         $this->assertSame(0, AppInstallation::query()->count());
     }
 
+    public function test_admins_run_actions_and_uninstall_from_the_server_page()
+    {
+        $installation = AppInstallation::factory()->for($this->server)->for(AppRecipe::query()->where('slug', 'wireguard')->sole(), 'recipe')->create(['inputs' => ['port' => 51820]]);
+
+        $this->post(route('admin.app-installations.action', ['appInstallation' => $installation, 'action' => 'add_client']), ['inputs' => ['name' => 'Bad Name']])
+            ->assertSessionHasErrors('inputs.name');
+        $this->post(route('admin.app-installations.action', ['appInstallation' => $installation, 'action' => 'add_client']), ['inputs' => ['name' => 'laptop']])
+            ->assertRedirect();
+
+        $this->get(route('admin.servers.show', $this->server))
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('apps.0.can_uninstall', true)
+                ->where('apps.0.actions.0.key', 'add_client')
+                ->where('apps.0.runs.0.kind', 'action')
+                ->where('apps.0.runs.0.action', ['en' => 'Add a client', 'tr' => 'İstemci ekle'])
+                ->where('apps.0.runs.0.status', 'running'));
+
+        // One run at a time: the action is still running.
+        $this->post(route('admin.app-installations.uninstall', $installation))->assertRedirect();
+        $this->assertSame(AppInstallationStatus::Installed, $installation->refresh()->status);
+
+        $installation->runs()->update(['status' => 'succeeded']);
+        $this->post(route('admin.app-installations.uninstall', $installation))->assertRedirect();
+
+        $this->assertSame(AppInstallationStatus::Uninstalling, $installation->refresh()->status);
+        $this->assertSame(1, AuditLog::query()->where('action', 'app.uninstall_requested')->count());
+        $this->assertSame(1, AuditLog::query()->where('action', 'app.action_requested')->count());
+    }
+
     public function test_a_failed_installation_can_be_retried()
     {
         $installation = AppInstallation::factory()->for($this->server)->for(AppRecipe::query()->where('slug', 'docker')->sole(), 'recipe')->create([

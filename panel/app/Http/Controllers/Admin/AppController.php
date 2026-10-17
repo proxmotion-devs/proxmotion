@@ -6,6 +6,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Domain\Apps\AppInstallConflict;
 use App\Domain\Apps\AppInstaller;
+use App\Domain\Apps\AppRunner;
 use App\Enums\AppInstallationStatus;
 use App\Http\Controllers\Controller;
 use App\Models\AppInstallation;
@@ -86,6 +87,43 @@ class AppController extends Controller
         }
 
         $this->toast('info', 'Installing the app…');
+
+        return back();
+    }
+
+    /**
+     * Run the app's uninstall script (docs/adr/0016 §4).
+     */
+    public function uninstall(Request $request, AppInstallation $appInstallation, #[CurrentUser] User $admin, AppRunner $runner): RedirectResponse
+    {
+        try {
+            $runner->uninstall($appInstallation, $admin, $request->ip());
+            $this->toast('info', 'Uninstalling the app…');
+        } catch (ProvisioningException $e) {
+            $this->toast('error', $e->translatedMessage());
+        }
+
+        return back();
+    }
+
+    /**
+     * Run one of the app's actions with its inputs (docs/adr/0016 §4).
+     */
+    public function action(Request $request, AppInstallation $appInstallation, string $action, #[CurrentUser] User $admin, AppRunner $runner): RedirectResponse
+    {
+        $data = $request->validate(['inputs' => ['nullable', 'array']]);
+
+        try {
+            $runner->action($appInstallation, $action, $data['inputs'] ?? [], $admin, $request->ip());
+        } catch (TaskAlreadyRunning|AppInstallConflict $e) {
+            $this->toast('error', $e->translatedMessage());
+
+            return back();
+        } catch (ProvisioningException $e) {
+            throw ValidationException::withMessages(['action' => $e->translatedMessage()]);
+        }
+
+        $this->toast('info', 'The action is running…');
 
         return back();
     }

@@ -1,7 +1,7 @@
 #!/bin/bash
-# Helpers for app recipes (docs/adr/0015). The panel writes this file next to
-# a recipe's install.sh in /var/lib/proxmotion/apps/<installation>/ and the
-# runner (run.sh) exports PROXMOTION_APP_DIR. Scripts source it with:
+# Helpers for app recipes (docs/adr/0015, 0016). The panel writes this file next to
+# a recipe's scripts in /var/lib/proxmotion/apps/<installation>/ and the
+# runner (run.sh) exports PROXMOTION_APP_DIR and PROXMOTION_RUN_DIR. Scripts source it with:
 #
 #   . "$PROXMOTION_APP_DIR/proxmotion.sh"
 #
@@ -10,6 +10,9 @@
 # reads through the guest agent; outputs go to outputs.json and outputs/.
 
 : "${PROXMOTION_APP_DIR:?PROXMOTION_APP_DIR is not set}"
+# Where this run keeps its status, inputs and outputs (docs/adr/0016 §4): the
+# app's directory for the install, runs/<id> for an uninstall or an action.
+: "${PROXMOTION_RUN_DIR:=$PROXMOTION_APP_DIR}"
 
 # A JSON string of $1 (control characters dropped).
 pm_json_string() {
@@ -25,42 +28,48 @@ pm_json_string() {
 
 # pm_status STATUS PROGRESS STEP [MESSAGE]: replace status.json atomically.
 pm_status() {
-    local tmp="$PROXMOTION_APP_DIR/status.json.tmp"
+    local tmp="$PROXMOTION_RUN_DIR/status.json.tmp"
     printf '{"status":%s,"progress":%d,"step":%s,"message":%s,"updated_at":%d}\n' \
         "$(pm_json_string "$1")" "$2" "$(pm_json_string "$3")" "$(pm_json_string "${4:-}")" "$(date +%s)" >"$tmp"
-    mv -f "$tmp" "$PROXMOTION_APP_DIR/status.json"
+    mv -f "$tmp" "$PROXMOTION_RUN_DIR/status.json"
 }
 
 # pm_step PROGRESS MESSAGE: report the step the script is starting (0-99).
 pm_step() {
-    printf '%d\n%s\n' "$1" "$2" >"$PROXMOTION_APP_DIR/state"
+    printf '%d\n%s\n' "$1" "$2" >"$PROXMOTION_RUN_DIR/state"
     pm_status installing "$1" "$2"
     echo "==> $2"
 }
 
 # pm_current progress|step: the last reported step.
 pm_current() {
-    if [ ! -f "$PROXMOTION_APP_DIR/state" ]; then
+    if [ ! -f "$PROXMOTION_RUN_DIR/state" ]; then
         [ "$1" = progress ] && echo 0
         return 0
     fi
 
     if [ "$1" = progress ]; then
-        sed -n 1p "$PROXMOTION_APP_DIR/state"
+        sed -n 1p "$PROXMOTION_RUN_DIR/state"
     else
-        sed -n 2p "$PROXMOTION_APP_DIR/state"
+        sed -n 2p "$PROXMOTION_RUN_DIR/state"
     fi
 }
 
 # pm_fail MESSAGE: stop the install with a message shown to the customer.
 pm_fail() {
-    printf '%s\n' "$*" >"$PROXMOTION_APP_DIR/failure"
+    printf '%s\n' "$*" >"$PROXMOTION_RUN_DIR/failure"
     echo "ERROR: $*" >&2
     exit 1
 }
 
 # pm_input KEY: the validated value of an input (empty when not given).
 pm_input() {
+    jq -r --arg key "$1" 'if has($key) and .[$key] != null then .[$key] | tostring else empty end' "$PROXMOTION_RUN_DIR/inputs.json"
+}
+
+# pm_app_input KEY: an input the app was installed with (in an uninstall or an
+# action, where pm_input reads the action's own inputs).
+pm_app_input() {
     jq -r --arg key "$1" 'if has($key) and .[$key] != null then .[$key] | tostring else empty end' "$PROXMOTION_APP_DIR/inputs.json"
 }
 
@@ -71,14 +80,14 @@ pm_server() {
 
 # pm_output KEY VALUE: a text or URL output.
 pm_output() {
-    local tmp="$PROXMOTION_APP_DIR/outputs.json.tmp"
-    jq --arg key "$1" --arg value "$2" '.[$key] = $value' "$PROXMOTION_APP_DIR/outputs.json" >"$tmp"
-    mv -f "$tmp" "$PROXMOTION_APP_DIR/outputs.json"
+    local tmp="$PROXMOTION_RUN_DIR/outputs.json.tmp"
+    jq --arg key "$1" --arg value "$2" '.[$key] = $value' "$PROXMOTION_RUN_DIR/outputs.json" >"$tmp"
+    mv -f "$tmp" "$PROXMOTION_RUN_DIR/outputs.json"
 }
 
 # pm_output_file FILENAME SOURCE: a file output (the recipe declares FILENAME).
 pm_output_file() {
-    install -m 600 "$2" "$PROXMOTION_APP_DIR/outputs/$1"
+    install -m 600 "$2" "$PROXMOTION_RUN_DIR/outputs/$1"
 }
 
 # pm_apt_update / pm_apt_install PACKAGE...: apt without prompts, waiting for other apt runs.

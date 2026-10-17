@@ -71,6 +71,8 @@ Route::resource('packages', PackageController::class)->only(['index', 'store', '
 Route::get('apps', [AppController::class, 'index'])->name('apps.index');
 Route::patch('apps/{appRecipe}', [AppController::class, 'update'])->name('apps.update');
 Route::post('app-installations/{appInstallation}/retry', [AppController::class, 'retry'])->middleware('throttle:10,1')->name('app-installations.retry');
+Route::post('app-installations/{appInstallation}/uninstall', [AppController::class, 'uninstall'])->middleware('throttle:10,1')->name('app-installations.uninstall');
+Route::post('app-installations/{appInstallation}/actions/{action}', [AppController::class, 'action'])->where('action', '[a-z][a-z0-9_]{0,39}')->middleware('throttle:20,1')->name('app-installations.action');
 
 Route::resource('users', UserController::class)->only(['index', 'store']);
 Route::resource('billing-systems', BillingSystemController::class)->only(['index', 'store', 'update']);

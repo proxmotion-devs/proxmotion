@@ -688,6 +688,128 @@ paths:
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [Apps]
+      summary: Uninstall an app
+      description: |
+        Scope: `servers:write`. Runs the recipe's uninstall script inside the server (docs/adr/0016) for an
+        `installed`, `failed` or `uninstall_failed` installation whose `can_uninstall` is true. The
+        installation becomes `uninstalling`, then `removed` (its outputs are deleted) or
+        `uninstall_failed`. Poll the run or wait for `app.uninstalled` / `app.uninstall_failed`.
+        `422` when the app has no uninstall script, `409` while another run or install is in progress.
+      operationId: uninstallServerApp
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '202':
+          description: The uninstall was queued.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: { $ref: '#/components/schemas/AppRun' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /servers/{server}/apps/{installation}/actions/{action}:
+    parameters:
+      - $ref: '#/components/parameters/Server'
+      - $ref: '#/components/parameters/Installation'
+      - name: action
+        in: path
+        required: true
+        description: The `key` of one of the installation's `actions`.
+        schema: { type: string, pattern: '^[a-z][a-z0-9_]{0,39}$', examples: [add_client] }
+    post:
+      tags: [Apps]
+      summary: Run an action of an installed app
+      description: |
+        Scope: `servers:write`. Runs an action of an `installed` app (e.g. adding or revoking a VPN
+        client) with its inputs, validated like install inputs (docs/adr/0016). One run at a time per
+        installation (`409`). Its outputs belong to the run: fetch them with the `apps:secrets` scope.
+      operationId: runServerAppAction
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                inputs: { type: object, additionalProperties: true, examples: [{ name: laptop }] }
+      responses:
+        '202':
+          description: The action was queued.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: { $ref: '#/components/schemas/AppRun' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /servers/{server}/apps/{installation}/runs:
+    parameters:
+      - $ref: '#/components/parameters/Server'
+      - $ref: '#/components/parameters/Installation'
+    get:
+      tags: [Apps]
+      summary: The latest uninstalls and actions of an installation
+      description: 'Scope: `servers:read`. At most 10, newest first. `outputs` only with the `apps:secrets` scope.'
+      operationId: listServerAppRuns
+      responses:
+        '200':
+          description: The runs
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: { type: array, items: { $ref: '#/components/schemas/AppRun' } }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /servers/{server}/apps/{installation}/runs/{run}:
+    parameters:
+      - $ref: '#/components/parameters/Server'
+      - $ref: '#/components/parameters/Installation'
+      - name: run
+        in: path
+        required: true
+        description: The run's `id` (UUID).
+        schema: { type: string, format: uuid }
+    get:
+      tags: [Apps]
+      summary: An uninstall or action run
+      description: |
+        Scope: `servers:read`. Progress is read from inside the server about once a minute. `outputs`
+        only with the `apps:secrets` scope and once `succeeded`; show them, do not store them.
+      operationId: showServerAppRun
+      responses:
+        '200':
+          description: The run
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: { $ref: '#/components/schemas/AppRun' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
 
   /servers/{server}/apps/{installation}/retry:
     parameters:
@@ -985,7 +1107,7 @@ components:
         tr: { type: string }
     App:
       type: object
-      required: [id, name, version, category, description, format, os, requires, requirements, network_models, install_modes, billing, license, inputs, outputs]
+      required: [id, name, version, category, description, format, os, requires, requirements, network_models, install_modes, billing, license, inputs, outputs, can_uninstall, actions]
       properties:
         id: { type: string, examples: [wireguard] }
         name: { type: string }
@@ -1045,9 +1167,22 @@ components:
               label: { oneOf: [{ $ref: '#/components/schemas/Text' }, { type: 'null' }] }
               filename: { type: [string, 'null'] }
               secret: { type: boolean }
+        can_uninstall: { type: boolean, description: 'The recipe has an uninstall script (docs/adr/0016).' }
+        actions:
+          type: array
+          description: Actions installed copies offer (docs/adr/0016).
+          items: { $ref: '#/components/schemas/AppAction' }
+    AppAction:
+      type: object
+      required: [key, label, inputs, outputs]
+      properties:
+        key: { type: string, examples: [add_client] }
+        label: { $ref: '#/components/schemas/Text' }
+        inputs: { $ref: '#/components/schemas/App/properties/inputs' }
+        outputs: { $ref: '#/components/schemas/App/properties/outputs' }
     AppInstallation:
       type: object
-      required: [id, app, server, status, progress, step, error, inputs, task_id, created_at, started_at, finished_at]
+      required: [id, app, server, status, progress, step, error, inputs, can_uninstall, actions, task_id, created_at, started_at, finished_at]
       properties:
         id: { type: string, format: uuid }
         app:
@@ -1063,8 +1198,8 @@ components:
             external_id: { type: [string, 'null'] }
         status:
           type: string
-          enum: [queued, installing, installed, failed, removed]
-          description: '`removed`: the server was reinstalled or terminated.'
+          enum: [queued, installing, installed, failed, uninstalling, uninstall_failed, removed]
+          description: '`removed`: uninstalled, or the server was reinstalled or terminated. `uninstall_failed`: the uninstall script failed; uninstalling can be tried again.'
         progress: { type: integer, minimum: 0, maximum: 100 }
         step: { type: [string, 'null'], description: 'What the installer is doing, as it reported it (English)' }
         error: { type: [string, 'null'] }
@@ -1082,7 +1217,33 @@ components:
               value: { type: [string, 'null'], description: Text and URL outputs }
               filename: { type: [string, 'null'] }
               content_base64: { type: [string, 'null'], description: File outputs }
+        can_uninstall: { type: boolean, description: '`DELETE` is possible now (docs/adr/0016).' }
+        actions:
+          type: array
+          description: Actions that can run now (only while `installed`).
+          items: { $ref: '#/components/schemas/AppAction' }
         task_id: { type: [string, 'null'], format: uuid, description: The `install_app` task of the latest attempt }
+        created_at: { type: [string, 'null'], format: date-time }
+        started_at: { type: [string, 'null'], format: date-time }
+        finished_at: { type: [string, 'null'], format: date-time }
+    AppRun:
+      type: object
+      description: An uninstall or an action of an installed app (docs/adr/0016).
+      required: [id, installation_id, kind, action, status, progress, step, error, inputs, task_id, created_at, started_at, finished_at]
+      properties:
+        id: { type: string, format: uuid }
+        installation_id: { type: string, format: uuid }
+        kind: { type: string, enum: [uninstall, action] }
+        action: { type: [string, 'null'], description: The action's `key` }
+        status: { type: string, enum: [queued, running, succeeded, failed] }
+        progress: { type: integer, minimum: 0, maximum: 100 }
+        step: { type: [string, 'null'] }
+        error: { type: [string, 'null'] }
+        inputs: { type: object, description: The action's inputs; passwords are left out }
+        outputs:
+          allOf: [{ $ref: '#/components/schemas/AppInstallation/properties/outputs' }]
+          description: The action's outputs, only with the `apps:secrets` scope; empty until `succeeded`.
+        task_id: { type: [string, 'null'], format: uuid, description: The `app_run` task }
         created_at: { type: [string, 'null'], format: date-time }
         started_at: { type: [string, 'null'], format: date-time }
         finished_at: { type: [string, 'null'], format: date-time }
@@ -1096,11 +1257,11 @@ components:
         id: { type: string, format: uuid }
         event:
           type: string
-          enum: [ping, server.provisioned, server.suspended, server.unsuspended, server.reinstalled, server.terminated, server.failed, task.succeeded, task.failed, app.installed, app.failed]
+          enum: [ping, server.provisioned, server.suspended, server.unsuspended, server.reinstalled, server.terminated, server.failed, task.succeeded, task.failed, app.installed, app.failed, app.uninstalled, app.uninstall_failed, app.action_succeeded, app.action_failed]
         created_at: { type: string, format: date-time }
         data:
           type: object
-          description: '`server` and `task` for server and task events, `server` and `installation` (without outputs) for app events, `billing_system` for `ping`.'
+          description: '`server` and `task` for server and task events, `server` and `installation` (without outputs) for app events, plus `run` (without outputs) for uninstall and action events, `billing_system` for `ping`.'
           properties:
             server:
               type: object
@@ -1113,6 +1274,7 @@ components:
                 status: { $ref: '#/components/schemas/ServerStatus' }
             task: { $ref: '#/components/schemas/Task' }
             installation: { $ref: '#/components/schemas/AppInstallation' }
+            run: { $ref: '#/components/schemas/AppRun' }
             billing_system:
               type: object
               properties:
@@ -1136,6 +1298,8 @@ webhooks:
           deliveries with different ids.
         - `app.installed`, `app.failed`: an app installation finished (docs/adr/0015); `data` has
           the server and the installation without its outputs.
+        - `app.uninstalled`, `app.uninstall_failed`, `app.action_succeeded`, `app.action_failed`: an
+          uninstall or an action finished (docs/adr/0016); `data` also has the `run` without outputs.
         - `ping`: a test sent by an administrator.
 
         Events are also sent for operations an administrator started in the panel.

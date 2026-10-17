@@ -189,6 +189,7 @@ export type TaskType =
     | 'change_primary_address'
     | 'change_hostname'
     | 'install_app'
+    | 'app_run'
     | PowerAction;
 
 export type PowerAction = 'start' | 'shutdown' | 'stop' | 'reboot';
@@ -334,7 +335,24 @@ export type AppInstallationStatus =
     | 'installing'
     | 'installed'
     | 'failed'
+    | 'uninstalling'
+    | 'uninstall_failed'
     | 'removed';
+
+export type AppRunStatus = 'queued' | 'running' | 'succeeded' | 'failed';
+
+/** An uninstall or action of an installed app (docs/adr/0016). */
+export type AppRun = {
+    uuid: string;
+    kind: 'uninstall' | 'action';
+    action: AppText | null;
+    status: AppRunStatus;
+    step: string | null;
+    error: string | null;
+    created_at: string | null;
+};
+
+export type AppAction = { key: string; label: AppText; inputs: AppInput[] };
 
 export type AppInstallation = {
     uuid: string;
@@ -346,6 +364,9 @@ export type AppInstallation = {
     error: string | null;
     created_at: string | null;
     finished_at: string | null;
+    can_uninstall: boolean;
+    actions: AppAction[];
+    runs: AppRun[];
 };
 
 export type AppText = { en: string; tr?: string };

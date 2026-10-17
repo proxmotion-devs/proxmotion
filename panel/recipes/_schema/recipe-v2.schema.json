@@ -132,6 +132,12 @@
                 }
             }
         },
+        "includes": {
+            "description": "Shared files of the recipe that its scripts source, written next to them.",
+            "type": "array",
+            "uniqueItems": true,
+            "items": { "$ref": "#/$defs/script" }
+        },
         "lifecycle": {
             "type": "object",
             "additionalProperties": false,

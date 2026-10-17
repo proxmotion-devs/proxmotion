@@ -28,7 +28,8 @@ final readonly class Recipe
      * @param  list<RecipeInput>  $inputs
      * @param  list<RecipeOutput>  $outputs
      * @param  array<string, array{script: string, timeout_minutes: int, from?: string}>  $lifecycle  by operation
-     * @param  list<array<string, mixed>>  $actions  as declared (run in docs/adr/0016 phase 2)
+     * @param  list<RecipeAction>  $actions
+     * @param  list<string>  $includes  shared files the scripts source (format 2)
      * @param  array<string, mixed>  $definition  the whole recipe as read
      */
     public function __construct(
@@ -54,6 +55,7 @@ final readonly class Recipe
         public array $outputs,
         public array $lifecycle,
         public array $actions,
+        public array $includes,
         public int $timeoutMinutes,
         public array $definition,
     ) {}
@@ -130,7 +132,8 @@ final readonly class Recipe
             inputs: array_map(RecipeInput::fromArray(...), $entries($data['inputs'] ?? null)),
             outputs: array_map(RecipeOutput::fromArray(...), $entries($data['outputs'] ?? null)),
             lifecycle: $lifecycle,
-            actions: $entries($data['actions'] ?? null),
+            actions: array_map(RecipeAction::fromArray(...), $entries($data['actions'] ?? null)),
+            includes: $list($data['includes'] ?? null),
             timeoutMinutes: $timeout,
             definition: $data,
         );
@@ -246,20 +249,34 @@ final readonly class Recipe
     }
 
     /**
-     * Every script the recipe declares: lifecycle steps and actions.
+     * Every file of the recipe besides recipe.yaml: lifecycle and action scripts and includes.
      *
      * @return list<string>
      */
     public function scripts(): array
     {
-        $scripts = array_column($this->lifecycle, 'script');
+        $scripts = [
+            ...array_column($this->lifecycle, 'script'),
+            ...array_map(fn (RecipeAction $action) => $action->script, $this->actions),
+            ...$this->includes,
+        ];
 
+        return array_values(array_unique($scripts));
+    }
+
+    public function action(string $key): ?RecipeAction
+    {
         foreach ($this->actions as $action) {
-            if (is_string($action['script'] ?? null)) {
-                $scripts[] = $action['script'];
+            if ($action->key === $key) {
+                return $action;
             }
         }
 
-        return array_values(array_unique($scripts));
+        return null;
+    }
+
+    public function canUninstall(): bool
+    {
+        return $this->lifecycleScript('uninstall') !== null;
     }
 }

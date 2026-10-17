@@ -28,17 +28,32 @@ final class InputValidator
      */
     public function validate(Recipe $recipe, array $given): array
     {
+        return $this->validateInputs($recipe->inputs, $given);
+    }
+
+    /**
+     * The same for any declared inputs, e.g. those of an action (docs/adr/0016 §4).
+     *
+     * @param  list<RecipeInput>  $declared
+     * @param  array<array-key, mixed>  $given
+     * @return array<string, string|int|bool>
+     *
+     * @throws ValidationException with errors under inputs.<key>
+     */
+    public function validateInputs(array $declared, array $given): array
+    {
         $errors = [];
+        $keys = array_map(fn (RecipeInput $input) => $input->key, $declared);
 
         foreach (array_keys($given) as $key) {
-            if ($recipe->input((string) $key) === null) {
+            if (! in_array((string) $key, $keys, true)) {
                 $errors['inputs.'.$key][] = __('This app has no input :key.', ['key' => (string) $key]);
             }
         }
 
         $values = [];
 
-        foreach ($recipe->inputs as $input) {
+        foreach ($declared as $input) {
             $value = $given[$input->key] ?? $input->default;
 
             if ($value === null || $value === '') {

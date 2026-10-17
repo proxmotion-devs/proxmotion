@@ -56,9 +56,9 @@ actions:
     timeout_minutes: 2
 ```
 
-- Script paths are relative, inside the package, and match `^[a-z0-9/_-]+\.(sh|ps1)$`; the loader refuses anything else.
+- Script paths are relative, inside the package, and match `^[a-z0-9][a-z0-9_-]*(/[a-z0-9][a-z0-9_-]*)*\.(sh|ps1)$`; the loader refuses anything else. Shared code the scripts source is listed under `includes` (e.g. `includes: [lib.sh]`) and written with them.
 - `upgrade.from` is a semver range of installed versions the script can upgrade; outside it, the panel offers no upgrade (the customer reinstalls the app).
-- Action outputs are added to the installation's outputs under `actions.<key>.<output>` and replace earlier ones of the same name.
+- Action outputs belong to the run (`GET /servers/{id}/apps/{installation}/runs/{run}`, `apps:secrets`); they are not merged into the installation's outputs, so several runs of the same action (two VPN clients) never overwrite each other.
 
 ### 2. Stored versions
 
@@ -75,18 +75,18 @@ actions:
 
 ### 4. Lifecycle operations
 
-All run like the install of ADR 0015: a short server task writes the package of the installation's version plus `inputs.json` into `/var/lib/proxmotion/apps/<installation>/`, starts `run.sh <operation> [action]` detached, and `apps:poll` follows `status.json`. One operation at a time per installation and one install/upgrade/uninstall at a time per server.
+All run like the install of ADR 0015: a short `app_run` server task writes the package of the installation's version (scripts, includes, helpers, install `inputs.json`, `server.json`) into `/var/lib/proxmotion/apps/<installation>/`, the run's own `inputs.json` and `status.json` into `runs/<run>/`, and starts `run.sh <script> <run directory>` detached; `apps:poll` follows the run's `status.json`. Helpers write status and outputs to `PROXMOTION_RUN_DIR`; `pm_input` reads the run's inputs and `pm_app_input` the install inputs. One run at a time per installation and one install or uninstall at a time per server.
 
 | Operation | API | Status flow |
 |---|---|---|
 | Install | `POST /servers/{id}/apps` (unchanged) | `queued → installing → installed \| failed` |
 | Uninstall | `DELETE /servers/{id}/apps/{installation}` | `installed\|failed → uninstalling → removed \| uninstall_failed` |
 | Upgrade | `POST /servers/{id}/apps/{installation}/upgrade` | `installed → upgrading → installed (new version) \| upgrade_failed (old version kept)` |
-| Action | `POST /servers/{id}/apps/{installation}/actions/{key}` | `installed → running_action → installed`; the action run has its own record (`app_action_runs`: key, inputs, status, error, outputs) |
+| Action | `POST /servers/{id}/apps/{installation}/actions/{key}` | the installation stays `installed`; the run has its own record (`app_runs`: kind, action, inputs, status, step, error, outputs) |
 
 - Uninstall without an `uninstall` script is refused (`422`); recipes without one say so in the catalog.
 - Outputs of failed operations are never stored; secrets follow ADR 0015 (encrypted, `apps:secrets`).
-- Webhooks: `app.uninstalled`, `app.upgraded`, `app.action_succeeded`, `app.action_failed` (no outputs).
+- Webhooks: `app.uninstalled`, `app.uninstall_failed`, `app.action_succeeded`, `app.action_failed` with the installation and the run, without outputs; `app.upgraded` comes with phase 3.
 - Billing modules (WHMCS, WISECP) get uninstall, upgrade (shown when the catalog has a newer version the installed one can upgrade from) and action forms built from the recipe's action inputs.
 
 ### 5. Order-time and reinstall installs (Phase 5b)
@@ -110,7 +110,7 @@ All run like the install of ADR 0015: a short server task writes the package of 
 ## Phases
 
 1. **v2 format and stored versions:** schema, loader (v1 compatible), `app_recipe_versions`, installation → version, template capabilities and eligibility, `apps:make`; bundled recipes to v2. *Built 2026-10-17:* `recipes/_schema/recipe-v2.schema.json`; `apps:sync` stores each version approved and refuses a changed version that installations use (raise the version; an unused one is replaced in place); a retry keeps the installation's version; `os_templates.capabilities` (null = the family's defaults, `TemplateCapability::defaultsFor`), edited on the OS template form; `pm_pkg_install` in `_lib/proxmotion.sh`; the bundled recipes are format 2, version 1.1.0, and accept Ubuntu ≥ 22.04 and Debian ≥ 12 through apt. Windows recipes load but are not offered until the runner exists. The API's `App` gained `format` and `requires`. Uninstall, upgrade and action scripts are validated and stored but not run yet.
-2. **Uninstall and actions:** runner operations, API, webhooks, admin UI, WHMCS and WISECP; WireGuard/OpenVPN client actions.
+2. **Uninstall and actions:** runner operations, API, webhooks, admin UI, WHMCS and WISECP; WireGuard/OpenVPN client actions. *Built 2026-10-17 in the panel:* `app_runs` (`AppRun`, `AppRunner`, `AppRunPipeline`, `RunPoller`), `app_run` task, uninstall statuses `uninstalling` and `uninstall_failed`, API (`DELETE /servers/{id}/apps/{installation}`, `POST .../actions/{key}`, `GET .../runs/{run}`), the four webhooks, admin buttons and dialogs; a finished uninstall deletes the installation's directory in the guest. WireGuard and OpenVPN 1.2.0: several clients (add, revoke, list), uninstall; Docker 1.2.0: uninstall (images and volumes kept). The WHMCS client area and the WISECP Apps tool show action forms, uninstall and the latest runs (`GET .../runs`) with downloads of run outputs. **Not done yet:** runs against a real Proxmox, WHMCS or WISECP.
 3. **Upgrade:** version ranges, API, billing modules.
 4. **Order-time and reinstall installs (5b).**
 5. **Windows runner** when the first Windows recipe is written.

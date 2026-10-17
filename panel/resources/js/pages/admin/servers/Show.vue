@@ -128,7 +128,12 @@ const busy = computed(
             (task) => task.status === 'queued' || task.status === 'running',
         ) ||
         props.apps.some(
-            (app) => app.status === 'queued' || app.status === 'installing',
+            (app) =>
+                ['queued', 'installing', 'uninstalling'].includes(app.status) ||
+                app.runs.some(
+                    (run) =>
+                        run.status === 'queued' || run.status === 'running',
+                ),
         ),
 );
 

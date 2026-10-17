@@ -22,4 +22,5 @@ enum TaskType: string
     case ChangePrimaryAddress = 'change_primary_address';
     case ChangeHostname = 'change_hostname';
     case InstallApp = 'install_app';
+    case AppRun = 'app_run';
 }

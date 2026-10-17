@@ -27,6 +27,8 @@ Route::middleware('api.scope:servers:read')->group(function (): void {
     Route::get('tasks/{task}', [TaskController::class, 'show'])->name('tasks.show');
     Route::get('servers/{server}/apps', [AppController::class, 'installations'])->name('servers.apps.index');
     Route::get('servers/{server}/apps/{installation}', [AppController::class, 'show'])->name('servers.apps.show');
+    Route::get('servers/{server}/apps/{installation}/runs', [AppController::class, 'runs'])->name('servers.apps.runs.index');
+    Route::get('servers/{server}/apps/{installation}/runs/{run}', [AppController::class, 'run'])->name('servers.apps.runs.show');
 });
 
 Route::middleware(['api.scope:servers:write', 'api.idempotent'])->group(function (): void {
@@ -43,6 +45,8 @@ Route::middleware(['api.scope:servers:write', 'api.idempotent'])->group(function
     Route::post('servers/{server}/rdns', ServerRdnsController::class)->name('servers.rdns');
     Route::post('servers/{server}/apps', [AppController::class, 'store'])->name('servers.apps.store');
     Route::post('servers/{server}/apps/{installation}/retry', [AppController::class, 'retry'])->name('servers.apps.retry');
+    Route::delete('servers/{server}/apps/{installation}', [AppController::class, 'uninstall'])->name('servers.apps.uninstall');
+    Route::post('servers/{server}/apps/{installation}/actions/{action}', [AppController::class, 'action'])->where('action', '[a-z][a-z0-9_]{0,39}')->name('servers.apps.action');
 });
 
 Route::middleware('api.scope:servers:secrets')->group(function (): void {

@@ -5,13 +5,17 @@ declare(strict_types=1);
 namespace App\Domain\Webhooks;
 
 use App\Enums\AppInstallationStatus;
+use App\Enums\AppRunKind;
+use App\Enums\AppRunStatus;
 use App\Enums\TaskStatus;
 use App\Enums\WebhookDeliveryStatus;
 use App\Enums\WebhookEvent;
 use App\Http\Resources\Api\V1\AppInstallationResource;
+use App\Http\Resources\Api\V1\AppRunResource;
 use App\Http\Resources\Api\V1\TaskResource;
 use App\Jobs\DeliverWebhook;
 use App\Models\AppInstallation;
+use App\Models\AppRun;
 use App\Models\BillingSystem;
 use App\Models\Server;
 use App\Models\Task;
@@ -76,9 +80,39 @@ final class Webhooks
      */
     public function appFinished(AppInstallation $installation): void
     {
-        $server = $installation->server;
         $event = $installation->status === AppInstallationStatus::Installed ? WebhookEvent::AppInstalled : WebhookEvent::AppFailed;
 
+        $this->appEvent($installation->server, $event, fn () => [
+            'server' => self::server($installation->server),
+            'installation' => (new AppInstallationResource($installation))->resolve(),
+        ]);
+    }
+
+    /**
+     * Tell the billing system that an uninstall or an action finished
+     * (docs/adr/0016 §4), with the installation and the run, without outputs.
+     */
+    public function appRunFinished(AppRun $run): void
+    {
+        $succeeded = $run->status === AppRunStatus::Succeeded;
+        $event = match ($run->kind) {
+            AppRunKind::Uninstall => $succeeded ? WebhookEvent::AppUninstalled : WebhookEvent::AppUninstallFailed,
+            AppRunKind::Action => $succeeded ? WebhookEvent::AppActionSucceeded : WebhookEvent::AppActionFailed,
+        };
+        $installation = $run->installation;
+
+        $this->appEvent($installation->server, $event, fn () => [
+            'server' => self::server($installation->server),
+            'installation' => (new AppInstallationResource($installation))->resolve(),
+            'run' => (new AppRunResource($run))->resolve(),
+        ]);
+    }
+
+    /**
+     * @param  callable(): array<string, mixed>  $data
+     */
+    private function appEvent(Server $server, WebhookEvent $event, callable $data): void
+    {
         if ($server->billing_system_id === null) {
             return;
         }
@@ -93,10 +127,7 @@ final class Webhooks
             return;
         }
 
-        $data = [
-            'server' => self::server($server),
-            'installation' => (new AppInstallationResource($installation))->resolve(),
-        ];
+        $data = $data();
         $eventId = (string) Str::uuid();
 
         foreach ($endpoints as $endpoint) {

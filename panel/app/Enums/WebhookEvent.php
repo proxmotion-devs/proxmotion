@@ -29,6 +29,12 @@ enum WebhookEvent: string
     case AppInstalled = 'app.installed';
     case AppFailed = 'app.failed';
 
+    /** An app was uninstalled, or an action of an installed app ran (docs/adr/0016). */
+    case AppUninstalled = 'app.uninstalled';
+    case AppUninstallFailed = 'app.uninstall_failed';
+    case AppActionSucceeded = 'app.action_succeeded';
+    case AppActionFailed = 'app.action_failed';
+
     /**
      * Events an endpoint can subscribe to.
      *
@@ -75,6 +81,10 @@ enum WebhookEvent: string
             self::TaskFailed => 'Any task failed',
             self::AppInstalled => 'App installed',
             self::AppFailed => 'App installation failed',
+            self::AppUninstalled => 'App uninstalled',
+            self::AppUninstallFailed => 'App uninstall failed',
+            self::AppActionSucceeded => 'App action succeeded',
+            self::AppActionFailed => 'App action failed',
         };
     }
 }

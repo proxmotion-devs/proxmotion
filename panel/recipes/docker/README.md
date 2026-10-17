@@ -5,3 +5,6 @@ from [Docker's apt repository](https://docs.docker.com/engine/install/) and star
 service. Output: the installed Docker version.
 
 Running it again updates Docker to the repository's current version.
+
+Uninstalling stops Docker and removes its packages and repository. Images, containers
+and volumes in `/var/lib/docker` and `/var/lib/containerd` are kept.

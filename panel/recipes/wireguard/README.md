@@ -12,3 +12,18 @@ Outputs: `client.conf` (import it into a WireGuard client) and the server endpoi
 
 Keys are generated inside the server and kept when the recipe runs again, so an existing
 client configuration stays valid; the port can be changed by running it again.
+
+## Clients and uninstall
+
+The first client is named `client`. Actions (from the billing system's client area or
+the admin panel):
+
+| Action          | Input  | Result                                                  |
+| --------------- | ------ | ------------------------------------------------------- |
+| `add_client`    | `name` | A new peer with the next free address and `client.conf` |
+| `revoke_client` | `name` | The peer and its keys are deleted                       |
+| `list_clients`  | –      | The client names                                        |
+
+Peers are loaded with `wg syncconf`, so connected clients stay connected. Up to 253
+clients. Uninstalling stops the VPN and deletes its configuration and keys; the
+WireGuard packages stay installed.

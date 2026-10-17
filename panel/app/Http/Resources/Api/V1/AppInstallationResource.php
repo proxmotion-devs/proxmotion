@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Resources\Api\V1;
 
+use App\Domain\Apps\RecipeAction;
 use App\Domain\Apps\RecipeOutput;
 use App\Enums\AppInstallationStatus;
 use App\Models\AppInstallation;
@@ -58,7 +59,10 @@ class AppInstallationResource extends JsonResource
             'step' => $this->step,
             'error' => $this->error,
             'inputs' => (object) $inputs,
-            'outputs' => $this->when($this->outputs, fn () => $this->status === AppInstallationStatus::Installed ? $this->outputList($recipe->outputs) : []),
+            'outputs' => $this->when($this->outputs, fn () => $this->status === AppInstallationStatus::Installed ? self::outputsOf($recipe->outputs, $this->resource->outputs ?? []) : []),
+            // docs/adr/0016 §4: what can be done with the installation.
+            'can_uninstall' => $recipe->canUninstall() && $this->status->canUninstall(),
+            'actions' => $this->status === AppInstallationStatus::Installed ? array_map(fn (RecipeAction $action) => $action->toArray(), $recipe->actions) : [],
             'task_id' => $this->task?->uuid,
             'created_at' => $this->created_at?->toIso8601String(),
             'started_at' => $this->started_at?->toIso8601String(),
@@ -67,12 +71,14 @@ class AppInstallationResource extends JsonResource
     }
 
     /**
+     * Stored outputs in the order and with the labels the recipe declares.
+     *
      * @param  list<RecipeOutput>  $declared
+     * @param  array<string, array{type: string, value: string, filename?: string|null}>  $stored
      * @return list<array<string, mixed>>
      */
-    private function outputList(array $declared): array
+    public static function outputsOf(array $declared, array $stored): array
     {
-        $stored = $this->resource->outputs ?? [];
         $list = [];
 
         foreach ($declared as $output) {

@@ -1,34 +1,33 @@
 #!/bin/bash
-# An OpenVPN server with an Easy-RSA certificate authority and one client
-# profile. The CA and certificates are kept when the script runs again; the
-# configuration is rewritten.
+# An OpenVPN server with an Easy-RSA certificate authority and a first client
+# named "client". The CA and certificates are kept when the script runs
+# again; the configuration is rewritten. Revoked clients are refused through
+# the CRL (lib.sh).
 set -euo pipefail
 # shellcheck source=/dev/null
 . "$PROXMOTION_APP_DIR/proxmotion.sh"
+# shellcheck source=lib.sh
+. "$PROXMOTION_APP_DIR/lib.sh"
 
-port=$(pm_input port)
-protocol=$(pm_input protocol)
+ovpn_settings
 interface=$(pm_default_interface)
-address=$(pm_public_address)
-
 [ -n "$interface" ] || pm_fail "The server has no IPv4 default route."
-[ -n "$address" ] || pm_fail "The server's public address is unknown."
 
 pm_step 10 "Installing OpenVPN"
 pm_apt_update
 pm_apt_install openvpn easy-rsa openssl iptables
 
 pm_step 40 "Creating the certificate authority"
-pki=/etc/openvpn/easy-rsa
-[ -d "$pki" ] || make-cadir "$pki"
-export EASYRSA_BATCH=1 EASYRSA_ALGO=ec EASYRSA_CURVE=prime256v1 EASYRSA_CERT_EXPIRE=3650 EASYRSA_REQ_CN="Proxmotion OpenVPN CA"
-cd "$pki"
+[ -d "$OVPN_PKI" ] || make-cadir "$OVPN_PKI"
+cd "$OVPN_PKI"
 [ -f pki/ca.crt ] || { ./easyrsa init-pki && ./easyrsa build-ca nopass; }
 [ -f pki/issued/server.crt ] || ./easyrsa build-server-full server nopass
-[ -f pki/issued/client.crt ] || ./easyrsa build-client-full client nopass
+# The first client, unless it existed before (it was revoked on purpose).
+[ -f pki/issued/client.crt ] || grep -q '/CN=client$' pki/index.txt 2>/dev/null || ./easyrsa build-client-full client nopass
 umask 077
 [ -s /etc/openvpn/server/tls-crypt.key ] || openvpn --genkey secret /etc/openvpn/server/tls-crypt.key
 install -m 600 pki/ca.crt pki/issued/server.crt pki/private/server.key /etc/openvpn/server/
+ovpn_publish_crl
 
 pm_step 70 "Configuring the VPN"
 exit_notify=""
@@ -43,6 +42,7 @@ key server.key
 dh none
 ecdh-curve prime256v1
 tls-crypt tls-crypt.key
+crl-verify crl.pem
 topology subnet
 server 10.8.0.0 255.255.255.0
 push "redirect-gateway def1 bypass-dhcp"
@@ -80,32 +80,9 @@ systemctl daemon-reload
 systemctl enable proxmotion-openvpn-nat.service openvpn-server@server
 systemctl restart proxmotion-openvpn-nat.service openvpn-server@server
 
-profile=/etc/openvpn/client.ovpn
-{
-    echo "client"
-    echo "dev tun"
-    echo "proto ${protocol}"
-    echo "remote ${address} ${port}"
-    echo "resolv-retry infinite"
-    echo "nobind"
-    echo "persist-key"
-    echo "persist-tun"
-    echo "remote-cert-tls server"
-    echo "data-ciphers AES-256-GCM:AES-128-GCM:CHACHA20-POLY1305"
-    echo "verb 3"
-    echo "<ca>"
-    cat pki/ca.crt
-    echo "</ca>"
-    echo "<cert>"
-    openssl x509 -in pki/issued/client.crt
-    echo "</cert>"
-    echo "<key>"
-    cat pki/private/client.key
-    echo "</key>"
-    echo "<tls-crypt>"
-    cat /etc/openvpn/server/tls-crypt.key
-    echo "</tls-crypt>"
-} >"$profile"
+if ovpn_has_client client; then
+    ovpn_profile client
+    pm_output_file client.ovpn "$OVPN_CLIENTS/client.ovpn"
+fi
 
-pm_output_file client.ovpn "$profile"
 pm_output endpoint "${address}:${port}/${protocol}"

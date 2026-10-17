@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Resources\Api\V1;
 
+use App\Domain\Apps\RecipeAction;
 use App\Domain\Apps\RecipeInput;
 use App\Domain\Apps\RecipeOutput;
 use App\Models\AppRecipe;
@@ -51,6 +52,9 @@ class AppResource extends JsonResource
             'license' => $recipe->license,
             'inputs' => array_map(fn (RecipeInput $input) => $input->toArray(), $recipe->inputs),
             'outputs' => array_map(fn (RecipeOutput $output) => $output->toArray(), $recipe->outputs),
+            // docs/adr/0016 §4: what installed copies offer.
+            'can_uninstall' => $recipe->canUninstall(),
+            'actions' => array_map(fn (RecipeAction $action) => $action->toArray(), $recipe->actions),
         ];
     }
 }

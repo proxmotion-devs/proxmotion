@@ -1,7 +1,7 @@
 format: 2
 slug: openvpn
 name: OpenVPN
-version: 1.1.0
+version: 1.2.0
 category: vpn
 description:
     en: An OpenVPN server with its own certificate authority and one client profile; all client traffic goes through the server.
@@ -38,5 +38,42 @@ outputs:
       label: { en: Server endpoint, tr: Sunucu adresi }
 firewall:
     - { port: '{{ inputs.port }}', proto: '{{ inputs.protocol }}' }
+includes: [lib.sh]
 lifecycle:
     install: { script: install.sh, timeout_minutes: 15 }
+    uninstall: { script: uninstall.sh, timeout_minutes: 5 }
+actions:
+    - key: add_client
+      label: { en: Add a client, tr: İstemci ekle }
+      script: actions/add-client.sh
+      inputs:
+          - key: name
+            type: slug
+            required: true
+            max_length: 32
+            label: { en: Client name, tr: İstemci adı }
+      outputs:
+          - key: client_profile
+            type: file
+            filename: client.ovpn
+            secret: true
+            label: { en: Client profile, tr: İstemci profili }
+      timeout_minutes: 3
+    - key: revoke_client
+      label: { en: Revoke a client, tr: İstemciyi iptal et }
+      script: actions/revoke-client.sh
+      inputs:
+          - key: name
+            type: slug
+            required: true
+            max_length: 32
+            label: { en: Client name, tr: İstemci adı }
+      timeout_minutes: 3
+    - key: list_clients
+      label: { en: List clients, tr: İstemcileri listele }
+      script: actions/list-clients.sh
+      outputs:
+          - key: clients
+            type: text
+            label: { en: Clients, tr: İstemciler }
+      timeout_minutes: 1

@@ -7,7 +7,9 @@ namespace App\Enums;
 /**
  * docs/adr/0015: queued → installing → installed; queued|installing → failed
  * (retryable); installed|failed → removed when the server is reinstalled or
- * terminated.
+ * terminated. docs/adr/0016: installed|failed|uninstall_failed →
+ * uninstalling → removed | uninstall_failed. Actions run in AppRun records
+ * and leave the status alone.
  */
 enum AppInstallationStatus: string
 {
@@ -21,15 +23,29 @@ enum AppInstallationStatus: string
 
     case Failed = 'failed';
 
-    /** The server was reinstalled or terminated. */
+    /** The uninstall script runs inside the server. */
+    case Uninstalling = 'uninstalling';
+
+    /** The uninstall script failed; the app may be partly removed. Uninstalling can be tried again. */
+    case UninstallFailed = 'uninstall_failed';
+
+    /** Uninstalled, or the server was reinstalled or terminated. */
     case Removed = 'removed';
 
     /**
-     * Still running: another app cannot be installed on the server meanwhile.
+     * Still running: another app cannot be installed or uninstalled on the server meanwhile.
      */
     public function isBusy(): bool
     {
-        return $this === self::Queued || $this === self::Installing;
+        return $this === self::Queued || $this === self::Installing || $this === self::Uninstalling;
+    }
+
+    /**
+     * Can be uninstalled (when its recipe has an uninstall script).
+     */
+    public function canUninstall(): bool
+    {
+        return in_array($this, [self::Installed, self::Failed, self::UninstallFailed], true);
     }
 
     /**
@@ -42,6 +58,8 @@ enum AppInstallationStatus: string
             self::Installing => 'Installing',
             self::Installed => 'Installed',
             self::Failed => 'Failed',
+            self::Uninstalling => 'Uninstalling',
+            self::UninstallFailed => 'Uninstall failed',
             self::Removed => 'Removed',
         };
     }

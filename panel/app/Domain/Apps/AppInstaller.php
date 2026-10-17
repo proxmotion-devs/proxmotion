@@ -54,7 +54,7 @@ final readonly class AppInstaller
         $values = $this->inputs->validate($app->recipe(), $inputs);
         $this->ensureNothingRunning($server);
 
-        if ($server->appInstallations()->where('app_recipe_id', $app->id)->where('status', AppInstallationStatus::Installed)->exists()) {
+        if ($server->appInstallations()->where('app_recipe_id', $app->id)->whereIn('status', [AppInstallationStatus::Installed, AppInstallationStatus::UninstallFailed])->exists()) {
             throw new AppInstallConflict('This app is already installed on the server.');
         }
 
@@ -140,7 +140,7 @@ final readonly class AppInstaller
     private function ensureNothingRunning(Server $server): void
     {
         $busy = $server->appInstallations()
-            ->whereIn('status', [AppInstallationStatus::Queued, AppInstallationStatus::Installing])
+            ->whereIn('status', [AppInstallationStatus::Queued, AppInstallationStatus::Installing, AppInstallationStatus::Uninstalling])
             ->exists();
 
         if ($busy) {

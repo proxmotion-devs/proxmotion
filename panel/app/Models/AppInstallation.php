@@ -11,6 +11,7 @@ use Database\Factories\AppInstallationFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Carbon;
 
 /**
@@ -77,6 +78,16 @@ class AppInstallation extends Model
     public function recipe(): BelongsTo
     {
         return $this->belongsTo(AppRecipe::class, 'app_recipe_id');
+    }
+
+    /**
+     * Uninstalls and actions (docs/adr/0016 §4).
+     *
+     * @return HasMany<AppRun, $this>
+     */
+    public function runs(): HasMany
+    {
+        return $this->hasMany(AppRun::class);
     }
 
     /**
