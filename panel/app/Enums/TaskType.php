@@ -20,4 +20,5 @@ enum TaskType: string
     case ChangeResources = 'change_resources';
     case GuestScript = 'guest_script';
     case ChangePrimaryAddress = 'change_primary_address';
+    case ChangeHostname = 'change_hostname';
 }

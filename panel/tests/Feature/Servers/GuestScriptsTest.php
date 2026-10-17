@@ -279,7 +279,7 @@ class GuestScriptsTest extends TestCase
             ->assertInertia(fn (Assert $page) => $page
                 ->component('admin/os-templates/Scripts')
                 ->where('template.platform', 'linux')
-                ->has('scripts', 4)
+                ->has('scripts', 5)
                 ->where('scripts.0.event', 'provisioned')
                 ->where('scripts.0.content', 'echo hi')
                 ->where('scripts.0.default', null)

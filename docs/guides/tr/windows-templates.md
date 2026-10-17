@@ -20,6 +20,7 @@ ailesindeki şablonlar bunu otomatik alır). Platform şunları belirler:
 | Ek IP adresleri, birincil adres | Varsayılan `addresses.ps1` guest scripti (ADR 0010, 0011), QEMU guest agent üzerinden çalışır. Adresleri her açılışta yeniden uygulayan **"Proxmotion addresses" zamanlanmış görevini** kaydeder |
 | Yükseltmeyle büyüyen disk | Varsayılan `disk.ps1`, `C:` bölümünü genişletir |
 | Şifre sıfırlama | Guest agent **`Administrator`** kullanıcısının şifresini ayarlar (ya da şablonun kendi `password_reset` scripti çalışır) |
+| Hostname değişikliği | Varsayılan `hostname.ps1`, bilgisayarı hostname'in ilk kısmıyla (en fazla 15 karakter) yeniden adlandırır. Windows bunu bir sonraki yeniden başlatmada uygular: istenirse panel sunucuyu yeniden başlatır, aksi hâlde *yeniden başlatma gerekli* uyarısı gösterir (ADR 0012) |
 
 Scriptler şablon bazında *OS templates → Scripts* sayfasından değiştirilebilir.
 

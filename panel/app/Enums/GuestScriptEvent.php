@@ -13,6 +13,7 @@ enum GuestScriptEvent: string
     case AddressesChanged = 'addresses_changed';
     case DiskResized = 'disk_resized';
     case PasswordReset = 'password_reset';
+    case HostnameChanged = 'hostname_changed';
 
     /**
      * The file name inside the guest (and of the defaults in resources/guest).
@@ -25,6 +26,7 @@ enum GuestScriptEvent: string
             self::AddressesChanged => 'addresses',
             self::DiskResized => 'disk',
             self::PasswordReset => 'password',
+            self::HostnameChanged => 'hostname',
         };
     }
 
@@ -36,6 +38,7 @@ enum GuestScriptEvent: string
             self::AddressesChanged => 'guest_addresses',
             self::DiskResized => 'guest_disk',
             self::PasswordReset => 'set_password',
+            self::HostnameChanged => 'guest_hostname',
         };
     }
 
@@ -51,12 +54,13 @@ enum GuestScriptEvent: string
             self::AddressesChanged => ['addresses', 'primary_ipv4', 'gateway_ipv4', 'cloudinit_ipv4', 'primary_ipv6', 'gateway_ipv6', 'cloudinit_ipv6'],
             self::DiskResized => ['disk_mib'],
             self::PasswordReset => ['username'],
+            self::HostnameChanged => ['previous_hostname'],
         };
     }
 
     public function hasDefault(): bool
     {
-        return $this === self::AddressesChanged || $this === self::DiskResized;
+        return $this === self::AddressesChanged || $this === self::DiskResized || $this === self::HostnameChanged;
     }
 
     /** Whether a failing script fails the task instead of leaving a note. */

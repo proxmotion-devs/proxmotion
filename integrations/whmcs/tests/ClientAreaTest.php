@@ -165,6 +165,18 @@ class ClientAreaTest extends ModuleTestCase
         $this->assertSame(['address' => '203.0.113.10', 'hostname' => null], $this->api->last('POST /servers/' . self::SERVER_ID . '/rdns')['body']);
     }
 
+    public function test_the_server_is_renamed_and_the_service_domain_follows()
+    {
+        $this->serviceHas($this->server());
+        $this->api->on('POST /servers/' . self::SERVER_ID . '/hostname', 202, $this->task('change_hostname'));
+
+        $this->assertSame('success', $this->module()->changeHostname(['hostname' => ' Web2.Example.com ', 'reboot' => '1']));
+
+        $this->assertSame(['hostname' => 'web2.example.com', 'reboot' => true], $this->api->last('POST /servers/' . self::SERVER_ID . '/hostname')['body']);
+        $this->assertSame([['command' => 'UpdateClientProduct', 'values' => ['serviceid' => 42, 'domain' => 'web2.example.com']]], $GLOBALS['whmcs_calls']['localAPI']);
+        $this->assertSame('Please enter a hostname.', $this->module()->changeHostname(['hostname' => ' ']));
+    }
+
     public function test_the_admin_tab_links_to_the_panel()
     {
         $this->serviceHas($this->server());

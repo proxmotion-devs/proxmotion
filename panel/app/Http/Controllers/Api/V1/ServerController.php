@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Api\V1;
 
+use App\Domain\Servers\HostnameChanger;
 use App\Domain\Servers\ServerPower;
 use App\Domain\Servers\ServerReinstaller;
 use App\Enums\PowerAction;
@@ -12,6 +13,7 @@ use App\Enums\TaskType;
 use App\Http\Requests\Api\V1\ChangeResourcesRequest;
 use App\Http\Requests\Api\V1\CreateServerRequest;
 use App\Http\Requests\Api\V1\ReinstallServerRequest;
+use App\Http\Requests\HostnameRequest;
 use App\Http\Requests\PrimaryAddressRequest;
 use App\Http\Resources\Api\V1\ServerResource;
 use App\Models\AuditLog;
@@ -153,6 +155,25 @@ class ServerController extends ApiController
             return $this->conflict($e->translatedMessage());
         } catch (ProvisioningException $e) {
             // Not enough capacity on the server's node, or no free addresses.
+            return response()->json(['message' => $e->translatedMessage()], 422);
+        }
+    }
+
+    /**
+     * Rename the server (docs/adr/0012): at once in the panel and its PTRs
+     * that equal the old name, inside the server through the guest agent.
+     */
+    public function hostname(HostnameRequest $request, Server $server, HostnameChanger $changer): JsonResponse
+    {
+        if ($server->status !== ServerStatus::Active) {
+            return $this->notPossible($server);
+        }
+
+        try {
+            return $this->accepted($changer->request($server, $request->newHostname(), $request->reboot(), $this->token($request), $request->ip()));
+        } catch (TaskAlreadyRunning $e) {
+            return $this->conflict($e->translatedMessage());
+        } catch (ProvisioningException $e) {
             return response()->json(['message' => $e->translatedMessage()], 422);
         }
     }

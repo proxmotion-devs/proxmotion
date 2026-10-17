@@ -349,6 +349,44 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/ValidationError' }
 
+  /servers/{server}/hostname:
+    parameters:
+      - $ref: '#/components/parameters/Server'
+    post:
+      tags: [Servers]
+      summary: Change the hostname
+      description: |
+        Scope: `servers:write`. Active servers only. The hostname changes in Proxmotion at once;
+        PTRs of the server's addresses that equal the old hostname follow it. A task renames the
+        system inside the server through the guest agent (Linux: immediately). Windows uses only the
+        first label (at most 15 characters) and applies it at the next restart: with `reboot: true`
+        the server is restarted now, otherwise it shows `reboot_required: true`. The Proxmox VM keeps
+        its old name until a reinstall.
+      operationId: changeServerHostname
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [hostname]
+              properties:
+                hostname: { type: string, maxLength: 253, examples: [web2.example.com] }
+                reboot: { type: boolean, default: false }
+      responses:
+        '202': { $ref: '#/components/responses/TaskAccepted' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422':
+          description: Invalid hostname (`errors`), or the server already has this name (`message`).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ValidationError' }
+
   /servers/{server}/primary-address:
     parameters:
       - $ref: '#/components/parameters/Server'
@@ -715,7 +753,7 @@ components:
         hostname: { type: string }
         status: { $ref: '#/components/schemas/ServerStatus' }
         suspension_reason: { type: [string, 'null'] }
-        reboot_required: { type: boolean, description: 'New CPU or memory wait for a restart through Proxmotion (power start or reboot)' }
+        reboot_required: { type: boolean, description: 'Changes wait for a restart through Proxmotion (power start or reboot): new CPU or memory, a new Windows computer name' }
         power_state:
           type: [string, 'null']
           description: Only on `GET /servers/{id}`. `running`, `stopped`, …; null when the server is not active or Proxmox could not be asked.
@@ -759,7 +797,7 @@ components:
       required: [id, type, status, server, steps, error, created_at, started_at, finished_at]
       properties:
         id: { type: string, format: uuid }
-        type: { type: string, enum: [create, suspend, unsuspend, terminate, adopt, start, shutdown, stop, reboot, reset_password, reinstall, change_resources, guest_script, change_primary_address] }
+        type: { type: string, enum: [create, suspend, unsuspend, terminate, adopt, start, shutdown, stop, reboot, reset_password, reinstall, change_resources, guest_script, change_primary_address, change_hostname] }
         status: { type: string, enum: [queued, running, succeeded, failed] }
         server:
           type: object

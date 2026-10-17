@@ -283,6 +283,29 @@ class Module
     }
 
     /**
+     * Rename the server; the service's domain in WHMCS follows.
+     *
+     * @param array<string, mixed> $input hostname, reboot (from the form)
+     */
+    public function changeHostname(array $input): string
+    {
+        $server = $this->requireActiveServer();
+        $hostname = isset($input['hostname']) ? strtolower(trim((string) $input['hostname'])) : '';
+
+        if ($hostname === '') {
+            return $this->lang->get('hostname_required');
+        }
+
+        $this->client->changeHostname((string) $server['id'], $hostname, !empty($input['reboot']), $this->idempotencyKey('hostname'));
+
+        if (function_exists('localAPI')) {
+            localAPI('UpdateClientProduct', ['serviceid' => $this->params['serviceid'], 'domain' => $hostname]);
+        }
+
+        return 'success';
+    }
+
+    /**
      * @param array<string, mixed> $input address, hostname (from the form)
      */
     public function setRdns(array $input): string

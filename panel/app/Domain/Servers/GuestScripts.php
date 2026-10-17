@@ -115,7 +115,7 @@ final readonly class GuestScripts
             return $this->failed($task, $event, new GuestScriptFailed('The MAC address of the network interface is unknown.'), 'The MAC address of the network interface is unknown: configure the additional addresses inside the server.');
         }
 
-        $inputs = ['server' => $server->uuid, 'hostname' => $server->hostname, 'mac' => $mac] + $this->inputs($server, $platform, $event, $config);
+        $inputs = ['server' => $server->uuid, 'hostname' => $server->hostname, 'mac' => $mac] + $this->inputs($server, $platform, $event, $config, $task);
 
         for ($attempt = 1; ; $attempt++) {
             try {
@@ -227,7 +227,7 @@ final readonly class GuestScripts
      * @param  array<string, mixed>  $config  the VM's configuration
      * @return array<string, string|int|list<string>|null>
      */
-    public function inputs(Server $server, OsPlatform $platform, GuestScriptEvent $event, array $config = []): array
+    public function inputs(Server $server, OsPlatform $platform, GuestScriptEvent $event, array $config = [], ?Task $task = null): array
     {
         return match ($event) {
             GuestScriptEvent::Provisioned => ['addresses' => $this->addresses->all($server)],
@@ -237,6 +237,7 @@ final readonly class GuestScripts
                 + GuestAddresses::cloudInit($config),
             GuestScriptEvent::DiskResized => ['disk_mib' => $server->disk_mib],
             GuestScriptEvent::PasswordReset => ['username' => $platform->administrator()],
+            GuestScriptEvent::HostnameChanged => ['previous_hostname' => is_string($task?->input['previous_hostname'] ?? null) ? $task->input['previous_hostname'] : null],
         };
     }
 
@@ -287,6 +288,7 @@ final readonly class GuestScripts
         return match ($event) {
             GuestScriptEvent::AddressesChanged => 'The guest agent did not answer: configure the additional addresses inside the server.',
             GuestScriptEvent::DiskResized => 'The guest agent did not answer: grow the file system inside the server (Linux templates with cloud-init grow it at the next boot).',
+            GuestScriptEvent::HostnameChanged => 'The guest agent did not answer: change the hostname inside the server.',
             default => 'The guest agent did not answer: the template\'s script did not run.',
         };
     }
@@ -298,6 +300,7 @@ final readonly class GuestScripts
             GuestScriptEvent::DiskResized => 'The file system could not be grown inside the server: ',
             GuestScriptEvent::PasswordReset => 'The password reset script failed: ',
             GuestScriptEvent::Provisioned => 'The template\'s script failed: ',
+            GuestScriptEvent::HostnameChanged => 'The hostname could not be changed inside the server: ',
         };
     }
 

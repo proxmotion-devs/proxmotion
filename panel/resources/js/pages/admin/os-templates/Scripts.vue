@@ -35,6 +35,7 @@ const eventTitles: Record<GuestScriptEvent, string> = {
     addresses_changed: 'Additional IP addresses',
     disk_resized: 'Disk grown',
     password_reset: 'Password reset',
+    hostname_changed: 'Hostname changed',
 };
 const eventDescriptions: Record<GuestScriptEvent, string> = {
     provisioned:
@@ -43,6 +44,8 @@ const eventDescriptions: Record<GuestScriptEvent, string> = {
         'Configures the additional IP addresses after creation, reinstall and every resource change; also removes released ones.',
     disk_resized:
         'Grows the partition and file system right after an upgrade enlarged the disk.',
+    hostname_changed:
+        'Renames the system when the hostname is changed. On Windows the new name takes effect at the next restart.',
     password_reset:
         'Replaces the guest agent setting the password. The new password arrives on standard input; if the script fails, the reset fails and no new password is shown.',
 };

@@ -239,7 +239,7 @@ function proxmotion_AdminCustomButtonArray()
  */
 function proxmotion_ClientAreaAllowedFunctions()
 {
-    return ['Start', 'Shutdown', 'Reboot', 'Stop', 'Console', 'ResetPassword', 'Reinstall', 'SetRdns'];
+    return ['Start', 'Shutdown', 'Reboot', 'Stop', 'Console', 'ResetPassword', 'Reinstall', 'SetRdns', 'ChangeHostname'];
 }
 
 /**
@@ -309,6 +309,16 @@ function proxmotion_SetRdns(array $params): string
 {
     return proxmotion_run($params, function (Module $module) {
         return $module->setRdns($_POST);
+    });
+}
+
+/**
+ * @param array<string, mixed> $params
+ */
+function proxmotion_ChangeHostname(array $params): string
+{
+    return proxmotion_run($params, function (Module $module) {
+        return $module->changeHostname($_POST);
     });
 }
 

@@ -20,7 +20,18 @@
                 <table class="table table-condensed">
                     <tr>
                         <th>{$pmx.lang.hostname|escape}</th>
-                        <td><code>{$server.hostname|escape}</code></td>
+                        <td>
+                            {if $server.active}
+                                <form method="post" action="{$pmxAction}ChangeHostname" class="form-inline">
+                                    <input type="hidden" name="token" value="{$token}">
+                                    <input type="text" name="hostname" class="form-control input-sm" value="{$server.hostname|escape}" required>
+                                    <label class="checkbox-inline" title="{$pmx.lang.hostname_reboot_hint|escape}"><input type="checkbox" name="reboot" value="1"> {$pmx.lang.hostname_reboot|escape}</label>
+                                    <button type="submit" class="btn btn-default btn-sm">{$pmx.lang.change_hostname|escape}</button>
+                                </form>
+                            {else}
+                                <code>{$server.hostname|escape}</code>
+                            {/if}
+                        </td>
                     </tr>
                     <tr>
                         <th>{$pmx.lang.status|escape}</th>

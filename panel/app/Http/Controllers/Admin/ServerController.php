@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Controllers\Admin;
 
 use App\Domain\Servers\GuestAgentProbe;
+use App\Domain\Servers\HostnameChanger;
 use App\Domain\Servers\ReinstallOptions;
 use App\Domain\Servers\ResourceOptions;
 use App\Domain\Servers\ServerPasswords;
@@ -16,6 +17,7 @@ use App\Enums\TaskType;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\ChangeResourcesRequest;
 use App\Http\Requests\Admin\ServerRequest;
+use App\Http\Requests\HostnameRequest;
 use App\Http\Requests\PrimaryAddressRequest;
 use App\Http\Requests\ReinstallRequest;
 use App\Models\BillingSystem;
@@ -137,6 +139,7 @@ class ServerController extends Controller
                 'location' => $server->location->name,
                 'package' => $server->package?->name,
                 'os_template' => $server->osTemplate?->name,
+                'platform' => $server->osTemplate->platform->value ?? 'linux',
                 'addresses' => $server->ipAddresses->map(fn (IpAddress $address) => [
                     'address' => $address->address,
                     'version' => $address->pool->version,
@@ -241,6 +244,23 @@ class ServerController extends Controller
         }
 
         $this->toast('info', 'Reinstalling the server…');
+
+        return back();
+    }
+
+    public function changeHostname(HostnameRequest $request, Server $server, #[CurrentUser] User $admin, HostnameChanger $changer): RedirectResponse
+    {
+        try {
+            $changer->request($server, $request->newHostname(), $request->reboot(), $admin, $request->ip());
+        } catch (TaskAlreadyRunning $e) {
+            $this->toast('error', $e->translatedMessage());
+
+            return back();
+        } catch (ProvisioningException $e) {
+            throw ValidationException::withMessages(['hostname' => $e->translatedMessage()]);
+        }
+
+        $this->toast('info', 'Changing the hostname…');
 
         return back();
     }

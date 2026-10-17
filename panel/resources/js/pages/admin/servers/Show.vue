@@ -8,6 +8,7 @@ import ServerStatusBadge from '@/components/admin/ServerStatusBadge.vue';
 import StatusBadge from '@/components/admin/StatusBadge.vue';
 import Heading from '@/components/Heading.vue';
 import PowerControls from '@/components/servers/PowerControls.vue';
+import HostnameDialog from '@/components/servers/HostnameDialog.vue';
 import PrimaryAddressDialog from '@/components/servers/PrimaryAddressDialog.vue';
 import RdnsDialog from '@/components/servers/RdnsDialog.vue';
 import ReinstallDialog from '@/components/servers/ReinstallDialog.vue';
@@ -22,6 +23,7 @@ import { show as showPool } from '@/routes/admin/ip-pools';
 import {
     console as openConsole,
     destroy,
+    hostname as changeHostname,
     index,
     password,
     power as powerRoute,
@@ -38,6 +40,7 @@ import {
 import { NETWORK_MODELS } from '@/types/admin';
 import type {
     NetworkModel,
+    OsPlatform,
     PowerAction,
     Drift,
     ReinstallOptions,
@@ -72,6 +75,7 @@ const props = defineProps<{
         location: string;
         package: string | null;
         os_template: string | null;
+        platform: OsPlatform;
         addresses: {
             address: string;
             version: 4 | 6;
@@ -184,6 +188,13 @@ const modelLabel =
                     :options="resourceOptions"
                     :disabled="busy"
                 />
+                <HostnameDialog
+                    v-if="server.status === 'active'"
+                    :action="changeHostname(server.uuid)"
+                    :hostname="server.hostname"
+                    :platform="server.platform"
+                    :disabled="busy"
+                />
                 <ReinstallDialog
                     v-if="server.status === 'active'"
                     :action="reinstall(server.uuid)"
@@ -218,7 +229,7 @@ const modelLabel =
         >
             {{
                 $t(
-                    'The new CPU and memory take effect when the server is restarted (Start or Reboot here).',
+                    'Some changes take effect when the server is restarted (Start or Reboot here).',
                 )
             }}
         </p>

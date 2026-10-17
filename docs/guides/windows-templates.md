@@ -18,6 +18,7 @@ Set the OS template's **Platform** to **Windows** in *Admin → OS templates* (t
 | Additional IP addresses, primary address | The default `addresses.ps1` guest script (ADR 0010, 0011), run through the QEMU guest agent. It registers a **scheduled task "Proxmotion addresses"** that applies the addresses again at every startup |
 | Disk grown by an upgrade | The default `disk.ps1` extends the `C:` partition |
 | Password reset | The guest agent sets the password of **`Administrator`** (or the template's own `password_reset` script) |
+| Hostname change | The default `hostname.ps1` renames the computer to the first label of the hostname (at most 15 characters). Windows applies it at the next restart: the panel restarts the server when asked, otherwise it shows *restart required* (ADR 0012) |
 
 Scripts can be replaced per template under *OS templates → Scripts*.
 

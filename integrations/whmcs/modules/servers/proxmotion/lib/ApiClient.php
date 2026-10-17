@@ -209,6 +209,16 @@ class ApiClient
     }
 
     /**
+     * Rename the server (a task); $reboot restarts a Windows server so the name applies now.
+     *
+     * @return array<string, mixed>
+     */
+    public function changeHostname(string $id, string $hostname, bool $reboot, string $idempotencyKey): array
+    {
+        return $this->dataOf($this->request('POST', '/servers/' . rawurlencode($id) . '/hostname', ['hostname' => $hostname, 'reboot' => $reboot], $idempotencyKey));
+    }
+
+    /**
      * @return array<string, mixed>
      */
     public function setRdns(string $id, string $address, ?string $hostname): array

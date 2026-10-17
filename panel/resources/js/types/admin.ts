@@ -119,7 +119,8 @@ export type GuestScriptEvent =
     | 'provisioned'
     | 'addresses_changed'
     | 'disk_resized'
-    | 'password_reset';
+    | 'password_reset'
+    | 'hostname_changed';
 
 export type GuestScriptSlot = {
     event: GuestScriptEvent;
@@ -184,6 +185,7 @@ export type TaskType =
     | 'change_resources'
     | 'guest_script'
     | 'change_primary_address'
+    | 'change_hostname'
     | PowerAction;
 
 export type PowerAction = 'start' | 'shutdown' | 'stop' | 'reboot';

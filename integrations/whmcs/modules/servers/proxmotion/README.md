@@ -14,7 +14,7 @@ client area. The module is a thin client of the Proxmotion billing API v1
 | Terminate | Deletes the server and its disks; the addresses are released |
 | Change Password | Sets the service password as the root password (at least 12 characters) |
 | Change Package | Upgrades and downgrades: the new product's package and configurable options, with the same rules as ordering. CPU and memory take effect at the server's next restart (the client area says so) unless *Restart after upgrades* is on. The disk only grows. Additional IP addresses come from Proxmotion's pools; with fewer, the newest extra ones are released. |
-| Client area | Status, power state, IP addresses with reverse DNS, start / shut down / reboot / force stop, browser console, root password reset, reinstall |
+| Client area | Status, power state, IP addresses with reverse DNS, hostname change (the service domain follows), start / shut down / reboot / force stop, browser console, root password reset, reinstall |
 | Admin area | Server status and addresses on the service page, a link to the server in Proxmotion, power and password buttons |
 
 The service password: when it has at least 12 characters, it becomes the root

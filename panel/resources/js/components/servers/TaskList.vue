@@ -27,6 +27,7 @@ const taskTypeLabels: Record<TaskType, string> = {
     change_resources: 'Change resources',
     guest_script: 'Run template script',
     change_primary_address: 'Change primary address',
+    change_hostname: 'Change hostname',
 };
 const taskStatusTone: Record<
     TaskStatus,
@@ -62,6 +63,7 @@ const stepLabels: Record<string, string> = {
     guest_addresses: 'Configure additional IP addresses in the server',
     guest_disk: 'Grow the file system in the server',
     guest_provisioned: "Run the template's script in the server",
+    guest_hostname: 'Change the hostname in the server',
 };
 const plannedSteps: Partial<Record<TaskType, string[]>> = {
     change_resources: ['configure', 'resize', 'addresses', 'apply'],

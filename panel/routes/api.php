@@ -34,6 +34,7 @@ Route::middleware(['api.scope:servers:write', 'api.idempotent'])->group(function
     Route::post('servers/{server}/reinstall', [ServerController::class, 'reinstall'])->name('servers.reinstall');
     Route::post('servers/{server}/package', [ServerController::class, 'changeResources'])->name('servers.package');
     Route::post('servers/{server}/primary-address', [ServerController::class, 'primaryAddress'])->name('servers.primary-address');
+    Route::post('servers/{server}/hostname', [ServerController::class, 'hostname'])->name('servers.hostname');
     Route::post('servers/{server}/password', [ServerPasswordController::class, 'reset'])->name('servers.password.reset');
     Route::post('servers/{server}/rdns', ServerRdnsController::class)->name('servers.rdns');
 });
