@@ -32,6 +32,7 @@ tags:
   - name: Catalog
   - name: Servers
   - name: Tasks
+  - name: Apps
 
 paths:
   /packages:
@@ -91,6 +92,34 @@ paths:
                   data: { type: array, items: { $ref: '#/components/schemas/OsTemplate' } }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
+
+  /apps:
+    get:
+      tags: [Apps]
+      summary: Apps of the marketplace
+      description: |
+        Scope: `catalog:read`. Active apps (docs/adr/0015). With `os_template` and/or `package`,
+        only the apps that can be installed on a server with them; with `server` (one of the
+        token's billing system's servers), only those installable on it now. Paid apps are not
+        installable yet.
+      operationId: listApps
+      parameters:
+        - { name: os_template, in: query, required: false, schema: { type: string, format: uuid } }
+        - { name: package, in: query, required: false, schema: { type: string, format: uuid } }
+        - { name: server, in: query, required: false, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: Apps
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: { type: array, items: { $ref: '#/components/schemas/App' } }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationError' }
 
   /servers:
     get:
@@ -565,6 +594,128 @@ paths:
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
 
+  /servers/{server}/apps:
+    parameters:
+      - $ref: '#/components/parameters/Server'
+    get:
+      tags: [Apps]
+      summary: Apps installed on the server
+      description: 'Scope: `servers:read`. Newest first; `outputs` only with the `apps:secrets` scope.'
+      operationId: listServerApps
+      responses:
+        '200':
+          description: Installations
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: { type: array, items: { $ref: '#/components/schemas/AppInstallation' } }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    post:
+      tags: [Apps]
+      summary: Install an app
+      description: |
+        Scope: `servers:write`. Active servers only, one installation at a time per server. The
+        inputs are checked against the app's declared inputs (defaults fill in missing ones) and
+        written into the server as a file, never into a command. A short `install_app` task starts
+        the installer through the guest agent; the installation then runs on its own (minutes):
+        poll `GET /servers/{id}/apps/{installation}` until `status` is `installed` or `failed`, or
+        wait for the `app.installed` / `app.failed` webhook. `409` while another app installs or
+        when the app is already installed, `422` for invalid inputs or an app that does not fit
+        the server (OS, resources, network model).
+      operationId: installServerApp
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [app]
+              properties:
+                app: { type: string, description: 'The app''s `id`, e.g. `wireguard`' }
+                inputs:
+                  type: [object, 'null']
+                  additionalProperties: { type: [string, integer, boolean] }
+                  examples: [{ port: 51820 }]
+      responses:
+        '202':
+          description: The installation was queued.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: { $ref: '#/components/schemas/AppInstallation' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422':
+          description: Invalid inputs (`errors` under `inputs.<key>`), or the app does not fit the server (`message` only).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ValidationError' }
+
+  /servers/{server}/apps/{installation}:
+    parameters:
+      - $ref: '#/components/parameters/Server'
+      - $ref: '#/components/parameters/Installation'
+    get:
+      tags: [Apps]
+      summary: An app installation
+      description: |
+        Scope: `servers:read`. Progress is read from inside the server about once a minute.
+        `outputs` (VPN profiles, generated passwords, URLs) only with the `apps:secrets` scope and
+        once `installed`; show them to the customer, do not store them in the billing system.
+      operationId: showServerApp
+      responses:
+        '200':
+          description: The installation
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: { $ref: '#/components/schemas/AppInstallation' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /servers/{server}/apps/{installation}/retry:
+    parameters:
+      - $ref: '#/components/parameters/Server'
+      - $ref: '#/components/parameters/Installation'
+    post:
+      tags: [Apps]
+      summary: Retry a failed installation
+      description: 'Scope: `servers:write`. Runs a `failed` installation again with the same inputs; `409` for other statuses.'
+      operationId: retryServerApp
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '202':
+          description: The installation was queued again.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: { $ref: '#/components/schemas/AppInstallation' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
   /tasks/{task}:
     parameters:
       - name: task
@@ -603,6 +754,12 @@ components:
       in: path
       required: true
       description: The server's `id` (UUID). Find it by service id with `GET /servers?external_id=`.
+      schema: { type: string, format: uuid }
+    Installation:
+      name: installation
+      in: path
+      required: true
+      description: The installation's `id` (UUID).
       schema: { type: string, format: uuid }
     IdempotencyKey:
       name: Idempotency-Key
@@ -725,7 +882,7 @@ components:
       properties:
         external_id: { type: string, maxLength: 191, description: Service id in the billing system; unique within the token's billing system }
         external_client_id: { type: [string, 'null'], maxLength: 191, description: Customer id in the billing system }
-        package: { type: [string, 'null'], format: uuid, description: 'Empty: custom resources from esources.' }
+        package: { type: [string, 'null'], format: uuid, description: 'Empty: custom resources from `resources`.' }
         location: { type: string, format: uuid }
         os_template: { type: string, format: uuid }
         network_model: { description: 'Default: the first model the package allows. Required without a package.', oneOf: [{ $ref: '#/components/schemas/NetworkModel' }, { type: 'null' }] }
@@ -798,7 +955,7 @@ components:
       required: [id, type, status, server, steps, error, created_at, started_at, finished_at]
       properties:
         id: { type: string, format: uuid }
-        type: { type: string, enum: [create, suspend, unsuspend, terminate, adopt, start, shutdown, stop, reboot, reset_password, reinstall, change_resources, guest_script, change_primary_address, change_hostname] }
+        type: { type: string, enum: [create, suspend, unsuspend, terminate, adopt, start, shutdown, stop, reboot, reset_password, reinstall, change_resources, guest_script, change_primary_address, change_hostname, install_app] }
         status: { type: string, enum: [queued, running, succeeded, failed] }
         server:
           type: object
@@ -819,6 +976,106 @@ components:
         created_at: { type: [string, 'null'], format: date-time }
         started_at: { type: [string, 'null'], format: date-time }
         finished_at: { type: [string, 'null'], format: date-time }
+    Text:
+      type: object
+      description: A text in English (`en`) and, when the recipe has it, Turkish (`tr`).
+      required: [en]
+      properties:
+        en: { type: string }
+        tr: { type: string }
+    App:
+      type: object
+      required: [id, name, version, category, description, os, requirements, network_models, install_modes, billing, license, inputs, outputs]
+      properties:
+        id: { type: string, examples: [wireguard] }
+        name: { type: string }
+        version: { type: string, examples: [1.0.0] }
+        category: { type: string, enum: [vpn, control-panel, container, web] }
+        description: { $ref: '#/components/schemas/Text' }
+        os:
+          type: array
+          items:
+            type: object
+            properties:
+              family: { type: string, examples: [ubuntu] }
+              versions: { type: array, items: { type: string }, examples: [['22.04', '24.04']] }
+        requirements:
+          type: object
+          properties:
+            min_cores: { type: integer }
+            min_memory_mib: { type: integer }
+            min_disk_mib: { type: integer }
+        network_models: { type: array, items: { $ref: '#/components/schemas/NetworkModel' } }
+        install_modes: { type: array, items: { type: string, enum: [order, post] }, description: '`order` (at order time) is not supported yet.' }
+        billing: { type: string, enum: [free, paid] }
+        license: { type: string, enum: [none, external], description: '`external`: the licence is sold separately.' }
+        inputs:
+          type: array
+          items:
+            type: object
+            required: [key, type, label, required, default]
+            properties:
+              key: { type: string }
+              type: { type: string, enum: [string, password, integer, port, boolean, enum, slug, email, domain] }
+              label: { oneOf: [{ $ref: '#/components/schemas/Text' }, { type: 'null' }] }
+              required: { type: boolean }
+              default: { type: [string, integer, boolean, 'null'] }
+              options: { type: [array, 'null'], items: { type: string }, description: Values of an `enum` input }
+              min: { type: [integer, 'null'], description: 'Smallest number (integer, port) or shortest length (password)' }
+              max: { type: [integer, 'null'] }
+              max_length: { type: [integer, 'null'] }
+        outputs:
+          type: array
+          items:
+            type: object
+            required: [key, type, label, filename, secret]
+            properties:
+              key: { type: string }
+              type: { type: string, enum: [text, url, file] }
+              label: { oneOf: [{ $ref: '#/components/schemas/Text' }, { type: 'null' }] }
+              filename: { type: [string, 'null'] }
+              secret: { type: boolean }
+    AppInstallation:
+      type: object
+      required: [id, app, server, status, progress, step, error, inputs, task_id, created_at, started_at, finished_at]
+      properties:
+        id: { type: string, format: uuid }
+        app:
+          type: object
+          properties:
+            id: { type: string }
+            name: { type: string }
+            version: { type: string }
+        server:
+          type: object
+          properties:
+            id: { type: string, format: uuid }
+            external_id: { type: [string, 'null'] }
+        status:
+          type: string
+          enum: [queued, installing, installed, failed, removed]
+          description: '`removed`: the server was reinstalled or terminated.'
+        progress: { type: integer, minimum: 0, maximum: 100 }
+        step: { type: [string, 'null'], description: 'What the installer is doing, as it reported it (English)' }
+        error: { type: [string, 'null'] }
+        inputs: { type: object, description: The values installed with; passwords are left out }
+        outputs:
+          type: array
+          description: Only with the `apps:secrets` scope; empty until `installed`.
+          items:
+            type: object
+            properties:
+              key: { type: string }
+              type: { type: string, enum: [text, url, file] }
+              label: { oneOf: [{ $ref: '#/components/schemas/Text' }, { type: 'null' }] }
+              secret: { type: boolean }
+              value: { type: [string, 'null'], description: Text and URL outputs }
+              filename: { type: [string, 'null'] }
+              content_base64: { type: [string, 'null'], description: File outputs }
+        task_id: { type: [string, 'null'], format: uuid, description: The `install_app` task of the latest attempt }
+        created_at: { type: [string, 'null'], format: date-time }
+        started_at: { type: [string, 'null'], format: date-time }
+        finished_at: { type: [string, 'null'], format: date-time }
     WebhookEvent:
       type: object
       description: |
@@ -829,11 +1086,11 @@ components:
         id: { type: string, format: uuid }
         event:
           type: string
-          enum: [ping, server.provisioned, server.suspended, server.unsuspended, server.reinstalled, server.terminated, server.failed, task.succeeded, task.failed]
+          enum: [ping, server.provisioned, server.suspended, server.unsuspended, server.reinstalled, server.terminated, server.failed, task.succeeded, task.failed, app.installed, app.failed]
         created_at: { type: string, format: date-time }
         data:
           type: object
-          description: '`server` and `task` for every event except `ping`, which carries `billing_system`.'
+          description: '`server` and `task` for server and task events, `server` and `installation` (without outputs) for app events, `billing_system` for `ping`.'
           properties:
             server:
               type: object
@@ -845,6 +1102,7 @@ components:
                 hostname: { type: string }
                 status: { $ref: '#/components/schemas/ServerStatus' }
             task: { $ref: '#/components/schemas/Task' }
+            installation: { $ref: '#/components/schemas/AppInstallation' }
             billing_system:
               type: object
               properties:
@@ -855,7 +1113,7 @@ components:
 webhooks:
   serverEvent:
     post:
-      summary: A task of one of the billing system's servers finished
+      summary: A task or app installation of one of the billing system's servers finished
       description: |
         Sent to every active endpoint of the server's billing system that subscribed to the event,
         configured under *Admin → Billing systems*. Events:
@@ -866,6 +1124,8 @@ webhooks:
         - `task.succeeded`, `task.failed`: any task, including power actions, password resets,
           resource, address and hostname changes. A server event and its task event are separate
           deliveries with different ids.
+        - `app.installed`, `app.failed`: an app installation finished (docs/adr/0015); `data` has
+          the server and the installation without its outputs.
         - `ping`: a test sent by an administrator.
 
         Events are also sent for operations an administrator started in the panel.

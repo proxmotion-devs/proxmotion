@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Api\V1\AppController;
 use App\Http\Controllers\Api\V1\CatalogController;
 use App\Http\Controllers\Api\V1\ServerConsoleController;
 use App\Http\Controllers\Api\V1\ServerController;
@@ -17,12 +18,15 @@ Route::middleware('api.scope:catalog:read')->group(function (): void {
     Route::get('packages', [CatalogController::class, 'packages'])->name('packages.index');
     Route::get('locations', [CatalogController::class, 'locations'])->name('locations.index');
     Route::get('os-templates', [CatalogController::class, 'osTemplates'])->name('os-templates.index');
+    Route::get('apps', [AppController::class, 'index'])->name('apps.index');
 });
 
 Route::middleware('api.scope:servers:read')->group(function (): void {
     Route::get('servers', [ServerController::class, 'index'])->name('servers.index');
     Route::get('servers/{server}', [ServerController::class, 'show'])->name('servers.show');
     Route::get('tasks/{task}', [TaskController::class, 'show'])->name('tasks.show');
+    Route::get('servers/{server}/apps', [AppController::class, 'installations'])->name('servers.apps.index');
+    Route::get('servers/{server}/apps/{installation}', [AppController::class, 'show'])->name('servers.apps.show');
 });
 
 Route::middleware(['api.scope:servers:write', 'api.idempotent'])->group(function (): void {
@@ -37,6 +41,8 @@ Route::middleware(['api.scope:servers:write', 'api.idempotent'])->group(function
     Route::post('servers/{server}/hostname', [ServerController::class, 'hostname'])->name('servers.hostname');
     Route::post('servers/{server}/password', [ServerPasswordController::class, 'reset'])->name('servers.password.reset');
     Route::post('servers/{server}/rdns', ServerRdnsController::class)->name('servers.rdns');
+    Route::post('servers/{server}/apps', [AppController::class, 'store'])->name('servers.apps.store');
+    Route::post('servers/{server}/apps/{installation}/retry', [AppController::class, 'retry'])->name('servers.apps.retry');
 });
 
 Route::middleware('api.scope:servers:secrets')->group(function (): void {

@@ -21,6 +21,9 @@ enum ApiScope: string
     /** New root passwords (once) and console links. */
     case ServersSecrets = 'servers:secrets';
 
+    /** Outputs of installed apps: VPN profiles, generated passwords (docs/adr/0015). */
+    case AppsSecrets = 'apps:secrets';
+
     /**
      * Admin form label (English key).
      */
@@ -31,6 +34,7 @@ enum ApiScope: string
             self::ServersRead => 'Read servers and tasks',
             self::ServersWrite => 'Create and manage servers',
             self::ServersSecrets => 'Fetch root passwords and console links',
+            self::AppsSecrets => 'Fetch the outputs of installed apps',
         };
     }
 }

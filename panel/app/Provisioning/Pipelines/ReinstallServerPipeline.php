@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Provisioning\Pipelines;
 
+use App\Domain\Apps\AppInstallations;
 use App\Domain\Servers\GuestScripts;
 use App\Enums\ServerStatus;
 use App\Models\Task;
@@ -29,12 +30,14 @@ final readonly class ReinstallServerPipeline
         private ProxmoxClientFactory $clients,
         private CreateServerPipeline $create,
         private GuestScripts $guestScripts,
+        private AppInstallations $apps,
     ) {}
 
     public function run(Task $task): void
     {
         $server = $task->server;
         $server->forceFill(['status' => ServerStatus::Reinstalling])->save();
+        $this->apps->serverWiped($server, 'The server was reinstalled.');
 
         $client = $this->clients->forCluster($server->cluster);
         $qemu = $client->qemu($server->node->name);

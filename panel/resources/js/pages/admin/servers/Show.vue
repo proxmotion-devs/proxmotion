@@ -7,6 +7,7 @@ import DriftList from '@/components/admin/DriftList.vue';
 import ServerStatusBadge from '@/components/admin/ServerStatusBadge.vue';
 import StatusBadge from '@/components/admin/StatusBadge.vue';
 import Heading from '@/components/Heading.vue';
+import AppList from '@/components/servers/AppList.vue';
 import PowerControls from '@/components/servers/PowerControls.vue';
 import HostnameDialog from '@/components/servers/HostnameDialog.vue';
 import PrimaryAddressDialog from '@/components/servers/PrimaryAddressDialog.vue';
@@ -21,6 +22,7 @@ import { formatMib, formatTraffic } from '@/lib/format';
 import { show as showCluster } from '@/routes/admin/clusters';
 import { show as showPool } from '@/routes/admin/ip-pools';
 import {
+    apps as installApp,
     console as openConsole,
     destroy,
     hostname as changeHostname,
@@ -39,6 +41,8 @@ import {
 } from '@/routes/admin/servers';
 import { NETWORK_MODELS } from '@/types/admin';
 import type {
+    AppInstallation,
+    AppOption,
     NetworkModel,
     OsPlatform,
     PowerAction,
@@ -97,6 +101,8 @@ const props = defineProps<{
     power?: string | null;
     /** Deferred: whether the guest agent answers; null when unknown. */
     agent?: boolean | null;
+    apps: AppInstallation[];
+    appOptions: AppOption[];
 }>();
 
 setLayoutProps({
@@ -111,7 +117,7 @@ const { formatDateTime } = useDateTime();
 // Refresh while a task runs, so progress and the power state show up live.
 const { start, stop } = usePoll(
     3000,
-    { only: ['server', 'tasks', 'power', 'agent'] },
+    { only: ['server', 'tasks', 'power', 'agent', 'apps'] },
     { autoStart: false },
 );
 
@@ -120,6 +126,9 @@ const busy = computed(
         props.server.busy ||
         props.tasks.some(
             (task) => task.status === 'queued' || task.status === 'running',
+        ) ||
+        props.apps.some(
+            (app) => app.status === 'queued' || app.status === 'installing',
         ),
 );
 
@@ -417,6 +426,19 @@ const modelLabel =
                 </dd>
             </div>
         </dl>
+
+        <section
+            v-if="server.status === 'active' || apps.length"
+            class="flex flex-col gap-4"
+        >
+            <Heading variant="small" title="Apps" />
+            <AppList
+                :apps="apps"
+                :options="appOptions"
+                :action="installApp(server.uuid)"
+                :disabled="server.status !== 'active' || agent === false"
+            />
+        </section>
 
         <section class="flex flex-col gap-4">
             <Heading variant="small" title="Tasks" />

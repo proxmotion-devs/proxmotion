@@ -45,6 +45,8 @@ class BillingSystemIsolationTest extends ApiTestCase
             'fetch the password' => ['GET', '/password'],
             'rDNS' => ['POST', '/rdns'],
             'console link' => ['POST', '/console'],
+            'list installed apps' => ['GET', '/apps'],
+            'install an app' => ['POST', '/apps'],
         ];
     }
 

@@ -14,6 +14,7 @@ use App\Models\Task;
 use App\Provisioning\Pipelines\ChangeResourcesPipeline;
 use App\Provisioning\Pipelines\CreateServerPipeline;
 use App\Provisioning\Pipelines\HostnamePipeline;
+use App\Provisioning\Pipelines\InstallAppPipeline;
 use App\Provisioning\Pipelines\PowerPipeline;
 use App\Provisioning\Pipelines\PrimaryAddressPipeline;
 use App\Provisioning\Pipelines\ReinstallServerPipeline;
@@ -38,7 +39,7 @@ class RunServerTask implements ShouldQueue
 
     public function __construct(public Task $task) {}
 
-    public function handle(CreateServerPipeline $create, PowerPipeline $power, TerminateServerPipeline $terminate, ResetPasswordPipeline $resetPassword, ReinstallServerPipeline $reinstall, ChangeResourcesPipeline $changeResources, GuestScripts $guestScripts, PrimaryAddressPipeline $primaryAddress, HostnamePipeline $hostname, Webhooks $webhooks): void
+    public function handle(CreateServerPipeline $create, PowerPipeline $power, TerminateServerPipeline $terminate, ResetPasswordPipeline $resetPassword, ReinstallServerPipeline $reinstall, ChangeResourcesPipeline $changeResources, GuestScripts $guestScripts, PrimaryAddressPipeline $primaryAddress, HostnamePipeline $hostname, InstallAppPipeline $installApp, Webhooks $webhooks): void
     {
         $task = $this->task;
 
@@ -62,6 +63,7 @@ class RunServerTask implements ShouldQueue
                 TaskType::GuestScript => $guestScripts->runOnce($task),
                 TaskType::ChangePrimaryAddress => $primaryAddress->run($task),
                 TaskType::ChangeHostname => $hostname->run($task),
+                TaskType::InstallApp => $installApp->run($task),
             };
         } catch (Throwable $e) {
             $this->fail($task, $e);

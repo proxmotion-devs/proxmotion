@@ -183,6 +183,14 @@ class Server extends Model
     }
 
     /**
+     * @return HasMany<AppInstallation, $this>
+     */
+    public function appInstallations(): HasMany
+    {
+        return $this->hasMany(AppInstallation::class);
+    }
+
+    /**
      * @return HasOne<Task, $this>
      */
     public function latestTask(): HasOne

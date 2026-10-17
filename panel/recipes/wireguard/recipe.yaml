@@ -1,0 +1,32 @@
+slug: wireguard
+name: WireGuard
+version: 1.0.0
+category: vpn
+description:
+    en: A WireGuard VPN server with one client configuration; all client traffic goes through the server.
+    tr: Tek istemci yapılandırmasıyla WireGuard VPN sunucusu; istemcinin tüm trafiği sunucu üzerinden geçer.
+os:
+    - { family: ubuntu, versions: ['22.04', '24.04'] }
+    - { family: debian, versions: ['12', '13'] }
+requirements: { min_memory_mib: 512, min_disk_mib: 5120, min_cores: 1 }
+network_models: [bridged, routed, nat]
+install_modes: [order, post]
+billing: free
+license: none
+inputs:
+    - key: port
+      type: port
+      default: 51820
+      label: { en: UDP port, tr: UDP portu }
+outputs:
+    - key: client_config
+      type: file
+      filename: client.conf
+      secret: true
+      label: { en: Client configuration, tr: İstemci yapılandırması }
+    - key: endpoint
+      type: text
+      label: { en: Server endpoint, tr: Sunucu adresi }
+firewall:
+    - { port: '{{ inputs.port }}', proto: udp }
+timeout_minutes: 10

@@ -21,4 +21,5 @@ enum TaskType: string
     case GuestScript = 'guest_script';
     case ChangePrimaryAddress = 'change_primary_address';
     case ChangeHostname = 'change_hostname';
+    case InstallApp = 'install_app';
 }

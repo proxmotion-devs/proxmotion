@@ -17,6 +17,97 @@ class ClientAreaTest extends ModuleTestCase
         $this->serviceHas($this->server($overrides));
         $this->api->on('GET /servers/' . self::SERVER_ID, 200, ['data' => $this->server($overrides)]);
         $this->api->on('GET /os-templates', 200, ['data' => [['id' => 'os-uuid', 'name' => 'Ubuntu 24.04', 'family' => 'ubuntu', 'version' => '24.04']]]);
+        $this->api->on('GET /servers/' . self::SERVER_ID . '/apps', 200, ['data' => []]);
+        $this->api->on('GET /apps?server=' . self::SERVER_ID, 200, ['data' => [self::wireguard()]]);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private static function wireguard(): array
+    {
+        return [
+            'id' => 'wireguard',
+            'name' => 'WireGuard',
+            'description' => ['en' => 'A VPN server.', 'tr' => 'Bir VPN sunucusu.'],
+            'inputs' => [['key' => 'port', 'type' => 'port', 'label' => ['en' => 'UDP port', 'tr' => 'UDP portu'], 'required' => false, 'default' => 51820, 'options' => null, 'min' => 1, 'max' => 65535, 'max_length' => null]],
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $overrides
+     * @return array<string, mixed>
+     */
+    private static function installation(array $overrides = []): array
+    {
+        return array_replace([
+            'id' => 'installation-uuid',
+            'app' => ['id' => 'wireguard', 'name' => 'WireGuard', 'version' => '1.0.0'],
+            'status' => 'installed',
+            'progress' => 100,
+            'error' => null,
+            'outputs' => [
+                ['key' => 'client_config', 'type' => 'file', 'label' => ['en' => 'Client configuration', 'tr' => 'İstemci yapılandırması'], 'secret' => true, 'value' => null, 'filename' => 'client.conf', 'content_base64' => base64_encode("[Interface]\nPrivateKey = secret\n")],
+                ['key' => 'endpoint', 'type' => 'text', 'label' => ['en' => 'Server endpoint'], 'secret' => false, 'value' => '203.0.113.10:51820', 'filename' => null, 'content_base64' => null],
+            ],
+        ], $overrides);
+    }
+
+    public function test_the_overview_lists_installed_and_installable_apps_in_the_customers_language()
+    {
+        $this->showsServer();
+        $this->api = new FakeTransport();
+        $this->serviceHas($this->server());
+        $this->api->on('GET /servers/' . self::SERVER_ID, 200, ['data' => $this->server()]);
+        $this->api->on('GET /os-templates', 200, ['data' => []]);
+        $this->api->on('GET /servers/' . self::SERVER_ID . '/apps', 200, ['data' => [self::installation()]]);
+        $this->api->on('GET /apps?server=' . self::SERVER_ID, 200, ['data' => [self::wireguard()]]);
+
+        $vars = $this->module(['clientsdetails' => ['language' => 'turkish']])->clientArea()['templateVariables']['pmx'];
+
+        $this->assertSame('Kuruldu', $vars['installations'][0]['statusLabel']);
+        $this->assertSame(['key' => 'client_config', 'label' => 'İstemci yapılandırması', 'file' => true, 'url' => false, 'value' => null, 'filename' => 'client.conf'], $vars['installations'][0]['outputs'][0]);
+        $this->assertSame('Server endpoint', $vars['installations'][0]['outputs'][1]['label'], 'English without a Turkish text.');
+        $this->assertSame('203.0.113.10:51820', $vars['installations'][0]['outputs'][1]['value']);
+        $this->assertSame(['key' => 'port', 'type' => 'port', 'label' => 'UDP portu', 'required' => false, 'default' => '51820', 'options' => [], 'min' => 1, 'max' => 65535], $vars['apps'][0]['inputs'][0]);
+        $this->assertFalse($vars['appsBusy']);
+    }
+
+    public function test_an_app_is_installed_with_the_filled_in_inputs()
+    {
+        $this->serviceHas($this->server());
+        $this->api->on('POST /servers/' . self::SERVER_ID . '/apps', 202, ['data' => self::installation(['status' => 'installing', 'outputs' => null])]);
+
+        $this->assertSame('success', $this->module()->installApp(['app' => 'openvpn', 'inputs' => ['port' => ' 443 ', 'protocol' => 'tcp', 'empty' => '', 'nested' => ['x']]]));
+
+        $request = $this->api->last('POST /servers/' . self::SERVER_ID . '/apps');
+        $this->assertSame(['app' => 'openvpn', 'inputs' => ['port' => '443', 'protocol' => 'tcp']], $request['body']);
+        $this->assertStringStartsWith('whmcs-42-app-', $request['headers']['Idempotency-Key']);
+        $this->assertSame('Please choose an app.', $this->module()->installApp(['app' => '']));
+    }
+
+    public function test_a_file_output_is_fetched_when_downloaded_and_never_logged()
+    {
+        $this->serviceHas($this->server());
+        $this->api->on('GET /servers/' . self::SERVER_ID . '/apps/installation-uuid', 200, ['data' => self::installation()]);
+
+        $file = $this->module()->appFile('installation-uuid', 'client_config');
+
+        $this->assertSame(['filename' => 'client.conf', 'content' => "[Interface]\nPrivateKey = secret\n"], $file);
+        $this->assertNull($this->module()->appFile('installation-uuid', 'endpoint'), 'Not a file.');
+        $this->assertStringNotContainsString(base64_encode("[Interface]\nPrivateKey = secret\n"), (string) json_encode($GLOBALS['whmcs_calls']['logModuleCall']));
+        $this->assertStringNotContainsString('203.0.113.10:51820', (string) json_encode($GLOBALS['whmcs_calls']['logModuleCall']));
+    }
+
+    public function test_a_failed_installation_can_be_retried()
+    {
+        $this->serviceHas($this->server());
+        $this->api->on('POST /servers/' . self::SERVER_ID . '/apps/installation-uuid/retry', 202, ['data' => self::installation(['status' => 'installing'])]);
+
+        $this->assertSame('success', $this->module()->retryApp(['installation' => 'installation-uuid']));
+        $this->assertSame(['POST /servers/' . self::SERVER_ID . '/apps/installation-uuid/retry'], array_values(array_filter($this->api->sent(), function ($route) {
+            return strpos($route, '/retry') !== false;
+        })));
     }
 
     public function test_the_overview_shows_the_server()

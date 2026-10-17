@@ -321,6 +321,68 @@ class Module
     }
 
     /**
+     * Install an app (docs/adr/0015); empty inputs are left out so the app's defaults apply.
+     *
+     * @param array<string, mixed> $input app, inputs[key] (from the form)
+     */
+    public function installApp(array $input): string
+    {
+        $server = $this->requireActiveServer();
+        $app = isset($input['app']) ? trim((string) $input['app']) : '';
+        $values = [];
+
+        foreach (isset($input['inputs']) && is_array($input['inputs']) ? $input['inputs'] : [] as $key => $value) {
+            if (is_scalar($value) && trim((string) $value) !== '') {
+                $values[(string) $key] = trim((string) $value);
+            }
+        }
+
+        if ($app === '') {
+            return $this->lang->get('app_required');
+        }
+
+        $this->client->installApp((string) $server['id'], $app, $values, $this->idempotencyKey('app'));
+
+        return 'success';
+    }
+
+    /**
+     * @param array<string, mixed> $input installation (from the form)
+     */
+    public function retryApp(array $input): string
+    {
+        $server = $this->requireActiveServer();
+        $this->client->retryApp((string) $server['id'], isset($input['installation']) ? (string) $input['installation'] : '', $this->idempotencyKey('app-retry'));
+
+        return 'success';
+    }
+
+    /**
+     * A file output of an installed app, fetched from Proxmotion when asked
+     * for (never stored in WHMCS).
+     *
+     * @return array{filename: string, content: string}|null
+     */
+    public function appFile(string $installation, string $output): ?array
+    {
+        $server = $this->requireServer();
+        $data = $this->client->installation((string) $server['id'], $installation);
+
+        foreach (isset($data['outputs']) && is_array($data['outputs']) ? $data['outputs'] : [] as $item) {
+            if (is_array($item) && ($item['key'] ?? null) === $output && isset($item['content_base64'], $item['filename']) && is_string($item['content_base64'])) {
+                $content = base64_decode($item['content_base64'], true);
+
+                return $content === false ? null : [
+                    'filename' => (string) preg_replace('/[^A-Za-z0-9._-]/', '', (string) $item['filename']),
+                    'content' => $content,
+                ];
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * The client area overview: server details and actions.
      *
      * @return array<string, mixed>
@@ -332,6 +394,9 @@ class Module
             'server' => null,
             'error' => null,
             'osTemplates' => [],
+            'apps' => [],
+            'installations' => [],
+            'appsBusy' => false,
         ];
 
         try {
@@ -348,6 +413,14 @@ class Module
 
                 $vars['server'] = $this->present($server);
                 $vars['osTemplates'] = $server['status'] === 'active' ? $this->client->osTemplates() : [];
+
+                if ($server['status'] === 'active') {
+                    $vars['installations'] = array_map([$this, 'presentInstallation'], $this->client->installations((string) $server['id']));
+                    $vars['apps'] = array_map([$this, 'presentApp'], $this->client->apps((string) $server['id']));
+                    $vars['appsBusy'] = count(array_filter($vars['installations'], function (array $installation) {
+                        return $installation['busy'];
+                    })) > 0;
+                }
             }
         } catch (ApiException $e) {
             $vars['error'] = $this->lang->get('unavailable');
@@ -502,6 +575,96 @@ class Module
             'disk' => $this->lang->get('disk', ['size' => self::size(isset($resources['disk_mib']) ? (int) $resources['disk_mib'] : 0)]),
             'addresses' => $this->addressesOf($server),
         ];
+    }
+
+    /**
+     * An installable app with its form inputs, labels in the customer's language.
+     *
+     * @param array<string, mixed> $app
+     * @return array<string, mixed>
+     */
+    private function presentApp(array $app): array
+    {
+        $inputs = [];
+
+        foreach (isset($app['inputs']) && is_array($app['inputs']) ? $app['inputs'] : [] as $input) {
+            if (!is_array($input) || !isset($input['key'], $input['type'])) {
+                continue;
+            }
+
+            $inputs[] = [
+                'key' => (string) $input['key'],
+                'type' => (string) $input['type'],
+                'label' => $this->text(isset($input['label']) ? $input['label'] : null, (string) $input['key']),
+                'required' => !empty($input['required']),
+                'default' => isset($input['default']) && is_scalar($input['default']) ? (is_bool($input['default']) ? ($input['default'] ? '1' : '0') : (string) $input['default']) : '',
+                'options' => isset($input['options']) && is_array($input['options']) ? array_values(array_map('strval', $input['options'])) : [],
+                'min' => isset($input['min']) ? (int) $input['min'] : null,
+                'max' => isset($input['max']) ? (int) $input['max'] : null,
+            ];
+        }
+
+        return [
+            'id' => (string) $app['id'],
+            'name' => (string) $app['name'],
+            'description' => $this->text(isset($app['description']) ? $app['description'] : null, ''),
+            'inputs' => $inputs,
+        ];
+    }
+
+    /**
+     * An installation with its status and outputs (texts shown, files as download links).
+     *
+     * @param array<string, mixed> $installation
+     * @return array<string, mixed>
+     */
+    private function presentInstallation(array $installation): array
+    {
+        $status = (string) $installation['status'];
+        $outputs = [];
+
+        foreach (isset($installation['outputs']) && is_array($installation['outputs']) ? $installation['outputs'] : [] as $output) {
+            if (!is_array($output) || !isset($output['key'])) {
+                continue;
+            }
+
+            $outputs[] = [
+                'key' => (string) $output['key'],
+                'label' => $this->text(isset($output['label']) ? $output['label'] : null, (string) $output['key']),
+                'file' => ($output['type'] ?? null) === 'file',
+                'url' => ($output['type'] ?? null) === 'url',
+                'value' => isset($output['value']) && is_string($output['value']) ? $output['value'] : null,
+                'filename' => isset($output['filename']) && is_string($output['filename']) ? $output['filename'] : null,
+            ];
+        }
+
+        return [
+            'id' => (string) $installation['id'],
+            'name' => isset($installation['app']['name']) ? (string) $installation['app']['name'] : '',
+            'status' => $status,
+            'statusLabel' => $this->lang->get('app_status_' . $status),
+            'busy' => in_array($status, ['queued', 'installing'], true),
+            'failed' => $status === 'failed',
+            'progress' => isset($installation['progress']) ? (int) $installation['progress'] : 0,
+            'error' => isset($installation['error']) && is_string($installation['error']) ? $installation['error'] : null,
+            'outputs' => $outputs,
+        ];
+    }
+
+    /**
+     * A recipe text ({en, tr}) in the customer's language.
+     *
+     * @param mixed $text
+     */
+    private function text($text, string $fallback): string
+    {
+        if (!is_array($text) || !isset($text['en'])) {
+            return $fallback;
+        }
+
+        $locale = $this->lang->get('locale');
+
+        return isset($text[$locale]) && is_string($text[$locale]) ? $text[$locale] : (string) $text['en'];
     }
 
     /**

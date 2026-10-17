@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Admin;
 
+use App\Domain\Apps\AppEligibility;
+use App\Domain\Apps\RecipeInput;
 use App\Domain\Servers\GuestAgentProbe;
 use App\Domain\Servers\HostnameChanger;
 use App\Domain\Servers\ReinstallOptions;
@@ -20,6 +22,8 @@ use App\Http\Requests\Admin\ServerRequest;
 use App\Http\Requests\HostnameRequest;
 use App\Http\Requests\PrimaryAddressRequest;
 use App\Http\Requests\ReinstallRequest;
+use App\Models\AppInstallation;
+use App\Models\AppRecipe;
 use App\Models\BillingSystem;
 use App\Models\IpAddress;
 use App\Models\Location;
@@ -110,9 +114,9 @@ class ServerController extends Controller
         return to_route('admin.servers.show', $server);
     }
 
-    public function show(Server $server, GuestAgentProbe $agent): Response
+    public function show(Server $server, GuestAgentProbe $agent, AppEligibility $eligibility): Response
     {
-        $server->load(['node:id,uuid,name', 'cluster:id,uuid,name', 'location:id,name', 'package:id,name', 'billingSystem:id,name', 'osTemplate:id,name', 'storage:id,name', 'ipAddresses.pool:id,uuid,name,version']);
+        $server->load(['node:id,uuid,name', 'cluster:id,uuid,name', 'location:id,name', 'package:id,name', 'billingSystem:id,name', 'osTemplate:id,name,family,version,platform', 'storage:id,name', 'ipAddresses.pool:id,uuid,name,version']);
 
         return Inertia::render('admin/servers/Show', [
             'server' => [
@@ -168,6 +172,25 @@ class ServerController extends Controller
             'drifts' => $server->drifts()->visible()->with(['cluster:id,uuid,name', 'server:id,uuid,hostname,status'])->get()
                 ->map(fn (ServerDrift $drift) => DriftController::present($drift)),
             'agent' => Inertia::defer(fn () => $server->status === ServerStatus::Active ? $agent->reachable($server) : null),
+            'apps' => $server->appInstallations()->with('recipe:id,slug,name')->latest('id')->get()->map(fn (AppInstallation $installation) => [
+                'uuid' => $installation->uuid,
+                'app' => $installation->recipe->name,
+                'version' => $installation->recipe_version,
+                'status' => $installation->status,
+                'progress' => $installation->progress,
+                'step' => $installation->step,
+                'error' => $installation->error,
+                'created_at' => $installation->created_at?->toIso8601String(),
+                'finished_at' => $installation->finished_at?->toIso8601String(),
+            ]),
+            'appOptions' => fn () => AppRecipe::query()->where('is_active', true)->orderBy('name')->get()
+                ->filter(fn (AppRecipe $app) => $eligibility->forServer($app, $server) === null)
+                ->map(fn (AppRecipe $app) => [
+                    'slug' => $app->slug,
+                    'name' => $app->name,
+                    'inputs' => array_map(fn (RecipeInput $input) => $input->toArray(), $app->recipe()->inputs),
+                ])
+                ->values(),
         ]);
     }
 

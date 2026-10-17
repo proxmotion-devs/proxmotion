@@ -1,0 +1,151 @@
+<?php
+
+namespace Tests\Feature\Apps;
+
+use App\Domain\Apps\RecipeInvalid;
+use App\Domain\Apps\RecipeLoader;
+use App\Domain\Apps\RecipeSynchronizer;
+use App\Models\AppRecipe;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\File;
+use Tests\TestCase;
+
+/**
+ * Recipe validation (apps:validate) and syncing (apps:sync), docs/adr/0015.
+ */
+class RecipeLoaderTest extends TestCase
+{
+    use RefreshDatabase;
+
+    private string $directory;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        // A copy of the schema and helpers with one valid recipe to break in each test.
+        $this->directory = sys_get_temp_dir().'/proxmotion-recipes-'.uniqid();
+        File::copyDirectory(base_path('recipes/_schema'), $this->directory.'/_schema');
+        File::copyDirectory(base_path('recipes/_lib'), $this->directory.'/_lib');
+        File::copyDirectory(base_path('recipes/openvpn'), $this->directory.'/openvpn');
+    }
+
+    protected function tearDown(): void
+    {
+        File::deleteDirectory($this->directory);
+
+        parent::tearDown();
+    }
+
+    private function loader(): RecipeLoader
+    {
+        return new RecipeLoader($this->directory);
+    }
+
+    private function editRecipe(string $search, string $replace): void
+    {
+        $file = $this->directory.'/openvpn/recipe.yaml';
+        $content = (string) file_get_contents($file);
+        $this->assertStringContainsString($search, $content);
+        file_put_contents($file, str_replace($search, $replace, $content));
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function errors(): array
+    {
+        try {
+            $this->loader()->load('openvpn');
+        } catch (RecipeInvalid $e) {
+            return $e->errors;
+        }
+
+        $this->fail('The recipe was accepted.');
+    }
+
+    public function test_the_bundled_recipes_are_valid()
+    {
+        $recipes = (new RecipeLoader)->all();
+
+        $this->assertSame(['docker', 'openvpn', 'wireguard'], array_keys($recipes));
+        $this->assertSame(['install.sh'], array_keys($recipes['wireguard']['files']));
+        $this->artisan('apps:validate')->assertSuccessful();
+    }
+
+    public function test_the_schema_is_enforced()
+    {
+        $this->editRecipe('category: vpn', 'category: games');
+
+        $this->assertStringContainsString('/category', implode("\n", $this->errors()));
+    }
+
+    public function test_the_slug_must_be_the_directory_name()
+    {
+        $this->editRecipe('slug: openvpn', 'slug: open-vpn');
+
+        $this->assertContains('slug must be the directory name (openvpn).', $this->errors());
+    }
+
+    public function test_install_sh_must_exist()
+    {
+        unlink($this->directory.'/openvpn/install.sh');
+
+        $this->assertContains('install.sh is missing.', $this->errors());
+    }
+
+    public function test_defaults_must_fit_their_input()
+    {
+        $this->editRecipe('default: udp', 'default: icmp');
+
+        $this->assertStringContainsString('Input protocol: the default is invalid', implode("\n", $this->errors()));
+    }
+
+    public function test_firewall_rules_may_only_refer_to_declared_inputs()
+    {
+        $this->editRecipe("'{{ inputs.port }}'", "'{{ inputs.listen_port }}'");
+
+        $this->assertContains('Firewall rule refers to the unknown input listen_port.', $this->errors());
+    }
+
+    public function test_apps_validate_reports_invalid_recipes()
+    {
+        $this->editRecipe('version: 1.0.0', 'version: one');
+        $this->app->instance(RecipeLoader::class, $this->loader());
+
+        $this->artisan('apps:validate')->assertFailed();
+    }
+
+    public function test_sync_adds_updates_and_deactivates_recipes_but_keeps_an_admins_choice()
+    {
+        $this->app->instance(RecipeLoader::class, $this->loader());
+        $sync = fn () => app(RecipeSynchronizer::class)->sync();
+
+        $this->assertSame(['created' => ['openvpn'], 'updated' => [], 'deactivated' => []], $sync());
+        $recipe = AppRecipe::query()->where('slug', 'openvpn')->sole();
+        $this->assertTrue($recipe->is_active);
+        $this->assertSame((string) file_get_contents($this->directory.'/openvpn/install.sh'), $recipe->files['install.sh']);
+
+        $this->assertSame(['created' => [], 'updated' => [], 'deactivated' => []], $sync(), 'Nothing changed.');
+
+        $recipe->forceFill(['is_active' => false])->save();
+        $this->editRecipe('version: 1.0.0', 'version: 1.1.0');
+        $this->assertSame(['created' => [], 'updated' => ['openvpn'], 'deactivated' => []], $sync());
+        $this->assertSame('1.1.0', $recipe->refresh()->version);
+        $this->assertFalse($recipe->is_active, 'The administrator deactivated it.');
+
+        $recipe->forceFill(['is_active' => true])->save();
+        File::deleteDirectory($this->directory.'/openvpn');
+        $this->assertSame(['created' => [], 'updated' => [], 'deactivated' => ['openvpn']], $sync());
+        $this->assertFalse($recipe->refresh()->is_active);
+    }
+
+    public function test_an_invalid_recipe_stops_the_sync_before_anything_is_written()
+    {
+        $this->editRecipe('timeout_minutes: 15', 'timeout_minutes: 0');
+        $this->app->instance(RecipeLoader::class, $this->loader());
+
+        $this->artisan('apps:sync')->assertFailed();
+        $this->assertSame(0, AppRecipe::query()->count());
+    }
+}

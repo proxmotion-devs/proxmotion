@@ -15,6 +15,7 @@ describe('useMainNavigation', () => {
             '/admin/dns-providers',
             '/admin/os-templates',
             '/admin/packages',
+            '/admin/apps',
             '/admin/drifts',
             '/admin/users',
             '/admin/billing-systems',

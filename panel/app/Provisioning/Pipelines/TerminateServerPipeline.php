@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Provisioning\Pipelines;
 
+use App\Domain\Apps\AppInstallations;
 use App\Enums\ServerStatus;
 use App\Models\Task;
 use App\Provisioning\IpAllocator;
@@ -18,11 +19,13 @@ final readonly class TerminateServerPipeline
     public function __construct(
         private ProxmoxClientFactory $clients,
         private IpAllocator $ips,
+        private AppInstallations $apps,
     ) {}
 
     public function run(Task $task): void
     {
         $server = $task->server;
+        $this->apps->serverWiped($server, 'The server was terminated.');
         $client = $this->clients->forCluster($server->cluster);
         $qemu = $client->qemu($server->node->name);
 

@@ -25,6 +25,10 @@ enum WebhookEvent: string
     case TaskSucceeded = 'task.succeeded';
     case TaskFailed = 'task.failed';
 
+    /** An app installation finished (docs/adr/0015). */
+    case AppInstalled = 'app.installed';
+    case AppFailed = 'app.failed';
+
     /**
      * Events an endpoint can subscribe to.
      *
@@ -69,6 +73,8 @@ enum WebhookEvent: string
             self::ServerFailed => 'Server failed (create, reinstall or terminate)',
             self::TaskSucceeded => 'Any task succeeded',
             self::TaskFailed => 'Any task failed',
+            self::AppInstalled => 'App installed',
+            self::AppFailed => 'App installation failed',
         };
     }
 }

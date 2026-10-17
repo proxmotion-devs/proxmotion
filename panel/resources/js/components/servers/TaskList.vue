@@ -28,6 +28,7 @@ const taskTypeLabels: Record<TaskType, string> = {
     guest_script: 'Run template script',
     change_primary_address: 'Change primary address',
     change_hostname: 'Change hostname',
+    install_app: 'Install app',
 };
 const taskStatusTone: Record<
     TaskStatus,

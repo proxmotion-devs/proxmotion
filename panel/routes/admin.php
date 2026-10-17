@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Admin\AdoptionController;
 use App\Http\Controllers\Admin\ApiTokenController;
+use App\Http\Controllers\Admin\AppController;
 use App\Http\Controllers\Admin\BillingSystemController;
 use App\Http\Controllers\Admin\ClusterController;
 use App\Http\Controllers\Admin\DashboardController;
@@ -66,6 +67,10 @@ Route::post('os-templates/{osTemplate}/scripts/{event}/run', [GuestScriptControl
 
 Route::resource('packages', PackageController::class)->only(['index', 'store', 'update', 'destroy']);
 
+Route::get('apps', [AppController::class, 'index'])->name('apps.index');
+Route::patch('apps/{appRecipe}', [AppController::class, 'update'])->name('apps.update');
+Route::post('app-installations/{appInstallation}/retry', [AppController::class, 'retry'])->middleware('throttle:10,1')->name('app-installations.retry');
+
 Route::resource('users', UserController::class)->only(['index', 'store']);
 Route::resource('billing-systems', BillingSystemController::class)->only(['index', 'store', 'update']);
 Route::post('billing-systems/{billingSystem}/tokens', [ApiTokenController::class, 'store'])->name('billing-systems.tokens.store');
@@ -94,4 +99,5 @@ Route::post('servers/{server}/resources', [ServerController::class, 'changeResou
 Route::post('servers/{server}/primary-address', [ServerController::class, 'changePrimaryAddress'])->middleware('throttle:10,1')->name('servers.primary-address');
 Route::post('servers/{server}/hostname', [ServerController::class, 'changeHostname'])->middleware('throttle:10,1')->name('servers.hostname');
 Route::post('servers/{server}/reset-password', [ServerController::class, 'resetPassword'])->middleware('throttle:10,1')->name('servers.reset-password');
+Route::post('servers/{server}/apps', [AppController::class, 'install'])->middleware('throttle:10,1')->name('servers.apps');
 Route::get('servers/{server}/console', ConsoleController::class)->middleware('throttle:20,1')->name('servers.console');

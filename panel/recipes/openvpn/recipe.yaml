@@ -1,0 +1,37 @@
+slug: openvpn
+name: OpenVPN
+version: 1.0.0
+category: vpn
+description:
+    en: An OpenVPN server with its own certificate authority and one client profile; all client traffic goes through the server.
+    tr: Kendi sertifika otoritesi ve tek istemci profiliyle OpenVPN sunucusu; istemcinin tüm trafiği sunucu üzerinden geçer.
+os:
+    - { family: ubuntu, versions: ['22.04', '24.04'] }
+    - { family: debian, versions: ['12', '13'] }
+requirements: { min_memory_mib: 512, min_disk_mib: 5120, min_cores: 1 }
+network_models: [bridged, routed, nat]
+install_modes: [order, post]
+billing: free
+license: none
+inputs:
+    - key: port
+      type: port
+      default: 1194
+      label: { en: Port, tr: Port }
+    - key: protocol
+      type: enum
+      options: [udp, tcp]
+      default: udp
+      label: { en: Protocol, tr: Protokol }
+outputs:
+    - key: client_config
+      type: file
+      filename: client.ovpn
+      secret: true
+      label: { en: Client profile, tr: İstemci profili }
+    - key: endpoint
+      type: text
+      label: { en: Server endpoint, tr: Sunucu adresi }
+firewall:
+    - { port: '{{ inputs.port }}', proto: '{{ inputs.protocol }}' }
+timeout_minutes: 15

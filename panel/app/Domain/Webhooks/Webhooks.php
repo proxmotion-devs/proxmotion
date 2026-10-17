@@ -4,11 +4,14 @@ declare(strict_types=1);
 
 namespace App\Domain\Webhooks;
 
+use App\Enums\AppInstallationStatus;
 use App\Enums\TaskStatus;
 use App\Enums\WebhookDeliveryStatus;
 use App\Enums\WebhookEvent;
+use App\Http\Resources\Api\V1\AppInstallationResource;
 use App\Http\Resources\Api\V1\TaskResource;
 use App\Jobs\DeliverWebhook;
+use App\Models\AppInstallation;
 use App\Models\BillingSystem;
 use App\Models\Server;
 use App\Models\Task;
@@ -64,6 +67,40 @@ final class Webhooks
                     $this->queue($endpoint, $eventId, $event, $data, retry: true);
                 }
             }
+        }
+    }
+
+    /**
+     * Tell the billing system that an app installation finished (docs/adr/0015):
+     * app.installed or app.failed, without the outputs.
+     */
+    public function appFinished(AppInstallation $installation): void
+    {
+        $server = $installation->server;
+        $event = $installation->status === AppInstallationStatus::Installed ? WebhookEvent::AppInstalled : WebhookEvent::AppFailed;
+
+        if ($server->billing_system_id === null) {
+            return;
+        }
+
+        $endpoints = WebhookEndpoint::query()
+            ->where('billing_system_id', $server->billing_system_id)
+            ->where('active', true)
+            ->get()
+            ->filter(fn (WebhookEndpoint $endpoint) => $endpoint->wants($event));
+
+        if ($endpoints->isEmpty()) {
+            return;
+        }
+
+        $data = [
+            'server' => self::server($server),
+            'installation' => (new AppInstallationResource($installation))->resolve(),
+        ];
+        $eventId = (string) Str::uuid();
+
+        foreach ($endpoints as $endpoint) {
+            $this->queue($endpoint, $eventId, $event, $data, retry: true);
         }
     }
 

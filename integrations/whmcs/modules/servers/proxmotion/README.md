@@ -97,6 +97,19 @@ to `lang/<WHMCS language name>.php` and translating it.
 The **console** opens in a new tab through a link that is valid for 60 seconds and
 works once; it opens only this server's console.
 
+### Apps
+
+Active servers show their installed apps and the apps that fit the server
+(Proxmotion's App Marketplace: OpenVPN, WireGuard, Docker, …), each with a small form
+for its settings. Installing takes a few minutes inside the server; the customer
+reloads the page to see the progress, and can try a failed installation again. One app
+installs at a time.
+
+Outputs of installed apps (VPN client profiles, addresses) are fetched from Proxmotion
+whenever the page is shown and files are downloaded through the module; nothing is
+stored in WHMCS, and the module log masks them. They need a token with the
+`apps:secrets` scope; without it, the apps are listed without outputs.
+
 ## Webhooks
 
 Without webhooks, WHMCS only learns what happens to a server when it asks

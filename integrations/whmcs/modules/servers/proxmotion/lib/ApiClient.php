@@ -227,6 +227,51 @@ class ApiClient
     }
 
     /**
+     * Apps that can be installed on the server now (docs/adr/0015).
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function apps(string $serverId): array
+    {
+        return $this->listOf($this->request('GET', '/apps?' . http_build_query(['server' => $serverId])));
+    }
+
+    /**
+     * The server's app installations, newest first, with outputs (apps:secrets scope).
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function installations(string $id): array
+    {
+        return $this->listOf($this->request('GET', '/servers/' . rawurlencode($id) . '/apps'));
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function installation(string $id, string $installation): array
+    {
+        return $this->dataOf($this->request('GET', '/servers/' . rawurlencode($id) . '/apps/' . rawurlencode($installation)));
+    }
+
+    /**
+     * @param array<string, string|int|bool> $inputs
+     * @return array<string, mixed> the queued installation
+     */
+    public function installApp(string $id, string $app, array $inputs, string $idempotencyKey): array
+    {
+        return $this->dataOf($this->request('POST', '/servers/' . rawurlencode($id) . '/apps', ['app' => $app, 'inputs' => (object) $inputs], $idempotencyKey));
+    }
+
+    /**
+     * @return array<string, mixed> the queued installation
+     */
+    public function retryApp(string $id, string $installation, string $idempotencyKey): array
+    {
+        return $this->dataOf($this->request('POST', '/servers/' . rawurlencode($id) . '/apps/' . rawurlencode($installation) . '/retry', null, $idempotencyKey));
+    }
+
+    /**
      * A signed console link for the customer's browser (valid for 60 seconds, once).
      */
     public function consoleLink(string $id): string
@@ -318,6 +363,30 @@ class ApiClient
      */
     private static function maskPasswords(string $json): string
     {
+        $decoded = json_decode($json, true);
+
+        // App inputs (may hold passwords) and outputs (VPN profiles, generated passwords) too.
+        if (is_array($decoded)) {
+            return (string) json_encode(self::maskSecrets($decoded), JSON_UNESCAPED_SLASHES);
+        }
+
         return (string) preg_replace('/("root_password"\s*:\s*)"(?:[^"\\\\]|\\\\.)*"/', '$1"***"', $json);
+    }
+
+    /**
+     * @param array<mixed> $data
+     * @return array<mixed>
+     */
+    private static function maskSecrets(array $data): array
+    {
+        foreach ($data as $key => $value) {
+            if (in_array($key, ['root_password', 'inputs', 'value', 'content_base64'], true) && $value !== null) {
+                $data[$key] = '***';
+            } elseif (is_array($value)) {
+                $data[$key] = self::maskSecrets($value);
+            }
+        }
+
+        return $data;
     }
 }

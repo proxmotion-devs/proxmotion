@@ -186,6 +186,7 @@ export type TaskType =
     | 'guest_script'
     | 'change_primary_address'
     | 'change_hostname'
+    | 'install_app'
     | PowerAction;
 
 export type PowerAction = 'start' | 'shutdown' | 'stop' | 'reboot';
@@ -321,3 +322,48 @@ export const WEBHOOK_DELIVERY_TONES: Record<
     succeeded: { tone: 'success', label: 'Delivered' },
     failed: { tone: 'danger', label: 'Failed' },
 };
+
+/** App Marketplace (docs/adr/0015). */
+export type AppInstallationStatus =
+    | 'queued'
+    | 'installing'
+    | 'installed'
+    | 'failed'
+    | 'removed';
+
+export type AppInstallation = {
+    uuid: string;
+    app: string;
+    version: string;
+    status: AppInstallationStatus;
+    progress: number;
+    step: string | null;
+    error: string | null;
+    created_at: string | null;
+    finished_at: string | null;
+};
+
+export type AppText = { en: string; tr?: string };
+
+export type AppInput = {
+    key: string;
+    type:
+        | 'string'
+        | 'password'
+        | 'integer'
+        | 'port'
+        | 'boolean'
+        | 'enum'
+        | 'slug'
+        | 'email'
+        | 'domain';
+    label: AppText | null;
+    required: boolean;
+    default: string | number | boolean | null;
+    options: string[] | null;
+    min: number | null;
+    max: number | null;
+    max_length: number | null;
+};
+
+export type AppOption = { slug: string; name: string; inputs: AppInput[] };

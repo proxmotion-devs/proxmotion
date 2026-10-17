@@ -12,3 +12,6 @@ Schedule::command('model:prune', ['--model' => [IdempotencyKey::class]])->hourly
 
 // Drop webhook deliveries after 30 days (docs/adr/0013).
 Schedule::command('model:prune', ['--model' => [WebhookDelivery::class]])->daily();
+
+// Follow app installers running inside servers (docs/adr/0015).
+Schedule::command('apps:poll')->everyMinute()->withoutOverlapping();

@@ -239,7 +239,54 @@ function proxmotion_AdminCustomButtonArray()
  */
 function proxmotion_ClientAreaAllowedFunctions()
 {
-    return ['Start', 'Shutdown', 'Reboot', 'Stop', 'Console', 'ResetPassword', 'Reinstall', 'SetRdns', 'ChangeHostname'];
+    return ['Start', 'Shutdown', 'Reboot', 'Stop', 'Console', 'ResetPassword', 'Reinstall', 'SetRdns', 'ChangeHostname', 'InstallApp', 'RetryApp', 'DownloadAppFile'];
+}
+
+/**
+ * @param array<string, mixed> $params
+ */
+function proxmotion_InstallApp(array $params): string
+{
+    return proxmotion_run($params, function (Module $module) {
+        return $module->installApp($_POST);
+    });
+}
+
+/**
+ * @param array<string, mixed> $params
+ */
+function proxmotion_RetryApp(array $params): string
+{
+    return proxmotion_run($params, function (Module $module) {
+        return $module->retryApp($_POST);
+    });
+}
+
+/**
+ * Sends a file output of an installed app (e.g. a VPN profile), fetched from
+ * Proxmotion now; WHMCS never stores it.
+ *
+ * @param array<string, mixed> $params
+ */
+function proxmotion_DownloadAppFile(array $params): string
+{
+    $file = null;
+    $error = proxmotion_run($params, function (Module $module) use (&$file) {
+        $file = $module->appFile(isset($_GET['installation']) ? (string) $_GET['installation'] : '', isset($_GET['output']) ? (string) $_GET['output'] : '');
+
+        return 'success';
+    });
+
+    if ($error !== 'success' || $file === null) {
+        return $error !== 'success' ? $error : 'The file is not available.';
+    }
+
+    header('Content-Type: application/octet-stream');
+    header('Content-Disposition: attachment; filename="' . $file['filename'] . '"');
+    header('Content-Length: ' . strlen($file['content']));
+    header('Cache-Control: no-store');
+    echo $file['content'];
+    exit;
 }
 
 /**

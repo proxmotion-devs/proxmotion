@@ -100,7 +100,7 @@ proxmotion/
 │   │   │   ├── Servers/                  # ConsoleSessions, ConsoleLinks, ServerPower, GuestAgentProbe, ServerPasswords, ServerReinstaller, GuestScripts + GuestAddresses (ADR 0009, 0010), HostnameChanger (ADR 0012), ResourceOptions
 │   │   │   ├── Usage/                    # traffic/resource accounting, quotas
 │   │   │   ├── Backups/                  # snapshots, backups
-│   │   │   ├── Apps/                     # RecipeLoader, app installs
+│   │   │   ├── Apps/                     # RecipeLoader + RecipeSynchronizer (apps:validate/sync), InputValidator, AppEligibility, AppInstaller, InstallationPoller (ADR 0015)
 │   │   │   ├── Migration/                # adopt existing VMs, Virtualizor importer
 │   │   │   └── Webhooks/                 # Webhooks (events of finished tasks), WebhookSignature (ADR 0013)
 │   │   ├── Proxmox/                      # Proxmox API client (the ONLY touchpoint)
@@ -120,8 +120,8 @@ proxmotion/
 │   │   │   ├── TaskRunner.php            # one Task per operation, refuses parallel tasks per server
 │   │   │   ├── Placement/                # NodePlacer (least memory used after placement), Placement
 │   │   │   ├── Network/                  # NetworkConfig: net0, ipconfig0, nameserver, anti-spoofing addresses
-│   │   │   └── Pipelines/                # CreateServer, ReinstallServer, Power (suspend/unsuspend, power actions), ResetPassword, ChangeResources, TerminateServer — idempotent
-│   │   ├── Jobs/                         # Queue jobs: RunServerTask (pipelines), SyncCluster, PublishPtr/RemovePtr (rDNS), DeliverWebhook
+│   │   │   └── Pipelines/                # CreateServer, ReinstallServer, Power (suspend/unsuspend, power actions), ResetPassword, ChangeResources, TerminateServer, InstallApp — idempotent
+│   │   ├── Jobs/                         # Queue jobs: RunServerTask (pipelines), SyncCluster, PublishPtr/RemovePtr (rDNS), DeliverWebhook, PollAppInstallation (queued by apps:poll)
 │   │   ├── Http/
 │   │   │   ├── Controllers/Admin/
 │   │   │   ├── Controllers/Api/V1/       # Billing API (ADR 0008); CustomerConsoleController for console links
@@ -132,8 +132,8 @@ proxmotion/
 │   │   └── Console/                      # Scheduled commands (traffic collection, sync…)
 │   ├── recipes/                          # Bundled App Marketplace recipes
 │   │   ├── _schema/recipe.schema.json
-│   │   ├── _lib/                         # Shared shell helpers (status writing, OS detection)
-│   │   └── openvpn/ wireguard/ docker/ portainer/ coolify/ cpanel/ plesk/ aapanel/
+│   │   ├── _lib/                         # proxmotion.sh (helpers: inputs, status, outputs), run.sh (runner started by systemd-run)
+│   │   └── openvpn/ wireguard/ docker/ (5a); later portainer/ coolify/ cpanel/ plesk/ aapanel/
 │   │       hestiacp/ cyberpanel/ lamp/ lemp/ wordpress/ nodejs/
 │   │       └── (each) recipe.yaml, install.sh, actions/*.sh, README.md
 │   ├── lang/                             # tr.json (UI strings), en.json (empty: keys are English), {en,tr}/*.php
@@ -168,11 +168,13 @@ proxmotion/
 
 `Server.status`: `pending → provisioning → active ⇄ suspended`, `active → reinstalling → active`, `* → terminating → terminated`, `* → error`.
 
-`AppInstallation.status`: `queued → installing → installed`, `installing → failed` (retryable), `installed → running_action → installed`.
+`AppInstallation.status`: `queued → installing → installed`, `queued|installing → failed` (retryable), `installed|failed → removed` (server reinstalled or terminated); `installed → running_action → installed` comes with app actions (5c).
 
 ### 3.5 App Marketplace
 
 The equivalent of OVH's "install with an application". A customer can install an app (e.g. OpenVPN) **at order time** or **later from the billing system's client area** (module → API). It is a module of the panel, not a separate product.
+
+Phase 5a (install later through the API, the admin panel and the WHMCS client area) is built as decided in ADR 0015: a short `install_app` task uploads the recipe and starts `recipes/_lib/run.sh` with `systemd-run`; `apps:poll` (every minute) reads `status.json` and stores the outputs encrypted.
 
 #### Install paths
 | Path | When | Mechanism |
@@ -284,7 +286,7 @@ Each `IpPool` declares one network model; each `Package` lists the models it all
 
 ### 4.1 Public API v1 (`/api/v1`, Bearer token)
 
-The API is the only way customers' actions reach the panel (ADR 0007). Every customer-facing feature needs an endpoint here and support in each billing module. Tokens, scopes, idempotency and console links: ADR 0008. Scopes: `catalog:read`, `servers:read`, `servers:write`, `servers:secrets` (Phase 5 adds `apps:*`).
+The API is the only way customers' actions reach the panel (ADR 0007). Every customer-facing feature needs an endpoint here and support in each billing module. Tokens, scopes, idempotency and console links: ADR 0008. Scopes: `catalog:read`, `servers:read`, `servers:write`, `servers:secrets`, `apps:secrets` (outputs of installed apps; installing and reading installations use the server scopes, ADR 0015).
 
 | Endpoint | Description |
 |---|---|
@@ -304,9 +306,10 @@ The API is the only way customers' actions reach the panel (ADR 0007). Every cus
 | `POST /servers/{id}/rdns` | Set or remove the PTR of one of the server's addresses |
 | `GET /servers/{id}/usage` | Traffic and resource usage — Phase 6 |
 | `GET /packages`, `/locations`, `/os-templates` | Options for the billing side |
-| `GET /apps?os_template=&package=` | Apps eligible for the given OS and package |
-| `POST /servers/{id}/apps` | Install an app on a running server → `202` + installation id |
-| `GET /servers/{id}/apps/{installation}` | Installation status (outputs only with the `apps:secrets` scope) |
+| `GET /apps?os_template=&package=&server=` | Apps eligible for the given OS, package or server (`catalog:read`) |
+| `POST /servers/{id}/apps` | Install an app on a running server → `202` + the installation (one at a time per server) |
+| `GET /servers/{id}/apps`, `GET /servers/{id}/apps/{installation}` | Installations with status and progress (outputs only with the `apps:secrets` scope) |
+| `POST /servers/{id}/apps/{installation}/retry` | Run a failed installation again |
 | `POST /servers/{id}/app-entitlements` | Grant install right for a paid app / `DELETE` to revoke |
 | `GET /tasks/{id}` | Task status |
 
@@ -315,7 +318,7 @@ The API is the only way customers' actions reach the panel (ADR 0007). Every cus
 - The API is versioned; never make breaking changes to v1. Keep `docs/api/openapi.yaml` current (`OpenApiContractTest` fails when a route is missing from it).
 - Operations that change Proxmox answer `202` with the task; state conflicts and running tasks are `409`, unreachable Proxmox `503`. Tasks and audit log entries record the token (`api_token_id`).
 - Code: routes in `routes/api.php` (middleware `AuthenticateApiToken` → `throttle:api` → `api.scope:…` → bindings → `ScopeToBillingSystem` → `api.idempotent`), controllers in `Http/Controllers/Api/V1`, resources in `Http/Resources/Api/V1`, requests in `Http/Requests/Api/V1`; billing systems and their tokens are managed under *Admin → Billing systems*. The customer console is `CustomerConsoleController` (`/console/{server}`).
-- Optional **webhooks** (ADR 0013), configured per billing system under *Admin → Billing systems*: `server.provisioned`, `server.suspended`, `server.unsuspended`, `server.reinstalled`, `server.terminated`, `server.failed`, `task.succeeded`, `task.failed` (Phase 5 adds `app.installed`, `app.failed`), sent by `RunServerTask` when a task finishes, also for operations admins start. Signed `Proxmotion-Signature: t=<unix>,v1=<HMAC-SHA256 of "t.body">`, only `2xx` counts, 8 attempts over about 22 hours, at least once and unordered (receivers drop repeats by event id). Documented under `webhooks:` in `docs/api/openapi.yaml`; payloads never carry secrets.
+- Optional **webhooks** (ADR 0013), configured per billing system under *Admin → Billing systems*: `server.provisioned`, `server.suspended`, `server.unsuspended`, `server.reinstalled`, `server.terminated`, `server.failed`, `task.succeeded`, `task.failed`, sent by `RunServerTask` when a task finishes, also for operations admins start; `app.installed`, `app.failed` when an app installation finishes (ADR 0015, without outputs). Signed `Proxmotion-Signature: t=<unix>,v1=<HMAC-SHA256 of "t.body">`, only `2xx` counts, 8 attempts over about 22 hours, at least once and unordered (receivers drop repeats by event id). Documented under `webhooks:` in `docs/api/openapi.yaml`; payloads never carry secrets.
 
 ### 4.2 WHMCS server module (`integrations/whmcs/modules/servers/proxmotion/`)
 Implement: `MetaData`, `ConfigOptions`, `TestConnection`, `CreateAccount`, `SuspendAccount`, `UnsuspendAccount`, `TerminateAccount`, `ChangePackage`, `ChangePassword`, `ClientArea` (power, console link, reinstall, password, rDNS, apps, graphs), `AdminServicesTabFields`, `AdminCustomButtonArray`, `UsageUpdate`.
@@ -326,7 +329,8 @@ Implement: `MetaData`, `ConfigOptions`, `TestConnection`, `CreateAccount`, `Susp
 - The WHMCS client area shows installed apps and their outputs (e.g. `.ovpn` download) by fetching them from the API on demand; secrets are never stored in the WHMCS database.
 - Errors are returned to WHMCS as readable text and logged with `logModuleCall()` (tokens and `root_password` fields masked).
 - Target WHMCS 8 and 9, i.e. **PHP 7.2** syntax and functions (no typed properties, arrow functions, `match`, `?->`, `??=`, `str_contains`, …); `Php72CompatibilityTest` checks the code with php-parser, because PHPStan's `phpVersion` does not catch most of it. No Laravel/Composer dependencies; classes in `lib/` (namespace `Proxmotion\Whmcs`) are loaded by `lib/autoload.php`.
-- Done (2026-10-16): everything above except `UsageUpdate`, graphs and apps. `ChangePackage` sends the new product's package and configurable options to `POST /servers/{id}/package` (setting 5 *Restart after upgrades* sends `reboot`). The service is found with `GET /servers?external_id=<service id>` (no WHMCS custom field), writes carry an `Idempotency-Key` and are retried once after a lost connection, the WHMCS password becomes the root password when it has 12+ characters (otherwise Proxmotion's is stored on the service through `localAPI('UpdateClientProduct')`), and `ChangePassword` sends the chosen password. Setup and configurable option names: the module's `README.md`. **Not run in a real WHMCS yet.**
+- Done (2026-10-16): everything above except `UsageUpdate`, graphs and apps (apps added 2026-10-17, see below). `ChangePackage` sends the new product's package and configurable options to `POST /servers/{id}/package` (setting 5 *Restart after upgrades* sends `reboot`). The service is found with `GET /servers?external_id=<service id>` (no WHMCS custom field), writes carry an `Idempotency-Key` and are retried once after a lost connection, the WHMCS password becomes the root password when it has 12+ characters (otherwise Proxmotion's is stored on the service through `localAPI('UpdateClientProduct')`), and `ChangePassword` sends the chosen password. Setup and configurable option names: the module's `README.md`. **Not run in a real WHMCS yet.**
+- Apps (2026-10-17, ADR 0015): the client area lists installed apps (status, progress, error, retry) and the apps that fit the server with a form for their inputs (`InstallApp`, `RetryApp`); outputs are fetched on every view, file outputs downloaded through `DownloadAppFile`, never stored in WHMCS, and masked in the module log (as are app inputs). Not done: the app configurable option at order time and paid-app entitlements (5b). **Not run in a real WHMCS yet.**
 - Webhook receiver (2026-10-17, ADR 0013): `webhook.php` in the module directory bootstraps `init.php` and hands the request to `WebhookReceiver` (`lib/`, data through `WebhookStore` / `WhmcsWebhookStore`, faked in tests). The signing secret (`whsec_…`) is the **Access Hash** of the WHMCS server (the token stays in the password field; an access hash starting with `whsec_` is never used as the token). The signature is compared with `hash_equals`, timestamps more than 300 s off are refused, event ids are kept a week in `mod_proxmotion_webhook_events` to drop repeats (released again when processing failed, so the retry is processed), and the service is the one with id `data.server.external_id` on a WHMCS server whose secret matched. Every event is logged with `logModuleCall` (secret masked). Because events are unordered, status changes first fetch the current server: `server.provisioned` sets a *Pending* service *Active* and the domain to the hostname, `server.suspended`/`unsuspended` set *Active* ⇄ *Suspended* only while the server is still in that state; `server.terminated` never changes the service (billing is the admins' call) but sends an admin email and activity log entry when the service is still *Active*/*Suspended*; `server.failed` sends an admin email (`SendAdminEmail`, type `account`) and an activity log entry; other events are only logged. An unreachable API answers `503`, so Proxmotion retries. The module still polls tasks it started.
 
 ### 4.3 WISECP server module (`integrations/wisecp/coremio/modules/Servers/Proxmotion/`)
@@ -338,7 +342,7 @@ Done 2026-10-17 (ADR 0014; setup in `integrations/wisecp/README.md`), **not run 
 - `create` (service active at once, server id in `config.server_id`, password in the service login), `suspend`, `unsuspend`, `cancel` (terminate), `upgrade`, `change_password` (waits up to 20 s, fails only when the task failed). The service is found with `GET /servers?external_id=<service id>`; writes carry an `Idempotency-Key`.
 - Client area through WISECP's server tools (`config.php` → `supported`): power (start/shutdown/reboot/stop), root password reset, reinstall (Proxmotion's templates, password generated by Proxmotion and stored when `dashboard_data` fetches it), VNC console (returns `redirect` to the signed console link), hostname change, reverse DNS; tools are hidden while the server is busy or not active.
 - Webhooks: `POST /api/v1/proxmotion/webhook`, a public route of WISECP's API from `hooks.php`, handled by `Proxmotion::api_webhook()` → `WebhookReceiver` (data through `WebhookStore` / `WisecpWebhookStore`). Same rules as the WHMCS receiver; status changes through `Services::change_status` with `module_completed`, so the module is not called back; terminations and failures notify administrators and add a service history line; refused requests are logged without their body. Whether WISECP dispatches a public route to a server module is unverified (ADR 0014).
-- Not done: `UsageUpdate`-like metrics, account import (`list()`), applying add-on changes without an upgrade, apps.
+- Not done: `UsageUpdate`-like metrics, account import (`list()`), applying add-on changes without an upgrade, apps (WISECP builds its client area itself and has no app tool; needs a custom page, see ADR 0015).
 
 ---
 
@@ -361,7 +365,9 @@ composer lint:check               # Pint (`composer lint` to fix)
 composer types:check              # PHPStan level 8
 php artisan test                  # Pest (the Integration suite is skipped here)
 composer test:integration         # real TEST Proxmox from .env.integration (see .env.integration.example)
-php artisan apps:validate         # recipe schema validation (from Phase 5)
+php artisan apps:validate         # recipe schema validation (ADR 0015)
+php artisan apps:sync             # copy the bundled recipes into the database (after an update)
+php artisan apps:poll             # follow running app installers (scheduled every minute)
 shellcheck resources/guest/linux/*.sh recipes/**/*.sh ../deploy/installer/*.sh ../deploy/proxmox/*.sh
 
 # inside deploy/console-proxy/
@@ -424,7 +430,7 @@ This panel manages customer infrastructure and is internet-facing. Agents **must
 - **Allocation:** concurrent provisions never receive the same IP, VMID or NAT port range.
 - **Authorization:** unauthorized-access tests for every API endpoint (missing/wrong token, wrong token scope, suspended server) and for console links (expired, reused, another server).
 - **API contract:** v1 response shapes are asserted in Feature tests.
-- **App recipes:** all `recipe.yaml` files validated against the JSON Schema (`apps:validate`); input validation, eligibility checks and the Guest Agent flow (`file-write → exec → file-read`) tested with `Http::fake()`. Scripts pass shellcheck. Real install tests for each bundled recipe on each supported OS live in the `recipes` integration group.
+- **App recipes:** all `recipe.yaml` files validated against the JSON Schema (`apps:validate`, `tests/Feature/Apps/RecipeLoaderTest`); input validation (`InputValidatorTest`), eligibility checks and the Guest Agent flow (`file-write → exec → file-read`) tested on `FakeProxmoxCluster` (`AppInstallTest`: write `status.json`/`outputs` into `guestFiles` and call `InstallationPoller::poll()`), API in `AppApiTest`. Scripts pass shellcheck. Real install tests for each bundled recipe on each supported OS live in the `recipes` integration group.
 - **Migration:** adoption and Virtualizor import tested with fixtures, including dry-run output and idempotent re-runs.
 - **i18n:** `TranslationsTest` fails if a key has no entry in `lang/tr.json`, or if a PHP lang file exists for `en` but not `tr`. It detects `$t('…')`, `trans('…')`, `__('…')`, `->toast('…', '…')`, static and bound `title`/`description`/`label`/`hint`/`submit-label` attributes, and `title:`/`label:`/`description:`/`detail:`/`buttonText:` properties. Keys hidden elsewhere (e.g. a `Record` of status labels, `placeholder` props) must be added by hand.
 - **Proxmox:** use `Tests\Concerns\FakesProxmox` (fixtures in `tests/Fixtures/proxmox/`, stray requests prevented). Summaries of test runs must count **errors as well as failures**.
@@ -466,7 +472,7 @@ Never guess ambiguous API behaviour; consult the official API viewer (https://pv
 - [x] **Phase 3 — Server operations** (built as a client panel, which was removed again in favour of billing modules — ADR 0007; the features stay in the admin panel and get API endpoints in Phase 4): power actions (start/shutdown/stop/reboot, shutdown never forced, live power state); noVNC console through `deploy/console-proxy` (ADR 0002: single-use tickets, one session per server, 60 min max / 15 min idle); Guest Agent client (`GuestAgentResource`: ping, file-write/read, exec + `run()`, set-user-password); root password reset through the agent; SSH key validation (`Support/Ssh/PublicKey`: ed25519, ECDSA, RSA ≥ 2048, no DSA); reinstall (OS template + pasted keys, hostname typed to confirm, same VMID/IPs/MAC, waits for the guest agent, ADR 0004); rDNS (ADR 0003: `DnsProvider` with `none` and `powerdns`, per-pool reverse zone, optional forward confirmation, PTRs removed on release); admin drift report (ADR 0005); `audit_logs` for console, power, password, reinstall, rDNS and drift actions. Not done here: drift notifications and "re-apply package" (with ChangePackage), app post-boot hooks (Phase 5b), Windows guests. **See the verification list below: nothing in Phases 1–3 has run against a real Proxmox server yet.**
 - [ ] **Phase 4 — Billing integration:** ~~public API v1 + OpenAPI (catalog, servers, tasks, suspend/unsuspend/terminate, power, reinstall, password reset + fetch once, rDNS, signed single-use console links), billing systems with scoped hashed tokens (IP limits, expiry; admin page) that only see their own servers, rate limits, idempotency~~ (done, ADR 0008; tested with faked HTTP only); ~~**WHMCS module** (WHMCS 8–9, PHP 7.2+: provisioning, configurable options, client area with power, console, reinstall, password, rDNS)~~ (done with the API faked, not run in a real WHMCS yet); ~~webhooks~~ (done, ADR 0013: endpoints per billing system, signed deliveries with retries, admin delivery log with test event and send again; tested with faked HTTP only); ~~WHMCS webhook receiver~~ (done, `webhook.php`, tested with WHMCS and the API faked); ~~**WISECP module**~~ (done, ADR 0014: WISECP 5, server tools, add-ons, order answers, webhook receiver; tested with WISECP and the API faked, not run in a real WISECP yet); still to do: WHMCS `UsageUpdate` (Phase 6).
 - [ ] **Phase 5 — App Marketplace:**
-  - 5a: recipe schema, `RecipeLoader`, `apps:sync` / `apps:validate`, install-later flow through the API and billing modules; first recipes **OpenVPN, WireGuard, Docker**.
+  - ~~5a: recipe schema, `RecipeLoader`, `apps:sync` / `apps:validate`, install-later flow through the API and billing modules; first recipes **OpenVPN, WireGuard, Docker**~~ (done 2026-10-17, ADR 0015: detached installer + `apps:poll`, `apps:secrets` scope, `app.*` webhooks, admin *Apps* page and server section, WHMCS client area; tested with the agent faked. Not done: WISECP client area, app actions (5c); shellcheck not run locally).
   - 5b: install at order time and reinstall + app as post-boot hooks (ADR 0004), WHMCS configurable option and paid-app entitlements.
   - 5c: admin custom recipe editor, remaining recipes (Portainer, Coolify, aaPanel, HestiaCP, CyberPanel, cPanel, Plesk, LAMP, LEMP, WordPress, Node.js), app actions (VPN add/revoke client).
 - [ ] **Phase 6 — Usage and quotas:** traffic collection, graphs, throttle/suspend on overrun, WHMCS `UsageUpdate`. ~~`ChangePackage` (upgrade/downgrade)~~ (done early with Phase 4: `ResourceChanger` + `ChangeResourcesPipeline`, `POST /servers/{id}/package`, admin *Change resources* dialog, WHMCS `ChangePackage`; CPU/memory of a running VM wait for a restart (`servers.reboot_required`), the disk only grows, the server stays on its node, the newest extra addresses are released; additional addresses are configured inside the guest through the agent, ADR 0009). Guest scripts per OS template (ADR 0010): events `provisioned`, `addresses_changed`, `disk_resized` (partition and file system grown right after an upgrade), `password_reset` (fails the reset when it fails); defaults in `resources/guest/{linux,windows}`, overrides edited under *OS templates → Scripts* (audited, trial run on a server). Primary address changes (ADR 0011): `ip_addresses.is_primary`, swap with an additional address or replace from a pool (address count unchanged), applied by the address guest script with the default route; chosen primary at creation (`primary_ipv4`). Hostname changes (ADR 0012): `hostname_changed` guest script (Linux keeps `/etc/hosts` through a boot unit, Windows renames at the next restart or with `reboot`), PTRs equal to the old name follow, the Proxmox VM name never changes; admin, API and WHMCS client area (the service domain follows). Traffic quotas are stored but not enforced yet.
@@ -500,6 +506,11 @@ Everything above was tested with faked HTTP only (`FakeProxmoxCluster`, `FakesPr
 - [x] ~~Reinstall: delete and re-clone with the same VMID, MAC kept, firewall ipset recreated, agent answers within 10 minutes, old disk gone~~ (verified 2026-10-16, PVE 9.2.2, `ReinstallTest`, same template).
 - [ ] Drift: ~~a VM deleted, resized (cores), stopped or added to the pool shows up after a sync and closes once fixed~~ (verified 2026-10-16, PVE 9.2.2, `DriftTest`); still open: migrated (needs a cluster).
 - [ ] rDNS with a real PowerDNS: `PATCH` REPLACE/DELETE of PTR rrsets in an existing reverse zone, connection test.
+
+**App Marketplace (ADR 0015)**
+- [ ] `systemd-run --collect` starting `run.sh` through the guest agent and the unit surviving the agent's exec; `file-read` of `status.json` and binary-safe output files.
+- [ ] The bundled recipes on Ubuntu 22.04/24.04 and Debian 12/13 (`recipes` integration group): Docker repository, WireGuard and OpenVPN clients really connecting, IPv6 through the tunnel, re-running a recipe keeps its keys.
+- [ ] shellcheck on `recipes/**/*.sh` (only checked with `bash -n` so far).
 
 **Deployment and tooling**
 - [ ] Docker Compose stack incl. `console-proxy` behind nginx (`/console-ws`), queue worker (Horizon not set up yet).
