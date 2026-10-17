@@ -53,7 +53,7 @@ class AppApiTest extends ApiTestCase
 
     public function test_the_catalog_lists_active_apps_with_their_inputs()
     {
-        AppRecipe::query()->where('slug', 'docker')->update(['is_active' => false]);
+        AppRecipe::query()->whereIn('slug', ['docker', 'fastpanel'])->update(['is_active' => false]);
 
         $response = $this->api('GET', '/api/v1/apps')->assertOk();
 
@@ -93,7 +93,7 @@ class AppApiTest extends ApiTestCase
 
         $this->assertSame([], $this->api('GET', '/api/v1/apps?os_template='.$windows->uuid)->assertOk()->json('data'));
         $this->assertSame(['openvpn', 'wireguard'], array_column($this->api('GET', '/api/v1/apps?package='.$small->uuid)->json('data'), 'id'));
-        $this->assertSame(['docker', 'openvpn', 'wireguard'], array_column($this->api('GET', '/api/v1/apps?os_template='.$this->osTemplate->uuid.'&server='.$this->server->uuid)->json('data'), 'id'));
+        $this->assertSame(['docker', 'fastpanel', 'openvpn', 'wireguard'], array_column($this->api('GET', '/api/v1/apps?os_template='.$this->osTemplate->uuid.'&server='.$this->server->uuid)->json('data'), 'id'));
     }
 
     public function test_the_catalog_refuses_servers_of_another_billing_system()

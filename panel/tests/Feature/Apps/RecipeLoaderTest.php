@@ -72,7 +72,7 @@ class RecipeLoaderTest extends TestCase
     {
         $recipes = (new RecipeLoader)->all();
 
-        $this->assertSame(['docker', 'openvpn', 'wireguard'], array_keys($recipes));
+        $this->assertSame(['docker', 'fastpanel', 'openvpn', 'wireguard'], array_keys($recipes));
         $this->assertSame(['install.sh', 'uninstall.sh', 'actions/add-client.sh', 'actions/revoke-client.sh', 'actions/list-clients.sh', 'lib.sh'], array_keys($recipes['wireguard']['files']));
         $this->artisan('apps:validate')->assertSuccessful();
     }

@@ -134,7 +134,7 @@ proxmotion/
 │   ├── recipes/                          # Bundled App Marketplace recipes
 │   │   ├── _schema/recipe.schema.json, recipe-v2.schema.json   # format 1 (ADR 0015), format 2 (ADR 0016)
 │   │   ├── _lib/                         # proxmotion.sh (helpers: inputs, status, outputs), run.sh (runner started by systemd-run)
-│   │   └── openvpn/ wireguard/ docker/ (5a); later portainer/ coolify/ cpanel/ plesk/ aapanel/
+│   │   └── openvpn/ wireguard/ docker/ (5a), fastpanel/; later portainer/ coolify/ cpanel/ plesk/ aapanel/
 │   │       hestiacp/ cyberpanel/ lamp/ lemp/ wordpress/ nodejs/
 │   │       └── (each) recipe.yaml, install.sh, actions/*.sh, README.md
 │   ├── lang/                             # tr.json (UI strings), en.json (empty: keys are English), {en,tr}/*.php
