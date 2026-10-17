@@ -12,6 +12,10 @@
         <testsuite name="Whmcs">
             <directory>../integrations/whmcs/tests</directory>
         </testsuite>
+        <!-- WISECP module (integrations/wisecp), with WISECP and the Proxmotion API faked. -->
+        <testsuite name="Wisecp">
+            <directory>../integrations/wisecp/tests</directory>
+        </testsuite>
         <testsuite name="Feature">
             <directory>tests/Feature</directory>
         </testsuite>

@@ -16,3 +16,6 @@ Thumbs.db
 
 # Local preview config (machine-specific paths)
 .claude/launch.json
+
+# A local copy of WISECP for reference (closed source, never committed; ADR 0014)
+/integrations/WISECP-ORIGINAL-FILES/

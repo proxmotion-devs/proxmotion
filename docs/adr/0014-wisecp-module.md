@@ -1,0 +1,29 @@
+# 14. WISECP module
+
+- **Status:** Accepted
+- **Date:** 2026-10-17
+
+## Context
+
+WISECP is the second billing system Proxmotion supports (AGENTS.md §4, Phase 4). WISECP 5 (checked against 5.0-beta.3) differs from WHMCS in ways that shape the module:
+
+- It requires **PHP 8.2** and loads a server module as a class `WISECP\Modules\Servers\<Name>` extending its `ServerModule`, from `coremio/modules/Servers/<Name>/`. Lifecycle methods are called by name (`create`, `suspend`, `unsuspend`, `cancel`, `upgrade`, `change_password`, `test_connect`, …); a failure is an exception.
+- The client area is **built by WISECP**: a module declares which of WISECP's server tools and dashboard cards it supports (`config.php` → `supported`) and supplies their data (`dashboard_data`, `tool_data`) and actions (`tool_action`). WISECP renders power buttons, root password reset, OS reinstall, VNC console, hostname change and reverse DNS itself.
+- A module's PHP files are not reachable over HTTP (WISECP's web server rules deny `coremio/*.php`); a module can add routes to WISECP's own API from `hooks.php` (`filter:api.routes`, audience `module`, `public` for routes without an API key).
+- WISECP is closed source and its server modules are partly ionCube-encoded. The module was written from WISECP's developer documentation, its sample module and the readable code of WISECP's own server modules; none of that code is copied.
+
+## Decision
+
+1. **A separate module in `integrations/wisecp/`**, laid out like WISECP's tree (`coremio/modules/Servers/Proxmotion/`) so it is installed by copying. It does not share code with the WHMCS module: the two target different PHP versions (7.2 and 8.2), are installed separately and use different host APIs. The API client, the signature check and the order mapping are ported from the WHMCS module and kept in step by hand.
+2. **Server form:** the panel's address in WISECP's IP/hostname field; the API token and the optional webhook signing secret in two module fields (`api_token`, `webhook_secret`, stored encrypted by WISECP). WISECP's own username/password/access hash fields are not used.
+3. **Product settings** (the product's Module tab): package (or none), location, OS template, network model, restart after upgrades, and resource values that replace the package's (`cpu_cores`, `memory_gib`, `disk_gib`, `ipv4_count`, `ipv6_count`, `port_speed_mbps`, `traffic_gb`). **Order answers** (WISECP "requirements" mapped to the module) replace the OS template and location and give the hostname, an SSH key and a root password. **Add-ons** add `extra_*` values to the package, like WHMCS's `extra_` configurable options.
+4. **Lifecycle:** `create` orders the server and returns at once (the service becomes active as in WHMCS; the dashboard shows the installation's progress), stores Proxmotion's server id in `config.server_id` and the root password in the service's login. As in WHMCS, the service is found by `GET /servers?external_id=<service id>`, a repeated `create` orders nothing and writes carry an `Idempotency-Key`. `cancel` terminates. `change_password` (also WISECP's password reset tool) waits up to 20 seconds and fails only when the task failed.
+5. **Client area through WISECP's tools:** start, shutdown, reboot, force stop, root password reset, reinstall (Proxmotion's OS templates; Proxmotion generates the password, shown on the service once fetched), hostname change, reverse DNS, and the VNC console tool opening Proxmotion's signed single-use console link in a new tab (`redirect`). Tools are hidden while Proxmotion works on the server.
+6. **Webhooks** (ADR 0013) arrive at `POST /api/v1/proxmotion/webhook`, a public route of WISECP's API registered in `hooks.php` and handled by `Proxmotion::api_webhook()`. The receiver follows the WHMCS receiver: signature with `hash_equals`, 300 s tolerance, event ids kept a week (table `proxmotion_webhook_events`), the current server fetched before a status change, `503` when Proxmotion cannot be asked. Status changes use `Services::change_status` without running the module again. `server.provisioned` writes the hostname and addresses to the service; terminations and failures notify administrators (WISECP's *failed service activation* notice carries the text) and add a service history line. Rejected requests are logged without their body.
+
+## Consequences
+
+- Customers of WISECP get the same features as WHMCS customers, in WISECP's own interface; adding a feature to the API means updating both modules (AGENTS.md §11).
+- Tests run without WISECP: `integrations/wisecp/tests/stubs.php` imitates the few WISECP classes the module uses, and PHPStan reads the same declarations. Whether they match WISECP is only known after a run in a real WISECP.
+- **Not verified:** that WISECP dispatches a public `Module:Servers/<Name>` route to a server module (the dispatcher is encoded; the documentation shows only an add-on module). If it does not, the receiver needs a small add-on module as its route, without changing the receiver.
+- WISECP's activation e-mail is sent when `create` returns, before the installation finished, as with WHMCS.

@@ -1,0 +1,11 @@
+# PHPStan for the WISECP module, run from panel/ (composer types:check).
+# phpVersion 8.2: the minimum PHP of WISECP 5. WISECP's classes come from
+# tests/stubs.php (WISECP itself is not open source).
+parameters:
+    level: 8
+    phpVersion: 80200
+    paths:
+        - coremio
+        - tests
+    scanFiles:
+        - tests/stubs.php

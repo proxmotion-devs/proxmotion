@@ -74,7 +74,8 @@
         ],
         "types:check": [
             "phpstan analyse --memory-limit=1G",
-            "phpstan analyse --memory-limit=1G -c ../integrations/whmcs/phpstan.neon"
+            "phpstan analyse --memory-limit=1G -c ../integrations/whmcs/phpstan.neon",
+            "phpstan analyse --memory-limit=1G -c ../integrations/wisecp/phpstan.neon"
         ],
         "test": [
             "@php artisan config:clear --ansi",
