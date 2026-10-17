@@ -5,9 +5,7 @@ declare(strict_types=1);
 namespace App\Jobs;
 
 use App\Domain\Servers\GuestScripts;
-use App\Domain\Webhooks\Webhooks;
 use App\Enums\PowerAction;
-use App\Enums\ServerStatus;
 use App\Enums\TaskStatus;
 use App\Enums\TaskType;
 use App\Models\Task;
@@ -20,6 +18,7 @@ use App\Provisioning\Pipelines\PrimaryAddressPipeline;
 use App\Provisioning\Pipelines\ReinstallServerPipeline;
 use App\Provisioning\Pipelines\ResetPasswordPipeline;
 use App\Provisioning\Pipelines\TerminateServerPipeline;
+use App\Provisioning\TaskFailer;
 use App\Proxmox\Exceptions\ProxmoxException;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
@@ -35,11 +34,14 @@ class RunServerTask implements ShouldQueue
 
     public int $tries = 1;
 
-    public int $timeout = 1800;
+    /** Seconds a task may run before the worker stops it (and an administrator may end it). */
+    public const TIMEOUT = 1800;
+
+    public int $timeout = self::TIMEOUT;
 
     public function __construct(public Task $task) {}
 
-    public function handle(CreateServerPipeline $create, PowerPipeline $power, TerminateServerPipeline $terminate, ResetPasswordPipeline $resetPassword, ReinstallServerPipeline $reinstall, ChangeResourcesPipeline $changeResources, GuestScripts $guestScripts, PrimaryAddressPipeline $primaryAddress, HostnamePipeline $hostname, InstallAppPipeline $installApp, Webhooks $webhooks): void
+    public function handle(CreateServerPipeline $create, PowerPipeline $power, TerminateServerPipeline $terminate, ResetPasswordPipeline $resetPassword, ReinstallServerPipeline $reinstall, ChangeResourcesPipeline $changeResources, GuestScripts $guestScripts, PrimaryAddressPipeline $primaryAddress, HostnamePipeline $hostname, InstallAppPipeline $installApp, TaskFailer $failer): void
     {
         $task = $this->task;
 
@@ -66,46 +68,41 @@ class RunServerTask implements ShouldQueue
                 TaskType::InstallApp => $installApp->run($task),
             };
         } catch (Throwable $e) {
-            $this->fail($task, $e);
-            $this->notify($webhooks, $task);
+            $failer->fail($task, $this->messageFor($e));
 
             return;
         }
 
         $task->forceFill(['status' => TaskStatus::Succeeded, 'finished_at' => now()])->save();
-        $this->notify($webhooks, $task);
+        $failer->notify($task);
     }
 
     /**
-     * Tell the billing system (docs/adr/0013). A webhook problem never changes the task's outcome.
+     * The job failed outside handle() (it timed out, the worker lost it, the
+     * queue's database was locked…): end the task, or the server stays blocked.
      */
-    private function notify(Webhooks $webhooks, Task $task): void
+    public function failed(?Throwable $e): void
     {
-        try {
-            $webhooks->taskFinished($task);
-        } catch (Throwable $e) {
-            report($e);
+        $task = $this->task->fresh();
+
+        if ($task === null || ! in_array($task->status, [TaskStatus::Queued, TaskStatus::Running], true)) {
+            return;
         }
+
+        app(TaskFailer::class)->fail($task, 'The queue job of this task failed ('.($e === null ? 'unknown error' : class_basename($e)).'). See the failed jobs (php artisan queue:failed).');
     }
 
-    private function fail(Task $task, Throwable $e): void
+    /**
+     * Proxmox messages are useful to admins; anything else is a bug we log.
+     */
+    private function messageFor(Throwable $e): string
     {
-        // Proxmox messages are useful to admins; anything else is a bug we log.
-        $message = $e instanceof ProxmoxException ? $e->getMessage() : 'Unexpected error ('.class_basename($e).'). See the application log.';
-
-        if (! $e instanceof ProxmoxException) {
-            report($e);
+        if ($e instanceof ProxmoxException) {
+            return $e->getMessage();
         }
 
-        $task->forceFill([
-            'status' => TaskStatus::Failed,
-            'error' => $message,
-            'finished_at' => now(),
-        ])->save();
+        report($e);
 
-        // These leave the VM half-built or half-deleted; the others leave it as it was.
-        if (in_array($task->type, [TaskType::Create, TaskType::Terminate, TaskType::Reinstall], true)) {
-            $task->server->forceFill(['status' => ServerStatus::Error])->save();
-        }
+        return 'Unexpected error ('.class_basename($e).'). See the application log.';
     }
 }

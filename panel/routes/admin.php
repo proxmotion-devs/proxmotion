@@ -18,6 +18,7 @@ use App\Http\Controllers\Admin\OsTemplateController;
 use App\Http\Controllers\Admin\PackageController;
 use App\Http\Controllers\Admin\ServerController;
 use App\Http\Controllers\Admin\StorageController;
+use App\Http\Controllers\Admin\TaskController;
 use App\Http\Controllers\Admin\UserController;
 use App\Http\Controllers\Admin\WebhookEndpointController;
 use App\Http\Controllers\ConsoleController;
@@ -92,6 +93,7 @@ Route::post('servers/{server}/suspend', [ServerController::class, 'suspend'])->n
 Route::post('servers/{server}/unsuspend', [ServerController::class, 'unsuspend'])->name('servers.unsuspend');
 Route::post('servers/{server}/power/{action}', [ServerController::class, 'power'])->middleware('throttle:20,1')->name('servers.power');
 Route::post('servers/{server}/retry', [ServerController::class, 'retry'])->name('servers.retry');
+Route::post('tasks/{task}/fail', [TaskController::class, 'fail'])->name('tasks.fail');
 Route::post('servers/{server}/password', [ServerController::class, 'revealPassword'])->middleware('throttle:20,1')->name('servers.password');
 Route::post('servers/{server}/rdns', RdnsController::class)->middleware('throttle:30,1')->name('servers.rdns');
 Route::post('servers/{server}/reinstall', [ServerController::class, 'reinstall'])->middleware('throttle:10,1')->name('servers.reinstall');

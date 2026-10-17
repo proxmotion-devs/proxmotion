@@ -1,15 +1,47 @@
 <script setup lang="ts">
+import { router } from '@inertiajs/vue3';
 import { CircleCheck, CircleDashed, CircleX, LoaderCircle } from '@lucide/vue';
+import { ref } from 'vue';
 import StatusBadge from '@/components/admin/StatusBadge.vue';
+import { Button } from '@/components/ui/button';
+import {
+    Dialog,
+    DialogClose,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogTitle,
+} from '@/components/ui/dialog';
+import { Spinner } from '@/components/ui/spinner';
 import { useDateTime } from '@/composables/useDateTime';
+import { fail } from '@/routes/admin/tasks';
 import type { TaskProgress, TaskStatus, TaskType } from '@/types/admin';
 
 /**
- * Tasks of one server with their steps, step messages and errors.
+ * Tasks of one server with their steps, step messages and errors. A stuck
+ * task (can_fail) can be marked as failed so the server takes operations again.
  */
 defineProps<{ tasks: TaskProgress[] }>();
 
 const { formatDateTime } = useDateTime();
+
+const failing = ref<TaskProgress | null>(null);
+const processing = ref(false);
+
+const markFailed = () => {
+    if (failing.value === null) {
+        return;
+    }
+
+    router.visit(fail(failing.value.uuid), {
+        preserveScroll: true,
+        onStart: () => (processing.value = true),
+        onFinish: () => {
+            processing.value = false;
+            failing.value = null;
+        },
+    });
+};
 
 // English keys, translated in the template.
 const taskTypeLabels: Record<TaskType, string> = {
@@ -128,9 +160,21 @@ const stepRows = (task: TaskProgress) => {
                         :label="taskStatusLabels[task.status]"
                     />
                 </div>
-                <span class="text-xs text-muted-foreground">
-                    {{ formatDateTime(task.created_at) }}
-                </span>
+                <div class="flex items-center gap-2">
+                    <Button
+                        v-if="task.can_fail"
+                        variant="outline"
+                        size="sm"
+                        data-test="task-mark-failed"
+                        @click="failing = task"
+                    >
+                        <CircleX class="h-4 w-4" />
+                        {{ $t('Mark as failed') }}
+                    </Button>
+                    <span class="text-xs text-muted-foreground">
+                        {{ formatDateTime(task.created_at) }}
+                    </span>
+                </div>
             </div>
 
             <ol class="flex flex-col gap-1 text-sm">
@@ -182,5 +226,34 @@ const stepRows = (task: TaskProgress) => {
         <p v-if="tasks.length === 0" class="text-sm text-muted-foreground">
             {{ $t('No tasks yet.') }}
         </p>
+
+        <Dialog
+            :open="failing !== null"
+            @update:open="(open) => !open && (failing = null)"
+        >
+            <DialogContent>
+                <DialogTitle>{{ $t('Mark this task as failed?') }}</DialogTitle>
+                <DialogDescription>
+                    {{
+                        $t(
+                            'Use this only when the task is stuck. Nothing is changed on Proxmox; check the server there, then start the operation again if it is still needed. A failed create, delete or reinstall leaves the server in error.',
+                        )
+                    }}
+                </DialogDescription>
+                <DialogFooter class="gap-2">
+                    <DialogClose as-child>
+                        <Button variant="secondary">{{ $t('Cancel') }}</Button>
+                    </DialogClose>
+                    <Button
+                        variant="destructive"
+                        :disabled="processing"
+                        @click="markFailed"
+                    >
+                        <Spinner v-if="processing" />
+                        {{ $t('Mark as failed') }}
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
     </div>
 </template>
