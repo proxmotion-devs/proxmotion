@@ -19,7 +19,7 @@ A **source** (`app_sources`) is where recipe versions come from:
 | `bundled` | `panel/recipes/` of the installed release | approved on `apps:sync` |
 | `official` | the project's catalog (configured by default, can be removed) | signed by the project's key; new versions need an admin's approval unless auto-approve is on for this source |
 | `remote` | any catalog an admin adds (a provider's own, a third party's) | signed by the key pinned when the source was added; every version needs an admin's approval |
-| `custom` | recipes edited in the panel (Phase 5c editor) | written by an admin with `apps.manage`; activated after a trial run |
+| `custom` | recipes edited in the panel (Phase 5c editor) | written by an administrator in the panel; drafts are published by an administrator (ADR 0018) |
 
 - A slug is unique per source; the catalog shows the source, and the same slug from two sources are two apps. A source can never replace a bundled recipe (ADR 0015).
 - Only administrators add, remove and configure sources; every change is audited.

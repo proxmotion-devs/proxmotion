@@ -18,7 +18,10 @@ defineProps<{
     apps: {
         slug: string;
         name: string;
-        version: string;
+        source: 'bundled' | 'custom';
+        published: boolean;
+        draft_version: string | null;
+        version: string | null;
         category: string;
         description: AppText;
         os: string[];
@@ -68,8 +71,20 @@ const toggle = (slug: string, active: boolean) =>
                         <td class="px-4 py-3">
                             <span class="font-medium">{{ app.name }}</span>
                             <span class="ml-1 text-xs text-muted-foreground">{{
-                                app.version
+                                app.version ?? ''
                             }}</span>
+                            <StatusBadge
+                                v-if="app.source === 'custom'"
+                                class="ml-2"
+                                tone="neutral"
+                                label="Custom"
+                            />
+                            <StatusBadge
+                                v-if="app.draft_version"
+                                class="ml-2"
+                                tone="warning"
+                                label="Draft"
+                            />
                             <StatusBadge
                                 v-if="!app.is_active"
                                 tone="neutral"

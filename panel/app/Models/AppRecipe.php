@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Models;
 
 use App\Domain\Apps\Recipe;
+use App\Enums\AppRecipeVersionStatus;
 use Database\Factories\AppRecipeFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -20,14 +21,16 @@ use LogicException;
  *
  * @property int $id
  * @property string $slug
- * @property string $source bundled (other sources: docs/adr/0017)
- * @property int|null $latest_version_id
+ * @property string $source bundled (panel/recipes, read-only) or custom (admin editor, docs/adr/0018); catalogs: docs/adr/0017
+ * @property int|null $latest_version_id the published version
+ * @property int|null $copied_from_version_id the version a custom app was copied from
  * @property string $name of the latest version
  * @property string $category of the latest version
  * @property bool $is_active
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  * @property-read AppRecipeVersion|null $latestVersion
+ * @property-read AppRecipeVersion|null $copiedFrom
  */
 class AppRecipe extends Model
 {
@@ -35,6 +38,8 @@ class AppRecipe extends Model
     use HasFactory;
 
     public const SOURCE_BUNDLED = 'bundled';
+
+    public const SOURCE_CUSTOM = 'custom';
 
     /**
      * @return array<string, string>
@@ -57,6 +62,27 @@ class AppRecipe extends Model
     public function latestVersion(): BelongsTo
     {
         return $this->belongsTo(AppRecipeVersion::class, 'latest_version_id');
+    }
+
+    /**
+     * @return BelongsTo<AppRecipeVersion, $this>
+     */
+    public function copiedFrom(): BelongsTo
+    {
+        return $this->belongsTo(AppRecipeVersion::class, 'copied_from_version_id');
+    }
+
+    /**
+     * The draft being edited (custom apps, docs/adr/0018 §3), if any.
+     */
+    public function draft(): ?AppRecipeVersion
+    {
+        return $this->versions()->where('status', AppRecipeVersionStatus::Draft)->first();
+    }
+
+    public function isCustom(): bool
+    {
+        return $this->source === self::SOURCE_CUSTOM;
     }
 
     /**

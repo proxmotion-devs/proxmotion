@@ -8,6 +8,7 @@ use App\Domain\Apps\AppInstallConflict;
 use App\Domain\Apps\AppInstaller;
 use App\Domain\Apps\AppRunner;
 use App\Enums\AppInstallationStatus;
+use App\Enums\AppRecipeVersionStatus;
 use App\Http\Controllers\Controller;
 use App\Models\AppInstallation;
 use App\Models\AppRecipe;
@@ -34,18 +35,26 @@ class AppController extends Controller
     {
         return Inertia::render('admin/apps/Index', [
             'apps' => AppRecipe::query()
-                ->with('latestVersion')
-                ->whereNotNull('latest_version_id')
+                ->with(['latestVersion', 'versions' => fn ($query) => $query->where('status', AppRecipeVersionStatus::Draft)])
                 ->withCount(['installations as installed_count' => fn ($query) => $query->where('status', AppInstallationStatus::Installed)])
                 ->orderBy('name')
                 ->get()
                 ->map(function (AppRecipe $app) {
-                    $recipe = $app->recipe();
+                    // An app that was never published shows its draft (docs/adr/0018).
+                    $draft = $app->versions->first();
+                    $recipe = ($app->latestVersion ?? $draft)?->recipe();
+
+                    if ($recipe === null) {
+                        return null;
+                    }
 
                     return [
                         'slug' => $app->slug,
                         'name' => $app->name,
-                        'version' => $recipe->version,
+                        'source' => $app->source,
+                        'published' => $app->latestVersion !== null,
+                        'draft_version' => $draft?->version,
+                        'version' => $app->latestVersion?->version,
                         'category' => $app->category,
                         'description' => $recipe->description,
                         'os' => $recipe->osSummary(),
@@ -53,7 +62,9 @@ class AppController extends Controller
                         'is_active' => $app->is_active,
                         'installed_count' => (int) $app->getAttribute('installed_count'),
                     ];
-                }),
+                })
+                ->filter()
+                ->values(),
         ]);
     }
 

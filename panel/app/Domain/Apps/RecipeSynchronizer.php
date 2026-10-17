@@ -22,7 +22,7 @@ final readonly class RecipeSynchronizer
     public function __construct(private RecipeLoader $loader) {}
 
     /**
-     * @return array{created: list<string>, updated: list<string>, deactivated: list<string>}
+     * @return array{created: list<string>, updated: list<string>, deactivated: list<string>, skipped: list<string>}
      *
      * @throws RecipeInvalid before anything is written, also when a version
      *                       in use changed without a new version number
@@ -30,12 +30,19 @@ final readonly class RecipeSynchronizer
     public function sync(): array
     {
         $recipes = $this->loader->all();
-        $result = ['created' => [], 'updated' => [], 'deactivated' => []];
+        $result = ['created' => [], 'updated' => [], 'deactivated' => [], 'skipped' => []];
 
         DB::transaction(function () use ($recipes, &$result) {
             foreach ($recipes as $slug => ['recipe' => $recipe, 'files' => $files]) {
                 $checksum = self::checksum($recipe, $files);
                 $app = AppRecipe::query()->with('latestVersion')->where('slug', $slug)->where('source', AppRecipe::SOURCE_BUNDLED)->first();
+
+                // An administrator's custom app took the slug first (docs/adr/0018 §2): it is never replaced.
+                if ($app === null && AppRecipe::query()->where('slug', $slug)->exists()) {
+                    $result['skipped'][] = $slug;
+
+                    continue;
+                }
 
                 if ($app !== null && $app->latestVersion?->checksum === $checksum) {
                     continue;
@@ -57,12 +64,18 @@ final readonly class RecipeSynchronizer
                     'definition' => $recipe->definition,
                     'files' => $files,
                     'checksum' => $checksum,
-                    'status' => AppRecipeVersionStatus::Approved,
                     'reviewed_at' => now(),
-                ])->save();
+                ]);
 
                 // An older version in the repository (a downgrade) is stored but not offered.
-                if ($app->latestVersion === null || version_compare($recipe->version, $app->latestVersion->version, '>=')) {
+                $latest = $app->latestVersion === null || version_compare($recipe->version, $app->latestVersion->version, '>=');
+                $version->forceFill(['status' => $latest ? AppRecipeVersionStatus::Published : AppRecipeVersionStatus::Archived])->save();
+
+                if ($latest) {
+                    if ($app->latestVersion !== null && ! $app->latestVersion->is($version)) {
+                        $app->latestVersion->forceFill(['status' => AppRecipeVersionStatus::Archived])->save();
+                    }
+
                     $app->forceFill(['latest_version_id' => $version->id])->save();
                 }
 

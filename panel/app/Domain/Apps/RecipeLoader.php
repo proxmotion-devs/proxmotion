@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Domain\Apps;
 
 use App\Proxmox\Resources\GuestAgentResource;
+use Closure;
 use Opis\JsonSchema\Errors\ErrorFormatter;
 use Opis\JsonSchema\Validator;
 use Symfony\Component\Yaml\Exception\ParseException;
@@ -94,6 +95,33 @@ final class RecipeLoader
         }
 
         /** @var array<string, mixed> $data */
+        return $this->check($slug, $data, fn (string $script): ?string => is_file($path.'/'.$script) ? (string) file_get_contents($path.'/'.$script) : null);
+    }
+
+    /**
+     * Validate a recipe held in memory, e.g. a draft of the admin editor
+     * (docs/adr/0018 §4), with the same rules as a directory.
+     *
+     * @param  array<string, mixed>  $data  the recipe.yaml as a mapping
+     * @param  array<string, string>  $files  scripts and includes by path
+     * @return array{recipe: Recipe, files: array<string, string>} only the files the recipe uses
+     *
+     * @throws RecipeInvalid
+     */
+    public function validate(string $slug, array $data, array $files): array
+    {
+        return $this->check($slug, $data, fn (string $script): ?string => $files[$script] ?? null);
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     * @param  Closure(string): ?string  $read  the content of a script, null when it is missing
+     * @return array{recipe: Recipe, files: array<string, string>}
+     *
+     * @throws RecipeInvalid
+     */
+    private function check(string $slug, array $data, Closure $read): array
+    {
         $errors = $this->schemaErrors($data);
 
         if ($errors !== []) {
@@ -110,15 +138,13 @@ final class RecipeLoader
                 continue;
             }
 
-            $file = $path.'/'.$script;
+            $content = $read($script);
 
-            if (! is_file($file)) {
+            if ($content === null) {
                 $errors[] = "{$script} is missing.";
 
                 continue;
             }
-
-            $content = (string) file_get_contents($file);
 
             if (strlen($content) > GuestAgentResource::MAX_WRITE_BYTES) {
                 $errors[] = "{$script} is larger than ".GuestAgentResource::MAX_WRITE_BYTES.' bytes.';

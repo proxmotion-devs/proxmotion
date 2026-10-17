@@ -3,6 +3,7 @@
 use App\Http\Controllers\Admin\AdoptionController;
 use App\Http\Controllers\Admin\ApiTokenController;
 use App\Http\Controllers\Admin\AppController;
+use App\Http\Controllers\Admin\AppRecipeController;
 use App\Http\Controllers\Admin\BillingSystemController;
 use App\Http\Controllers\Admin\ClusterController;
 use App\Http\Controllers\Admin\DashboardController;
@@ -70,6 +71,13 @@ Route::resource('packages', PackageController::class)->only(['index', 'store', '
 
 Route::get('apps', [AppController::class, 'index'])->name('apps.index');
 Route::patch('apps/{appRecipe}', [AppController::class, 'update'])->name('apps.update');
+// Recipe editor (docs/adr/0018).
+Route::post('apps', [AppRecipeController::class, 'store'])->name('apps.store');
+Route::post('apps/{appRecipe}/copy', [AppRecipeController::class, 'copy'])->name('apps.copy');
+Route::put('apps/{appRecipe}/draft', [AppRecipeController::class, 'saveDraft'])->name('apps.draft.save');
+Route::delete('apps/{appRecipe}/draft', [AppRecipeController::class, 'discardDraft'])->name('apps.draft.discard');
+Route::post('apps/{appRecipe}/publish', [AppRecipeController::class, 'publish'])->name('apps.publish');
+Route::delete('apps/{appRecipe}', [AppRecipeController::class, 'destroy'])->name('apps.destroy');
 Route::post('app-installations/{appInstallation}/retry', [AppController::class, 'retry'])->middleware('throttle:10,1')->name('app-installations.retry');
 Route::post('app-installations/{appInstallation}/uninstall', [AppController::class, 'uninstall'])->middleware('throttle:10,1')->name('app-installations.uninstall');
 Route::post('app-installations/{appInstallation}/actions/{action}', [AppController::class, 'action'])->where('action', '[a-z][a-z0-9_]{0,39}')->middleware('throttle:20,1')->name('app-installations.action');

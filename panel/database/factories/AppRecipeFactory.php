@@ -40,7 +40,7 @@ class AppRecipeFactory extends Factory
                 'definition' => self::recipeDefinition($app->slug),
                 'files' => ['install.sh' => "#!/bin/bash\nset -euo pipefail\necho demo\n"],
                 'checksum' => str_repeat('0', 64),
-                'status' => AppRecipeVersionStatus::Approved,
+                'status' => AppRecipeVersionStatus::Published,
             ]);
             $version->save();
 
