@@ -273,6 +273,9 @@ const toggleList = (
 const minVersions = computed(
     () => definition.value.requires.min_versions ?? {},
 );
+const maxVersions = computed(
+    () => definition.value.requires.max_versions ?? {},
+);
 
 // Actions
 const addAction = () => {
@@ -757,6 +760,32 @@ const statusLabels = {
                             @update:model-value="
                                 definition.requires.min_versions = {
                                     ...minVersions,
+                                    [family]: String($event),
+                                }
+                            "
+                        />
+                    </label>
+                </div>
+            </div>
+            <div v-if="coveredFamilies.length" class="grid gap-2">
+                <span class="text-sm font-medium">{{
+                    $t('Highest version (empty: any)')
+                }}</span>
+                <div class="flex flex-wrap gap-x-4 gap-y-2">
+                    <label
+                        v-for="family in coveredFamilies"
+                        :key="family"
+                        class="flex items-center gap-2 text-sm"
+                    >
+                        <span class="font-mono text-xs">{{ family }}</span>
+                        <Input
+                            :model-value="maxVersions[family] ?? ''"
+                            class="h-7 w-20"
+                            :placeholder="$t('max.')"
+                            :disabled="readonly"
+                            @update:model-value="
+                                definition.requires.max_versions = {
+                                    ...maxVersions,
                                     [family]: String($event),
                                 }
                             "

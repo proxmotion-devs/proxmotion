@@ -190,7 +190,7 @@ Phase 5a (install later through the API, the admin panel and the WHMCS client ar
 - Every panel template must ship `qemu-guest-agent`, with `agent: 1` set on the VM.
 
 #### Recipe format
-Each app is a directory under `panel/recipes/<slug>/`. The example below is format 1 (ADR 0015); new recipes use **format 2** (ADR 0016: `format: 2`, `requires` with platform, `os` naming template families or groups like `/etc/os-release` ID_LIKE (`debian` = Debian + Ubuntu, `rhel` = RHEL, AlmaLinux, Rocky, CentOS, Fedora; checked again in the guest by `run.sh`) and `min_versions`, `resources`, `lifecycle` with install/uninstall/upgrade scripts, labelled actions; start with `php artisan apps:make <slug>`). Every version is stored and installations keep theirs.
+Each app is a directory under `panel/recipes/<slug>/`. The example below is format 1 (ADR 0015); new recipes use **format 2** (ADR 0016: `format: 2`, `requires` with platform, `os` naming template families or groups like `/etc/os-release` ID_LIKE (`debian` = Debian + Ubuntu, `rhel` = RHEL, AlmaLinux, Rocky, CentOS, Fedora; checked again in the guest by `run.sh`), `min_versions` and `max_versions` (lowest and highest version per family; `12` covers `12.7`), `resources`, `lifecycle` with install/uninstall/upgrade scripts, labelled actions; start with `php artisan apps:make <slug>`). Every version is stored and installations keep theirs.
 
 ```yaml
 # recipe.yaml

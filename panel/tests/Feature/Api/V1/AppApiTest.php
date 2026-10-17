@@ -63,6 +63,29 @@ class AppApiTest extends ApiTestCase
             ->assertJsonPath('data.0.outputs.0.filename', 'client.ovpn');
     }
 
+    public function test_the_catalog_leaves_out_template_versions_above_max_versions()
+    {
+        $wireguard = AppRecipe::query()->where('slug', 'wireguard')->firstOrFail();
+        $version = $wireguard->latestVersion;
+        $this->assertNotNull($version);
+        $definition = $version->definition;
+        $definition['requires']['max_versions'] = ['debian' => '12'];
+        $version->forceFill(['definition' => $definition])->save();
+        $trixie = OsTemplate::factory()->create(['family' => 'debian', 'version' => '13']);
+        $bookworm = OsTemplate::factory()->create(['family' => 'debian', 'version' => '12']);
+        $ids = fn (OsTemplate $template): array => array_column($this->api('GET', '/api/v1/apps?os_template='.$template->uuid)->json('data'), 'id');
+
+        $this->assertNotContains('wireguard', $ids($trixie));
+        $this->assertContains('openvpn', $ids($trixie));
+        $this->assertContains('wireguard', $ids($bookworm));
+
+        $response = $this->api('GET', '/api/v1/apps')->assertOk();
+        $apps = array_column($response->json('data'), 'requires', 'id');
+        $this->assertSame(['platform' => 'linux', 'os' => ['debian'], 'min_versions' => ['ubuntu' => '22.04', 'debian' => '12'], 'max_versions' => ['debian' => '12']], $apps['wireguard']);
+        $this->assertSame([], $apps['openvpn']['max_versions']);
+        $this->assertStringContainsString('"max_versions":{}', $response->getContent() ?: '', 'An empty map is an object.');
+    }
+
     public function test_the_catalog_can_be_filtered_by_os_template_package_or_server()
     {
         $windows = OsTemplate::factory()->windows()->create();

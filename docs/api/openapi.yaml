@@ -1130,6 +1130,7 @@ components:
             platform: { type: string, enum: [linux, windows] }
             os: { type: [array, 'null'], items: { type: string }, description: 'Template families (ubuntu, rocky, …) or groups like ID_LIKE in /etc/os-release: debian (Debian, Ubuntu), rhel (RHEL, AlmaLinux, Rocky, CentOS, Fedora), suse, arch. null: any OS of the platform.', examples: [['debian', 'rhel']] }
             min_versions: { type: object, additionalProperties: { type: string }, examples: [{ ubuntu: '22.04' }] }
+            max_versions: { type: object, additionalProperties: { type: string }, description: 'Highest supported version per family; a template version is compared by as many parts as given (`12` covers `12.7`).', examples: [{ debian: '12' }] }
         requirements:
           type: object
           properties:

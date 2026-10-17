@@ -36,6 +36,7 @@ requires:                        # matched against the template's family (sectio
   platform: linux                # linux | windows
   os: [debian, rhel]             # families or groups; omitted = any OS of the platform
   min_versions: { ubuntu: "22.04", debian: "12" }  # optional, per family
+  max_versions: { debian: "12" }                   # optional, per family
 resources: { min_cores: 1, min_memory_mib: 512, min_disk_mib: 5120 }
 network_models: [bridged, routed, nat]
 install_modes: [order, post]
@@ -69,8 +70,8 @@ actions:
 
 *Revised 2026-10-17.* The first version had templates list capabilities (`systemd`, `apt`, `dnf`, `bash`, …) that recipes asked for. That asked administrators for something the template's family already says, and a wrong tick made an app fail inside the server. Recipes now name operating systems the way Linux distributions describe themselves in `/etc/os-release` (`ID`, and `ID_LIKE` for the distribution they derive from):
 
-- `requires.os` lists template families (`ubuntu`, `rocky`, …) or **groups**: `debian` (Debian, Ubuntu), `rhel` (RHEL, AlmaLinux, Rocky, CentOS, Fedora), `suse` (openSUSE), `arch` (Arch Linux). Omitted: any OS of the platform. `min_versions` gives the lowest version per family; every family in it must be covered by `os`. The map from groups to families and to os-release IDs lives in one place (`App\Domain\Apps\OsFamilies`).
-- Templates need nothing besides `platform`, `family` and `version`; `os_templates.capabilities` is dropped. A recipe fits a template when the platform matches, the family is covered by `os` and the version is at least its `min_versions` entry. The other checks of ADR 0015 §6 (resources, network model, install mode, billing) stay.
+- `requires.os` lists template families (`ubuntu`, `rocky`, …) or **groups**: `debian` (Debian, Ubuntu), `rhel` (RHEL, AlmaLinux, Rocky, CentOS, Fedora), `suse` (openSUSE), `arch` (Arch Linux). Omitted: any OS of the platform. `min_versions` gives the lowest version per family; every family in it must be covered by `os`. `max_versions` (added 2026-10-17) gives the highest, for software whose vendor has no packages for newer releases yet (FASTPANEL on Debian 13); a template version is compared by as many parts as the maximum has, so `12` covers `12.7` and `24.04` covers `24.04.1`, and the same coverage rule applies. The map from groups to families and to os-release IDs lives in one place (`App\Domain\Apps\OsFamilies`).
+- Templates need nothing besides `platform`, `family` and `version`; `os_templates.capabilities` is dropped. A recipe fits a template when the platform matches, the family is covered by `os` and the version is at least its `min_versions` entry and at most its `max_versions` entry. The other checks of ADR 0015 §6 (resources, network model, install mode, billing) stay.
 - **Checked again inside the server:** the panel writes the accepted os-release IDs to `server.json` (`os_release`); `run.sh` compares them with `ID` and `ID_LIKE` of `/etc/os-release` before any script runs and fails with "This app does not support <PRETTY_NAME>" instead of half-installing on a mislabelled template.
 - Linux recipes may rely on systemd and bash (every supported family has them). Recipes written with the first version keep loading: `families` is read as `os`, package-manager capabilities as groups (`apt` → debian, `dnf` → rhel, `zypper` → suse, `pacman` → arch); the editor converts them when the recipe is saved.
 - Helpers in `recipes/_lib` have a package-manager-neutral `pm_pkg_install` so one script covers `apt` and `dnf` when the recipe wants to.

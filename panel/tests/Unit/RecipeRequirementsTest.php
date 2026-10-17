@@ -56,6 +56,20 @@ class RecipeRequirementsTest extends TestCase
         $this->assertFalse($recipe->supports('linux', 'debian', '13'), 'A family is not its group.');
     }
 
+    public function test_maximum_versions_leave_out_newer_releases()
+    {
+        $recipe = $this->recipe(['platform' => 'linux', 'os' => ['debian'], 'min_versions' => ['ubuntu' => '22.04'], 'max_versions' => ['ubuntu' => '24.04', 'debian' => '12']]);
+
+        $this->assertTrue($recipe->supports('linux', 'debian', '12'));
+        $this->assertTrue($recipe->supports('linux', 'debian', '12.7'), 'A maximum of 12 covers its point releases.');
+        $this->assertTrue($recipe->supports('linux', 'debian', '11'));
+        $this->assertFalse($recipe->supports('linux', 'debian', '13'));
+        $this->assertTrue($recipe->supports('linux', 'ubuntu', '24.04.1'));
+        $this->assertFalse($recipe->supports('linux', 'ubuntu', '24.10'));
+        $this->assertFalse($recipe->supports('linux', 'ubuntu', '20.04'), 'The minimum still applies.');
+        $this->assertSame(['linux: debian', 'ubuntu ≥ 22.04', 'ubuntu ≤ 24.04', 'debian ≤ 12'], $recipe->osSummary());
+    }
+
     public function test_without_os_any_template_of_the_platform_fits()
     {
         $windows = $this->recipe(['platform' => 'windows']);

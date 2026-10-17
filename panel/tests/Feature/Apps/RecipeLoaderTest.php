@@ -238,6 +238,21 @@ class RecipeLoaderTest extends TestCase
         $this->assertContains('requires.min_versions: rocky is not covered by requires.os.', $this->errors());
     }
 
+    public function test_max_versions_must_name_families_the_os_covers()
+    {
+        $this->editRecipe("min_versions: { ubuntu: '22.04', debian: '12' }", "min_versions: { ubuntu: '22.04', debian: '12' }\n    max_versions: { debian: '12', rocky: '9' }");
+
+        $this->assertContains('requires.max_versions: rocky is not covered by requires.os.', $this->errors());
+        $this->assertNotContains('requires.max_versions: debian is not covered by requires.os.', $this->errors());
+    }
+
+    public function test_max_versions_must_be_version_numbers()
+    {
+        $this->editRecipe("min_versions: { ubuntu: '22.04', debian: '12' }", "min_versions: { ubuntu: '22.04', debian: '12' }\n    max_versions: { debian: trixie }");
+
+        $this->assertStringContainsString('/requires/max_versions/debian', implode("\n", $this->errors()));
+    }
+
     public function test_apps_make_writes_a_valid_skeleton()
     {
         $this->app->instance(RecipeLoader::class, $this->loader());

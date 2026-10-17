@@ -258,6 +258,35 @@ class AppInstallTest extends TestCase
         $this->assertNotNull($eligibility->forServer($wireguard, $this->server), 'Older than min_versions.');
     }
 
+    public function test_apps_are_not_offered_on_versions_newer_than_max_versions()
+    {
+        $wireguard = AppRecipe::query()->where('slug', 'wireguard')->firstOrFail();
+        $version = $wireguard->latestVersion;
+        $this->assertNotNull($version);
+        $definition = $version->definition;
+        $definition['requires']['max_versions'] = ['ubuntu' => '24.04', 'debian' => '12'];
+        $version->forceFill(['definition' => $definition])->save();
+        $wireguard->unsetRelation('latestVersion');
+        $eligibility = app(AppEligibility::class);
+        $useTemplate = function (array $attributes) {
+            $this->server->forceFill(['os_template_id' => OsTemplate::factory()->create($attributes)->id])->save();
+            $this->server->unsetRelation('osTemplate');
+        };
+
+        $useTemplate(['name' => 'Debian 13', 'family' => 'debian', 'version' => '13']);
+        $this->assertSame('This app does not support the operating system.', $eligibility->forServer($wireguard, $this->server)?->translatedMessage());
+        $this->assertNotNull($eligibility->forCatalog($wireguard, $this->server->osTemplate, null));
+
+        $useTemplate(['name' => 'Debian 12', 'family' => 'debian', 'version' => '12']);
+        $this->assertNull($eligibility->forServer($wireguard, $this->server));
+
+        $useTemplate(['name' => 'Debian 12.7', 'family' => 'debian', 'version' => '12.7']);
+        $this->assertNull($eligibility->forServer($wireguard, $this->server), 'A maximum of 12 covers its point releases.');
+
+        $useTemplate(['name' => 'Ubuntu 24.04', 'family' => 'ubuntu', 'version' => '24.04']);
+        $this->assertNull($eligibility->forServer($wireguard, $this->server));
+    }
+
     public function test_the_runner_learns_which_operating_systems_to_accept()
     {
         $installation = $this->install();

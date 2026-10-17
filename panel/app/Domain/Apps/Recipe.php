@@ -22,6 +22,7 @@ final readonly class Recipe
      * @param  list<array{family: string, versions: list<string>}>  $os  format 1 only: exact OS versions
      * @param  list<string>|null  $families  template families or groups (OsFamilies) it runs on; null: any of the platform
      * @param  array<string, string>  $minVersions  lowest version per family
+     * @param  array<string, string>  $maxVersions  highest version per family
      * @param  list<string>  $networkModels
      * @param  list<string>  $installModes
      * @param  list<RecipeInput>  $inputs
@@ -42,6 +43,7 @@ final readonly class Recipe
         public array $os,
         public ?array $families,
         public array $minVersions,
+        public array $maxVersions,
         public int $minMemoryMib,
         public int $minDiskMib,
         public int $minCores,
@@ -80,6 +82,7 @@ final readonly class Recipe
             $platform = 'linux';
             $families = array_values(array_unique(array_column($os, 'family')));
             $minVersions = [];
+            $maxVersions = [];
             $lifecycle = ['install' => ['script' => 'install.sh', 'timeout_minutes' => $timeout]];
         } else {
             /** @var array<string, mixed> $requires */
@@ -95,6 +98,7 @@ final readonly class Recipe
                 default => OsFamilies::fromCapabilities($list($requires['capabilities'] ?? null)),
             };
             $minVersions = array_map('strval', is_array($requires['min_versions'] ?? null) ? $requires['min_versions'] : []);
+            $maxVersions = array_map('strval', is_array($requires['max_versions'] ?? null) ? $requires['max_versions'] : []);
             $lifecycle = [];
 
             foreach (is_array($data['lifecycle'] ?? null) ? $data['lifecycle'] : [] as $operation => $step) {
@@ -122,6 +126,7 @@ final readonly class Recipe
             os: $os,
             families: $families,
             minVersions: $minVersions,
+            maxVersions: $maxVersions,
             minMemoryMib: (int) $resources['min_memory_mib'],
             minDiskMib: (int) $resources['min_disk_mib'],
             minCores: (int) $resources['min_cores'],
@@ -196,8 +201,19 @@ final readonly class Recipe
         }
 
         $minimum = $this->minVersions[$family] ?? null;
+        $maximum = $this->maxVersions[$family] ?? null;
 
-        return $minimum === null || version_compare($version, $minimum, '>=');
+        return ($minimum === null || version_compare($version, $minimum, '>='))
+            && ($maximum === null || version_compare(self::versionParts($version, $maximum), $maximum, '<='));
+    }
+
+    /**
+     * The version cut to as many parts as the limit has, so a maximum
+     * of "12" covers "12.7" and one of "24.04" covers "24.04.1".
+     */
+    private static function versionParts(string $version, string $limit): string
+    {
+        return implode('.', array_slice(explode('.', $version), 0, substr_count($limit, '.') + 1));
     }
 
     public function supportsNetworkModel(NetworkModel $model): bool
@@ -234,6 +250,10 @@ final readonly class Recipe
 
         foreach ($this->minVersions as $family => $minimum) {
             $lines[] = $family.' ≥ '.$minimum;
+        }
+
+        foreach ($this->maxVersions as $family => $maximum) {
+            $lines[] = $family.' ≤ '.$maximum;
         }
 
         return $lines;

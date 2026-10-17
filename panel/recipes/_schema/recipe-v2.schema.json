@@ -89,6 +89,15 @@
                         "type": "string",
                         "pattern": "^[0-9][0-9.]*$"
                     }
+                },
+                "max_versions": {
+                    "description": "Highest supported version per family; a template version is compared by as many parts as given (12 covers 12.7).",
+                    "type": "object",
+                    "propertyNames": { "pattern": "^[a-z][a-z0-9-]*$" },
+                    "additionalProperties": {
+                        "type": "string",
+                        "pattern": "^[0-9][0-9.]*$"
+                    }
                 }
             }
         },

@@ -40,6 +40,7 @@ class AppResource extends JsonResource
                 'platform' => $recipe->platform,
                 'os' => $recipe->families,
                 'min_versions' => (object) $recipe->minVersions,
+                'max_versions' => (object) $recipe->maxVersions,
             ],
             'requirements' => [
                 'min_cores' => $recipe->minCores,

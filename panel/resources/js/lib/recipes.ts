@@ -56,6 +56,7 @@ export type RecipeDefinition = {
         capabilities?: string[];
         families?: string[];
         min_versions?: Record<string, string>;
+        max_versions?: Record<string, string>;
     };
     resources: {
         min_memory_mib: number;
@@ -145,6 +146,7 @@ export function editable(definition: RecipeDefinition): RecipeDefinition {
     delete copy.requires.families;
     delete copy.requires.capabilities;
     copy.requires.min_versions ??= {};
+    copy.requires.max_versions ??= {};
     copy.resources ??= {
         min_memory_mib: 512,
         min_disk_mib: 5120,
