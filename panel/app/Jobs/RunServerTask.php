@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Jobs;
 
 use App\Domain\Servers\GuestScripts;
+use App\Domain\Webhooks\Webhooks;
 use App\Enums\PowerAction;
 use App\Enums\ServerStatus;
 use App\Enums\TaskStatus;
@@ -37,7 +38,7 @@ class RunServerTask implements ShouldQueue
 
     public function __construct(public Task $task) {}
 
-    public function handle(CreateServerPipeline $create, PowerPipeline $power, TerminateServerPipeline $terminate, ResetPasswordPipeline $resetPassword, ReinstallServerPipeline $reinstall, ChangeResourcesPipeline $changeResources, GuestScripts $guestScripts, PrimaryAddressPipeline $primaryAddress, HostnamePipeline $hostname): void
+    public function handle(CreateServerPipeline $create, PowerPipeline $power, TerminateServerPipeline $terminate, ResetPasswordPipeline $resetPassword, ReinstallServerPipeline $reinstall, ChangeResourcesPipeline $changeResources, GuestScripts $guestScripts, PrimaryAddressPipeline $primaryAddress, HostnamePipeline $hostname, Webhooks $webhooks): void
     {
         $task = $this->task;
 
@@ -64,11 +65,25 @@ class RunServerTask implements ShouldQueue
             };
         } catch (Throwable $e) {
             $this->fail($task, $e);
+            $this->notify($webhooks, $task);
 
             return;
         }
 
         $task->forceFill(['status' => TaskStatus::Succeeded, 'finished_at' => now()])->save();
+        $this->notify($webhooks, $task);
+    }
+
+    /**
+     * Tell the billing system (docs/adr/0013). A webhook problem never changes the task's outcome.
+     */
+    private function notify(Webhooks $webhooks, Task $task): void
+    {
+        try {
+            $webhooks->taskFinished($task);
+        } catch (Throwable $e) {
+            report($e);
+        }
     }
 
     private function fail(Task $task, Throwable $e): void

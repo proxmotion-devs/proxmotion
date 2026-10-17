@@ -18,6 +18,7 @@ use App\Http\Controllers\Admin\PackageController;
 use App\Http\Controllers\Admin\ServerController;
 use App\Http\Controllers\Admin\StorageController;
 use App\Http\Controllers\Admin\UserController;
+use App\Http\Controllers\Admin\WebhookEndpointController;
 use App\Http\Controllers\ConsoleController;
 use App\Http\Controllers\RdnsController;
 use Illuminate\Support\Facades\Route;
@@ -70,6 +71,13 @@ Route::resource('billing-systems', BillingSystemController::class)->only(['index
 Route::post('billing-systems/{billingSystem}/tokens', [ApiTokenController::class, 'store'])->name('billing-systems.tokens.store');
 // Revoking ("destroy") keeps the token for the audit log; it can never be used again.
 Route::delete('api-tokens/{apiToken}', [ApiTokenController::class, 'destroy'])->name('api-tokens.destroy');
+Route::post('billing-systems/{billingSystem}/webhooks', [WebhookEndpointController::class, 'store'])->name('billing-systems.webhooks.store');
+Route::get('webhooks/{webhookEndpoint}', [WebhookEndpointController::class, 'show'])->name('webhooks.show');
+Route::put('webhooks/{webhookEndpoint}', [WebhookEndpointController::class, 'update'])->name('webhooks.update');
+Route::delete('webhooks/{webhookEndpoint}', [WebhookEndpointController::class, 'destroy'])->name('webhooks.destroy');
+Route::post('webhooks/{webhookEndpoint}/secret', [WebhookEndpointController::class, 'secret'])->name('webhooks.secret');
+Route::post('webhooks/{webhookEndpoint}/ping', [WebhookEndpointController::class, 'ping'])->name('webhooks.ping');
+Route::post('webhook-deliveries/{webhookDelivery}/redeliver', [WebhookEndpointController::class, 'redeliver'])->name('webhook-deliveries.redeliver');
 
 // Adoption routes come before the resource so "adopt" isn't taken for a server UUID.
 Route::get('servers/adopt', [AdoptionController::class, 'create'])->name('servers.adopt');

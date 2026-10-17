@@ -282,3 +282,42 @@ export type PermissionCheck = {
     missing: string[];
     excess: string[];
 }[];
+
+export type WebhookDeliveryStatus = 'pending' | 'succeeded' | 'failed';
+
+export type WebhookEndpoint = {
+    uuid: string;
+    url: string;
+    events: string[];
+    active: boolean;
+    /** Deliveries that failed in a row after every attempt. */
+    failure_count: number;
+    last_delivery: {
+        status: WebhookDeliveryStatus;
+        created_at: string | null;
+    } | null;
+};
+
+export type WebhookDelivery = {
+    uuid: string;
+    event_id: string;
+    event: string;
+    status: WebhookDeliveryStatus;
+    attempts: number;
+    response_status: number | null;
+    error: string | null;
+    /** The exact JSON body that was signed and sent. */
+    payload: string;
+    next_attempt_at: string | null;
+    delivered_at: string | null;
+    created_at: string | null;
+};
+
+export const WEBHOOK_DELIVERY_TONES: Record<
+    WebhookDeliveryStatus,
+    { tone: 'success' | 'warning' | 'danger'; label: string }
+> = {
+    pending: { tone: 'warning', label: 'Pending' },
+    succeeded: { tone: 'success', label: 'Delivered' },
+    failed: { tone: 'danger', label: 'Failed' },
+};

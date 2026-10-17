@@ -10,6 +10,7 @@ use App\Models\ApiToken;
 use App\Models\AuditLog;
 use App\Models\BillingSystem;
 use App\Models\User;
+use App\Models\WebhookEndpoint;
 use Illuminate\Container\Attributes\CurrentUser;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -28,7 +29,10 @@ class BillingSystemController extends Controller
         return Inertia::render('admin/billing-systems/Index', [
             'billingSystems' => BillingSystem::query()
                 ->withCount('servers')
-                ->with(['apiTokens' => fn ($query) => $query->with('creator:id,name')->latest('id')])
+                ->with([
+                    'apiTokens' => fn ($query) => $query->with('creator:id,name')->latest('id'),
+                    'webhookEndpoints' => fn ($query) => $query->with('lastDelivery')->oldest('id'),
+                ])
                 ->orderBy('name')
                 ->get()
                 ->map(fn (BillingSystem $system) => [
@@ -49,7 +53,9 @@ class BillingSystemController extends Controller
                         'expires_at' => $token->expires_at?->toIso8601String(),
                         'created_at' => $token->created_at?->toIso8601String(),
                     ]),
+                    'webhooks' => $system->webhookEndpoints->map(fn (WebhookEndpoint $endpoint) => WebhookEndpointController::present($endpoint)),
                 ]),
+            'webhookEvents' => WebhookEndpointController::eventOptions(),
             'scopes' => array_map(fn (ApiScope $scope) => ['value' => $scope->value, 'label' => $scope->label()], ApiScope::cases()),
             'newToken' => session('new_api_token'),
         ]);

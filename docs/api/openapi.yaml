@@ -13,7 +13,8 @@ info:
       Servers created with a token belong to its billing system, and `external_id` is unique
       within it.
     - **Asynchronous operations:** everything that changes Proxmox returns `202` with a task.
-      Poll `GET /tasks/{id}` until `status` is `succeeded` or `failed`.
+      Poll `GET /tasks/{id}` until `status` is `succeeded` or `failed`, or receive signed
+      webhooks when tasks finish (see `webhooks`, docs/adr/0013).
     - **Idempotency:** write requests may send `Idempotency-Key`. Repeating a request with the
       same key returns the first answer (`Idempotent-Replayed: true`) instead of acting again.
     - **Rate limit:** 120 requests per minute and token; 20 failed authentications per minute
@@ -818,3 +819,75 @@ components:
         created_at: { type: [string, 'null'], format: date-time }
         started_at: { type: [string, 'null'], format: date-time }
         finished_at: { type: [string, 'null'], format: date-time }
+    WebhookEvent:
+      type: object
+      description: |
+        Body of every webhook request. The same event has the same `id` at every endpoint and
+        when it is sent again; use it to ignore repeats.
+      required: [id, event, created_at, data]
+      properties:
+        id: { type: string, format: uuid }
+        event:
+          type: string
+          enum: [ping, server.provisioned, server.suspended, server.unsuspended, server.reinstalled, server.terminated, server.failed, task.succeeded, task.failed]
+        created_at: { type: string, format: date-time }
+        data:
+          type: object
+          description: '`server` and `task` for every event except `ping`, which carries `billing_system`.'
+          properties:
+            server:
+              type: object
+              required: [id, external_id, external_client_id, hostname, status]
+              properties:
+                id: { type: string, format: uuid }
+                external_id: { type: [string, 'null'] }
+                external_client_id: { type: [string, 'null'] }
+                hostname: { type: string }
+                status: { $ref: '#/components/schemas/ServerStatus' }
+            task: { $ref: '#/components/schemas/Task' }
+            billing_system:
+              type: object
+              properties:
+                id: { type: string, format: uuid }
+                name: { type: string }
+
+# Requests Proxmotion sends to the webhook endpoints of a billing system (docs/adr/0013).
+webhooks:
+  serverEvent:
+    post:
+      summary: A task of one of the billing system's servers finished
+      description: |
+        Sent to every active endpoint of the server's billing system that subscribed to the event,
+        configured under *Admin → Billing systems*. Events:
+
+        - `server.provisioned`, `server.suspended`, `server.unsuspended`, `server.reinstalled`,
+          `server.terminated`: the task of that type succeeded.
+        - `server.failed`: creating, reinstalling or terminating failed; the server is in `error`.
+        - `task.succeeded`, `task.failed`: any task, including power actions, password resets,
+          resource, address and hostname changes. A server event and its task event are separate
+          deliveries with different ids.
+        - `ping`: a test sent by an administrator.
+
+        Events are also sent for operations an administrator started in the panel.
+
+        **Verifying:** the `Proxmotion-Signature` header has the form `t=<unix timestamp>,v1=<hex>`,
+        where `v1` is the HMAC-SHA256 of `<t>.<raw body>` with the endpoint's signing secret
+        (`whsec_…`). Compare it in constant time and refuse timestamps older than about five
+        minutes.
+
+        **Delivery:** only a `2xx` answer within 10 seconds counts as delivered; redirects are not
+        followed. Otherwise the request is repeated after 1 min, 5 min, 30 min, 1 h, 2 h, 6 h and
+        12 h (8 attempts), then marked failed; administrators can send it again. Deliveries are at
+        least once and not necessarily in order: use `id` to ignore repeats and fetch the server or
+        task from the API when the order matters.
+      parameters:
+        - { name: Proxmotion-Webhook-Id, in: header, required: true, schema: { type: string, format: uuid }, description: The event id (same as `id` in the body). }
+        - { name: Proxmotion-Webhook-Event, in: header, required: true, schema: { type: string }, description: The event name. }
+        - { name: Proxmotion-Signature, in: header, required: true, schema: { type: string }, example: 't=1800000000,v1=5257a869e7ecebeda32affa62cdca3fa51cad7e77a0e56ff536d0ce8e108d8bd' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/WebhookEvent' }
+      responses:
+        '2XX': { description: Received. Any other answer is retried. }

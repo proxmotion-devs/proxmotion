@@ -56,4 +56,12 @@ class BillingSystem extends Model
     {
         return $this->hasMany(Server::class);
     }
+
+    /**
+     * @return HasMany<WebhookEndpoint, $this>
+     */
+    public function webhookEndpoints(): HasMany
+    {
+        return $this->hasMany(WebhookEndpoint::class);
+    }
 }

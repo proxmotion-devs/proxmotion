@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { Head, router, useForm } from '@inertiajs/vue3';
-import { Ban, KeyRound, Pencil, Plus } from '@lucide/vue';
+import { Head, Link, router, useForm } from '@inertiajs/vue3';
+import { Ban, KeyRound, Pencil, Plus, Webhook } from '@lucide/vue';
 import { ref } from 'vue';
 import FormDialog from '@/components/admin/FormDialog.vue';
 import FormField from '@/components/admin/FormField.vue';
 import StatusBadge from '@/components/admin/StatusBadge.vue';
+import WebhookEndpointDialog from '@/components/admin/WebhookEndpointDialog.vue';
 import Heading from '@/components/Heading.vue';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -22,6 +23,10 @@ import { useDateTime } from '@/composables/useDateTime';
 import { destroy as revokeToken } from '@/routes/admin/api-tokens';
 import { index, store, update } from '@/routes/admin/billing-systems';
 import { store as storeToken } from '@/routes/admin/billing-systems/tokens';
+import { store as storeWebhook } from '@/routes/admin/billing-systems/webhooks';
+import { show as showWebhook } from '@/routes/admin/webhooks';
+import { WEBHOOK_DELIVERY_TONES } from '@/types/admin';
+import type { WebhookEndpoint } from '@/types/admin';
 
 type ApiToken = {
     uuid: string;
@@ -42,6 +47,7 @@ type BillingSystem = {
     name: string;
     servers_count: number;
     tokens: ApiToken[];
+    webhooks: WebhookEndpoint[];
 };
 
 defineOptions({
@@ -51,6 +57,7 @@ defineOptions({
 const props = defineProps<{
     billingSystems: BillingSystem[];
     scopes: { value: string; label: string }[];
+    webhookEvents: { value: string; label: string }[];
     /** Only right after a token was created: its secret, shown once. */
     newToken: { billing_system: string; name: string; secret: string } | null;
 }>();
@@ -133,6 +140,15 @@ const revoke = () => {
             revoking.value = null;
         },
     });
+};
+
+// Webhook endpoint of a billing system; editing happens on its own page.
+const webhookDialogOpen = ref(false);
+const webhookSystem = ref<BillingSystem | null>(null);
+
+const openWebhookForm = (system: BillingSystem) => {
+    webhookSystem.value = system;
+    webhookDialogOpen.value = true;
 };
 
 const statusOf = (token: ApiToken) => {
@@ -334,6 +350,93 @@ const statusOf = (token: ApiToken) => {
                     </tbody>
                 </table>
             </div>
+
+            <div class="flex flex-wrap items-center justify-between gap-3 pt-2">
+                <div>
+                    <h3 class="flex items-center gap-2 text-sm font-semibold">
+                        <Webhook class="h-4 w-4" />
+                        {{ $t('Webhooks') }}
+                    </h3>
+                    <p class="text-sm text-muted-foreground">
+                        {{
+                            $t(
+                                'Signed requests that tell the billing system when tasks of its servers finish.',
+                            )
+                        }}
+                    </p>
+                </div>
+                <Button variant="outline" @click="openWebhookForm(system)">
+                    <Plus class="h-4 w-4" />
+                    {{ $t('Add webhook') }}
+                </Button>
+            </div>
+
+            <ul
+                v-if="system.webhooks.length"
+                class="divide-y rounded-lg border text-sm"
+            >
+                <li
+                    v-for="webhook in system.webhooks"
+                    :key="webhook.uuid"
+                    class="flex flex-wrap items-center justify-between gap-3 px-4 py-3"
+                >
+                    <div class="min-w-0">
+                        <Link
+                            :href="showWebhook(webhook.uuid)"
+                            class="font-mono text-xs break-all underline-offset-4 hover:underline"
+                        >
+                            {{ webhook.url }}
+                        </Link>
+                        <div class="text-xs text-muted-foreground">
+                            {{
+                                $t(':count events', {
+                                    count: String(webhook.events.length),
+                                })
+                            }}
+                            <template v-if="webhook.last_delivery">
+                                ·
+                                {{
+                                    $t('Last delivery :time', {
+                                        time: formatDateTime(
+                                            webhook.last_delivery.created_at,
+                                        ),
+                                    })
+                                }}
+                            </template>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <StatusBadge
+                            v-if="webhook.last_delivery"
+                            :tone="
+                                WEBHOOK_DELIVERY_TONES[
+                                    webhook.last_delivery.status
+                                ].tone
+                            "
+                            :label="
+                                WEBHOOK_DELIVERY_TONES[
+                                    webhook.last_delivery.status
+                                ].label
+                            "
+                        />
+                        <StatusBadge
+                            v-if="!webhook.active"
+                            tone="neutral"
+                            label="Disabled"
+                        />
+                    </div>
+                </li>
+            </ul>
+            <p
+                v-else
+                class="rounded-lg border border-dashed p-4 text-center text-sm text-muted-foreground"
+            >
+                {{
+                    $t(
+                        'No webhooks yet. The billing system polls tasks instead.',
+                    )
+                }}
+            </p>
         </section>
     </div>
 
@@ -428,6 +531,15 @@ const statusOf = (token: ApiToken) => {
             <Input id="expires_at" v-model="tokenForm.expires_at" type="date" />
         </FormField>
     </FormDialog>
+
+    <WebhookEndpointDialog
+        v-if="webhookSystem"
+        v-model:open="webhookDialogOpen"
+        :action="storeWebhook(webhookSystem.uuid)"
+        :events="webhookEvents"
+        :endpoint="null"
+        :description="webhookSystem.name"
+    />
 
     <Dialog
         :open="revoking !== null"
