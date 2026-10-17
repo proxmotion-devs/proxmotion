@@ -40,7 +40,8 @@ abstract class ModuleTestCase extends TestCase
             'ip' => 'panel.example.com',
             'secure' => 1,
             'port' => 443,
-            'fields' => ['api_token' => self::TOKEN, 'webhook_secret' => ''],
+            'password' => self::TOKEN,
+            'fields' => ['webhook_secret' => ''],
         ], $overrides);
     }
 

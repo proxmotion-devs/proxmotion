@@ -2,10 +2,14 @@
 
 return [
     // Server form (config.php)
-    'field-api-token' => 'API token',
-    'field-api-token-desc' => 'A token of this billing system from Proxmotion (Admin → Billing systems), with all scopes. The IP address or hostname above is the panel\'s address.',
+    'server-ip-label' => 'Panel address',
+    'server-ip-placeholder' => 'panel.example.com',
+    'username-label' => 'Username (not used)',
+    'username-placeholder' => 'proxmotion',
+    'password-label' => 'API token',
+    'password-placeholder' => 'pmx_…',
     'field-webhook-secret' => 'Webhook signing secret',
-    'field-webhook-secret-desc' => 'Optional: the signing secret (whsec_…) of a Proxmotion webhook pointing to https://<this WISECP>/api/v1/proxmotion/webhook.',
+    'field-webhook-secret-desc' => 'Optional: the signing secret (whsec_…) of a Proxmotion webhook to your WISECP address followed by /api/v1/proxmotion/webhook.',
 
     // Add-on values
     'addon-extra-cpu-cores' => 'Extra vCPU cores',

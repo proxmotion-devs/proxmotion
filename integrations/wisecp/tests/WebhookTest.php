@@ -29,8 +29,8 @@ final class WebhookTest extends ModuleTestCase
 
         $this->store = new FakeWebhookStore;
         $this->store->servers = [
-            $this->wisecpServer(['id' => 2, 'fields' => ['api_token' => 'pmx_other', 'webhook_secret' => 'whsec_another-billing-systems-secret']]),
-            $this->wisecpServer(['fields' => ['api_token' => self::TOKEN, 'webhook_secret' => self::SECRET]]),
+            $this->wisecpServer(['id' => 2, 'password' => 'pmx_other', 'fields' => ['webhook_secret' => 'whsec_another-billing-systems-secret']]),
+            $this->wisecpServer(['fields' => ['webhook_secret' => self::SECRET]]),
         ];
         $this->store->services[42] = ['id' => 42, 'owner_id' => 7, 'status' => 'active', 'options' => ['hostname' => 'web1.example.com', 'ip' => '203.0.113.10'], 'server' => 3];
     }
@@ -228,7 +228,7 @@ final class WebhookTest extends ModuleTestCase
     {
         return new WebhookReceiver(
             $this->store,
-            fn (array $server): ApiClient => new ApiClient(Proxmotion::baseUrl($server) . '/api/v1', Proxmotion::field($server, 'api_token'), $this->api),
+            fn (array $server): ApiClient => new ApiClient(Proxmotion::baseUrl($server) . '/api/v1', Proxmotion::token($server), $this->api),
             static fn (): int => self::NOW,
         );
     }

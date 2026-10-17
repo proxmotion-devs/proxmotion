@@ -57,7 +57,7 @@ class Proxmotion extends ServerModule
     {
         $this->api = new ApiClient(
             self::baseUrl($server) . '/api/v1',
-            self::field($server, 'api_token'),
+            self::token($server),
             $this->transport(),
             $this->logger(),
         );
@@ -99,6 +99,16 @@ class Proxmotion extends ServerModule
         }
 
         return ($secure ? 'https' : 'http') . '://' . $host;
+    }
+
+    /**
+     * The API token: the server's password field, decrypted by WISECP.
+     *
+     * @param array<string, mixed> $server
+     */
+    public static function token(array $server): string
+    {
+        return trim((string) ($server['password'] ?? ''));
     }
 
     /**
@@ -415,7 +425,7 @@ class Proxmotion extends ServerModule
     {
         $receiver = new WebhookReceiver(new WisecpWebhookStore, fn (array $server): ApiClient => new ApiClient(
             self::baseUrl($server) . '/api/v1',
-            self::field($server, 'api_token'),
+            self::token($server),
             $this->transport(),
             $this->logger(),
         ));

@@ -28,6 +28,7 @@ final class WisecpWebhookStore implements WebhookStore
         foreach (\WDB::fetch_assoc() ?: [] as $row) {
             $fields = is_string($row['fields'] ?? null) ? (json_decode($row['fields'], true) ?: []) : [];
             $row['fields'] = \ServerModule::crypt_decode_fields(is_array($fields) ? $fields : [], $fieldDefinitions);
+            $row['password'] = self::decrypt((string) ($row['password'] ?? ''));
             $row['id'] = (int) $row['id'];
             $servers[] = $row;
         }
@@ -114,6 +115,22 @@ final class WisecpWebhookStore implements WebhookStore
     public function log(string $action, string $request, string $response): void
     {
         \Modules::save_log('Servers', self::MODULE, $action, $request, $response);
+    }
+
+    /**
+     * A server's password (the API token) as WISECP decrypts it for a module.
+     */
+    private static function decrypt(string $value): string
+    {
+        $key = \Config::get('crypt/user');
+
+        if ($value === '' || ! \Crypt::is_encrypted($value, $key)) {
+            return $value;
+        }
+
+        $decoded = \Crypt::decode($value, $key);
+
+        return is_string($decoded) && $decoded !== '' ? $decoded : $value;
     }
 
     private function createEventsTable(): void

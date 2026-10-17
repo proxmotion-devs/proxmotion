@@ -292,6 +292,27 @@ namespace {
         }
     }
 
+    class Config
+    {
+        public static function get(string $key): mixed
+        {
+            return null;
+        }
+    }
+
+    class Crypt
+    {
+        public static function is_encrypted(string $string, mixed $key = null): bool
+        {
+            return false;
+        }
+
+        public static function decode(string $string, mixed $key = null): string|false
+        {
+            return $string;
+        }
+    }
+
     class Hook
     {
         /** @var list<callable> listeners of filter:api.routes (tests) */

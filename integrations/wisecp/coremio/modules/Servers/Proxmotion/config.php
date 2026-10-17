@@ -15,16 +15,9 @@ return [
     'not-secure-port' => 80,
     'secure-port' => 443,
     'service-relationship' => 'config.server_id',
+    // The API token is WISECP's password field (always shown and required, stored
+    // encrypted); lang/*.php relabels it and the unused username field.
     'fields' => [
-        'api_token' => [
-            'type' => 'password',
-            'name' => '{lang.field-api-token}',
-            'description' => '{lang.field-api-token-desc}',
-            'value' => '',
-            'col_class' => 'col-md-6',
-            'required' => true,
-            'crypt' => true,
-        ],
         'webhook_secret' => [
             'type' => 'password',
             'name' => '{lang.field-webhook-secret}',

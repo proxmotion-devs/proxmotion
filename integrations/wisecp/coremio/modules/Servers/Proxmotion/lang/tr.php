@@ -2,10 +2,14 @@
 
 return [
     // Server form (config.php)
-    'field-api-token' => 'API token',
-    'field-api-token-desc' => 'Proxmotion\'da bu faturalama sisteminin tüm yetkilere sahip bir token\'ı (Yönetim → Faturalama sistemleri). Yukarıdaki IP adresi veya alan adı panelin adresidir.',
+    'server-ip-label' => 'Panel adresi',
+    'server-ip-placeholder' => 'panel.example.com',
+    'username-label' => 'Kullanıcı adı (kullanılmıyor)',
+    'username-placeholder' => 'proxmotion',
+    'password-label' => 'API token',
+    'password-placeholder' => 'pmx_…',
     'field-webhook-secret' => 'Webhook imza anahtarı',
-    'field-webhook-secret-desc' => 'İsteğe bağlı: https://<bu WISECP>/api/v1/proxmotion/webhook adresine gönderen bir Proxmotion webhook\'unun imza anahtarı (whsec_…).',
+    'field-webhook-secret-desc' => 'İsteğe bağlı: WISECP adresinizin sonuna /api/v1/proxmotion/webhook eklenmiş adrese gönderen bir Proxmotion webhook\'unun imza anahtarı (whsec_…).',
 
     // Add-on values
     'addon-extra-cpu-cores' => 'Ek vCPU çekirdeği',

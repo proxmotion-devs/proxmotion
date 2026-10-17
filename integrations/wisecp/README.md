@@ -32,10 +32,12 @@ time its page is opened.
 2. In Proxmotion: *Admin → Billing systems* → add a billing system (e.g. "WISECP"),
    then **Create token** with all scopes. Optionally limit it to your WISECP server's
    IP address. Copy the token: it is shown once.
-3. In WISECP, add a server with the module **Proxmotion**:
-   - **IP address / hostname:** your panel's hostname, e.g. `panel.example.com`
-   - **Secure (SSL):** on, port 443 (the panel must have a valid TLS certificate)
-   - **API token:** the token (`pmx_…`)
+3. In WISECP: *Products → Hosting & Servers → Server Settings → Add New Server*,
+   tab **Virtualization**, module **Proxmotion**:
+   - **Panel address:** your panel's hostname, e.g. `panel.example.com`, with the
+     https switch on and port 443 (the panel must have a valid TLS certificate)
+   - **Username (not used):** anything, e.g. `proxmotion` (WISECP requires the field)
+   - **API token:** the token (`pmx_…`), in WISECP's password field
    - **Test Connection** must succeed.
 4. Use the server (or a server group with it) in your products.
 5. Optionally, [receive webhooks](#webhooks).
