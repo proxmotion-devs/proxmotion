@@ -358,7 +358,7 @@ Done 2026-10-17 (ADR 0014; setup in `integrations/wisecp/README.md`), **not run 
 # inside panel/
 composer setup                    # install deps, .env, key, migrate, build assets
 php artisan migrate --seed        # local admin account: admin@example.com, password "password"
-composer dev                      # serve + queue + vite (concurrently)
+composer dev                      # serve + queue + scheduler + vite (concurrently; apps:poll and infra:sync need the scheduler)
 
 # all quality gates at once (same as CI)
 composer ci:check
