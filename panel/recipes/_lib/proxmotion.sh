@@ -90,6 +90,19 @@ pm_apt_install() {
     DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=600 install -y -q --no-install-recommends "$@"
 }
 
+# pm_pkg_install PACKAGE...: install with whichever of apt and dnf the system
+# has (recipes requiring "apt|dnf", docs/adr/0016); package names must exist
+# under the same name in both.
+pm_pkg_install() {
+    if command -v apt-get >/dev/null 2>&1; then
+        pm_apt_update && pm_apt_install "$@"
+    elif command -v dnf >/dev/null 2>&1; then
+        dnf install -y -q "$@"
+    else
+        pm_fail "Neither apt nor dnf is available."
+    fi
+}
+
 # pm_default_interface: the interface of the IPv4 default route.
 pm_default_interface() {
     ip -4 route show default | awk '{ for (i = 1; i < NF; i++) if ($i == "dev") { print $(i + 1); exit } }'

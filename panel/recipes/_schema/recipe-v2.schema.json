@@ -1,0 +1,288 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://proxmotion.invalid/schemas/recipe-v2.schema.json",
+    "title": "Proxmotion app recipe, format 2 (recipe.yaml, docs/adr/0016)",
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+        "format",
+        "slug",
+        "name",
+        "version",
+        "category",
+        "description",
+        "requires",
+        "resources",
+        "network_models",
+        "install_modes",
+        "billing",
+        "license",
+        "lifecycle"
+    ],
+    "properties": {
+        "format": { "const": 2 },
+        "slug": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9-]{1,48}[a-z0-9]$"
+        },
+        "name": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "version": { "$ref": "#/$defs/semver" },
+        "category": { "enum": ["vpn", "control-panel", "container", "web"] },
+        "description": { "$ref": "#/$defs/text" },
+        "maintainers": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["name"],
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 100
+                    },
+                    "url": { "$ref": "#/$defs/url" },
+                    "email": { "type": "string", "maxLength": 200 }
+                }
+            }
+        },
+        "homepage": { "$ref": "#/$defs/url" },
+        "requires": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["platform"],
+            "properties": {
+                "platform": { "enum": ["linux", "windows"] },
+                "capabilities": {
+                    "type": "array",
+                    "uniqueItems": true,
+                    "items": {
+                        "type": "string",
+                        "pattern": "^(systemd|openrc|apt|dnf|zypper|pacman|apk|bash|powershell|cloud-init|selinux)(\\|(systemd|openrc|apt|dnf|zypper|pacman|apk|bash|powershell|cloud-init|selinux))*$"
+                    }
+                },
+                "families": {
+                    "type": "array",
+                    "minItems": 1,
+                    "uniqueItems": true,
+                    "items": {
+                        "type": "string",
+                        "pattern": "^[a-z][a-z0-9-]*$"
+                    }
+                },
+                "min_versions": {
+                    "type": "object",
+                    "propertyNames": { "pattern": "^[a-z][a-z0-9-]*$" },
+                    "additionalProperties": {
+                        "type": "string",
+                        "pattern": "^[0-9][0-9.]*$"
+                    }
+                }
+            }
+        },
+        "resources": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["min_memory_mib", "min_disk_mib", "min_cores"],
+            "properties": {
+                "min_memory_mib": { "type": "integer", "minimum": 128 },
+                "min_disk_mib": { "type": "integer", "minimum": 1024 },
+                "min_cores": { "type": "integer", "minimum": 1 }
+            }
+        },
+        "network_models": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": { "enum": ["bridged", "routed", "nat"] }
+        },
+        "install_modes": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": { "enum": ["order", "post"] }
+        },
+        "billing": { "enum": ["free", "paid"] },
+        "license": { "enum": ["none", "external"] },
+        "inputs": {
+            "type": "array",
+            "items": { "$ref": "#/$defs/input" }
+        },
+        "outputs": {
+            "type": "array",
+            "items": { "$ref": "#/$defs/output" }
+        },
+        "firewall": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["port", "proto"],
+                "properties": {
+                    "port": {
+                        "type": ["integer", "string"],
+                        "pattern": "^(\\{\\{ inputs\\.[a-z][a-z0-9_]* \\}\\}|[0-9]+)$",
+                        "minimum": 1,
+                        "maximum": 65535
+                    },
+                    "proto": {
+                        "type": "string",
+                        "pattern": "^(\\{\\{ inputs\\.[a-z][a-z0-9_]* \\}\\}|tcp|udp)$"
+                    }
+                }
+            }
+        },
+        "lifecycle": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["install"],
+            "properties": {
+                "install": { "$ref": "#/$defs/step" },
+                "uninstall": { "$ref": "#/$defs/step" },
+                "upgrade": {
+                    "allOf": [
+                        { "$ref": "#/$defs/step" },
+                        { "required": ["from"] }
+                    ]
+                }
+            }
+        },
+        "actions": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["key", "label", "script"],
+                "properties": {
+                    "key": { "$ref": "#/$defs/key" },
+                    "label": { "$ref": "#/$defs/text" },
+                    "script": { "$ref": "#/$defs/script" },
+                    "inputs": {
+                        "type": "array",
+                        "items": { "$ref": "#/$defs/input" }
+                    },
+                    "outputs": {
+                        "type": "array",
+                        "items": { "$ref": "#/$defs/output" }
+                    },
+                    "timeout_minutes": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 120
+                    }
+                }
+            }
+        }
+    },
+    "$defs": {
+        "key": { "type": "string", "pattern": "^[a-z][a-z0-9_]{0,39}$" },
+        "semver": {
+            "type": "string",
+            "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+        },
+        "url": {
+            "type": "string",
+            "maxLength": 300,
+            "pattern": "^https?://[^\\s]+$"
+        },
+        "script": {
+            "type": "string",
+            "maxLength": 120,
+            "pattern": "^[a-z0-9][a-z0-9_-]*(/[a-z0-9][a-z0-9_-]*)*\\.(sh|ps1)$"
+        },
+        "step": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["script", "timeout_minutes"],
+            "properties": {
+                "script": { "$ref": "#/$defs/script" },
+                "timeout_minutes": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 120
+                },
+                "from": {
+                    "type": "string",
+                    "description": "Installed versions the upgrade script accepts: comparators such as \">=1.0.0 <1.2.0\".",
+                    "pattern": "^(>=|<=|>|<|=)[0-9]+\\.[0-9]+\\.[0-9]+( (>=|<=|>|<|=)[0-9]+\\.[0-9]+\\.[0-9]+)*$"
+                }
+            }
+        },
+        "text": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["en"],
+            "properties": {
+                "en": { "type": "string", "minLength": 1, "maxLength": 500 },
+                "tr": { "type": "string", "minLength": 1, "maxLength": 500 }
+            }
+        },
+        "input": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["key", "type"],
+            "properties": {
+                "key": { "$ref": "#/$defs/key" },
+                "type": {
+                    "enum": [
+                        "string",
+                        "password",
+                        "integer",
+                        "port",
+                        "boolean",
+                        "enum",
+                        "slug",
+                        "email",
+                        "domain"
+                    ]
+                },
+                "label": { "$ref": "#/$defs/text" },
+                "required": { "type": "boolean" },
+                "default": { "type": ["string", "integer", "boolean"] },
+                "options": {
+                    "type": "array",
+                    "minItems": 1,
+                    "uniqueItems": true,
+                    "items": {
+                        "type": "string",
+                        "pattern": "^[A-Za-z0-9._-]{1,40}$"
+                    }
+                },
+                "min": { "type": "integer" },
+                "max": { "type": "integer" },
+                "max_length": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 255
+                }
+            },
+            "allOf": [
+                {
+                    "if": { "properties": { "type": { "const": "enum" } } },
+                    "then": { "required": ["options"] }
+                }
+            ]
+        },
+        "output": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["key", "type"],
+            "properties": {
+                "key": { "$ref": "#/$defs/key" },
+                "type": { "enum": ["text", "url", "file"] },
+                "label": { "$ref": "#/$defs/text" },
+                "filename": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"
+                },
+                "secret": { "type": "boolean" }
+            },
+            "allOf": [
+                {
+                    "if": { "properties": { "type": { "const": "file" } } },
+                    "then": { "required": ["filename"] }
+                }
+            ]
+        }
+    }
+}

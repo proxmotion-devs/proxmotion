@@ -4,14 +4,18 @@ declare(strict_types=1);
 
 namespace App\Domain\Apps;
 
+use App\Enums\AppRecipeVersionStatus;
 use App\Models\AppRecipe;
+use App\Models\AppRecipeVersion;
 use Illuminate\Support\Facades\DB;
 
 /**
- * Copies the bundled recipes with their scripts into app_recipes
- * (docs/adr/0015). New recipes are active; an administrator's choice to
- * deactivate one is kept. Recipes no longer in panel/recipes are
- * deactivated, never deleted: installations keep pointing at them.
+ * Copies the bundled recipes with their scripts into the database
+ * (docs/adr/0015, 0016 §2). Each new version is stored next to the earlier
+ * ones and approved (bundled recipes ship with the panel); installations
+ * keep the version they were installed with. New apps are active; an
+ * administrator's choice to deactivate one is kept. Recipes no longer in
+ * panel/recipes are deactivated, never deleted.
  */
 final readonly class RecipeSynchronizer
 {
@@ -20,7 +24,8 @@ final readonly class RecipeSynchronizer
     /**
      * @return array{created: list<string>, updated: list<string>, deactivated: list<string>}
      *
-     * @throws RecipeInvalid before anything is written
+     * @throws RecipeInvalid before anything is written, also when a version
+     *                       in use changed without a new version number
      */
     public function sync(): array
     {
@@ -29,31 +34,38 @@ final readonly class RecipeSynchronizer
 
         DB::transaction(function () use ($recipes, &$result) {
             foreach ($recipes as $slug => ['recipe' => $recipe, 'files' => $files]) {
-                $checksum = hash('sha256', json_encode([$recipe->definition, $files], JSON_THROW_ON_ERROR));
-                $model = AppRecipe::query()->where('slug', $slug)->first();
+                $checksum = self::checksum($recipe, $files);
+                $app = AppRecipe::query()->with('latestVersion')->where('slug', $slug)->where('source', AppRecipe::SOURCE_BUNDLED)->first();
 
-                if ($model !== null && $model->checksum === $checksum) {
+                if ($app !== null && $app->latestVersion?->checksum === $checksum) {
                     continue;
                 }
 
-                $model ??= new AppRecipe;
-                $created = ! $model->exists;
-                $model->forceFill([
-                    'slug' => $slug,
-                    'source' => AppRecipe::SOURCE_BUNDLED,
-                    'name' => $recipe->name,
-                    'version' => $recipe->version,
-                    'category' => $recipe->category,
+                $created = $app === null;
+                $app ??= (new AppRecipe)->forceFill(['slug' => $slug, 'source' => AppRecipe::SOURCE_BUNDLED, 'is_active' => true]);
+                $app->forceFill(['name' => $recipe->name, 'category' => $recipe->category])->save();
+
+                $version = $app->versions()->where('version', $recipe->version)->first();
+
+                if ($version !== null && $version->installations()->exists()) {
+                    throw new RecipeInvalid($slug, ["Version {$recipe->version} changed but is used by installations: raise the version."]);
+                }
+
+                $version ??= (new AppRecipeVersion)->forceFill(['app_recipe_id' => $app->id, 'version' => $recipe->version]);
+                $version->forceFill([
+                    'format' => $recipe->format,
                     'definition' => $recipe->definition,
                     'files' => $files,
                     'checksum' => $checksum,
-                ]);
+                    'status' => AppRecipeVersionStatus::Approved,
+                    'reviewed_at' => now(),
+                ])->save();
 
-                if ($created) {
-                    $model->is_active = true;
+                // An older version in the repository (a downgrade) is stored but not offered.
+                if ($app->latestVersion === null || version_compare($recipe->version, $app->latestVersion->version, '>=')) {
+                    $app->forceFill(['latest_version_id' => $version->id])->save();
                 }
 
-                $model->save();
                 $result[$created ? 'created' : 'updated'][] = $slug;
             }
 
@@ -70,5 +82,15 @@ final readonly class RecipeSynchronizer
         });
 
         return $result;
+    }
+
+    /**
+     * @param  array<string, string>  $files
+     */
+    public static function checksum(Recipe $recipe, array $files): string
+    {
+        ksort($files);
+
+        return hash('sha256', json_encode([$recipe->definition, $files], JSON_THROW_ON_ERROR));
     }
 }

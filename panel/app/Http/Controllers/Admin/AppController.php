@@ -33,6 +33,8 @@ class AppController extends Controller
     {
         return Inertia::render('admin/apps/Index', [
             'apps' => AppRecipe::query()
+                ->with('latestVersion')
+                ->whereNotNull('latest_version_id')
                 ->withCount(['installations as installed_count' => fn ($query) => $query->where('status', AppInstallationStatus::Installed)])
                 ->orderBy('name')
                 ->get()
@@ -42,10 +44,10 @@ class AppController extends Controller
                     return [
                         'slug' => $app->slug,
                         'name' => $app->name,
-                        'version' => $app->version,
+                        'version' => $recipe->version,
                         'category' => $app->category,
                         'description' => $recipe->description,
-                        'os' => array_map(fn (array $entry) => $entry['family'].' '.implode(', ', $entry['versions']), $recipe->os),
+                        'os' => $recipe->osSummary(),
                         'billing' => $recipe->billing,
                         'is_active' => $app->is_active,
                         'installed_count' => (int) $app->getAttribute('installed_count'),

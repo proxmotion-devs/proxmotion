@@ -89,7 +89,7 @@ final readonly class InstallationPoller
      */
     private function outputs(GuestAgentResource $agent, int $vmid, AppInstallation $installation): array
     {
-        $recipe = $installation->recipe->recipe();
+        $recipe = $installation->version->recipe();
         $directory = $installation->guestDirectory();
         $texts = [];
         $outputs = [];
@@ -130,7 +130,7 @@ final readonly class InstallationPoller
 
     private function timedOut(AppInstallation $installation): void
     {
-        $minutes = $installation->recipe->recipe()->timeoutMinutes;
+        $minutes = $installation->version->recipe()->timeoutMinutes;
 
         $this->installations->failed($installation, __('The installation did not finish within :minutes minutes.', ['minutes' => (string) $minutes]));
     }

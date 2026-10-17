@@ -31,7 +31,15 @@ class AppResource extends JsonResource
             'version' => $recipe->version,
             'category' => $recipe->category,
             'description' => $recipe->description,
-            'os' => $recipe->os,
+            'format' => $recipe->format,
+            // Format 2 recipes ask for template capabilities (requires); `os` then lists the families with any version.
+            'os' => $recipe->format === 1 ? $recipe->os : array_map(fn (string $family) => ['family' => $family, 'versions' => []], $recipe->families ?? []),
+            'requires' => [
+                'platform' => $recipe->platform,
+                'capabilities' => $recipe->capabilities,
+                'families' => $recipe->families,
+                'min_versions' => (object) $recipe->minVersions,
+            ],
             'requirements' => [
                 'min_cores' => $recipe->minCores,
                 'min_memory_mib' => $recipe->minMemoryMib,

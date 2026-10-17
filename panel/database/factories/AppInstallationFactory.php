@@ -21,7 +21,8 @@ class AppInstallationFactory extends Factory
         return [
             'server_id' => Server::factory(),
             'app_recipe_id' => AppRecipe::factory(),
-            'recipe_version' => '1.0.0',
+            // The app's latest version, unless given.
+            'app_recipe_version_id' => fn (array $attributes) => AppRecipe::query()->whereKey($attributes['app_recipe_id'])->value('latest_version_id'),
             'status' => AppInstallationStatus::Installed,
             'inputs' => ['port' => 8443],
             'progress' => 100,

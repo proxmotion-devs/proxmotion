@@ -108,6 +108,8 @@ export type OsTemplate = {
     family: string;
     version: string;
     platform: OsPlatform;
+    /** What app recipes may rely on (docs/adr/0016). */
+    capabilities: string[];
     is_active: boolean;
     sort_order: number;
     proxmox_template_ids: number[];
@@ -223,6 +225,7 @@ export type Task = {
     error: string | null;
     created_at: string | null;
     finished_at: string | null;
+    can_fail: boolean;
 };
 
 export type DriftType =
@@ -275,6 +278,8 @@ export type TaskProgress = {
     steps: { key: string; status: string; message?: string | null }[];
     error?: string | null;
     created_at: string | null;
+    /** Stuck (queued, or running past its time limit): an administrator may end it. */
+    can_fail?: boolean;
 };
 
 export type PermissionCheck = {

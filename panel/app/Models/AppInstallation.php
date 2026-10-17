@@ -22,7 +22,7 @@ use Illuminate\Support\Carbon;
  * @property string $uuid
  * @property int $server_id
  * @property int $app_recipe_id
- * @property string $recipe_version
+ * @property int $app_recipe_version_id the version installed (docs/adr/0016 §2)
  * @property AppInstallationStatus $status
  * @property array<string, string|int|bool> $inputs validated values
  * @property array<string, array{type: string, value: string, filename?: string|null}>|null $outputs by key; file contents base64-encoded
@@ -39,6 +39,7 @@ use Illuminate\Support\Carbon;
  * @property Carbon|null $updated_at
  * @property-read Server $server
  * @property-read AppRecipe $recipe
+ * @property-read AppRecipeVersion $version
  * @property-read Task|null $task
  */
 class AppInstallation extends Model
@@ -79,6 +80,14 @@ class AppInstallation extends Model
     }
 
     /**
+     * @return BelongsTo<AppRecipeVersion, $this>
+     */
+    public function version(): BelongsTo
+    {
+        return $this->belongsTo(AppRecipeVersion::class, 'app_recipe_version_id');
+    }
+
+    /**
      * @return BelongsTo<Task, $this>
      */
     public function task(): BelongsTo
@@ -99,8 +108,6 @@ class AppInstallation extends Model
      */
     public function deadline(): ?CarbonInterface
     {
-        $minutes = $this->recipe->definition['timeout_minutes'] ?? 15;
-
-        return $this->started_at?->copy()->addMinutes(is_int($minutes) ? $minutes : 15);
+        return $this->started_at?->copy()->addMinutes($this->version->recipe()->timeoutMinutes);
     }
 }

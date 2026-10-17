@@ -1024,5 +1024,12 @@
     "This app needs at least :size MiB of disk space.": "Bu uygulama en az :size MiB disk alanı gerektirir.",
     "This app is already installed on the server.": "Bu uygulama sunucuda zaten kurulu.",
     "Only a failed installation can be retried.": "Yalnızca başarısız bir kurulum yeniden denenebilir.",
-    "Another app is still being installed on this server.": "Bu sunucuya hâlâ başka bir uygulama kuruluyor."
+    "Another app is still being installed on this server.": "Bu sunucuya hâlâ başka bir uygulama kuruluyor.",
+    "Mark as failed": "Başarısız say",
+    "Mark this task as failed?": "Bu görev başarısız sayılsın mı?",
+    "Use this only when the task is stuck. Nothing is changed on Proxmox; check the server there, then start the operation again if it is still needed. A failed create, delete or reinstall leaves the server in error.": "Bunu yalnızca görev takılı kaldığında kullanın. Proxmox'ta hiçbir şey değişmez; sunucuyu orada kontrol edin, gerekiyorsa işlemi yeniden başlatın. Başarısız sayılan bir oluşturma, silme veya yeniden kurulum sunucuyu hata durumunda bırakır.",
+    "This task can no longer be marked as failed.": "Bu görev artık başarısız sayılamaz.",
+    "The task is marked as failed.": "Görev başarısız sayıldı.",
+    "Capabilities": "Yetenekler",
+    "What the template offers to apps. Apps ask for capabilities instead of naming distributions; the family suggests them.": "Şablonun uygulamalara sunduğu özellikler. Uygulamalar dağıtım adı yerine yetenek ister; aile seçimi bunları önerir."
 }

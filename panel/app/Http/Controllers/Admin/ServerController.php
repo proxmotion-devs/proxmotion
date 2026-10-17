@@ -38,6 +38,7 @@ use App\Provisioning\Exceptions\TaskAlreadyRunning;
 use App\Provisioning\PrimaryAddressChanger;
 use App\Provisioning\ResourceChanger;
 use App\Provisioning\ServerCreator;
+use App\Provisioning\TaskFailer;
 use App\Provisioning\TaskRunner;
 use App\Proxmox\Exceptions\ProxmoxException;
 use Illuminate\Container\Attributes\CurrentUser;
@@ -114,7 +115,7 @@ class ServerController extends Controller
         return to_route('admin.servers.show', $server);
     }
 
-    public function show(Server $server, GuestAgentProbe $agent, AppEligibility $eligibility): Response
+    public function show(Server $server, GuestAgentProbe $agent, AppEligibility $eligibility, TaskFailer $failer): Response
     {
         $server->load(['node:id,uuid,name', 'cluster:id,uuid,name', 'location:id,name', 'package:id,name', 'billingSystem:id,name', 'osTemplate:id,name,family,version,platform', 'storage:id,name', 'ipAddresses.pool:id,uuid,name,version']);
 
@@ -163,6 +164,7 @@ class ServerController extends Controller
                 'error' => $task->error,
                 'created_at' => $task->created_at?->toIso8601String(),
                 'finished_at' => $task->finished_at?->toIso8601String(),
+                'can_fail' => $failer->canAbandon($task),
             ]),
             'revealedPassword' => session('revealed_password'),
             // Asked from Proxmox after the page has loaded, so a slow cluster does not block it.
@@ -172,10 +174,10 @@ class ServerController extends Controller
             'drifts' => $server->drifts()->visible()->with(['cluster:id,uuid,name', 'server:id,uuid,hostname,status'])->get()
                 ->map(fn (ServerDrift $drift) => DriftController::present($drift)),
             'agent' => Inertia::defer(fn () => $server->status === ServerStatus::Active ? $agent->reachable($server) : null),
-            'apps' => $server->appInstallations()->with('recipe:id,slug,name')->latest('id')->get()->map(fn (AppInstallation $installation) => [
+            'apps' => $server->appInstallations()->with(['recipe:id,slug,name', 'version:id,version'])->latest('id')->get()->map(fn (AppInstallation $installation) => [
                 'uuid' => $installation->uuid,
                 'app' => $installation->recipe->name,
-                'version' => $installation->recipe_version,
+                'version' => $installation->version->version,
                 'status' => $installation->status,
                 'progress' => $installation->progress,
                 'step' => $installation->step,
@@ -183,7 +185,7 @@ class ServerController extends Controller
                 'created_at' => $installation->created_at?->toIso8601String(),
                 'finished_at' => $installation->finished_at?->toIso8601String(),
             ]),
-            'appOptions' => fn () => AppRecipe::query()->where('is_active', true)->orderBy('name')->get()
+            'appOptions' => fn () => AppRecipe::query()->with('latestVersion')->where('is_active', true)->orderBy('name')->get()
                 ->filter(fn (AppRecipe $app) => $eligibility->forServer($app, $server) === null)
                 ->map(fn (AppRecipe $app) => [
                     'slug' => $app->slug,

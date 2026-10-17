@@ -36,7 +36,7 @@ final readonly class InstallAppPipeline
     public function run(Task $task): void
     {
         $uuid = is_string($task->input['installation'] ?? null) ? $task->input['installation'] : '';
-        $installation = AppInstallation::query()->with('recipe')->where('uuid', $uuid)->where('server_id', $task->server_id)->first();
+        $installation = AppInstallation::query()->with(['recipe', 'version'])->where('uuid', $uuid)->where('server_id', $task->server_id)->first();
 
         if ($installation === null) {
             throw new GuestScriptFailed('The app installation no longer exists.');
@@ -71,7 +71,7 @@ final readonly class InstallAppPipeline
         $agent->run($server->vmid, ['mkdir', '-p', '-m', '700', $directory]);
 
         $files = $this->recipes->library() + [
-            'install.sh' => $installation->recipe->files['install.sh'] ?? '',
+            'install.sh' => $installation->version->script('install') ?? '',
             'inputs.json' => self::json($installation->inputs === [] ? new stdClass : $installation->inputs),
             'server.json' => self::json($this->serverFacts($server)),
             // A fresh status, so a poll before the runner starts never sees an earlier attempt's outcome.

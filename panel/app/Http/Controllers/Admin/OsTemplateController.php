@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Admin;
 
+use App\Enums\OsPlatform;
+use App\Enums\TemplateCapability;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\OsTemplateRequest;
 use App\Models\OsTemplate;
@@ -29,6 +31,7 @@ class OsTemplateController extends Controller
                     'family' => $template->family,
                     'version' => $template->version,
                     'platform' => $template->platform->value,
+                    'capabilities' => $template->offeredCapabilities(),
                     'is_active' => $template->is_active,
                     'sort_order' => $template->sort_order,
                     'proxmox_template_ids' => $template->proxmoxTemplates->pluck('id'),
@@ -46,6 +49,10 @@ class OsTemplateController extends Controller
                     'node' => $template->node->name,
                 ]),
             'families' => OsTemplateRequest::FAMILIES,
+            'capabilities' => TemplateCapability::values(),
+            // Suggested when the family changes in the form.
+            'capabilityDefaults' => collect(OsTemplateRequest::FAMILIES)
+                ->mapWithKeys(fn (string $family) => [$family => TemplateCapability::defaultsFor($family === 'windows' ? OsPlatform::Windows : OsPlatform::Linux, $family)]),
         ]);
     }
 

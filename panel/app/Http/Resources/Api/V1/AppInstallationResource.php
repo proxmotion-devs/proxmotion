@@ -33,7 +33,7 @@ class AppInstallationResource extends JsonResource
      */
     public function toArray(Request $request): array
     {
-        $recipe = $this->recipe->recipe();
+        $recipe = $this->version->recipe();
         $inputs = [];
 
         foreach ($this->inputs as $key => $value) {
@@ -47,7 +47,7 @@ class AppInstallationResource extends JsonResource
             'app' => [
                 'id' => $this->recipe->slug,
                 'name' => $this->recipe->name,
-                'version' => $this->recipe_version,
+                'version' => $this->version->version,
             ],
             'server' => [
                 'id' => $this->server->uuid,

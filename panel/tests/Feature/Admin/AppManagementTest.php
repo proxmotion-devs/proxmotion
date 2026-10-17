@@ -43,7 +43,7 @@ class AppManagementTest extends AdminTestCase
                 ->has('apps', 3)
                 ->where('apps.0.slug', 'docker')
                 ->where('apps.0.is_active', true)
-                ->where('apps.0.os', ['ubuntu 22.04, 24.04', 'debian 12, 13']));
+                ->where('apps.0.os', ['linux: systemd, apt, bash', 'ubuntu ≥ 22.04', 'debian ≥ 12']));
     }
 
     public function test_an_admin_can_deactivate_an_app()

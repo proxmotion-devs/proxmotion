@@ -55,6 +55,45 @@ class CatalogManagementTest extends AdminTestCase
         $this->assertFalse($os->refresh()->is_active);
     }
 
+    public function test_os_templates_offer_their_familys_capabilities_unless_an_admin_sets_them()
+    {
+        $this->post(route('admin.os-templates.store'), [
+            'name' => 'Rocky Linux 9',
+            'family' => 'rocky',
+            'version' => '9',
+            'is_active' => true,
+            'sort_order' => 0,
+        ])->assertSessionHasNoErrors();
+
+        $os = OsTemplate::query()->sole();
+        $this->assertSame(['systemd', 'dnf', 'bash', 'cloud-init', 'selinux'], $os->offeredCapabilities());
+
+        $this->put(route('admin.os-templates.update', $os), [
+            'name' => 'Rocky Linux 9',
+            'family' => 'rocky',
+            'version' => '9',
+            'capabilities' => ['systemd', 'dnf', 'bash'],
+            'is_active' => true,
+            'sort_order' => 0,
+        ])->assertSessionHasNoErrors();
+
+        $this->assertSame(['systemd', 'dnf', 'bash'], $os->refresh()->offeredCapabilities());
+
+        $this->get(route('admin.os-templates.index'))
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('templates.0.capabilities', ['systemd', 'dnf', 'bash'])
+                ->where('capabilityDefaults.debian', ['systemd', 'apt', 'bash', 'cloud-init']));
+
+        $this->put(route('admin.os-templates.update', $os), [
+            'name' => 'Rocky Linux 9',
+            'family' => 'rocky',
+            'version' => '9',
+            'capabilities' => ['systemd', 'teleport'],
+            'is_active' => true,
+            'sort_order' => 0,
+        ])->assertSessionHasErrors('capabilities.1');
+    }
+
     public function test_os_template_family_is_validated()
     {
         $this->post(route('admin.os-templates.store'), [

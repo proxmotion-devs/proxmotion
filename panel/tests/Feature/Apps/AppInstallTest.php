@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Apps;
 
+use App\Domain\Apps\AppEligibility;
 use App\Domain\Apps\AppInstallConflict;
 use App\Domain\Apps\AppInstaller;
 use App\Domain\Apps\AppNotEligible;
@@ -217,6 +218,47 @@ class AppInstallTest extends TestCase
         $this->assertNull($installation->error);
         $this->assertSame('installing', json_decode($this->proxmox->guestFiles[$this->server->vmid][$this->directory($installation).'/status.json'], true)['status'], 'The old outcome is overwritten.');
         $this->assertSame('--unit=proxmotion-app-'.$installation->uuid.'-2', collect($this->proxmox->guestCommands)->last()['command'][1]);
+    }
+
+    public function test_an_installation_keeps_its_recipe_version_also_when_retried()
+    {
+        $installation = $this->install();
+        $original = $installation->app_recipe_version_id;
+        $this->guestWrites($installation, 'status.json', ['status' => 'failed', 'progress' => 10, 'step' => 'x', 'message' => 'boom']);
+        $this->poll($installation);
+
+        // A newer version arrives before the retry.
+        $app = $installation->recipe;
+        $newer = $app->current()->replicate()->forceFill(['version' => '9.0.0', 'files' => ['install.sh' => "#!/bin/bash\necho newer\n"]]);
+        $newer->save();
+        $app->forceFill(['latest_version_id' => $newer->id])->save();
+
+        $installation = app(AppInstaller::class)->retry($installation->refresh(), $this->admin, '127.0.0.1')->refresh();
+
+        $this->assertSame($original, $installation->app_recipe_version_id);
+        $this->assertStringNotContainsString('newer', $this->proxmox->guestFiles[$this->server->vmid][$this->directory($installation).'/install.sh']);
+    }
+
+    public function test_apps_follow_the_capabilities_of_the_servers_template()
+    {
+        $wireguard = AppRecipe::query()->where('slug', 'wireguard')->firstOrFail();
+        $eligibility = app(AppEligibility::class);
+        $useTemplate = function (array $attributes) {
+            $this->server->forceFill(['os_template_id' => OsTemplate::factory()->create($attributes)->id])->save();
+            $this->server->unsetRelation('osTemplate');
+        };
+
+        $useTemplate(['name' => 'Rocky 9', 'family' => 'rocky', 'version' => '9']);
+        $this->assertSame('This app does not support the operating system.', $eligibility->forServer($wireguard, $this->server)?->translatedMessage(), 'A dnf template, and rocky is not listed.');
+
+        $useTemplate(['name' => 'Debian 13', 'family' => 'debian', 'version' => '13']);
+        $this->assertNull($eligibility->forServer($wireguard, $this->server), 'Newer than min_versions, not named by version.');
+
+        $useTemplate(['name' => 'Debian 11', 'family' => 'debian', 'version' => '11']);
+        $this->assertNotNull($eligibility->forServer($wireguard, $this->server), 'Older than min_versions.');
+
+        $useTemplate(['name' => 'Minimal Debian', 'family' => 'debian', 'version' => '13', 'capabilities' => ['systemd', 'bash']]);
+        $this->assertNotNull($eligibility->forServer($wireguard, $this->server), 'The administrator says apt is missing.');
     }
 
     public function test_one_app_installs_at_a_time_and_an_installed_app_is_not_installed_twice()

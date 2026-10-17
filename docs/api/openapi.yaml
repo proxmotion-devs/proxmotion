@@ -985,20 +985,30 @@ components:
         tr: { type: string }
     App:
       type: object
-      required: [id, name, version, category, description, os, requirements, network_models, install_modes, billing, license, inputs, outputs]
+      required: [id, name, version, category, description, format, os, requires, requirements, network_models, install_modes, billing, license, inputs, outputs]
       properties:
         id: { type: string, examples: [wireguard] }
         name: { type: string }
         version: { type: string, examples: [1.0.0] }
         category: { type: string, enum: [vpn, control-panel, container, web] }
         description: { $ref: '#/components/schemas/Text' }
+        format: { type: integer, enum: [1, 2], description: 'Recipe format (docs/adr/0016).' }
         os:
           type: array
+          description: 'Format 1: the exact OS versions. Format 2: the families of `requires.families` with `versions` empty (any version the requirements accept); use `requires`.'
           items:
             type: object
             properties:
               family: { type: string, examples: [ubuntu] }
               versions: { type: array, items: { type: string }, examples: [['22.04', '24.04']] }
+        requires:
+          type: object
+          description: 'What an OS template must offer (docs/adr/0016 §3). The catalog filtered by `os_template` or `server` already applies it.'
+          properties:
+            platform: { type: string, enum: [linux, windows] }
+            capabilities: { type: array, items: { type: string }, description: 'Template capabilities; `apt|dnf` means one of them.', examples: [['systemd', 'apt|dnf', 'bash']] }
+            families: { type: [array, 'null'], items: { type: string }, description: 'null: any family with the capabilities' }
+            min_versions: { type: object, additionalProperties: { type: string }, examples: [{ ubuntu: '22.04' }] }
         requirements:
           type: object
           properties:

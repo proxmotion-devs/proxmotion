@@ -11,9 +11,9 @@ use Symfony\Component\Yaml\Exception\ParseException;
 use Symfony\Component\Yaml\Yaml;
 
 /**
- * Reads and validates the recipes in panel/recipes (docs/adr/0015): each
- * directory not starting with "_" holds recipe.yaml, install.sh and the
- * action scripts recipe.yaml names.
+ * Reads and validates the recipes in panel/recipes (docs/adr/0015, 0016):
+ * each directory not starting with "_" holds recipe.yaml and the scripts it
+ * names (format 1: install.sh and actions; format 2: lifecycle and actions).
  */
 final class RecipeLoader
 {
@@ -102,13 +102,14 @@ final class RecipeLoader
 
         $recipe = Recipe::fromArray($data);
         $files = [];
-        $scripts = ['install.sh'];
 
-        foreach (is_array($data['actions'] ?? null) ? $data['actions'] : [] as $action) {
-            $scripts[] = is_array($action) ? (string) $action['script'] : '';
-        }
+        foreach ($recipe->scripts() as $script) {
+            if (str_ends_with($script, '.ps1') !== ($recipe->platform === 'windows')) {
+                $errors[] = "{$script}: ".($recipe->platform === 'windows' ? 'Windows recipes use .ps1 scripts.' : 'Linux recipes use .sh scripts.');
 
-        foreach ($scripts as $script) {
+                continue;
+            }
+
             $file = $path.'/'.$script;
 
             if (! is_file($file)) {
@@ -157,12 +158,23 @@ final class RecipeLoader
      */
     private function schemaErrors(array $data): array
     {
+        // Format 1 recipes have no format key (docs/adr/0015); format 2: docs/adr/0016.
+        $schema = match ($data['format'] ?? 1) {
+            1 => 'recipe.schema.json',
+            2 => 'recipe-v2.schema.json',
+            default => null,
+        };
+
+        if ($schema === null) {
+            return ['format: this panel reads recipe formats 1 and 2.'];
+        }
+
         $validator = new Validator;
         $validator->setMaxErrors(20);
 
         $result = $validator->validate(
             json_decode((string) json_encode($data, JSON_THROW_ON_ERROR)),
-            (string) file_get_contents($this->directory().'/_schema/recipe.schema.json'),
+            (string) file_get_contents($this->directory().'/_schema/'.$schema),
         );
 
         $error = $result->error();
@@ -215,6 +227,28 @@ final class RecipeLoader
 
                 if ($problem !== null) {
                     $errors[] = "Input {$input->key}: the default is invalid ({$problem}).";
+                }
+            }
+        }
+
+        $actions = array_map(fn (array $action) => (string) ($action['key'] ?? ''), $recipe->actions);
+
+        if (count($actions) !== count(array_unique($actions))) {
+            $errors[] = 'Action keys must be unique.';
+        }
+
+        foreach ($recipe->actions as $action) {
+            $inputs = array_column(is_array($action['inputs'] ?? null) ? $action['inputs'] : [], 'key');
+
+            if (count($inputs) !== count(array_unique($inputs))) {
+                $errors[] = 'Action '.($action['key'] ?? '?').': input keys must be unique.';
+            }
+        }
+
+        if ($recipe->families !== null) {
+            foreach (array_keys($recipe->minVersions) as $family) {
+                if (! in_array($family, $recipe->families, true)) {
+                    $errors[] = "requires.min_versions: {$family} is not one of requires.families.";
                 }
             }
         }

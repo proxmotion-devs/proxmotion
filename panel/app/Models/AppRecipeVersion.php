@@ -1,0 +1,83 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Models;
+
+use App\Domain\Apps\Recipe;
+use App\Enums\AppRecipeVersionStatus;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Carbon;
+
+/**
+ * One version of a recipe with its scripts (docs/adr/0016 §2). Installations
+ * keep the version they were installed with; versions are never deleted
+ * while an installation uses them. Only the App Marketplace code writes them.
+ *
+ * @property int $id
+ * @property int $app_recipe_id
+ * @property string $version
+ * @property int $format 1 or 2
+ * @property array<string, mixed> $definition the validated recipe.yaml
+ * @property array<string, string> $files scripts by path, e.g. install.sh
+ * @property string $checksum SHA-256 of the definition and files
+ * @property string|null $signature minisign signature (docs/adr/0017)
+ * @property string|null $signed_by key id of the signature
+ * @property AppRecipeVersionStatus $status
+ * @property int|null $reviewed_by
+ * @property Carbon|null $reviewed_at
+ * @property Carbon|null $created_at
+ * @property Carbon|null $updated_at
+ * @property-read AppRecipe $app
+ */
+class AppRecipeVersion extends Model
+{
+    /** @var Recipe|null parsed definition, kept per instance */
+    private ?Recipe $parsed = null;
+
+    /**
+     * @return array<string, string>
+     */
+    protected function casts(): array
+    {
+        return [
+            'definition' => 'array',
+            'files' => 'array',
+            'status' => AppRecipeVersionStatus::class,
+            'reviewed_at' => 'datetime',
+        ];
+    }
+
+    /**
+     * @return BelongsTo<AppRecipe, $this>
+     */
+    public function app(): BelongsTo
+    {
+        return $this->belongsTo(AppRecipe::class, 'app_recipe_id');
+    }
+
+    /**
+     * @return HasMany<AppInstallation, $this>
+     */
+    public function installations(): HasMany
+    {
+        return $this->hasMany(AppInstallation::class);
+    }
+
+    public function recipe(): Recipe
+    {
+        return $this->parsed ??= Recipe::fromArray($this->definition);
+    }
+
+    /**
+     * The script of a lifecycle operation, e.g. install.
+     */
+    public function script(string $operation): ?string
+    {
+        $path = $this->recipe()->lifecycleScript($operation);
+
+        return $path === null ? null : ($this->files[$path] ?? null);
+    }
+}

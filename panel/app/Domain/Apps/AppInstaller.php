@@ -63,7 +63,7 @@ final readonly class AppInstaller
             $installation->forceFill([
                 'server_id' => $server->id,
                 'app_recipe_id' => $app->id,
-                'recipe_version' => $app->version,
+                'app_recipe_version_id' => $app->current()->id,
                 'status' => AppInstallationStatus::Queued,
                 'inputs' => $values,
                 'user_id' => $actor instanceof User ? $actor->id : null,
@@ -79,7 +79,7 @@ final readonly class AppInstaller
     }
 
     /**
-     * Run a failed installation again with the same inputs.
+     * Run a failed installation again with the same inputs and recipe version.
      *
      * @throws AppNotEligible
      * @throws AppInstallConflict
@@ -96,7 +96,7 @@ final readonly class AppInstaller
 
         $this->ensureActive($server);
 
-        $problem = $this->eligibility->forServer($installation->recipe, $server);
+        $problem = $this->eligibility->forServer($installation->recipe, $server, $installation->version);
 
         if ($problem !== null) {
             throw $problem;
@@ -107,7 +107,6 @@ final readonly class AppInstaller
         $installation = DB::transaction(function () use ($installation, $actor) {
             $installation->forceFill([
                 'status' => AppInstallationStatus::Queued,
-                'recipe_version' => $installation->recipe->version,
                 'progress' => 0,
                 'step' => null,
                 'error' => null,

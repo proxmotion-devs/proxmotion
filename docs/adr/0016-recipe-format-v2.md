@@ -1,0 +1,116 @@
+# 16. Recipe format v2: versions, lifecycle and template capabilities
+
+- **Status:** Accepted (phase 1 built 2026-10-17)
+- **Date:** 2026-10-17
+- **Builds on:** ADR 0015 (App Marketplace). Distribution and trust: ADR 0017.
+
+## Context
+
+ADR 0015 shipped a first App Marketplace: three bundled recipes, installed after provisioning through the guest agent. For an open-source panel whose recipes will come from a community catalog, other sources and an admin editor (ADR 0017), the format is too narrow:
+
+- **One row per app.** `app_recipes` keeps only the latest copy of a recipe. An installation cannot be uninstalled or upgraded with the scripts it was installed with, and a recipe change silently changes what a retry runs.
+- **Install only.** There is no uninstall, upgrade or action (adding a VPN client); `actions` is declared in the schema but never run.
+- **Compatibility is a list of OS names.** `os: [{family: ubuntu, versions: [...]}]` must be edited in every recipe when a template is added, and cannot express Windows or the RHEL family without new runners.
+- **Order-time and reinstall installs (Phase 5b)** are not possible yet.
+
+The format has to settle before third parties write recipes: changing it later breaks their recipes.
+
+## Decision
+
+### 1. Recipe package
+
+A recipe is a directory (later an archive, ADR 0017) with `recipe.yaml` and its scripts. `recipe.yaml` gets `format: 2`; v1 recipes (no `format`) keep loading and are read as v2 with `install` only.
+
+```yaml
+format: 2
+slug: wireguard
+version: 1.2.0                   # semver of the recipe, not of the app
+name: WireGuard
+category: vpn
+description: { en: "...", tr: "..." }
+maintainers: [{ name: Proxmotion, url: https://example.com }]
+homepage: https://www.wireguard.com
+license: none                    # none | external
+billing: free                    # free | paid
+requires:                        # matched against template capabilities (section 3)
+  platform: linux                # linux | windows
+  capabilities: [systemd, apt|dnf, bash]
+  families: [ubuntu, debian, almalinux, rocky]   # optional narrowing; omitted = any matching template
+  min_versions: { ubuntu: "22.04", debian: "12" }  # optional, per family
+resources: { min_cores: 1, min_memory_mib: 512, min_disk_mib: 5120 }
+network_models: [bridged, routed, nat]
+install_modes: [order, post]
+inputs: [...]                    # unchanged types (ADR 0015 §5)
+outputs: [...]
+firewall: [...]
+lifecycle:
+  install: { script: install.sh, timeout_minutes: 10 }
+  uninstall: { script: uninstall.sh, timeout_minutes: 5 }
+  upgrade: { script: upgrade.sh, timeout_minutes: 10, from: ">=1.0.0 <1.2.0" }
+actions:
+  - key: add_client
+    label: { en: Add a client, tr: İstemci ekle }
+    script: actions/add-client.sh
+    inputs: [{ key: name, type: slug, required: true }]
+    outputs: [{ key: client_config, type: file, filename: client.conf, secret: true }]
+    timeout_minutes: 2
+```
+
+- Script paths are relative, inside the package, and match `^[a-z0-9/_-]+\.(sh|ps1)$`; the loader refuses anything else.
+- `upgrade.from` is a semver range of installed versions the script can upgrade; outside it, the panel offers no upgrade (the customer reinstalls the app).
+- Action outputs are added to the installation's outputs under `actions.<key>.<output>` and replace earlier ones of the same name.
+
+### 2. Stored versions
+
+- `app_recipes` keeps one row per slug and source (identity, active flag, latest version). New table **`app_recipe_versions`**: recipe, version, definition, files, checksum (SHA-256 of the canonical package), `signature` and `signed_by` (ADR 0017), `status` (`pending_review | approved | rejected`), `reviewed_by`, `reviewed_at`.
+- An installation points to the **version** it was installed with (`app_recipe_version_id`). Uninstall, actions and retry always use that version; upgrade moves the pointer when it succeeds.
+- Versions are never deleted while an installation uses them.
+
+### 3. Template capabilities
+
+- `os_templates` gets **`capabilities`** (JSON list) next to `platform`, `family` and `version`. Values come from a fixed vocabulary: `systemd`, `openrc`, `apt`, `dnf`, `zypper`, `apk`, `bash`, `powershell`, `cloud-init`, `selinux`. Admins set them on the template form; defaults are suggested from the family (`debian`/`ubuntu` → `systemd, apt, bash, cloud-init`; `rhel`/`almalinux`/`rocky` → `systemd, dnf, bash, cloud-init, selinux`; `windows` → `powershell`).
+- A recipe fits a template when the platform matches, every required capability is present (`apt|dnf` means one of them), and the family is listed in `families` when the recipe narrows it. The other checks of ADR 0015 §6 (resources, network model, install mode, billing) stay.
+- Helpers in `recipes/_lib` gain a package-manager-neutral `pm_pkg_install` so one script covers `apt` and `dnf` when the recipe wants to.
+- **Windows** (later phase): a PowerShell runner (`_lib/run.ps1`, started detached with a scheduled task) writing the same `status.json`; `.ps1` scripts are allowed only for `platform: windows`. The format is ready for it now; the runner is built when Windows recipes are.
+
+### 4. Lifecycle operations
+
+All run like the install of ADR 0015: a short server task writes the package of the installation's version plus `inputs.json` into `/var/lib/proxmotion/apps/<installation>/`, starts `run.sh <operation> [action]` detached, and `apps:poll` follows `status.json`. One operation at a time per installation and one install/upgrade/uninstall at a time per server.
+
+| Operation | API | Status flow |
+|---|---|---|
+| Install | `POST /servers/{id}/apps` (unchanged) | `queued → installing → installed \| failed` |
+| Uninstall | `DELETE /servers/{id}/apps/{installation}` | `installed\|failed → uninstalling → removed \| uninstall_failed` |
+| Upgrade | `POST /servers/{id}/apps/{installation}/upgrade` | `installed → upgrading → installed (new version) \| upgrade_failed (old version kept)` |
+| Action | `POST /servers/{id}/apps/{installation}/actions/{key}` | `installed → running_action → installed`; the action run has its own record (`app_action_runs`: key, inputs, status, error, outputs) |
+
+- Uninstall without an `uninstall` script is refused (`422`); recipes without one say so in the catalog.
+- Outputs of failed operations are never stored; secrets follow ADR 0015 (encrypted, `apps:secrets`).
+- Webhooks: `app.uninstalled`, `app.upgraded`, `app.action_succeeded`, `app.action_failed` (no outputs).
+- Billing modules (WHMCS, WISECP) get uninstall, upgrade (shown when the catalog has a newer version the installed one can upgrade from) and action forms built from the recipe's action inputs.
+
+### 5. Order-time and reinstall installs (Phase 5b)
+
+- `POST /servers` and `POST /servers/{id}/reinstall` accept `app` and `inputs`. The panel checks eligibility against the chosen template before accepting (`422`), stores a `queued` installation with `mode: order`, and the create/reinstall pipeline queues the install task after the guest agent answers (ADR 0004 post-boot hook). A failed app install never fails the server's creation.
+- The WHMCS configurable option and the WISECP order answer `app` map to the slug; app inputs come from fields named `app_<key>`.
+
+### 6. Validation and tooling
+
+- `recipe.schema.json` becomes `recipe-v2.schema.json`; `apps:validate` checks either version, script paths, `upgrade.from` ranges, that action/upgrade/uninstall scripts exist, and runs shellcheck when available.
+- `php artisan apps:make <slug>` writes a recipe skeleton (v2, all lifecycle scripts) for authors.
+
+## Consequences
+
+- Installations keep working across recipe updates; uninstall and upgrade use the right scripts.
+- Adding a distribution means tagging templates, not editing recipes; the RHEL family works as soon as recipes use `pm_pkg_install` or `dnf`.
+- More API surface and billing-module work (WHMCS, WISECP) per lifecycle operation; the OpenAPI document and both modules change in the same releases.
+- v1 recipes stay valid; bundled recipes move to v2 with uninstall scripts and WireGuard/OpenVPN client actions.
+- Not decided here: where versions come from and how they are trusted (ADR 0017).
+
+## Phases
+
+1. **v2 format and stored versions:** schema, loader (v1 compatible), `app_recipe_versions`, installation → version, template capabilities and eligibility, `apps:make`; bundled recipes to v2. *Built 2026-10-17:* `recipes/_schema/recipe-v2.schema.json`; `apps:sync` stores each version approved and refuses a changed version that installations use (raise the version; an unused one is replaced in place); a retry keeps the installation's version; `os_templates.capabilities` (null = the family's defaults, `TemplateCapability::defaultsFor`), edited on the OS template form; `pm_pkg_install` in `_lib/proxmotion.sh`; the bundled recipes are format 2, version 1.1.0, and accept Ubuntu ≥ 22.04 and Debian ≥ 12 through apt. Windows recipes load but are not offered until the runner exists. The API's `App` gained `format` and `requires`. Uninstall, upgrade and action scripts are validated and stored but not run yet.
+2. **Uninstall and actions:** runner operations, API, webhooks, admin UI, WHMCS and WISECP; WireGuard/OpenVPN client actions.
+3. **Upgrade:** version ranges, API, billing modules.
+4. **Order-time and reinstall installs (5b).**
+5. **Windows runner** when the first Windows recipe is written.

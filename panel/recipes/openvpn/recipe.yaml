@@ -1,14 +1,18 @@
+format: 2
 slug: openvpn
 name: OpenVPN
-version: 1.0.0
+version: 1.1.0
 category: vpn
 description:
     en: An OpenVPN server with its own certificate authority and one client profile; all client traffic goes through the server.
     tr: Kendi sertifika otoritesi ve tek istemci profiliyle OpenVPN sunucusu; istemcinin tüm trafiği sunucu üzerinden geçer.
-os:
-    - { family: ubuntu, versions: ['22.04', '24.04'] }
-    - { family: debian, versions: ['12', '13'] }
-requirements: { min_memory_mib: 512, min_disk_mib: 5120, min_cores: 1 }
+maintainers: [{ name: Proxmotion }]
+requires:
+    platform: linux
+    capabilities: [systemd, apt, bash]
+    families: [ubuntu, debian]
+    min_versions: { ubuntu: '22.04', debian: '12' }
+resources: { min_memory_mib: 512, min_disk_mib: 5120, min_cores: 1 }
 network_models: [bridged, routed, nat]
 install_modes: [order, post]
 billing: free
@@ -34,4 +38,5 @@ outputs:
       label: { en: Server endpoint, tr: Sunucu adresi }
 firewall:
     - { port: '{{ inputs.port }}', proto: '{{ inputs.protocol }}' }
-timeout_minutes: 15
+lifecycle:
+    install: { script: install.sh, timeout_minutes: 15 }

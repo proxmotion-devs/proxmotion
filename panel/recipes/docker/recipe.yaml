@@ -1,14 +1,18 @@
+format: 2
 slug: docker
 name: Docker
-version: 1.0.0
+version: 1.1.0
 category: container
 description:
     en: Docker Engine with the Compose and Buildx plugins from Docker's official package repository.
     tr: Docker'ın resmi paket deposundan Compose ve Buildx eklentileriyle Docker Engine.
-os:
-    - { family: ubuntu, versions: ['22.04', '24.04'] }
-    - { family: debian, versions: ['12', '13'] }
-requirements: { min_memory_mib: 1024, min_disk_mib: 10240, min_cores: 1 }
+maintainers: [{ name: Proxmotion }]
+requires:
+    platform: linux
+    capabilities: [systemd, apt, bash]
+    families: [ubuntu, debian]
+    min_versions: { ubuntu: '22.04', debian: '12' }
+resources: { min_memory_mib: 1024, min_disk_mib: 10240, min_cores: 1 }
 network_models: [bridged, routed, nat]
 install_modes: [order, post]
 billing: free
@@ -17,4 +21,5 @@ outputs:
     - key: docker_version
       type: text
       label: { en: Docker version, tr: Docker sürümü }
-timeout_minutes: 15
+lifecycle:
+    install: { script: install.sh, timeout_minutes: 15 }

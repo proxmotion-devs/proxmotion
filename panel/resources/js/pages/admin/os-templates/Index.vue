@@ -30,6 +30,8 @@ const props = defineProps<{
     templates: OsTemplate[];
     proxmoxTemplates: ProxmoxTemplate[];
     families: string[];
+    capabilities: string[];
+    capabilityDefaults: Record<string, string[]>;
 }>();
 
 const platformOptions: { value: OsPlatform; label: string }[] = [
@@ -71,6 +73,7 @@ const form = useForm({
     family: 'ubuntu' as string | null,
     version: '',
     platform: 'linux' as OsPlatform | null,
+    capabilities: [] as string[],
     is_active: true,
     sort_order: 0,
     proxmox_template_ids: [] as number[],
@@ -84,6 +87,11 @@ const openForm = (template: OsTemplate | null) => {
         family: template?.family ?? 'ubuntu',
         version: template?.version ?? '',
         platform: template?.platform ?? 'linux',
+        capabilities: [
+            ...(template?.capabilities ??
+                props.capabilityDefaults['ubuntu'] ??
+                []),
+        ],
         is_active: template?.is_active ?? true,
         sort_order: template?.sort_order ?? 0,
         proxmox_template_ids: [...(template?.proxmox_template_ids ?? [])],
@@ -92,9 +100,23 @@ const openForm = (template: OsTemplate | null) => {
     dialogOpen.value = true;
 };
 
-// The platform picks the default guest scripts; follow the family the admin picks.
+// The platform picks the default guest scripts and the capabilities what app
+// recipes may rely on; both follow the family the admin picks.
 const familyChanged = () => {
     form.platform = form.family === 'windows' ? 'windows' : 'linux';
+    form.capabilities = [
+        ...(props.capabilityDefaults[form.family ?? ''] ?? []),
+    ];
+};
+
+const toggleCapability = (
+    capability: string,
+    value: boolean | 'indeterminate',
+) => {
+    form.capabilities =
+        value === true
+            ? [...form.capabilities, capability]
+            : form.capabilities.filter((existing) => existing !== capability);
 };
 
 const toggleMapping = (id: number, value: boolean | 'indeterminate') => {
@@ -281,6 +303,38 @@ const submit = () => {
             <Checkbox v-model="form.is_active" />
             {{ $t('Active (offered to customers)') }}
         </Label>
+
+        <div class="grid gap-2">
+            <Label>{{ $t('Capabilities') }}</Label>
+            <p class="text-xs text-muted-foreground">
+                {{
+                    $t(
+                        'What the template offers to apps. Apps ask for capabilities instead of naming distributions; the family suggests them.',
+                    )
+                }}
+            </p>
+            <div class="flex flex-wrap gap-x-4 gap-y-1">
+                <Label
+                    v-for="capability in capabilities"
+                    :key="capability"
+                    class="flex items-center gap-2 font-normal"
+                >
+                    <Checkbox
+                        :model-value="form.capabilities.includes(capability)"
+                        @update:model-value="
+                            (value) => toggleCapability(capability, value)
+                        "
+                    />
+                    <span class="font-mono text-xs">{{ capability }}</span>
+                </Label>
+            </div>
+            <p
+                v-if="form.errors.capabilities"
+                class="text-sm text-red-600 dark:text-red-500"
+            >
+                {{ form.errors.capabilities }}
+            </p>
+        </div>
 
         <div class="grid gap-2">
             <Label>{{ $t('Proxmox templates') }}</Label>

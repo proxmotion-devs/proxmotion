@@ -48,7 +48,7 @@ class AppController extends ApiController
         $package = $request->filled('package') ? Package::query()->where('uuid', $request->string('package'))->first() : null;
         $server = $request->filled('server') ? Server::query()->with('osTemplate')->where('uuid', $request->string('server'))->first() : null;
 
-        $apps = AppRecipe::query()->where('is_active', true)->orderBy('name')->get()
+        $apps = AppRecipe::query()->with('latestVersion')->where('is_active', true)->orderBy('name')->get()
             ->filter(fn (AppRecipe $app) => $server !== null
                 ? $eligibility->forServer($app, $server) === null
                 : $eligibility->forCatalog($app, $osTemplate, $package) === null)
@@ -59,7 +59,7 @@ class AppController extends ApiController
 
     public function installations(Request $request, Server $server): AnonymousResourceCollection
     {
-        $installations = $server->appInstallations()->with(['recipe', 'server', 'task'])->latest('id')->get();
+        $installations = $server->appInstallations()->with(['recipe', 'version', 'server', 'task'])->latest('id')->get();
         $outputs = $this->token($request)->hasScope(ApiScope::AppsSecrets);
 
         return AppInstallationResource::collection($installations->map(fn (AppInstallation $installation) => (new AppInstallationResource($installation))->withOutputs($outputs)));
@@ -68,7 +68,7 @@ class AppController extends ApiController
     public function show(Request $request, Server $server, AppInstallation $installation): JsonResponse
     {
         $this->ensureBelongs($server, $installation);
-        $installation->load(['recipe', 'server', 'task']);
+        $installation->load(['recipe', 'version', 'server', 'task']);
 
         return (new AppInstallationResource($installation))
             ->withOutputs($this->token($request)->hasScope(ApiScope::AppsSecrets))
@@ -115,6 +115,6 @@ class AppController extends ApiController
 
     private function installationAccepted(AppInstallation $installation): JsonResponse
     {
-        return (new AppInstallationResource($installation->refresh()->load(['recipe', 'server', 'task'])))->response()->setStatusCode(202);
+        return (new AppInstallationResource($installation->refresh()->load(['recipe', 'version', 'server', 'task'])))->response()->setStatusCode(202);
     }
 }
