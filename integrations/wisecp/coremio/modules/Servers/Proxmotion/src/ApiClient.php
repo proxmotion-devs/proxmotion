@@ -231,6 +231,51 @@ final class ApiClient
     }
 
     /**
+     * Apps that can be installed on the server now (ADR 0015 in the Proxmotion repository).
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function apps(string $serverId): array
+    {
+        return $this->listOf($this->request('GET', '/apps?' . http_build_query(['server' => $serverId])));
+    }
+
+    /**
+     * The server's app installations, newest first; outputs only with the apps:secrets scope.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function installations(string $id): array
+    {
+        return $this->listOf($this->request('GET', '/servers/' . rawurlencode($id) . '/apps'));
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function installation(string $id, string $installation): array
+    {
+        return $this->dataOf($this->request('GET', '/servers/' . rawurlencode($id) . '/apps/' . rawurlencode($installation)));
+    }
+
+    /**
+     * @param array<string, string> $inputs
+     * @return array<string, mixed> the queued installation
+     */
+    public function installApp(string $id, string $app, array $inputs, string $idempotencyKey): array
+    {
+        return $this->dataOf($this->request('POST', '/servers/' . rawurlencode($id) . '/apps', ['app' => $app, 'inputs' => (object) $inputs], $idempotencyKey));
+    }
+
+    /**
+     * @return array<string, mixed> the queued installation
+     */
+    public function retryApp(string $id, string $installation, string $idempotencyKey): array
+    {
+        return $this->dataOf($this->request('POST', '/servers/' . rawurlencode($id) . '/apps/' . rawurlencode($installation) . '/retry', null, $idempotencyKey));
+    }
+
+    /**
      * A signed console link for the customer's browser (valid for 60 seconds, once).
      */
     public function consoleLink(string $id): string
@@ -314,16 +359,40 @@ final class ApiClient
             return;
         }
 
-        ($this->logger)($action, $this->mask((string) $request), $this->mask('HTTP ' . $response['status'] . "\n" . $response['body']));
+        ($this->logger)($action, $this->mask((string) $request), 'HTTP ' . $response['status'] . "\n" . $this->mask($response['body']));
     }
 
     /**
-     * The token, passwords sent or received and root passwords in JSON bodies never reach the log.
+     * The token, passwords sent or received, root passwords, app inputs (may
+     * hold passwords) and app outputs (VPN profiles) never reach the log.
      */
     private function mask(string $text): string
     {
+        $decoded = json_decode($text, true);
+
+        if (is_array($decoded)) {
+            $text = (string) json_encode(self::maskSecrets($decoded), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        }
+
         $text = (string) preg_replace('/("root_password"\s*:\s*)"(?:[^"\\\\]|\\\\.)*"/', '$1"***"', $text);
 
         return str_replace(array_values(array_filter($this->secrets, static fn (string $secret): bool => $secret !== '')), '***', $text);
+    }
+
+    /**
+     * @param array<mixed> $data
+     * @return array<mixed>
+     */
+    private static function maskSecrets(array $data): array
+    {
+        foreach ($data as $key => $value) {
+            if (in_array($key, ['root_password', 'inputs', 'value', 'content_base64'], true) && $value !== null) {
+                $data[$key] = '***';
+            } elseif (is_array($value)) {
+                $data[$key] = self::maskSecrets($value);
+            }
+        }
+
+        return $data;
     }
 }

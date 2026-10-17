@@ -32,7 +32,10 @@ class Proxmotion extends ServerModule
     private const BUSY = ['pending', 'provisioning', 'reinstalling', 'terminating'];
 
     /** Tools that need a running server, hidden while it is busy or not active. */
-    private const SERVER_TOOLS = ['start-server', 'stop-server', 'restart-server', 'poweroff-server', 'reset-password', 'reinstall-os', 'vnc-console', 'hostname-change', 'reverse-dns'];
+    private const SERVER_TOOLS = ['start-server', 'stop-server', 'restart-server', 'poweroff-server', 'reset-password', 'reinstall-os', 'vnc-console', 'hostname-change', 'reverse-dns', 'apps'];
+
+    /** App installation statuses during which the installer still runs. */
+    private const APP_BUSY = ['queued', 'installing'];
 
     private ApiClient $api;
 
@@ -62,6 +65,38 @@ class Proxmotion extends ServerModule
             $this->logger(),
         );
         $this->found = false;
+    }
+
+    /**
+     * The App Marketplace is a tool of the module's own (WISECP has none):
+     * its page is pages/tools/apps.php.
+     */
+    public function configure_features(): void
+    {
+        $this->add_tool('apps', [
+            'name' => $this->text('tool_apps'),
+            'label' => $this->text('tool_apps'),
+            'group' => 'system',
+            'order' => 15,
+            'icon' => 'bi bi-grid',
+            'page' => 'apps',
+            'type' => 'page-loader',
+            'capabilities' => ['list', 'install', 'retry', 'download'],
+        ]);
+    }
+
+    /**
+     * App inputs arrive as JSON in secret_inputs, unchanged (passwords may hold
+     * any character): WISECP masks fields named *secret* in the service history.
+     *
+     * @return array<string, array<string, string|null>>
+     */
+    protected function get_tool_action_data_filters(): array
+    {
+        $filters = parent::get_tool_action_data_filters();
+        $filters['apps'] = ['secret_inputs' => null, 'app' => 'route', 'installation' => 'route', 'output' => 'identifier'];
+
+        return $filters;
     }
 
     protected function transport(): Transport
@@ -370,6 +405,10 @@ class Proxmotion extends ServerModule
      */
     public function tool_data(string $tool, string $action, array $params = []): array
     {
+        if ($tool === 'apps') {
+            return $this->appsData((string) $this->requireActiveServer()['id']);
+        }
+
         $server = $this->api->server((string) $this->requireActiveServer()['id']);
 
         return match ($tool) {
@@ -412,6 +451,12 @@ class Proxmotion extends ServerModule
             'hostname-change' => $this->rename($id, strtolower(trim((string) ($data['hostname'] ?? '')))),
             // A signed, single-use link to Proxmotion's console, opened in a new tab.
             'vnc-console' => ['status' => 'successful', 'redirect' => $this->api->consoleLink($id)],
+            'apps' => match ($action) {
+                'install' => $this->installApp($id, trim((string) ($data['app'] ?? '')), (string) ($data['secret_inputs'] ?? '')),
+                'retry' => $this->retryApp($id, trim((string) ($data['installation'] ?? ''))),
+                'download' => $this->appFile($id, trim((string) ($data['installation'] ?? '')), trim((string) ($data['output'] ?? ''))),
+                default => throw new Exception('Unknown action: ' . $action),
+            },
             default => throw new Exception('Unknown tool: ' . $tool),
         };
     }
@@ -485,6 +530,198 @@ class Proxmotion extends ServerModule
 
         // WISECP keeps the new name on the service (after_tool_action).
         return [];
+    }
+
+    /**
+     * The apps page: installations (outputs fetched now, never stored in
+     * WISECP) and the apps that fit the server.
+     *
+     * @return array{installations: list<array<string, mixed>>, apps: list<array<string, mixed>>, installing: bool}
+     */
+    private function appsData(string $id): array
+    {
+        $installations = array_map(fn (array $installation): array => $this->presentInstallation($installation), $this->api->installations($id));
+        $busy = array_filter($installations, static fn (array $installation): bool => $installation['busy']) !== [];
+
+        return [
+            'installations' => $installations,
+            // One app installs at a time per server.
+            'apps' => $busy ? [] : array_map(fn (array $app): array => $this->presentApp($app), $this->api->apps($id)),
+            // Never a top-level "busy" key: WISECP then shows its "operation in progress" notice instead of the page.
+            'installing' => $busy,
+        ];
+    }
+
+    /**
+     * Install an app; empty inputs are left out so the app's defaults apply.
+     * Proxmotion validates the values against the recipe.
+     *
+     * @return array<string, mixed>
+     */
+    private function installApp(string $id, string $app, string $inputsJson): array
+    {
+        if ($app === '') {
+            throw new Exception($this->text('app_required'));
+        }
+
+        $decoded = $inputsJson === '' ? [] : json_decode($inputsJson, true);
+
+        if (! is_array($decoded)) {
+            throw new Exception($this->text('app_inputs_invalid'));
+        }
+
+        $inputs = [];
+
+        foreach ($decoded as $key => $value) {
+            if (is_scalar($value) && trim((string) $value) !== '') {
+                $inputs[(string) $key] = trim((string) $value);
+            }
+        }
+
+        $this->api->installApp($id, $app, $inputs, $this->idempotencyKey('app'));
+
+        return ['status' => 'successful', 'message' => $this->text('app_install_started'), 'successToast' => true];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function retryApp(string $id, string $installation): array
+    {
+        if ($installation === '') {
+            throw new Exception($this->text('app_not_found'));
+        }
+
+        $this->api->retryApp($id, $installation, $this->idempotencyKey('app-retry'));
+
+        return ['status' => 'successful', 'message' => $this->text('app_install_started'), 'successToast' => true];
+    }
+
+    /**
+     * A file output of an installation, fetched from Proxmotion when the
+     * customer downloads it; the page turns it into a download.
+     *
+     * @return array<string, mixed>
+     */
+    private function appFile(string $id, string $installation, string $output): array
+    {
+        if ($installation === '') {
+            throw new Exception($this->text('app_not_found'));
+        }
+
+        $data = $this->api->installation($id, $installation);
+
+        foreach (is_array($data['outputs'] ?? null) ? $data['outputs'] : [] as $item) {
+            if (! is_array($item) || ($item['key'] ?? null) !== $output || ! is_string($item['content_base64'] ?? null) || ! is_string($item['filename'] ?? null)) {
+                continue;
+            }
+
+            if (base64_decode($item['content_base64'], true) === false) {
+                break;
+            }
+
+            return [
+                'status' => 'successful',
+                'file' => [
+                    'name' => (string) preg_replace('/[^A-Za-z0-9._-]/', '', $item['filename']),
+                    'content_base64' => $item['content_base64'],
+                ],
+            ];
+        }
+
+        throw new Exception($this->text('app_file_missing'));
+    }
+
+    /**
+     * An installable app with its form inputs, texts in the customer's language.
+     *
+     * @param array<string, mixed> $app
+     * @return array<string, mixed>
+     */
+    private function presentApp(array $app): array
+    {
+        $inputs = [];
+
+        foreach (is_array($app['inputs'] ?? null) ? $app['inputs'] : [] as $input) {
+            if (! is_array($input) || ! isset($input['key'], $input['type'])) {
+                continue;
+            }
+
+            $default = $input['default'] ?? null;
+
+            $inputs[] = [
+                'key' => (string) $input['key'],
+                'type' => (string) $input['type'],
+                'label' => $this->recipeText($input['label'] ?? null, (string) $input['key']),
+                'required' => ! empty($input['required']),
+                'default' => is_bool($default) ? ($default ? '1' : '0') : (is_scalar($default) ? (string) $default : ''),
+                'options' => is_array($input['options'] ?? null) ? array_values(array_map('strval', array_filter($input['options'], 'is_scalar'))) : [],
+                'min' => isset($input['min']) && is_numeric($input['min']) ? (int) $input['min'] : null,
+                'max' => isset($input['max']) && is_numeric($input['max']) ? (int) $input['max'] : null,
+            ];
+        }
+
+        return [
+            'id' => (string) ($app['id'] ?? ''),
+            'name' => (string) ($app['name'] ?? ''),
+            'description' => $this->recipeText($app['description'] ?? null, ''),
+            'inputs' => $inputs,
+        ];
+    }
+
+    /**
+     * An installation with its status and outputs (texts shown, files downloaded on demand).
+     *
+     * @param array<string, mixed> $installation
+     * @return array<string, mixed>
+     */
+    private function presentInstallation(array $installation): array
+    {
+        $status = (string) ($installation['status'] ?? '');
+        $outputs = [];
+
+        foreach (is_array($installation['outputs'] ?? null) ? $installation['outputs'] : [] as $output) {
+            if (! is_array($output) || ! isset($output['key'])) {
+                continue;
+            }
+
+            $type = (string) ($output['type'] ?? 'text');
+
+            $outputs[] = [
+                'key' => (string) $output['key'],
+                'type' => in_array($type, ['text', 'url', 'file'], true) ? $type : 'text',
+                'label' => $this->recipeText($output['label'] ?? null, (string) $output['key']),
+                'value' => is_string($output['value'] ?? null) ? $output['value'] : null,
+                'filename' => is_string($output['filename'] ?? null) ? $output['filename'] : null,
+            ];
+        }
+
+        return [
+            'id' => (string) ($installation['id'] ?? ''),
+            'name' => is_array($installation['app'] ?? null) ? (string) ($installation['app']['name'] ?? '') : '',
+            'status' => $status,
+            'status_label' => $this->text('app_status_' . $status),
+            'busy' => in_array($status, self::APP_BUSY, true),
+            'failed' => $status === 'failed',
+            'progress' => (int) ($installation['progress'] ?? 0),
+            'step' => is_string($installation['step'] ?? null) ? $installation['step'] : null,
+            'error' => is_string($installation['error'] ?? null) ? $installation['error'] : null,
+            'outputs' => $outputs,
+        ];
+    }
+
+    /**
+     * A recipe text ({en, tr, …}) in the customer's language, English otherwise.
+     */
+    private function recipeText(mixed $text, string $fallback): string
+    {
+        if (! is_array($text) || ! is_string($text['en'] ?? null)) {
+            return $fallback;
+        }
+
+        $locale = $this->text('locale');
+
+        return is_string($text[$locale] ?? null) ? $text[$locale] : $text['en'];
     }
 
     /**

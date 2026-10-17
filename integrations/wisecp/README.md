@@ -18,7 +18,7 @@ Design: [ADR 0014](../../docs/adr/0014-wisecp-module.md).
 | Cancel (terminate) | Deletes the server and its disks; the addresses are released |
 | Upgrade / downgrade | The new product's package and resources, with the same rules as ordering. CPU and memory take effect at the server's next restart unless *Restart after upgrades* is on. The disk only grows. |
 | Change password | Sets the root password (12 to 128 characters) |
-| Service page | Hostname, IP address, OS, location, status and resources; tools: start, shut down, restart, force stop, reset root password, reinstall OS, VNC console, hostname change, reverse DNS |
+| Service page | Hostname, IP address, OS, location, status and resources; tools: start, shut down, restart, force stop, reset root password, reinstall OS, VNC console, hostname change, reverse DNS, apps |
 
 The root password: the customer's order answer or the service's password when it has
 12 to 128 characters, otherwise Proxmotion generates one and the module stores it on the
@@ -86,6 +86,21 @@ reinstalling or terminating the server, and when it is not active.
 The **VNC console** opens Proxmotion's console in a new tab through a link that is
 valid for 60 seconds and works once; it opens only this server's console.
 
+### Apps
+
+The **Apps** tool (the module's own page, `pages/tools/apps.php`: WISECP has no app
+tool) shows the server's installed apps and the apps that fit it (Proxmotion's App
+Marketplace: OpenVPN, WireGuard, Docker, …), each with a small form for its settings.
+Installing takes a few minutes inside the server; the page shows the progress and
+reloads itself while an app installs, and a failed installation can be tried again.
+One app installs at a time.
+
+Outputs of installed apps (VPN client profiles, addresses) are fetched from Proxmotion
+whenever the page is shown, and files when the customer downloads them; nothing is
+stored in WISECP. The module log masks app settings and outputs, and the settings are
+sent in a field WISECP masks in the service history. Outputs need a token with the
+`apps:secrets` scope; without it, the apps are listed without outputs.
+
 ## Webhooks
 
 Without webhooks, WISECP only learns what happens to a server when someone opens it.
@@ -123,7 +138,10 @@ event again later.
 
 ## Troubleshooting
 
-- WISECP's module log: every API call is logged. The token and root passwords are masked.
+- WISECP's module log: every API call is logged. The token, root passwords and app
+  settings and outputs are masked.
+- No **Apps** tool on the service page: the server is not active, or the tool was
+  disabled for the server or service in WISECP.
 - "This token does not have the … scope": create a token with all scopes.
 - "Unauthenticated.": the token is wrong, revoked or expired.
 - "This token may not be used from your address.": add the WISECP server's address

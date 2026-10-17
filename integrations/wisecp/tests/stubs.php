@@ -20,6 +20,9 @@ namespace {
     {
         protected bool $dashboard_cache = true;
 
+        /** @var array<string, array<string, mixed>> */
+        protected array $tools = [];
+
         /** @var array<string, mixed> */
         public mixed $server = [];
 
@@ -57,6 +60,8 @@ namespace {
 
             if ($server) {
                 $this->set_server($server);
+            } elseif (method_exists($this, 'configure_features')) {
+                $this->configure_features();
             }
         }
 
@@ -70,6 +75,43 @@ namespace {
             if (method_exists($this, 'define_server_info')) {
                 $this->define_server_info($this->server);
             }
+
+            if (method_exists($this, 'configure_features')) {
+                $this->configure_features();
+            }
+        }
+
+        /**
+         * @param array<string, mixed> $config
+         */
+        public function add_tool(string $key, array $config): static
+        {
+            if (! isset($config['supported'])) {
+                $config['supported'] = true;
+            }
+
+            $this->tools[$key] = $config;
+
+            return $this;
+        }
+
+        /**
+         * @return array<string, mixed>|null
+         */
+        public function get_tool(string $key): ?array
+        {
+            return $this->tools[$key] ?? null;
+        }
+
+        /**
+         * Filters per tool and field for handle_tool_action(); WISECP's own
+         * list (file manager paths, e-mail fields, …) is left out here.
+         *
+         * @return array<string, array<string, string|null>>
+         */
+        protected function get_tool_action_data_filters(): array
+        {
+            return [];
         }
 
         /**
