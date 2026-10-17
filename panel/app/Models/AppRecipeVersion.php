@@ -26,6 +26,7 @@ use Illuminate\Support\Carbon;
  * @property string|null $signature minisign signature (docs/adr/0017)
  * @property string|null $signed_by key id of the signature
  * @property AppRecipeVersionStatus $status
+ * @property string $origin upstream (panel/recipes) or local (admin editor)
  * @property int|null $reviewed_by
  * @property Carbon|null $reviewed_at
  * @property Carbon|null $created_at
@@ -34,6 +35,12 @@ use Illuminate\Support\Carbon;
  */
 class AppRecipeVersion extends Model
 {
+    /** Shipped in panel/recipes and stored by apps:sync. */
+    public const ORIGIN_UPSTREAM = 'upstream';
+
+    /** Written in the admin editor: custom apps, and bundled apps edited in place (docs/adr/0018 §2). */
+    public const ORIGIN_LOCAL = 'local';
+
     /** @var Recipe|null parsed definition, kept per instance */
     private ?Recipe $parsed = null;
 

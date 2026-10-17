@@ -114,7 +114,7 @@ class RecipeLoaderTest extends TestCase
 
     public function test_apps_validate_reports_invalid_recipes()
     {
-        $this->editRecipe('version: 1.2.0', 'version: one');
+        $this->editRecipe('version: 1.2.1', 'version: one');
         $this->app->instance(RecipeLoader::class, $this->loader());
 
         $this->artisan('apps:validate')->assertFailed();
@@ -125,26 +125,26 @@ class RecipeLoaderTest extends TestCase
         $this->app->instance(RecipeLoader::class, $this->loader());
         $sync = fn () => app(RecipeSynchronizer::class)->sync();
 
-        $this->assertSame(['created' => ['openvpn'], 'updated' => [], 'deactivated' => [], 'skipped' => []], $sync());
+        $this->assertSame(['created' => ['openvpn'], 'updated' => [], 'held' => [], 'deactivated' => [], 'skipped' => []], $sync());
         $recipe = AppRecipe::query()->where('slug', 'openvpn')->sole();
         $this->assertTrue($recipe->is_active);
         $this->assertSame((string) file_get_contents($this->directory.'/openvpn/install.sh'), $recipe->current()->files['install.sh']);
         $this->assertSame(AppRecipeVersionStatus::Published, $recipe->current()->status, 'Bundled recipes ship with the panel.');
         $this->assertSame(2, $recipe->current()->format);
 
-        $this->assertSame(['created' => [], 'updated' => [], 'deactivated' => [], 'skipped' => []], $sync(), 'Nothing changed.');
+        $this->assertSame(['created' => [], 'updated' => [], 'held' => [], 'deactivated' => [], 'skipped' => []], $sync(), 'Nothing changed.');
 
         $recipe->forceFill(['is_active' => false])->save();
-        $this->editRecipe('version: 1.2.0', 'version: 1.3.0');
-        $this->assertSame(['created' => [], 'updated' => ['openvpn'], 'deactivated' => [], 'skipped' => []], $sync());
+        $this->editRecipe('version: 1.2.1', 'version: 1.3.0');
+        $this->assertSame(['created' => [], 'updated' => ['openvpn'], 'held' => [], 'deactivated' => [], 'skipped' => []], $sync());
         $recipe->refresh();
         $this->assertSame('1.3.0', $recipe->current()->version);
-        $this->assertSame(['1.2.0', '1.3.0'], $recipe->versions()->orderBy('id')->pluck('version')->all(), 'Earlier versions are kept.');
+        $this->assertSame(['1.2.1', '1.3.0'], $recipe->versions()->orderBy('id')->pluck('version')->all(), 'Earlier versions are kept.');
         $this->assertFalse($recipe->is_active, 'The administrator deactivated it.');
 
         $recipe->forceFill(['is_active' => true])->save();
         File::deleteDirectory($this->directory.'/openvpn');
-        $this->assertSame(['created' => [], 'updated' => [], 'deactivated' => ['openvpn'], 'skipped' => []], $sync());
+        $this->assertSame(['created' => [], 'updated' => [], 'held' => [], 'deactivated' => ['openvpn'], 'skipped' => []], $sync());
         $this->assertFalse($recipe->refresh()->is_active);
     }
 
@@ -161,7 +161,7 @@ class RecipeLoaderTest extends TestCase
             app(RecipeSynchronizer::class)->sync();
             $this->fail('The changed version was accepted.');
         } catch (RecipeInvalid $e) {
-            $this->assertSame(['Version 1.2.0 changed but is used by installations: raise the version.'], $e->errors);
+            $this->assertSame(['Version 1.2.1 changed but is used by installations: raise the version.'], $e->errors);
         }
 
         $this->assertStringNotContainsString('changed', $recipe->current()->refresh()->files['install.sh']);
@@ -174,7 +174,7 @@ class RecipeLoaderTest extends TestCase
 
         file_put_contents($this->directory.'/openvpn/install.sh', "#!/bin/bash\necho changed\n");
 
-        $this->assertSame(['created' => [], 'updated' => ['openvpn'], 'deactivated' => [], 'skipped' => []], app(RecipeSynchronizer::class)->sync());
+        $this->assertSame(['created' => [], 'updated' => ['openvpn'], 'held' => [], 'deactivated' => [], 'skipped' => []], app(RecipeSynchronizer::class)->sync());
         $this->assertSame(1, AppRecipeVersion::query()->count());
         $this->assertStringContainsString('changed', AppRecipeVersion::query()->sole()->files['install.sh']);
     }
@@ -231,11 +231,11 @@ class RecipeLoaderTest extends TestCase
         $this->assertStringContainsString('/lifecycle/install/script', implode("\n", $this->errors()));
     }
 
-    public function test_min_versions_must_name_listed_families()
+    public function test_min_versions_must_name_families_the_os_covers()
     {
         $this->editRecipe("min_versions: { ubuntu: '22.04', debian: '12' }", "min_versions: { ubuntu: '22.04', rocky: '9' }");
 
-        $this->assertContains('requires.min_versions: rocky is not one of requires.families.', $this->errors());
+        $this->assertContains('requires.min_versions: rocky is not covered by requires.os.', $this->errors());
     }
 
     public function test_apps_make_writes_a_valid_skeleton()

@@ -22,7 +22,7 @@ final readonly class RecipeSynchronizer
     public function __construct(private RecipeLoader $loader) {}
 
     /**
-     * @return array{created: list<string>, updated: list<string>, deactivated: list<string>, skipped: list<string>}
+     * @return array{created: list<string>, updated: list<string>, held: list<string>, deactivated: list<string>, skipped: list<string>}
      *
      * @throws RecipeInvalid before anything is written, also when a version
      *                       in use changed without a new version number
@@ -30,7 +30,7 @@ final readonly class RecipeSynchronizer
     public function sync(): array
     {
         $recipes = $this->loader->all();
-        $result = ['created' => [], 'updated' => [], 'deactivated' => [], 'skipped' => []];
+        $result = ['created' => [], 'updated' => [], 'held' => [], 'deactivated' => [], 'skipped' => []];
 
         DB::transaction(function () use ($recipes, &$result) {
             foreach ($recipes as $slug => ['recipe' => $recipe, 'files' => $files]) {
@@ -44,21 +44,26 @@ final readonly class RecipeSynchronizer
                     continue;
                 }
 
-                if ($app !== null && $app->latestVersion?->checksum === $checksum) {
-                    continue;
-                }
-
                 $created = $app === null;
                 $app ??= (new AppRecipe)->forceFill(['slug' => $slug, 'source' => AppRecipe::SOURCE_BUNDLED, 'is_active' => true]);
-                $app->forceFill(['name' => $recipe->name, 'category' => $recipe->category])->save();
+                // An administrator edited the app in place (docs/adr/0018 §2): new versions are kept, not offered.
+                $modified = $app->isModified();
+                $version = $created ? null : $app->versions()->where('origin', AppRecipeVersion::ORIGIN_UPSTREAM)->where('version', $recipe->version)->first();
 
-                $version = $app->versions()->where('version', $recipe->version)->first();
+                if ($version !== null && $version->checksum === $checksum) {
+                    continue;
+                }
 
                 if ($version !== null && $version->installations()->exists()) {
                     throw new RecipeInvalid($slug, ["Version {$recipe->version} changed but is used by installations: raise the version."]);
                 }
 
-                $version ??= (new AppRecipeVersion)->forceFill(['app_recipe_id' => $app->id, 'version' => $recipe->version]);
+                if (! $modified) {
+                    $app->forceFill(['name' => $recipe->name, 'category' => $recipe->category]);
+                }
+
+                $app->save();
+                $version ??= (new AppRecipeVersion)->forceFill(['app_recipe_id' => $app->id, 'version' => $recipe->version, 'origin' => AppRecipeVersion::ORIGIN_UPSTREAM]);
                 $version->forceFill([
                     'format' => $recipe->format,
                     'definition' => $recipe->definition,
@@ -68,7 +73,7 @@ final readonly class RecipeSynchronizer
                 ]);
 
                 // An older version in the repository (a downgrade) is stored but not offered.
-                $latest = $app->latestVersion === null || version_compare($recipe->version, $app->latestVersion->version, '>=');
+                $latest = ! $modified && ($app->latestVersion === null || version_compare($recipe->version, $app->latestVersion->version, '>='));
                 $version->forceFill(['status' => $latest ? AppRecipeVersionStatus::Published : AppRecipeVersionStatus::Archived])->save();
 
                 if ($latest) {
@@ -79,7 +84,7 @@ final readonly class RecipeSynchronizer
                     $app->forceFill(['latest_version_id' => $version->id])->save();
                 }
 
-                $result[$created ? 'created' : 'updated'][] = $slug;
+                $result[$modified ? 'held' : ($created ? 'created' : 'updated')][] = $slug;
             }
 
             $gone = AppRecipe::query()

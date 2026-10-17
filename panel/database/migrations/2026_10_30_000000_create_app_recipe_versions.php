@@ -1,7 +1,5 @@
 <?php
 
-use App\Enums\OsPlatform;
-use App\Enums\TemplateCapability;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
@@ -65,12 +63,6 @@ return new class extends Migration
 
             DB::table('app_recipes')->where('id', $recipe->id)->update(['latest_version_id' => $versionId]);
             DB::table('app_installations')->where('app_recipe_id', $recipe->id)->update(['app_recipe_version_id' => $versionId]);
-        }
-
-        foreach (DB::table('os_templates')->get(['id', 'platform', 'family']) as $template) {
-            DB::table('os_templates')->where('id', $template->id)->update([
-                'capabilities' => json_encode(TemplateCapability::defaultsFor(OsPlatform::tryFrom((string) $template->platform) ?? OsPlatform::Linux, (string) $template->family)),
-            ]);
         }
 
         Schema::table('app_recipes', function (Blueprint $table) {

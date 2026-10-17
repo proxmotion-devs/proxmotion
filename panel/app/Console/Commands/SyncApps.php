@@ -25,7 +25,7 @@ class SyncApps extends Command
             return self::FAILURE;
         }
 
-        foreach (['created' => 'Added', 'updated' => 'Updated', 'deactivated' => 'Deactivated', 'skipped' => 'Skipped (a custom app has the slug)'] as $key => $label) {
+        foreach (['created' => 'Added', 'updated' => 'Updated', 'held' => 'Kept for later (edited by an administrator; compare in the editor)', 'deactivated' => 'Deactivated', 'skipped' => 'Skipped (a custom app has the slug)'] as $key => $label) {
             if ($result[$key] !== []) {
                 $this->components->info($label.': '.implode(', ', $result[$key]));
             }

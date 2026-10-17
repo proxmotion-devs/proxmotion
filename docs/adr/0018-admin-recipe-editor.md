@@ -18,9 +18,9 @@ Only panel administrators (2FA, ADR 0007) create and change apps. There are no r
 
 ### 2. Sources
 
-- `bundled`: shipped in `panel/recipes`, synced by `apps:sync`, **read-only** in the editor.
+- `bundled`: shipped in `panel/recipes`, synced by `apps:sync`, and **editable in place** (*revised 2026-10-17*; the first version made them read-only, so changing how a bundled app installs needed a copy under a new slug). Editing a bundled app opens a draft on the same app; publishing it makes a local version numbered after the bundled version it started from (`1.2.1-local.1`, which sorts before `1.2.1`), stored with `origin: local` (bundled versions from `panel/recipes` have `origin: upstream`). While the published version is local, `apps:sync` stores new bundled versions as archived without offering them (`held` in its output); the editor shows "a newer bundled version is available" so the administrator can compare in the history and merge by hand, and **Back to bundled version** publishes the newest bundled version again (audited, the draft is dropped, installations keep theirs). Bundled apps cannot be deleted, only deactivated.
 - `custom`: written in the panel. Slugs are unique across sources; a custom app never replaces a bundled one.
-- **Copy:** any version of an app (bundled or custom) can be copied into a new custom app with a new slug and name; the copy starts as a draft `1.0.0` with the same definition and scripts. Panel updates never touch copies; the editor shows when the bundled original has a newer version, so the provider can compare and merge by hand.
+- **Copy** (still possible, no longer needed to change a bundled app): any version of an app (bundled or custom) can be copied into a new custom app with a new slug and name; the copy starts as a draft `1.0.0` with the same definition and scripts. Panel updates never touch copies; the editor shows when the bundled original has a newer version, so the provider can compare and merge by hand.
 
 ### 3. Versions: draft → published → archived
 
@@ -39,7 +39,7 @@ The editor saves a recipe definition and its files; the same rules as `apps:vali
 *Admin → Apps → New app / Copy / Edit:*
 
 - **General:** name, slug (fixed after the first publish), category, description (en, tr), homepage, maintainers.
-- **Compatibility:** platform, required template capabilities (checkboxes, alternatives such as `apt|dnf`), families and minimum versions, minimum CPU, memory and disk, network models, install modes.
+- **Compatibility:** platform, operating systems (checkboxes for the groups debian, rhel, suse, arch and for single families, ADR 0016 §3) and minimum versions per family, minimum CPU, memory and disk, network models, install modes.
 - **Inputs and outputs:** a builder for keys, types, labels (en, tr), defaults, options, limits, secret flags.
 - **Scripts:** install, uninstall, includes and actions (each with its own inputs and outputs), edited in a code editor (CodeMirror 6, MIT); the shared helpers of `recipes/_lib` are shown read-only with their documentation.
 - **YAML view** of the whole definition, and **import/export** of a recipe as a zip of the format 2 directory (same layout as `panel/recipes/<slug>`, ready for ADR 0017 catalogs).

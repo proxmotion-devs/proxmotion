@@ -79,6 +79,7 @@ Route::post('apps/{appRecipe}/copy', [AppRecipeController::class, 'copy'])->name
 Route::put('apps/{appRecipe}/draft', [AppRecipeController::class, 'saveDraft'])->name('apps.draft.save');
 Route::delete('apps/{appRecipe}/draft', [AppRecipeController::class, 'discardDraft'])->name('apps.draft.discard');
 Route::post('apps/{appRecipe}/publish', [AppRecipeController::class, 'publish'])->name('apps.publish');
+Route::post('apps/{appRecipe}/revert', [AppRecipeController::class, 'revert'])->name('apps.revert');
 Route::delete('apps/{appRecipe}', [AppRecipeController::class, 'destroy'])->name('apps.destroy');
 Route::post('app-installations/{appInstallation}/retry', [AppController::class, 'retry'])->middleware('throttle:10,1')->name('app-installations.retry');
 Route::post('app-installations/{appInstallation}/uninstall', [AppController::class, 'uninstall'])->middleware('throttle:10,1')->name('app-installations.uninstall');

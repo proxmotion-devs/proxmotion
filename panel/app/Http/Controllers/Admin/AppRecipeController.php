@@ -4,12 +4,12 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Admin;
 
+use App\Domain\Apps\OsFamilies;
 use App\Domain\Apps\RecipeEditor;
 use App\Domain\Apps\RecipeEditRefused;
 use App\Domain\Apps\RecipeInvalid;
 use App\Domain\Apps\RecipeLoader;
 use App\Enums\AppRecipeVersionStatus;
-use App\Enums\TemplateCapability;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\OsTemplateRequest;
 use App\Models\AppRecipe;
@@ -28,8 +28,9 @@ use Symfony\Component\Yaml\Yaml;
 
 /**
  * The admin recipe editor (docs/adr/0018): new custom apps, copies, the
- * draft of a custom app, publishing and deleting. Bundled apps are
- * read-only; every change is audited by RecipeEditor.
+ * draft of any app (bundled apps are edited in place), publishing, going
+ * back to the bundled recipe and deleting custom apps; every change is
+ * audited by RecipeEditor.
  */
 class AppRecipeController extends Controller
 {
@@ -37,7 +38,7 @@ class AppRecipeController extends Controller
 
     /**
      * The editor: the draft (or the published version to start one from),
-     * the versions and what the forms offer. Bundled apps open read-only.
+     * the versions and what the forms offer.
      */
     public function edit(AppRecipe $appRecipe, RecipeLoader $loader): Response
     {
@@ -46,6 +47,9 @@ class AppRecipeController extends Controller
         $published = $appRecipe->latestVersion;
         $origin = $appRecipe->copiedFrom;
         $newer = $origin?->app->latestVersion;
+        $upstream = $appRecipe->isCustom() ? null : $appRecipe->latestUpstream();
+        // The bundled version an edit started from: 1.2.1-local.2 → 1.2.1.
+        $base = $published === null ? null : (string) preg_replace('/-local\.\d+$/', '', $published->version);
 
         return Inertia::render('admin/apps/Edit', [
             'app' => [
@@ -53,7 +57,11 @@ class AppRecipeController extends Controller
                 'name' => $appRecipe->name,
                 'source' => $appRecipe->source,
                 'is_active' => $appRecipe->is_active,
-                'editable' => $appRecipe->isCustom(),
+                'editable' => true,
+                'modified' => $appRecipe->isModified(),
+                // A bundled release newer than the one the administrator's edit started from (docs/adr/0018 §2).
+                'bundled_version' => $upstream?->version,
+                'bundled_newer' => $appRecipe->isModified() && $upstream !== null && $base !== null && version_compare($upstream->version, $base, '>'),
                 'installed' => $appRecipe->installations()->exists(),
                 'copied_from' => $origin === null ? null : ['slug' => $origin->app->slug, 'name' => $origin->app->name, 'version' => $origin->version],
                 // The original got a newer version since the copy (docs/adr/0018 §2).
@@ -77,7 +85,8 @@ class AppRecipeController extends Controller
                 'published_at' => $version->reviewed_at?->toIso8601String(),
                 'created_at' => $version->created_at?->toIso8601String(),
             ]),
-            'capabilities' => TemplateCapability::values(),
+            // requires.os takes template families and groups of them (docs/adr/0016 §3).
+            'osGroups' => OsFamilies::GROUPS,
             'families' => OsTemplateRequest::FAMILIES,
             'library' => $loader->library(),
         ]);
@@ -193,6 +202,17 @@ class AppRecipeController extends Controller
         }
 
         $this->toast('success', 'Version :version published.', ['version' => $version->version]);
+
+        return back();
+    }
+
+    /**
+     * Go back from an edit of a bundled app to its newest bundled version.
+     */
+    public function revert(Request $request, AppRecipe $appRecipe, #[CurrentUser] User $admin): RedirectResponse
+    {
+        $version = $this->refused(fn () => $this->editor->revert($appRecipe, $admin, $request->ip()));
+        $this->toast('success', 'Back to the bundled version :version.', ['version' => $version->version]);
 
         return back();
     }

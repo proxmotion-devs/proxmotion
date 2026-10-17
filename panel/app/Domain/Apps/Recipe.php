@@ -20,8 +20,7 @@ final readonly class Recipe
     /**
      * @param  array{en: string, tr?: string}  $description
      * @param  list<array{family: string, versions: list<string>}>  $os  format 1 only: exact OS versions
-     * @param  list<string>  $capabilities  required template capabilities; "apt|dnf" means one of them
-     * @param  list<string>|null  $families  null: any family with the capabilities
+     * @param  list<string>|null  $families  template families or groups (OsFamilies) it runs on; null: any of the platform
      * @param  array<string, string>  $minVersions  lowest version per family
      * @param  list<string>  $networkModels
      * @param  list<string>  $installModes
@@ -41,7 +40,6 @@ final readonly class Recipe
         public array $description,
         public string $platform,
         public array $os,
-        public array $capabilities,
         public ?array $families,
         public array $minVersions,
         public int $minMemoryMib,
@@ -80,7 +78,6 @@ final readonly class Recipe
             $resources = $data['requirements'];
             $timeout = (int) $data['timeout_minutes'];
             $platform = 'linux';
-            $capabilities = [];
             $families = array_values(array_unique(array_column($os, 'family')));
             $minVersions = [];
             $lifecycle = ['install' => ['script' => 'install.sh', 'timeout_minutes' => $timeout]];
@@ -91,8 +88,12 @@ final readonly class Recipe
             $resources = $data['resources'];
             $os = [];
             $platform = (string) $requires['platform'];
-            $capabilities = $list($requires['capabilities'] ?? null);
-            $families = isset($requires['families']) ? $list($requires['families']) : null;
+            // `os` names families or groups; recipes written before it used `families` or package-manager `capabilities`.
+            $families = match (true) {
+                isset($requires['os']) => $list($requires['os']),
+                isset($requires['families']) => $list($requires['families']),
+                default => OsFamilies::fromCapabilities($list($requires['capabilities'] ?? null)),
+            };
             $minVersions = array_map('strval', is_array($requires['min_versions'] ?? null) ? $requires['min_versions'] : []);
             $lifecycle = [];
 
@@ -119,7 +120,6 @@ final readonly class Recipe
             description: self::text($data['description']) ?? ['en' => ''],
             platform: $platform,
             os: $os,
-            capabilities: $capabilities,
             families: $families,
             minVersions: $minVersions,
             minMemoryMib: (int) $resources['min_memory_mib'],
@@ -169,13 +169,10 @@ final readonly class Recipe
      */
     public function supportsTemplate(OsTemplate $template): bool
     {
-        return $this->supports($template->platform->value, $template->family, $template->version, $template->offeredCapabilities());
+        return $this->supports($template->platform->value, $template->family, $template->version);
     }
 
-    /**
-     * @param  list<string>  $capabilities  what the template offers
-     */
-    public function supports(string $platform, string $family, string $version, array $capabilities): bool
+    public function supports(string $platform, string $family, string $version): bool
     {
         $family = strtolower($family);
 
@@ -194,13 +191,7 @@ final readonly class Recipe
             return false;
         }
 
-        foreach ($this->capabilities as $required) {
-            if (array_intersect(explode('|', $required), $capabilities) === []) {
-                return false;
-            }
-        }
-
-        if ($this->families !== null && ! in_array($family, $this->families, true)) {
+        if ($this->families !== null && ! OsFamilies::matches($this->families, $family)) {
             return false;
         }
 
@@ -229,7 +220,7 @@ final readonly class Recipe
 
     /**
      * The operating systems in short, for lists: "ubuntu 22.04, 24.04"
-     * (format 1) or "linux: systemd, apt|dnf; ubuntu ≥ 22.04" (format 2).
+     * (format 1) or "linux: debian, rhel", "ubuntu ≥ 22.04" (format 2).
      *
      * @return list<string>
      */
@@ -239,10 +230,10 @@ final readonly class Recipe
             return array_map(fn (array $entry) => $entry['family'].' '.implode(', ', $entry['versions']), $this->os);
         }
 
-        $lines = [$this->platform.($this->capabilities === [] ? '' : ': '.implode(', ', $this->capabilities))];
+        $lines = [$this->platform.($this->families === null ? '' : ': '.implode(', ', $this->families))];
 
-        foreach ($this->families ?? array_keys($this->minVersions) as $family) {
-            $lines[] = $family.(isset($this->minVersions[$family]) ? ' ≥ '.$this->minVersions[$family] : '');
+        foreach ($this->minVersions as $family => $minimum) {
+            $lines[] = $family.' ≥ '.$minimum;
         }
 
         return $lines;

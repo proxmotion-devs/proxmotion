@@ -52,6 +52,7 @@ class AppController extends Controller
                         'slug' => $app->slug,
                         'name' => $app->name,
                         'source' => $app->source,
+                        'modified' => $app->isModified(),
                         'published' => $app->latestVersion !== null,
                         'draft_version' => $draft?->version,
                         'version' => $app->latestVersion?->version,

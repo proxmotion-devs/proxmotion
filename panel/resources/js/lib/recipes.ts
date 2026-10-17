@@ -50,6 +50,9 @@ export type RecipeDefinition = {
     homepage?: string;
     requires: {
         platform: string;
+        /** Template families or groups (debian, rhel, …); none: any OS of the platform. */
+        os?: string[];
+        /** Read from older recipes only; converted to `os` by editable(). */
         capabilities?: string[];
         families?: string[];
         min_versions?: Record<string, string>;
@@ -94,6 +97,38 @@ export const CATEGORIES = ['vpn', 'control-panel', 'container', 'web'];
 
 export const NETWORK_MODELS = ['bridged', 'routed', 'nat'];
 
+const CAPABILITY_GROUPS: Record<string, string> = {
+    apt: 'debian',
+    dnf: 'rhel',
+    zypper: 'suse',
+    pacman: 'arch',
+};
+
+/**
+ * The OS groups older recipes meant with package-manager capabilities
+ * ("apt|dnf" → debian, rhel), like OsFamilies::fromCapabilities().
+ */
+export function osFromCapabilities(capabilities: string[]): string[] {
+    const groups = capabilities
+        .flatMap((capability) => capability.split('|'))
+        .map((name) => CAPABILITY_GROUPS[name])
+        .filter((group): group is string => group !== undefined);
+
+    return [...new Set(groups)];
+}
+
+/**
+ * The template families the names cover, groups expanded.
+ */
+export function expandOs(
+    names: string[],
+    groups: Record<string, { families: string[] }>,
+): string[] {
+    return [
+        ...new Set(names.flatMap((name) => groups[name]?.families ?? [name])),
+    ];
+}
+
 /**
  * Fill the parts the forms bind to, so a format 2 definition from the
  * server (or a new one) can be edited field by field.
@@ -103,7 +138,12 @@ export function editable(definition: RecipeDefinition): RecipeDefinition {
 
     copy.description ??= { en: '' };
     copy.requires ??= { platform: 'linux' };
-    copy.requires.capabilities ??= [];
+    // Older recipes: `families`, or package managers as capabilities (docs/adr/0016 §3).
+    copy.requires.os ??=
+        copy.requires.families ??
+        osFromCapabilities(copy.requires.capabilities ?? []);
+    delete copy.requires.families;
+    delete copy.requires.capabilities;
     copy.requires.min_versions ??= {};
     copy.resources ??= {
         min_memory_mib: 512,

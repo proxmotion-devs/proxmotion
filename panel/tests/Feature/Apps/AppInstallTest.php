@@ -96,7 +96,7 @@ class AppInstallTest extends TestCase
         $this->assertSame(file_get_contents(base_path('recipes/_lib/run.sh')), $files[$directory.'/run.sh']);
         $this->assertSame(file_get_contents(base_path('recipes/_lib/proxmotion.sh')), $files[$directory.'/proxmotion.sh']);
         $this->assertSame(['port' => 51900], json_decode($files[$directory.'/inputs.json'], true));
-        $this->assertSame(['hostname' => 'web1.example.com', 'primary_ipv4' => '203.0.113.2', 'primary_ipv6' => null], json_decode($files[$directory.'/server.json'], true));
+        $this->assertSame(['hostname' => 'web1.example.com', 'primary_ipv4' => '203.0.113.2', 'primary_ipv6' => null, 'os_release' => ['debian', 'ubuntu']], json_decode($files[$directory.'/server.json'], true));
         $this->assertSame('installing', json_decode($files[$directory.'/status.json'], true)['status']);
 
         $start = collect($this->proxmox->guestCommands)->last();
@@ -239,7 +239,7 @@ class AppInstallTest extends TestCase
         $this->assertStringNotContainsString('newer', $this->proxmox->guestFiles[$this->server->vmid][$this->directory($installation).'/install.sh']);
     }
 
-    public function test_apps_follow_the_capabilities_of_the_servers_template()
+    public function test_apps_follow_the_family_of_the_servers_template()
     {
         $wireguard = AppRecipe::query()->where('slug', 'wireguard')->firstOrFail();
         $eligibility = app(AppEligibility::class);
@@ -249,16 +249,22 @@ class AppInstallTest extends TestCase
         };
 
         $useTemplate(['name' => 'Rocky 9', 'family' => 'rocky', 'version' => '9']);
-        $this->assertSame('This app does not support the operating system.', $eligibility->forServer($wireguard, $this->server)?->translatedMessage(), 'A dnf template, and rocky is not listed.');
+        $this->assertSame('This app does not support the operating system.', $eligibility->forServer($wireguard, $this->server)?->translatedMessage(), 'Rocky is not in the debian group.');
 
         $useTemplate(['name' => 'Debian 13', 'family' => 'debian', 'version' => '13']);
         $this->assertNull($eligibility->forServer($wireguard, $this->server), 'Newer than min_versions, not named by version.');
 
         $useTemplate(['name' => 'Debian 11', 'family' => 'debian', 'version' => '11']);
         $this->assertNotNull($eligibility->forServer($wireguard, $this->server), 'Older than min_versions.');
+    }
 
-        $useTemplate(['name' => 'Minimal Debian', 'family' => 'debian', 'version' => '13', 'capabilities' => ['systemd', 'bash']]);
-        $this->assertNotNull($eligibility->forServer($wireguard, $this->server), 'The administrator says apt is missing.');
+    public function test_the_runner_learns_which_operating_systems_to_accept()
+    {
+        $installation = $this->install();
+        $server = json_decode($this->proxmox->guestFiles[$this->server->vmid][$this->directory($installation).'/server.json'], true);
+
+        // run.sh compares them with ID and ID_LIKE of /etc/os-release.
+        $this->assertSame(['debian', 'ubuntu'], $server['os_release']);
     }
 
     public function test_one_app_installs_at_a_time_and_an_installed_app_is_not_installed_twice()

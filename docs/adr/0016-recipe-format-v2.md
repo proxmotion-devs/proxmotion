@@ -1,4 +1,4 @@
-# 16. Recipe format v2: versions, lifecycle and template capabilities
+# 16. Recipe format v2: versions, lifecycle and operating systems
 
 - **Status:** Accepted (phase 1 built 2026-10-17)
 - **Date:** 2026-10-17
@@ -32,10 +32,9 @@ maintainers: [{ name: Proxmotion, url: https://example.com }]
 homepage: https://www.wireguard.com
 license: none                    # none | external
 billing: free                    # free | paid
-requires:                        # matched against template capabilities (section 3)
+requires:                        # matched against the template's family (section 3)
   platform: linux                # linux | windows
-  capabilities: [systemd, apt|dnf, bash]
-  families: [ubuntu, debian, almalinux, rocky]   # optional narrowing; omitted = any matching template
+  os: [debian, rhel]             # families or groups; omitted = any OS of the platform
   min_versions: { ubuntu: "22.04", debian: "12" }  # optional, per family
 resources: { min_cores: 1, min_memory_mib: 512, min_disk_mib: 5120 }
 network_models: [bridged, routed, nat]
@@ -66,11 +65,15 @@ actions:
 - An installation points to the **version** it was installed with (`app_recipe_version_id`). Uninstall, actions and retry always use that version; upgrade moves the pointer when it succeeds.
 - Versions are never deleted while an installation uses them.
 
-### 3. Template capabilities
+### 3. Operating systems: families and groups
 
-- `os_templates` gets **`capabilities`** (JSON list) next to `platform`, `family` and `version`. Values come from a fixed vocabulary: `systemd`, `openrc`, `apt`, `dnf`, `zypper`, `apk`, `bash`, `powershell`, `cloud-init`, `selinux`. Admins set them on the template form; defaults are suggested from the family (`debian`/`ubuntu` → `systemd, apt, bash, cloud-init`; `rhel`/`almalinux`/`rocky` → `systemd, dnf, bash, cloud-init, selinux`; `windows` → `powershell`).
-- A recipe fits a template when the platform matches, every required capability is present (`apt|dnf` means one of them), and the family is listed in `families` when the recipe narrows it. The other checks of ADR 0015 §6 (resources, network model, install mode, billing) stay.
-- Helpers in `recipes/_lib` gain a package-manager-neutral `pm_pkg_install` so one script covers `apt` and `dnf` when the recipe wants to.
+*Revised 2026-10-17.* The first version had templates list capabilities (`systemd`, `apt`, `dnf`, `bash`, …) that recipes asked for. That asked administrators for something the template's family already says, and a wrong tick made an app fail inside the server. Recipes now name operating systems the way Linux distributions describe themselves in `/etc/os-release` (`ID`, and `ID_LIKE` for the distribution they derive from):
+
+- `requires.os` lists template families (`ubuntu`, `rocky`, …) or **groups**: `debian` (Debian, Ubuntu), `rhel` (RHEL, AlmaLinux, Rocky, CentOS, Fedora), `suse` (openSUSE), `arch` (Arch Linux). Omitted: any OS of the platform. `min_versions` gives the lowest version per family; every family in it must be covered by `os`. The map from groups to families and to os-release IDs lives in one place (`App\Domain\Apps\OsFamilies`).
+- Templates need nothing besides `platform`, `family` and `version`; `os_templates.capabilities` is dropped. A recipe fits a template when the platform matches, the family is covered by `os` and the version is at least its `min_versions` entry. The other checks of ADR 0015 §6 (resources, network model, install mode, billing) stay.
+- **Checked again inside the server:** the panel writes the accepted os-release IDs to `server.json` (`os_release`); `run.sh` compares them with `ID` and `ID_LIKE` of `/etc/os-release` before any script runs and fails with "This app does not support <PRETTY_NAME>" instead of half-installing on a mislabelled template.
+- Linux recipes may rely on systemd and bash (every supported family has them). Recipes written with the first version keep loading: `families` is read as `os`, package-manager capabilities as groups (`apt` → debian, `dnf` → rhel, `zypper` → suse, `pacman` → arch); the editor converts them when the recipe is saved.
+- Helpers in `recipes/_lib` have a package-manager-neutral `pm_pkg_install` so one script covers `apt` and `dnf` when the recipe wants to.
 - **Windows** (later phase): a PowerShell runner (`_lib/run.ps1`, started detached with a scheduled task) writing the same `status.json`; `.ps1` scripts are allowed only for `platform: windows`. The format is ready for it now; the runner is built when Windows recipes are.
 
 ### 4. Lifecycle operations
@@ -109,7 +112,7 @@ All run like the install of ADR 0015: a short `app_run` server task writes the p
 
 ## Phases
 
-1. **v2 format and stored versions:** schema, loader (v1 compatible), `app_recipe_versions`, installation → version, template capabilities and eligibility, `apps:make`; bundled recipes to v2. *Built 2026-10-17:* `recipes/_schema/recipe-v2.schema.json`; `apps:sync` stores each version (published; ADR 0018 archives the previous one) and refuses a changed version that installations use (raise the version; an unused one is replaced in place); a retry keeps the installation's version; `os_templates.capabilities` (null = the family's defaults, `TemplateCapability::defaultsFor`), edited on the OS template form; `pm_pkg_install` in `_lib/proxmotion.sh`; the bundled recipes are format 2, version 1.1.0, and accept Ubuntu ≥ 22.04 and Debian ≥ 12 through apt. Windows recipes load but are not offered until the runner exists. The API's `App` gained `format` and `requires`. Uninstall, upgrade and action scripts are validated and stored but not run yet.
+1. **v2 format and stored versions:** schema, loader (v1 compatible), `app_recipe_versions`, installation → version, OS requirements and eligibility, `apps:make`; bundled recipes to v2. *Built 2026-10-17:* `recipes/_schema/recipe-v2.schema.json`; `apps:sync` stores each version (published; ADR 0018 archives the previous one) and refuses a changed version that installations use (raise the version; an unused one is replaced in place); a retry keeps the installation's version; `os_templates.capabilities` (later replaced by OS families and groups, §3); `pm_pkg_install` in `_lib/proxmotion.sh`; the bundled recipes are format 2, version 1.1.0, and accept Ubuntu ≥ 22.04 and Debian ≥ 12 through apt. Windows recipes load but are not offered until the runner exists. The API's `App` gained `format` and `requires`. Uninstall, upgrade and action scripts are validated and stored but not run yet.
 2. **Uninstall and actions:** runner operations, API, webhooks, admin UI, WHMCS and WISECP; WireGuard/OpenVPN client actions. *Built 2026-10-17 in the panel:* `app_runs` (`AppRun`, `AppRunner`, `AppRunPipeline`, `RunPoller`), `app_run` task, uninstall statuses `uninstalling` and `uninstall_failed`, API (`DELETE /servers/{id}/apps/{installation}`, `POST .../actions/{key}`, `GET .../runs/{run}`), the four webhooks, admin buttons and dialogs; a finished uninstall deletes the installation's directory in the guest. WireGuard and OpenVPN 1.2.0: several clients (add, revoke, list), uninstall; Docker 1.2.0: uninstall (images and volumes kept). The WHMCS client area and the WISECP Apps tool show action forms, uninstall and the latest runs (`GET .../runs`) with downloads of run outputs. **Not done yet:** runs against a real Proxmox, WHMCS or WISECP.
 3. **Upgrade:** version ranges, API, billing modules.
 4. **Order-time and reinstall installs (5b).**

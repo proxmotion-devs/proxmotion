@@ -84,7 +84,7 @@ class AppApiTest extends ApiTestCase
     {
         $this->api('POST', "/api/v1/servers/{$this->server->uuid}/apps", ['app' => 'openvpn', 'inputs' => ['port' => 443, 'protocol' => 'tcp']])
             ->assertAccepted()
-            ->assertJsonPath('data.app', ['id' => 'openvpn', 'name' => 'OpenVPN', 'version' => '1.2.0'])
+            ->assertJsonPath('data.app', ['id' => 'openvpn', 'name' => 'OpenVPN', 'version' => '1.2.1'])
             ->assertJsonPath('data.server.external_id', 'whmcs-1001')
             ->assertJsonPath('data.status', 'installing')
             ->assertJsonPath('data.inputs', ['port' => 443, 'protocol' => 'tcp'])

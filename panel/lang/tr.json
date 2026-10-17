@@ -1156,5 +1156,18 @@
     "Published": "Yayında",
     "Archived": "Arşivlendi",
     "Pending review": "İnceleme bekliyor",
-    "Rejected": "Reddedildi"
+    "Rejected": "Reddedildi",
+    "A newer bundled version is available: :version. Compare it in the history, then merge your changes or go back to it.": "Yeni bir paket sürümü var: :version. Geçmişte karşılaştırın, sonra değişikliklerinizi birleştirin ya da ona dönün.",
+    "Apps customers can install on their servers through the billing system. Bundled apps come with the panel (php artisan apps:sync) and can be edited here; panel updates keep your changes. You can also write your own.": "Müşterilerin faturalama sistemi üzerinden sunucularına kurabileceği uygulamalar. Paketle gelen uygulamalar panelle birlikte gelir (php artisan apps:sync) ve burada düzenlenebilir; panel güncellemeleri değişikliklerinizi korur. Kendi uygulamanızı da yazabilirsiniz.",
+    "Back to bundled version": "Paket sürümüne dön",
+    "Back to the bundled version :version.": "Paket sürümü :version sürümüne dönüldü.",
+    "Go back to the bundled version :version? Your changes stay in the history; installations keep their version.": "Paket sürümü :version sürümüne dönülsün mü? Değişiklikleriniz geçmişte kalır; kurulumlar kendi sürümlerini korur.",
+    "Groups work like ID_LIKE in /etc/os-release: debian covers Debian and Ubuntu, rhel covers AlmaLinux, Rocky, CentOS and Fedora. The server checks /etc/os-release again before a script runs.": "Gruplar /etc/os-release içindeki ID_LIKE gibi çalışır: debian Debian ve Ubuntu'yu, rhel AlmaLinux, Rocky, CentOS ve Fedora'yı kapsar. Sunucu, bir script çalışmadan önce /etc/os-release'i yeniden kontrol eder.",
+    "Lowest version (empty: any)": "En düşük sürüm (boş: herhangi biri)",
+    "Modified": "Değiştirildi",
+    "Operating systems (none: any of the platform)": "İşletim sistemleri (hiçbiri: platformun herhangi biri)",
+    "Your edit of a bundled app is numbered after its bundled version (e.g. 1.2.1-local.1). Panel updates keep it; a newer bundled version is offered here to compare.": "Paketle gelen bir uygulamadaki düzenlemeniz, paket sürümünden sonra numaralanır (ör. 1.2.1-local.1). Panel güncellemeleri onu korur; daha yeni bir paket sürümü karşılaştırmak için burada gösterilir.",
+    "Only an edited bundled app can go back to its bundled recipe.": "Yalnızca düzenlenmiş, paketle gelen bir uygulama paket tarifine dönebilir.",
+    "This app has no bundled version to go back to.": "Bu uygulamanın dönülecek bir paket sürümü yok.",
+    "Bundled apps cannot be deleted; deactivate the app instead.": "Paketle gelen uygulamalar silinemez; bunun yerine uygulamayı devre dışı bırakın."
 }

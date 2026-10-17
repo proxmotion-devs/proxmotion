@@ -282,8 +282,8 @@ final class RecipeLoader
 
         if ($recipe->families !== null) {
             foreach (array_keys($recipe->minVersions) as $family) {
-                if (! in_array($family, $recipe->families, true)) {
-                    $errors[] = "requires.min_versions: {$family} is not one of requires.families.";
+                if (! OsFamilies::matches($recipe->families, $family)) {
+                    $errors[] = "requires.min_versions: {$family} is not covered by requires.os.";
                 }
             }
         }

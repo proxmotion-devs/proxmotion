@@ -17,7 +17,10 @@ use Symfony\Component\Yaml\Yaml;
 
 /**
  * The admin recipe editor (docs/adr/0018): custom apps, copies, one draft
- * per app and publishing it as a new version. Bundled apps are read-only.
+ * per app and publishing it as a new version. Bundled apps are edited in
+ * place: their versions are numbered after the bundled one they started
+ * from (1.2.1-local.1), apps:sync keeps new bundled versions for later, and
+ * revert() goes back to the bundled recipe.
  * Published and archived versions never change; installations keep theirs.
  * Every change is audited with a diff against the published version.
  */
@@ -97,12 +100,10 @@ final readonly class RecipeEditor
      * @param  array<string, mixed>  $definition  recipe.yaml as a mapping
      * @param  array<array-key, mixed>  $files  scripts and includes by path
      *
-     * @throws RecipeEditRefused for a bundled app
      * @throws ValidationException for file paths or sizes the recipe format refuses
      */
     public function saveDraft(AppRecipe $app, array $definition, array $files, User $admin, ?string $ipAddress): AppRecipeVersion
     {
-        $this->ensureCustom($app);
         $files = $this->cleanFiles($files);
 
         $draft = DB::transaction(fn () => $this->storeDraft($app, $app->draft()?->version, $definition, $files));
@@ -137,7 +138,6 @@ final readonly class RecipeEditor
      */
     public function discardDraft(AppRecipe $app, User $admin, ?string $ipAddress): void
     {
-        $this->ensureCustom($app);
         $draft = $app->draft() ?? throw new RecipeEditRefused('This app has no draft.');
 
         if ($app->latestVersion === null) {
@@ -150,8 +150,9 @@ final readonly class RecipeEditor
 
     /**
      * Publish the draft as the app's new version: the next version after
-     * every earlier one (patch, minor or major), offered to new
-     * installations at once. The previously published version is archived.
+     * every earlier one (patch, minor or major; a bundled app's next
+     * -local.N), offered to new installations at once. The previously
+     * published version is archived.
      *
      * @param  'patch'|'minor'|'major'  $bump
      *
@@ -160,9 +161,8 @@ final readonly class RecipeEditor
      */
     public function publish(AppRecipe $app, string $bump, User $admin, ?string $ipAddress): AppRecipeVersion
     {
-        $this->ensureCustom($app);
         $draft = $app->draft() ?? throw new RecipeEditRefused('This app has no draft.');
-        $version = self::bump($this->versionsOf($app), $bump);
+        $version = $app->isCustom() ? self::bump($this->versionsOf($app), $bump) : $this->localVersion($app);
         $definition = array_replace($draft->definition, ['slug' => $app->slug, 'version' => $version]);
 
         ['recipe' => $recipe, 'files' => $files] = $this->loader->validate($app->slug, $definition, $draft->files);
@@ -176,6 +176,7 @@ final readonly class RecipeEditor
                 'files' => $files,
                 'checksum' => RecipeSynchronizer::checksum($recipe, $files),
                 'status' => AppRecipeVersionStatus::Published,
+                'origin' => AppRecipeVersion::ORIGIN_LOCAL,
                 'reviewed_by' => $admin->id,
                 'reviewed_at' => now(),
             ])->save();
@@ -192,6 +193,40 @@ final readonly class RecipeEditor
         ], $ipAddress);
 
         return $draft->refresh();
+    }
+
+    /**
+     * Go back from an administrator's edit of a bundled app to the newest
+     * bundled version (docs/adr/0018 §2); the draft is dropped. Installations
+     * keep the version they were installed with.
+     *
+     * @throws RecipeEditRefused for a custom app or one that was not edited
+     */
+    public function revert(AppRecipe $app, User $admin, ?string $ipAddress): AppRecipeVersion
+    {
+        if ($app->isCustom() || ! $app->isModified()) {
+            throw new RecipeEditRefused('Only an edited bundled app can go back to its bundled recipe.');
+        }
+
+        $upstream = $app->latestUpstream() ?? throw new RecipeEditRefused('This app has no bundled version to go back to.');
+        $previous = $app->latestVersion;
+        $recipe = $upstream->recipe();
+
+        DB::transaction(function () use ($app, $upstream, $previous, $recipe) {
+            $app->draft()?->delete();
+            $previous?->forceFill(['status' => AppRecipeVersionStatus::Archived])->save();
+            $upstream->forceFill(['status' => AppRecipeVersionStatus::Published])->save();
+            $app->forceFill(['latest_version_id' => $upstream->id, 'name' => $recipe->name, 'category' => $recipe->category])->save();
+        });
+
+        AuditLog::record('app.reverted', $admin, $app, [
+            'app' => $app->slug,
+            'version' => $upstream->version,
+            'previous' => $previous?->version,
+            'diff' => $this->diff($previous, $upstream->definition, $upstream->files),
+        ], $ipAddress);
+
+        return $upstream->refresh();
     }
 
     /**
@@ -246,6 +281,25 @@ final readonly class RecipeEditor
     }
 
     /**
+     * The next version of an administrator's edit of a bundled app: the
+     * newest bundled version with -local.N, e.g. 1.2.1-local.2. It sorts
+     * before 1.2.1, so a newer bundled release is recognised as newer.
+     */
+    private function localVersion(AppRecipe $app): string
+    {
+        $base = $app->latestUpstream()->version ?? '1.0.0';
+        $highest = 0;
+
+        foreach ($this->versionsOf($app) as $version) {
+            if (preg_match('/^'.preg_quote($base, '/').'-local\.(\d+)$/', $version, $match) === 1) {
+                $highest = max($highest, (int) $match[1]);
+            }
+        }
+
+        return $base.'-local.'.($highest + 1);
+    }
+
+    /**
      * Version numbers the app has used, drafts aside.
      *
      * @return list<string>
@@ -265,11 +319,11 @@ final readonly class RecipeEditor
     private function storeDraft(AppRecipe $app, ?string $version, array $definition, array $files): AppRecipeVersion
     {
         $draft = $app->draft();
-        $version ??= self::bump($this->versionsOf($app), 'patch');
+        $version ??= $app->isCustom() ? self::bump($this->versionsOf($app), 'patch') : $this->localVersion($app);
         // The slug is the app's; the version is set when publishing.
         $definition = array_replace($definition, ['slug' => $app->slug, 'version' => $version]);
 
-        $draft ??= (new AppRecipeVersion)->forceFill(['app_recipe_id' => $app->id, 'status' => AppRecipeVersionStatus::Draft]);
+        $draft ??= (new AppRecipeVersion)->forceFill(['app_recipe_id' => $app->id, 'status' => AppRecipeVersionStatus::Draft, 'origin' => AppRecipeVersion::ORIGIN_LOCAL]);
         $draft->forceFill([
             'version' => $version,
             'format' => (int) ($definition['format'] ?? 1),
@@ -352,7 +406,7 @@ final readonly class RecipeEditor
     private function ensureCustom(AppRecipe $app): void
     {
         if (! $app->isCustom()) {
-            throw new RecipeEditRefused('Bundled apps are read-only; copy the app to change it.');
+            throw new RecipeEditRefused('Bundled apps cannot be deleted; deactivate the app instead.');
         }
     }
 

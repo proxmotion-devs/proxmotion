@@ -5,11 +5,13 @@ import {
     Copy,
     FilePlus,
     Plus,
+    RotateCcw,
     Save,
     Trash2,
     Upload,
 } from '@lucide/vue';
 import { dump, load } from 'js-yaml';
+import { trans } from 'laravel-vue-i18n';
 import { computed, ref } from 'vue';
 import ConfirmDelete from '@/components/admin/ConfirmDelete.vue';
 import FormDialog from '@/components/admin/FormDialog.vue';
@@ -27,6 +29,7 @@ import {
     CATEGORIES,
     NETWORK_MODELS,
     editable,
+    expandOs,
     languageOf,
     pruned,
 } from '@/lib/recipes';
@@ -42,6 +45,7 @@ import {
     diff as diffRoute,
     index,
     publish as publishRoute,
+    revert as revertRoute,
 } from '@/routes/admin/apps';
 import { discard, save } from '@/routes/admin/apps/draft';
 
@@ -65,6 +69,11 @@ const props = defineProps<{
         installed: boolean;
         copied_from: { slug: string; name: string; version: string } | null;
         upstream_version: string | null;
+        /** A bundled app an administrator edited in place. */
+        modified: boolean;
+        bundled_version: string | null;
+        /** A bundled release newer than the one the edit started from. */
+        bundled_newer: boolean;
     };
     draft: (Snapshot & { errors: string[] }) | null;
     published: Snapshot | null;
@@ -80,7 +89,7 @@ const props = defineProps<{
         published_at: string | null;
         created_at: string | null;
     }[];
-    capabilities: string[];
+    osGroups: Record<string, { families: string[]; os_release: string[] }>;
     families: string[];
     library: Record<string, string>;
 }>();
@@ -242,16 +251,15 @@ const toggleInclude = (name: string, value: boolean | 'indeterminate') => {
             : includes.filter((existing) => existing !== name);
 };
 
-// Compatibility
-const capabilitiesText = computed({
-    get: () => (definition.value.requires.capabilities ?? []).join(', '),
-    set: (value: string) => {
-        definition.value.requires.capabilities = value
-            .split(',')
-            .map((item) => item.trim())
-            .filter((item) => item !== '');
-    },
-});
+// Compatibility: template families or groups of them (docs/adr/0016 §3).
+const osFamilies = computed(() =>
+    props.families.filter(
+        (family) => family !== 'windows' && family !== 'other',
+    ),
+);
+const coveredFamilies = computed(() =>
+    expandOs(definition.value.requires.os ?? [], props.osGroups),
+);
 
 const toggleList = (
     list: string[] | undefined,
@@ -312,6 +320,19 @@ const saveDraft = () => {
             onSuccess: reset,
         },
     );
+};
+
+const revertToBundled = () => {
+    if (
+        window.confirm(
+            trans(
+                'Go back to the bundled version :version? Your changes stay in the history; installations keep their version.',
+                { version: props.app.bundled_version ?? '' },
+            ),
+        )
+    ) {
+        router.post(revertRoute(props.app.slug), {}, { preserveScroll: true });
+    }
 };
 
 const discardDraft = () =>
@@ -414,11 +435,7 @@ const statusLabels = {
                 </Link>
                 <Heading
                     :title="app.name"
-                    :description="
-                        app.editable
-                            ? 'Scripts run as root inside customers\' servers. Only publish what you have tried on a test server.'
-                            : 'A bundled app is read-only. Copy it to change how it is installed.'
-                    "
+                    description="Scripts run as root inside customers' servers. Only publish what you have tried on a test server."
                 />
                 <div class="flex flex-wrap items-center gap-2 text-sm">
                     <span class="font-mono text-muted-foreground">{{
@@ -434,6 +451,23 @@ const statusLabels = {
                         :label="`v${published.version}`"
                     />
                     <StatusBadge v-if="draft" tone="warning" label="Draft" />
+                    <StatusBadge
+                        v-if="app.modified"
+                        tone="warning"
+                        label="Modified"
+                    />
+                    <span
+                        v-if="app.bundled_newer"
+                        class="text-amber-600 dark:text-amber-400"
+                        data-test="bundled-newer"
+                    >
+                        {{
+                            $t(
+                                'A newer bundled version is available: :version. Compare it in the history, then merge your changes or go back to it.',
+                                { version: app.bundled_version ?? '' },
+                            )
+                        }}
+                    </span>
                     <span v-if="app.copied_from" class="text-muted-foreground">
                         {{
                             $t('Copied from :app :version', {
@@ -459,6 +493,15 @@ const statusLabels = {
                 <Button variant="outline" @click="openCopy">
                     <Copy class="h-4 w-4" />
                     {{ $t('Copy') }}
+                </Button>
+                <Button
+                    v-if="app.modified"
+                    variant="outline"
+                    data-test="revert"
+                    @click="revertToBundled"
+                >
+                    <RotateCcw class="h-4 w-4" />
+                    {{ $t('Back to bundled version') }}
                 </Button>
                 <template v-if="app.editable">
                     <Button
@@ -486,7 +529,7 @@ const statusLabels = {
                         {{ $t('Publish') }}
                     </Button>
                     <ConfirmDelete
-                        v-if="!app.installed"
+                        v-if="app.source === 'custom' && !app.installed"
                         with-label
                         :action="destroy(app.slug)"
                         :name="app.name"
@@ -634,54 +677,80 @@ const statusLabels = {
                     :disabled="readonly"
                 />
             </FormField>
-            <FormField
-                label="Required template capabilities"
-                for="capabilities"
-                hint="Separated by commas; alternatives with |, e.g. systemd, apt|dnf, bash."
-            >
-                <Input
-                    id="capabilities"
-                    v-model="capabilitiesText"
-                    class="font-mono"
-                    :disabled="readonly"
-                />
-                <p class="text-xs text-muted-foreground">
-                    {{ capabilities.join(' · ') }}
-                </p>
-            </FormField>
             <div class="grid gap-2">
                 <span class="text-sm font-medium">{{
-                    $t('Only these families (none: any with the capabilities)')
+                    $t('Operating systems (none: any of the platform)')
                 }}</span>
+                <p class="text-xs text-muted-foreground">
+                    {{
+                        $t(
+                            'Groups work like ID_LIKE in /etc/os-release: debian covers Debian and Ubuntu, rhel covers AlmaLinux, Rocky, CentOS and Fedora. The server checks /etc/os-release again before a script runs.',
+                        )
+                    }}
+                </p>
                 <div class="flex flex-wrap gap-x-4 gap-y-2">
-                    <div
-                        v-for="family in families"
+                    <label
+                        v-for="(group, name) in osGroups"
+                        :key="name"
+                        class="flex items-center gap-2 text-sm"
+                    >
+                        <Checkbox
+                            :model-value="
+                                (definition.requires.os ?? []).includes(
+                                    String(name),
+                                )
+                            "
+                            :disabled="readonly"
+                            @update:model-value="
+                                definition.requires.os = toggleList(
+                                    definition.requires.os,
+                                    String(name),
+                                    $event,
+                                )
+                            "
+                        />
+                        <span class="font-mono text-xs">{{ name }}</span>
+                        <span class="text-xs text-muted-foreground">{{
+                            group.families.join(', ')
+                        }}</span>
+                    </label>
+                </div>
+                <div class="flex flex-wrap gap-x-4 gap-y-2">
+                    <label
+                        v-for="family in osFamilies"
                         :key="family"
                         class="flex items-center gap-2 text-sm"
                     >
                         <Checkbox
                             :model-value="
-                                (definition.requires.families ?? []).includes(
-                                    family,
-                                )
+                                (definition.requires.os ?? []).includes(family)
                             "
                             :disabled="readonly"
                             @update:model-value="
-                                definition.requires.families = toggleList(
-                                    definition.requires.families,
+                                definition.requires.os = toggleList(
+                                    definition.requires.os,
                                     family,
                                     $event,
                                 )
                             "
                         />
                         <span class="font-mono text-xs">{{ family }}</span>
+                    </label>
+                </div>
+            </div>
+            <div v-if="coveredFamilies.length" class="grid gap-2">
+                <span class="text-sm font-medium">{{
+                    $t('Lowest version (empty: any)')
+                }}</span>
+                <div class="flex flex-wrap gap-x-4 gap-y-2">
+                    <label
+                        v-for="family in coveredFamilies"
+                        :key="family"
+                        class="flex items-center gap-2 text-sm"
+                    >
+                        <span class="font-mono text-xs">{{ family }}</span>
                         <Input
-                            v-if="
-                                (definition.requires.families ?? []).includes(
-                                    family,
-                                )
-                            "
-                            v-model="minVersions[family]"
+                            :model-value="minVersions[family] ?? ''"
                             class="h-7 w-20"
                             :placeholder="$t('min.')"
                             :disabled="readonly"
@@ -692,7 +761,7 @@ const statusLabels = {
                                 }
                             "
                         />
-                    </div>
+                    </label>
                 </div>
             </div>
             <div class="grid gap-4 sm:grid-cols-3">
@@ -1155,6 +1224,7 @@ const statusLabels = {
         @submit="submitPublish"
     >
         <FormField
+            v-if="app.source === 'custom'"
             label="Version change"
             for="bump"
             :error="publishForm.errors.bump"
@@ -1165,6 +1235,13 @@ const statusLabels = {
                 :options="bumps"
             />
         </FormField>
+        <p v-else class="text-sm text-muted-foreground">
+            {{
+                $t(
+                    'Your edit of a bundled app is numbered after its bundled version (e.g. 1.2.1-local.1). Panel updates keep it; a newer bundled version is offered here to compare.',
+                )
+            }}
+        </p>
     </FormDialog>
 
     <FormDialog

@@ -25,6 +25,8 @@ defineProps<{
         slug: string;
         name: string;
         source: 'bundled' | 'custom';
+        /** A bundled app an administrator edited in place. */
+        modified: boolean;
         published: boolean;
         draft_version: string | null;
         version: string | null;
@@ -68,7 +70,7 @@ const submitCreate = () =>
         <div class="flex flex-wrap items-start justify-between gap-4">
             <Heading
                 title="Apps"
-                description="Apps customers can install on their servers through the billing system. Bundled apps come with the panel (php artisan apps:sync); write your own or copy a bundled one to change it."
+                description="Apps customers can install on their servers through the billing system. Bundled apps come with the panel (php artisan apps:sync) and can be edited here; panel updates keep your changes. You can also write your own."
             />
             <Button
                 data-test="new-app"
@@ -111,6 +113,12 @@ const submitCreate = () =>
                                 label="Custom"
                             />
                             <StatusBadge
+                                v-if="app.modified"
+                                class="ml-2"
+                                tone="warning"
+                                label="Modified"
+                            />
+                            <StatusBadge
                                 v-if="app.draft_version"
                                 class="ml-2"
                                 tone="warning"
@@ -145,11 +153,7 @@ const submitCreate = () =>
                             >
                                 <Link :href="edit(app.slug)">
                                     <Pencil class="h-4 w-4" />
-                                    {{
-                                        app.source === 'custom'
-                                            ? $t('Edit')
-                                            : $t('View')
-                                    }}
+                                    {{ $t('Edit') }}
                                 </Link>
                             </Button>
                             <Button

@@ -13,8 +13,8 @@ use App\Models\Server;
 /**
  * Whether an app may be installed (docs/adr/0015, 0016 §3): active with an
  * approved version, free (paid apps need entitlements, Phase 5b),
- * installable later, a template whose platform, capabilities, family and
- * version fit the recipe, enough resources and a supported network model.
+ * installable later, a template whose platform, family (or family group)
+ * and version fit the recipe, enough resources and a supported network model.
  * Ineligible apps are not listed and cannot be installed.
  */
 final class AppEligibility

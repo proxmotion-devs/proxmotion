@@ -108,8 +108,6 @@ export type OsTemplate = {
     family: string;
     version: string;
     platform: OsPlatform;
-    /** What app recipes may rely on (docs/adr/0016). */
-    capabilities: string[];
     is_active: boolean;
     sort_order: number;
     proxmox_template_ids: number[];

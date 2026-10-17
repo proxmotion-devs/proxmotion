@@ -53,6 +53,28 @@ if ! command -v jq >/dev/null 2>&1; then
     exit 1
 fi
 
+# The template's family decided that the app fits; /etc/os-release has the last word.
+accepted=$(jq -r '(.os_release // []) | join(" ")' "$PROXMOTION_APP_DIR/server.json" 2>/dev/null || true)
+
+if [ -n "$accepted" ] && [ -r /etc/os-release ]; then
+    # shellcheck source=/dev/null
+    os_ids=$(. /etc/os-release && echo "${ID:-} ${ID_LIKE:-}")
+    # shellcheck source=/dev/null
+    os_name=$(. /etc/os-release && echo "${PRETTY_NAME:-${ID:-this operating system}}")
+    fits=
+
+    for id in $os_ids; do
+        for wanted in $accepted; do
+            [ "$id" = "$wanted" ] && fits=1
+        done
+    done
+
+    if [ -z "$fits" ]; then
+        pm_status failed 0 "Preparing" "This app does not support ${os_name}."
+        exit 1
+    fi
+fi
+
 echo '{}' >outputs.json
 
 if bash "$PROXMOTION_APP_DIR/$script" >>"$log" 2>&1; then

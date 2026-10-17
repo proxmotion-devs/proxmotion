@@ -21,7 +21,7 @@ use LogicException;
  *
  * @property int $id
  * @property string $slug
- * @property string $source bundled (panel/recipes, read-only) or custom (admin editor, docs/adr/0018); catalogs: docs/adr/0017
+ * @property string $source bundled (panel/recipes; editable in place) or custom (admin editor, docs/adr/0018); catalogs: docs/adr/0017
  * @property int|null $latest_version_id the published version
  * @property int|null $copied_from_version_id the version a custom app was copied from
  * @property string $name of the latest version
@@ -83,6 +83,31 @@ class AppRecipe extends Model
     public function isCustom(): bool
     {
         return $this->source === self::SOURCE_CUSTOM;
+    }
+
+    /**
+     * A bundled app whose published version an administrator edited
+     * (docs/adr/0018 §2): apps:sync no longer replaces it.
+     */
+    public function isModified(): bool
+    {
+        return ! $this->isCustom() && $this->latestVersion?->origin === AppRecipeVersion::ORIGIN_LOCAL;
+    }
+
+    /**
+     * The newest version shipped in panel/recipes (bundled apps), whatever its status.
+     */
+    public function latestUpstream(): ?AppRecipeVersion
+    {
+        $newest = null;
+
+        foreach ($this->versions()->where('origin', AppRecipeVersion::ORIGIN_UPSTREAM)->get() as $version) {
+            if ($newest === null || version_compare($version->version, $newest->version, '>')) {
+                $newest = $version;
+            }
+        }
+
+        return $newest;
     }
 
     /**

@@ -3,6 +3,7 @@
 namespace Tests\Feature\Admin;
 
 use App\Domain\Apps\AppEligibility;
+use App\Domain\Apps\RecipeLoader;
 use App\Domain\Apps\RecipeSynchronizer;
 use App\Enums\AppRecipeVersionStatus;
 use App\Models\AppInstallation;
@@ -10,12 +11,13 @@ use App\Models\AppRecipe;
 use App\Models\AppRecipeVersion;
 use App\Models\AuditLog;
 use App\Models\OsTemplate;
+use Illuminate\Support\Facades\File;
 use Illuminate\Testing\TestResponse;
 use Symfony\Component\Yaml\Yaml;
 
 /**
  * The admin recipe editor (docs/adr/0018): custom apps, copies, drafts,
- * publishing, deleting; bundled apps stay read-only.
+ * publishing, deleting, and bundled apps edited in place.
  */
 class RecipeEditorTest extends AdminTestCase
 {
@@ -82,10 +84,8 @@ class RecipeEditorTest extends AdminTestCase
         $this->assertSame('1.0.0', $draft?->version);
         $this->assertSame($wireguard->current()->files, $draft->files);
         $this->assertSame(['my-vpn', 'My VPN'], [$draft->definition['slug'], $draft->definition['name']]);
-        $this->assertSame(['app' => 'my-vpn', 'from' => 'wireguard@1.2.0'], AuditLog::query()->where('action', 'app.copied')->sole()->properties);
-
-        $this->save($wireguard, 'name: Changed', ['install.sh' => 'echo hi'])->assertSessionHasErrors('app');
-        $this->assertSame('WireGuard', $wireguard->current()->refresh()->definition['name'], 'Bundled apps are read-only.');
+        $this->assertSame(['app' => 'my-vpn', 'from' => 'wireguard@1.2.1'], AuditLog::query()->where('action', 'app.copied')->sole()->properties);
+        $this->assertSame('WireGuard', $wireguard->current()->refresh()->definition['name'], 'The original stays as it was.');
     }
 
     public function test_a_draft_is_saved_audited_with_a_diff_and_published_as_a_version()
@@ -193,24 +193,26 @@ class RecipeEditorTest extends AdminTestCase
             ->where('apps.2.version', null));
     }
 
-    public function test_the_editor_opens_bundled_apps_read_only_and_custom_drafts_with_their_errors()
+    public function test_the_editor_opens_bundled_apps_for_editing_and_custom_drafts_with_their_errors()
     {
         $this->get(route('admin.apps.edit', $this->app('wireguard')))->assertOk()->assertInertia(fn ($page) => $page
             ->component('admin/apps/Edit')
-            ->where('app.editable', false)
+            ->where('app.editable', true)
+            ->where('app.modified', false)
+            ->where('app.bundled_version', '1.2.1')
             ->where('app.source', 'bundled')
             ->where('draft', null)
-            ->where('published.version', '1.2.0')
+            ->where('published.version', '1.2.1')
             ->where('published.definition.slug', 'wireguard')
             ->where('published.files', fn ($files) => collect($files)->has('lib.sh'))
             ->where('library', fn ($library) => collect($library)->has('proxmotion.sh'))
-            ->where('capabilities', fn ($capabilities) => collect($capabilities)->contains('dnf')));
+            ->where('osGroups.rhel.families', ['almalinux', 'rocky', 'centos', 'fedora']));
 
         $this->post(route('admin.apps.copy', $this->app('wireguard')), ['slug' => 'my-vpn', 'name' => 'My VPN']);
 
         $this->get(route('admin.apps.edit', $this->app('my-vpn')))->assertInertia(fn ($page) => $page
             ->where('app.editable', true)
-            ->where('app.copied_from', ['slug' => 'wireguard', 'name' => 'WireGuard', 'version' => '1.2.0'])
+            ->where('app.copied_from', ['slug' => 'wireguard', 'name' => 'WireGuard', 'version' => '1.2.1'])
             ->where('app.upstream_version', null)
             ->where('draft.version', '1.0.0')
             ->where('draft.errors', [])
@@ -231,6 +233,63 @@ class RecipeEditorTest extends AdminTestCase
             ->assertOk()
             ->assertJsonPath('diff', fn (string $diff) => str_contains($diff, '+echo changed') && str_contains($diff, '--- a/install.sh'));
         $this->getJson(route('admin.apps.diff', ['appRecipe' => $app, 'from' => '9.9.9', 'to' => 'draft']))->assertNotFound();
+    }
+
+    public function test_a_bundled_app_is_edited_in_place_and_kept_through_panel_updates()
+    {
+        $wireguard = $this->app('wireguard');
+        $definition = $wireguard->current()->definition;
+        $definition['resources']['min_memory_mib'] = 1024;
+
+        $this->save($wireguard, Yaml::dump($definition, 6, 4), $wireguard->current()->files)->assertSessionHasNoErrors();
+        $this->assertSame('1.2.1-local.1', $wireguard->draft()?->version);
+        $this->assertFalse($wireguard->refresh()->isModified(), 'A draft changes nothing yet.');
+
+        $this->post(route('admin.apps.publish', $wireguard), ['bump' => 'major'])->assertSessionHasNoErrors();
+        $wireguard->refresh();
+        $this->assertSame('1.2.1-local.1', $wireguard->current()->version, 'Bundled edits ignore the bump.');
+        $this->assertSame(AppRecipeVersion::ORIGIN_LOCAL, $wireguard->current()->origin);
+        $this->assertTrue($wireguard->isModified());
+        $this->assertSame(1024, $wireguard->recipe()->minMemoryMib);
+
+        // A panel update ships wireguard 1.2.2: it is kept, not offered.
+        $this->app->instance(RecipeLoader::class, $this->recipesWithWireguard('1.2.2'));
+        $this->assertSame(['wireguard'], app(RecipeSynchronizer::class)->sync()['held']);
+        $wireguard->refresh();
+        $this->assertSame('1.2.1-local.1', $wireguard->current()->version);
+        $this->assertSame(AppRecipeVersionStatus::Archived, $wireguard->versions()->where('version', '1.2.2')->sole()->status);
+
+        $this->get(route('admin.apps.edit', $wireguard))->assertInertia(fn ($page) => $page
+            ->where('app.modified', true)
+            ->where('app.bundled_version', '1.2.2')
+            ->where('app.bundled_newer', true));
+
+        // A second edit is numbered after the newest bundled version.
+        $this->save($wireguard, Yaml::dump($wireguard->current()->definition, 6, 4), $wireguard->current()->files);
+        $this->assertSame('1.2.2-local.1', $wireguard->draft()?->version);
+
+        $this->post(route('admin.apps.revert', $wireguard))->assertSessionHasNoErrors();
+        $wireguard->refresh();
+        $this->assertSame('1.2.2', $wireguard->current()->version);
+        $this->assertFalse($wireguard->isModified());
+        $this->assertNull($wireguard->draft(), 'Going back drops the draft.');
+        $this->assertSame(AppRecipeVersionStatus::Archived, $wireguard->versions()->where('version', '1.2.1-local.1')->sole()->status);
+        $this->assertSame(1, AuditLog::query()->where('action', 'app.reverted')->count());
+        $this->post(route('admin.apps.revert', $wireguard))->assertSessionHasErrors('app');
+    }
+
+    /**
+     * A copy of panel/recipes in which wireguard has another version.
+     */
+    private function recipesWithWireguard(string $version): RecipeLoader
+    {
+        $directory = sys_get_temp_dir().'/proxmotion-recipes-'.uniqid();
+        File::copyDirectory(base_path('recipes'), $directory);
+        $yaml = $directory.'/wireguard/recipe.yaml';
+        file_put_contents($yaml, (string) preg_replace('/^version: .*$/m', 'version: '.$version, (string) file_get_contents($yaml)));
+        $this->beforeApplicationDestroyed(fn () => File::deleteDirectory($directory));
+
+        return new RecipeLoader($directory);
     }
 
     public function test_sync_never_replaces_a_custom_app_with_the_same_slug()

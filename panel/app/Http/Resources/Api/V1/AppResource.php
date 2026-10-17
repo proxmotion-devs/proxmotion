@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Resources\Api\V1;
 
+use App\Domain\Apps\OsFamilies;
 use App\Domain\Apps\RecipeAction;
 use App\Domain\Apps\RecipeInput;
 use App\Domain\Apps\RecipeOutput;
@@ -33,12 +34,11 @@ class AppResource extends JsonResource
             'category' => $recipe->category,
             'description' => $recipe->description,
             'format' => $recipe->format,
-            // Format 2 recipes ask for template capabilities (requires); `os` then lists the families with any version.
-            'os' => $recipe->format === 1 ? $recipe->os : array_map(fn (string $family) => ['family' => $family, 'versions' => []], $recipe->families ?? []),
+            // Format 2 recipes name families or groups (requires.os); `os` then lists the template families they cover, with any version.
+            'os' => $recipe->format === 1 ? $recipe->os : array_map(fn (string $family) => ['family' => $family, 'versions' => []], OsFamilies::expand($recipe->families ?? [])),
             'requires' => [
                 'platform' => $recipe->platform,
-                'capabilities' => $recipe->capabilities,
-                'families' => $recipe->families,
+                'os' => $recipe->families,
                 'min_versions' => (object) $recipe->minVersions,
             ],
             'requirements' => [

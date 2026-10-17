@@ -31,7 +31,10 @@ final readonly class GuestPackage
         $directory = $installation->guestDirectory();
         $files = $this->recipes->library() + $installation->version->files + [
             'inputs.json' => self::json($installation->inputs === [] ? new stdClass : $installation->inputs),
-            'server.json' => self::json($this->serverFacts($server)),
+            'server.json' => self::json($this->serverFacts($server) + [
+                // run.sh compares them with /etc/os-release before any script runs (docs/adr/0016 §3).
+                'os_release' => OsFamilies::osReleaseIds($installation->version->recipe()->families),
+            ]),
         ];
 
         $directories = [$directory];
