@@ -4,7 +4,8 @@ declare(strict_types=1);
 
 /*
  * The client area's Apps tool (Proxmotion::tool_data('apps')): installed apps
- * with status, progress, outputs and retry, and a form per installable app.
+ * with status, progress, outputs and retry, their actions, uninstall and
+ * latest runs (ADR 0016), and a form per installable app.
  * WISECP renders it with the variables of ServerModule::render_tool_page();
  * actions go through request_tool_action() of WISECP's service page.
  *
@@ -29,7 +30,83 @@ $installations = is_array($data['installations'] ?? null) ? $data['installations
 /** @var list<array<string, mixed>> $apps */
 $apps = is_array($data['apps'] ?? null) ? $data['apps'] : [];
 $busy = ! empty($data['installing']);
+$runBusy = array_filter($installations, static fn (array $installation): bool => ! empty($installation['run_busy'])) !== [];
 $inputTypes = ['password' => 'password', 'integer' => 'number', 'port' => 'number', 'email' => 'email'];
+
+/**
+ * Outputs of an installation or of a run ($run non-empty): texts shown, files downloaded on demand.
+ *
+ * @param array<mixed> $outputs
+ */
+$outputsHtml = static function (array $outputs, string $installation, string $run) use ($e, $t): string {
+    $html = '';
+
+    foreach ($outputs as $output) {
+        if (! is_array($output)) {
+            continue;
+        }
+
+        $html .= '<div class="small mt-1"><span class="text-muted">' . $e($output['label'] ?? '') . ':</span> ';
+
+        if (($output['type'] ?? '') === 'file') {
+            $html .= '<button type="button" class="btn btn-link btn-sm p-0 align-baseline" onclick="pmxAppDownload(this)" data-installation="' . $e($installation) . '" data-run="' . $e($run) . '" data-output="' . $e($output['key'] ?? '') . '">'
+                . '<i class="bi bi-download me-1"></i>' . $t('app_download') . ' (' . $e($output['filename'] ?? '') . ')</button>';
+        } elseif (($output['type'] ?? '') === 'url' && preg_match('#^https?://#i', (string) ($output['value'] ?? '')) === 1) {
+            $html .= '<a href="' . $e($output['value']) . '" target="_blank" rel="noopener noreferrer">' . $e($output['value']) . '</a>';
+        } else {
+            $html .= '<code class="user-select-all">' . $e($output['value'] ?? '') . '</code>';
+        }
+
+        $html .= '</div>';
+    }
+
+    return $html;
+};
+
+/**
+ * Fields of declared inputs; the values go out as JSON (secret_inputs).
+ *
+ * @param array<mixed> $inputs
+ */
+$inputsHtml = static function (array $inputs, string $prefix) use ($e, $inputTypes): string {
+    $html = '';
+
+    foreach ($inputs as $input) {
+        if (! is_array($input)) {
+            continue;
+        }
+
+        $key = (string) ($input['key'] ?? '');
+        $type = (string) ($input['type'] ?? 'string');
+        $field = $prefix . '-' . $key;
+        $default = (string) ($input['default'] ?? '');
+        $html .= '<div class="mb-2">';
+
+        if ($type === 'boolean') {
+            $html .= '<div class="form-check"><input class="form-check-input" type="checkbox" id="' . $e($field) . '" data-input="' . $e($key) . '" data-boolean="1"' . ($default === '1' ? ' checked' : '') . '>'
+                . '<label class="form-check-label" for="' . $e($field) . '">' . $e($input['label'] ?? $key) . '</label></div>';
+        } else {
+            $html .= '<label class="form-label small fw-semibold" for="' . $e($field) . '">' . $e($input['label'] ?? $key) . '</label>';
+
+            if ($type === 'enum') {
+                $html .= '<select class="form-select form-select-sm" id="' . $e($field) . '" data-input="' . $e($key) . '">';
+
+                foreach (is_array($input['options'] ?? null) ? $input['options'] : [] as $option) {
+                    $html .= '<option value="' . $e($option) . '"' . ((string) $option === $default ? ' selected' : '') . '>' . $e($option) . '</option>';
+                }
+
+                $html .= '</select>';
+            } else {
+                $html .= '<input class="form-control form-control-sm" id="' . $e($field) . '" data-input="' . $e($key) . '" autocomplete="off" type="' . ($inputTypes[$type] ?? 'text') . '"'
+                    . ' value="' . ($type === 'password' ? '' : $e($default)) . '"' . (! empty($input['required']) ? ' required' : '') . '>';
+            }
+        }
+
+        $html .= '</div>';
+    }
+
+    return $html;
+};
 ?>
 <div id="pmx-apps">
 <div class="card bg-gradient border-0 mb-2">
@@ -87,20 +164,48 @@ $inputTypes = ['password' => 'password', 'integer' => 'number', 'port' => 'numbe
                         <?php if (isset($installation['error'])): ?>
                             <div class="text-danger small mt-1"><?= $e($installation['error']) ?></div>
                         <?php endif; ?>
-                        <?php foreach ($outputs as $output): ?>
-                            <div class="small mt-1">
-                                <span class="text-muted"><?= $e($output['label'] ?? '') ?>:</span>
-                                <?php if (($output['type'] ?? '') === 'file'): ?>
-                                    <button type="button" class="btn btn-link btn-sm p-0 align-baseline" onclick="pmxAppDownload(this)" data-installation="<?= $e($installation['id'] ?? '') ?>" data-output="<?= $e($output['key'] ?? '') ?>">
-                                        <i class="bi bi-download me-1"></i><?= $t('app_download') ?> (<?= $e($output['filename'] ?? '') ?>)
-                                    </button>
-                                <?php elseif (($output['type'] ?? '') === 'url' && preg_match('#^https?://#i', (string) ($output['value'] ?? '')) === 1): ?>
-                                    <a href="<?= $e($output['value']) ?>" target="_blank" rel="noopener noreferrer"><?= $e($output['value']) ?></a>
-                                <?php else: ?>
-                                    <code class="user-select-all"><?= $e($output['value'] ?? '') ?></code>
+                        <?= $outputsHtml($outputs, (string) ($installation['id'] ?? ''), '') ?>
+                        <?php
+                        /** @var list<array<string, mixed>> $appActions */
+                        $appActions = is_array($installation['actions'] ?? null) ? $installation['actions'] : [];
+                        /** @var list<array<string, mixed>> $runs */
+                        $runs = is_array($installation['runs'] ?? null) ? $installation['runs'] : [];
+                        ?>
+                        <?php if (! empty($installation['run_busy'])): ?>
+                            <div class="alert alert-info small mt-2 mb-0"><i class="bi bi-hourglass-split me-1"></i><?= $t('app_run_busy') ?></div>
+                        <?php elseif ($appActions !== [] || ! empty($installation['can_uninstall'])): ?>
+                            <div class="d-flex flex-wrap gap-2 mt-2">
+                                <?php foreach ($appActions as $appAction): ?>
+                                    <form class="border rounded p-2" onsubmit="return pmxAppAction(this, event)" data-installation="<?= $e($installation['id'] ?? '') ?>" data-action="<?= $e($appAction['key'] ?? '') ?>" novalidate>
+                                        <div class="small fw-semibold mb-1"><?= $e($appAction['label'] ?? '') ?></div>
+                                        <?= $inputsHtml(is_array($appAction['inputs'] ?? null) ? $appAction['inputs'] : [], 'pmx-action-' . ($installation['id'] ?? '') . '-' . ($appAction['key'] ?? '')) ?>
+                                        <button type="submit" class="btn btn-sm btn-outline-primary"><i class="bi bi-play me-1"></i><?= $t('app_run_submit') ?></button>
+                                    </form>
+                                <?php endforeach; ?>
+                                <?php if (! empty($installation['can_uninstall'])): ?>
+                                    <div class="align-self-end">
+                                        <button type="button" class="btn btn-sm btn-outline-danger" onclick="pmxAppUninstall(this)" data-installation="<?= $e($installation['id'] ?? '') ?>" data-confirm="<?= $t('app_uninstall_confirm') ?>">
+                                            <i class="bi bi-trash me-1"></i><?= $t('app_uninstall') ?>
+                                        </button>
+                                    </div>
                                 <?php endif; ?>
                             </div>
-                        <?php endforeach; ?>
+                        <?php endif; ?>
+                        <?php if ($runs !== []): ?>
+                            <div class="small mt-2">
+                                <div class="text-muted"><?= $t('app_runs') ?></div>
+                                <?php foreach ($runs as $run): ?>
+                                    <div class="mt-1">
+                                        <?= $e($run['label'] ?? '') ?>
+                                        <span class="badge <?= ($run['status'] ?? '') === 'succeeded' ? 'bg-success' : (! empty($run['failed']) ? 'bg-danger' : (! empty($run['busy']) ? 'bg-warning text-dark' : 'bg-secondary')) ?> ms-1"><?= $e($run['status_label'] ?? '') ?></span>
+                                        <?php if (isset($run['error'])): ?>
+                                            <span class="text-danger ms-1"><?= $e($run['error']) ?></span>
+                                        <?php endif; ?>
+                                        <?= $outputsHtml(is_array($run['outputs'] ?? null) ? $run['outputs'] : [], (string) ($installation['id'] ?? ''), (string) ($run['id'] ?? '')) ?>
+                                    </div>
+                                <?php endforeach; ?>
+                            </div>
+                        <?php endif; ?>
                     </li>
                 <?php endforeach; ?>
             </ul>
@@ -166,6 +271,48 @@ $inputTypes = ['password' => 'password', 'integer' => 'number', 'port' => 'numbe
 (function () {
     var TOOL = 'apps';
 
+    // The form's inputs as JSON, sent in secret_inputs (masked in WISECP's service history).
+    function pmxInputs(form) {
+        var inputs = {};
+        form.querySelectorAll('[data-input]').forEach(function (field) {
+            inputs[field.getAttribute('data-input')] = field.getAttribute('data-boolean') ? (field.checked ? '1' : '0') : field.value;
+        });
+
+        return JSON.stringify(inputs);
+    }
+
+    window.pmxAppAction = function (form, event) {
+        event.preventDefault();
+
+        if (!form.reportValidity()) {
+            return false;
+        }
+
+        request_tool_action(TOOL, 'action', {
+            installation: form.getAttribute('data-installation'),
+            app_action: form.getAttribute('data-action'),
+            secret_inputs: pmxInputs(form),
+        }, {
+            button: form.querySelector('button[type="submit"]'),
+            successToast: true,
+            afterDone: function () { reload_module_content(TOOL); },
+        });
+
+        return false;
+    };
+
+    window.pmxAppUninstall = function (button) {
+        if (!window.confirm(button.getAttribute('data-confirm'))) {
+            return;
+        }
+
+        request_tool_action(TOOL, 'uninstall', { installation: button.getAttribute('data-installation') }, {
+            button: button,
+            successToast: true,
+            afterDone: function () { reload_module_content(TOOL); },
+        });
+    };
+
     window.pmxAppInstall = function (form, event) {
         event.preventDefault();
 
@@ -173,14 +320,9 @@ $inputTypes = ['password' => 'password', 'integer' => 'number', 'port' => 'numbe
             return false;
         }
 
-        var inputs = {};
-        form.querySelectorAll('[data-input]').forEach(function (field) {
-            inputs[field.getAttribute('data-input')] = field.getAttribute('data-boolean') ? (field.checked ? '1' : '0') : field.value;
-        });
-
         request_tool_action(TOOL, 'install', {
             app: form.getAttribute('data-app'),
-            secret_inputs: JSON.stringify(inputs),
+            secret_inputs: pmxInputs(form),
         }, {
             button: form.querySelector('button[type="submit"]'),
             successToast: true,
@@ -202,6 +344,7 @@ $inputTypes = ['password' => 'password', 'integer' => 'number', 'port' => 'numbe
     window.pmxAppDownload = function (button) {
         request_tool_action(TOOL, 'download', {
             installation: button.getAttribute('data-installation'),
+            run: button.getAttribute('data-run') || '',
             output: button.getAttribute('data-output'),
         }, {
             button: button,
@@ -227,8 +370,8 @@ $inputTypes = ['password' => 'password', 'integer' => 'number', 'port' => 'numbe
         });
     };
 
-    <?php if ($busy): ?>
-    // Proxmotion reads the installer's progress about once a minute.
+    <?php if ($busy || $runBusy): ?>
+    // Proxmotion reads the progress of installers and actions about once a minute.
     setTimeout(function () {
         if (document.getElementById('pmx-apps') !== null && typeof reload_module_content === 'function') {
             reload_module_content(TOOL);

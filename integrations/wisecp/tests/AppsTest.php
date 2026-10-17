@@ -68,7 +68,7 @@ final class AppsTest extends ModuleTestCase
         $this->assertNotNull($tool);
         $this->assertSame('Apps', $tool['label']);
         $this->assertSame('page-loader', $tool['type']);
-        $this->assertSame(['list', 'install', 'retry', 'download'], $tool['capabilities']);
+        $this->assertSame(['list', 'install', 'retry', 'download', 'uninstall', 'action'], $tool['capabilities']);
         $this->assertTrue($tool['supported']);
     }
 
@@ -87,6 +87,7 @@ final class AppsTest extends ModuleTestCase
     {
         $this->serviceHas($this->server());
         $this->api->on('GET ' . self::SERVER . '/apps', 200, ['data' => [self::installation()]]);
+        $this->api->on('GET ' . self::SERVER . '/apps/installation-uuid/runs', 200, ['data' => []]);
         $this->api->on('GET /apps?server=' . self::SERVER_ID, 200, ['data' => [self::wireguard()]]);
 
         $data = $this->turkish($this->module())->tool_data('apps', 'index');
@@ -107,6 +108,7 @@ final class AppsTest extends ModuleTestCase
     {
         $this->serviceHas($this->server());
         $this->api->on('GET ' . self::SERVER . '/apps', 200, ['data' => [self::installation(['status' => 'installing', 'progress' => 40, 'step' => 'Installing packages', 'outputs' => []])]]);
+        $this->api->on('GET ' . self::SERVER . '/apps/installation-uuid/runs', 200, ['data' => []]);
 
         $data = $this->module()->tool_data('apps', 'index');
 
@@ -198,6 +200,101 @@ final class AppsTest extends ModuleTestCase
 
         $this->assertStringNotContainsString('very-secret-pw', (string) json_encode($module->logs));
         $this->assertStringNotContainsString(self::TOKEN, (string) json_encode($module->logs));
+    }
+
+    /**
+     * @param array<string, mixed> $overrides
+     * @return array<string, mixed>
+     */
+    private static function appRun(array $overrides = []): array
+    {
+        return array_replace([
+            'id' => 'run-uuid',
+            'installation_id' => 'installation-uuid',
+            'kind' => 'action',
+            'action' => 'add_client',
+            'status' => 'succeeded',
+            'error' => null,
+            'inputs' => ['name' => 'laptop'],
+            'outputs' => [['key' => 'client_config', 'type' => 'file', 'label' => ['en' => 'Client configuration'], 'secret' => true, 'value' => null, 'filename' => 'client.conf', 'content_base64' => base64_encode("[Interface]\nPrivateKey = laptop-key\n")]],
+        ], $overrides);
+    }
+
+    public function test_the_page_data_has_actions_uninstall_and_recent_runs(): void
+    {
+        $this->serviceHas($this->server());
+        $this->api->on('GET ' . self::SERVER . '/apps', 200, ['data' => [self::installation([
+            'can_uninstall' => true,
+            'actions' => [['key' => 'add_client', 'label' => ['en' => 'Add a client', 'tr' => 'İstemci ekle'], 'inputs' => [['key' => 'name', 'type' => 'slug', 'label' => null, 'required' => true, 'default' => null]], 'outputs' => []]],
+        ])]]);
+        $this->api->on('GET ' . self::SERVER . '/apps/installation-uuid/runs', 200, ['data' => [self::appRun(), self::appRun(['id' => 'other-uuid', 'kind' => 'uninstall', 'action' => null, 'status' => 'running', 'outputs' => []])]]);
+        $this->api->on('GET /apps?server=' . self::SERVER_ID, 200, ['data' => []]);
+
+        $installation = $this->turkish($this->module())->tool_data('apps', 'index')['installations'][0];
+
+        $this->assertTrue($installation['can_uninstall']);
+        $this->assertSame('İstemci ekle', $installation['actions'][0]['label']);
+        $this->assertSame(['İstemci ekle', 'Tamamlandı', 'client.conf'], [$installation['runs'][0]['label'], $installation['runs'][0]['status_label'], $installation['runs'][0]['outputs'][0]['filename']]);
+        $this->assertSame('Kaldır', $installation['runs'][1]['label']);
+        $this->assertTrue($installation['run_busy']);
+    }
+
+    public function test_an_app_is_uninstalled_and_an_action_runs_with_its_inputs(): void
+    {
+        $this->serviceHas($this->server());
+        $this->api->on('DELETE ' . self::SERVER . '/apps/installation-uuid', 202, ['data' => self::appRun(['kind' => 'uninstall', 'status' => 'running'])]);
+        $this->api->on('POST ' . self::SERVER . '/apps/installation-uuid/actions/add_client', 202, ['data' => self::appRun(['status' => 'running', 'outputs' => []])]);
+
+        $module = $this->module();
+        $this->assertSame('successful', $module->tool_action('apps', 'uninstall', ['installation' => 'installation-uuid'])['status']);
+        $this->assertMatchesRegularExpression('/^wisecp-42-app-uninstall-/', $this->api->last('DELETE ' . self::SERVER . '/apps/installation-uuid')['headers']['Idempotency-Key']);
+
+        $result = $module->tool_action('apps', 'action', ['installation' => 'installation-uuid', 'app_action' => 'add_client', 'secret_inputs' => '{"name":" laptop ","empty":""}']);
+        $this->assertSame('successful', $result['status']);
+        $this->assertSame(['inputs' => ['name' => 'laptop']], $this->api->body('POST ' . self::SERVER . '/apps/installation-uuid/actions/add_client'));
+        $this->assertStringNotContainsString('laptop', (string) json_encode($module->logs), 'Action inputs are masked in the module log.');
+
+        $this->expectExceptionMessage('Please choose an action.');
+        $module->tool_action('apps', 'action', ['installation' => 'installation-uuid', 'app_action' => '../x']);
+    }
+
+    public function test_a_file_output_of_a_run_is_downloaded_and_never_logged(): void
+    {
+        $this->serviceHas($this->server());
+        $this->api->on('GET ' . self::SERVER . '/apps/installation-uuid/runs/run-uuid', 200, ['data' => self::appRun()]);
+
+        $module = $this->module();
+        $result = $module->tool_action('apps', 'download', ['installation' => 'installation-uuid', 'run' => 'run-uuid', 'output' => 'client_config']);
+
+        $this->assertSame(['name' => 'client.conf', 'content_base64' => base64_encode("[Interface]\nPrivateKey = laptop-key\n")], $result['file']);
+        $this->assertStringNotContainsString(base64_encode("[Interface]\nPrivateKey = laptop-key\n"), (string) json_encode($module->logs));
+    }
+
+    public function test_the_page_offers_actions_uninstall_and_run_downloads(): void
+    {
+        $html = $this->page([
+            'installations' => [[
+                'id' => 'installation-uuid',
+                'name' => 'WireGuard',
+                'status' => 'installed',
+                'status_label' => 'Installed',
+                'busy' => false,
+                'failed' => false,
+                'outputs' => [],
+                'can_uninstall' => true,
+                'actions' => [['key' => 'add_client', 'label' => 'Add a client', 'inputs' => [['key' => 'name', 'type' => 'slug', 'label' => 'Client name', 'required' => true, 'default' => '']]]],
+                'runs' => [['id' => 'run-uuid', 'label' => 'Add a client', 'status' => 'succeeded', 'status_label' => 'Done', 'busy' => false, 'failed' => false, 'error' => null, 'outputs' => [['key' => 'client_config', 'type' => 'file', 'label' => 'Client configuration', 'value' => null, 'filename' => 'client.conf']]]],
+                'run_busy' => false,
+            ]],
+            'apps' => [],
+            'installing' => false,
+        ]);
+
+        $this->assertStringContainsString('data-action="add_client"', $html);
+        $this->assertStringContainsString('data-input="name"', $html);
+        $this->assertStringContainsString('onclick="pmxAppUninstall(this)"', $html);
+        $this->assertStringContainsString('data-run="run-uuid" data-output="client_config"', $html);
+        $this->assertStringNotContainsString('}, 30000);', $html, 'Nothing runs: no reload.');
     }
 
     public function test_inputs_bypass_wisecps_tag_stripping_under_a_masked_name(): void

@@ -272,6 +272,45 @@ class ApiClient
     }
 
     /**
+     * Run the app's uninstall script (docs/adr/0016).
+     *
+     * @return array<string, mixed> the queued run
+     */
+    public function uninstallApp(string $id, string $installation, string $idempotencyKey): array
+    {
+        return $this->dataOf($this->request('DELETE', '/servers/' . rawurlencode($id) . '/apps/' . rawurlencode($installation), null, $idempotencyKey));
+    }
+
+    /**
+     * Run an action of an installed app, e.g. adding a VPN client.
+     *
+     * @param array<string, string> $inputs
+     * @return array<string, mixed> the queued run
+     */
+    public function runAppAction(string $id, string $installation, string $action, array $inputs, string $idempotencyKey): array
+    {
+        return $this->dataOf($this->request('POST', '/servers/' . rawurlencode($id) . '/apps/' . rawurlencode($installation) . '/actions/' . rawurlencode($action), ['inputs' => (object) $inputs], $idempotencyKey));
+    }
+
+    /**
+     * The installation's latest uninstalls and actions, newest first, with outputs (apps:secrets scope).
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function appRuns(string $id, string $installation): array
+    {
+        return $this->listOf($this->request('GET', '/servers/' . rawurlencode($id) . '/apps/' . rawurlencode($installation) . '/runs'));
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function appRun(string $id, string $installation, string $run): array
+    {
+        return $this->dataOf($this->request('GET', '/servers/' . rawurlencode($id) . '/apps/' . rawurlencode($installation) . '/runs/' . rawurlencode($run)));
+    }
+
+    /**
      * A signed console link for the customer's browser (valid for 60 seconds, once).
      */
     public function consoleLink(string $id): string

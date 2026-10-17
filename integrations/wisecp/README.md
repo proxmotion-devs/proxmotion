@@ -101,6 +101,13 @@ stored in WISECP. The module log masks app settings and outputs, and the setting
 sent in a field WISECP masks in the service history. Outputs need a token with the
 `apps:secrets` scope; without it, the apps are listed without outputs.
 
+Installed apps also offer their **actions** (e.g. adding, revoking or listing VPN
+clients), each with a small form, and **Uninstall** when the app has an uninstall
+script (asked to confirm). The latest runs show with their status, error and outputs (a
+new client's profile is downloaded from the run), fetched on demand like the install
+outputs and masked in the module log. One action runs at a time per app; the page shows
+its result once Proxmotion has read it (about a minute).
+
 ## Webhooks
 
 Without webhooks, WISECP only learns what happens to a server when someone opens it.

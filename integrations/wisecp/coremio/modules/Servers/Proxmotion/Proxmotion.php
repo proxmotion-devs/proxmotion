@@ -35,7 +35,7 @@ class Proxmotion extends ServerModule
     private const SERVER_TOOLS = ['start-server', 'stop-server', 'restart-server', 'poweroff-server', 'reset-password', 'reinstall-os', 'vnc-console', 'hostname-change', 'reverse-dns', 'apps'];
 
     /** App installation statuses during which the installer still runs. */
-    private const APP_BUSY = ['queued', 'installing'];
+    private const APP_BUSY = ['queued', 'installing', 'uninstalling'];
 
     private ApiClient $api;
 
@@ -81,7 +81,7 @@ class Proxmotion extends ServerModule
             'icon' => 'bi bi-grid',
             'page' => 'apps',
             'type' => 'page-loader',
-            'capabilities' => ['list', 'install', 'retry', 'download'],
+            'capabilities' => ['list', 'install', 'retry', 'download', 'uninstall', 'action'],
         ]);
     }
 
@@ -94,7 +94,7 @@ class Proxmotion extends ServerModule
     protected function get_tool_action_data_filters(): array
     {
         $filters = parent::get_tool_action_data_filters();
-        $filters['apps'] = ['secret_inputs' => null, 'app' => 'route', 'installation' => 'route', 'output' => 'identifier'];
+        $filters['apps'] = ['secret_inputs' => null, 'app' => 'route', 'installation' => 'route', 'run' => 'route', 'app_action' => 'identifier', 'output' => 'identifier'];
 
         return $filters;
     }
@@ -454,7 +454,10 @@ class Proxmotion extends ServerModule
             'apps' => match ($action) {
                 'install' => $this->installApp($id, trim((string) ($data['app'] ?? '')), (string) ($data['secret_inputs'] ?? '')),
                 'retry' => $this->retryApp($id, trim((string) ($data['installation'] ?? ''))),
-                'download' => $this->appFile($id, trim((string) ($data['installation'] ?? '')), trim((string) ($data['output'] ?? ''))),
+                'download' => $this->appFile($id, trim((string) ($data['installation'] ?? '')), trim((string) ($data['output'] ?? '')), trim((string) ($data['run'] ?? ''))),
+                'uninstall' => $this->uninstallApp($id, trim((string) ($data['installation'] ?? ''))),
+                // The field is app_action: WISECP removes "action" from the data it passes on.
+                'action' => $this->runAppAction($id, trim((string) ($data['installation'] ?? '')), trim((string) ($data['app_action'] ?? '')), (string) ($data['secret_inputs'] ?? '')),
                 default => throw new Exception('Unknown action: ' . $action),
             },
             default => throw new Exception('Unknown tool: ' . $tool),
@@ -540,7 +543,14 @@ class Proxmotion extends ServerModule
      */
     private function appsData(string $id): array
     {
-        $installations = array_map(fn (array $installation): array => $this->presentInstallation($installation), $this->api->installations($id));
+        $installations = [];
+
+        foreach ($this->api->installations($id) as $installation) {
+            // Uninstalls and actions with their outputs (ADR 0016), fetched now like the install outputs.
+            $runs = ($installation['status'] ?? null) === 'removed' ? [] : $this->api->appRuns($id, (string) ($installation['id'] ?? ''));
+            $installations[] = $this->presentInstallation($installation, $runs);
+        }
+
         $busy = array_filter($installations, static fn (array $installation): bool => $installation['busy']) !== [];
 
         return [
@@ -564,6 +574,54 @@ class Proxmotion extends ServerModule
             throw new Exception($this->text('app_required'));
         }
 
+        $this->api->installApp($id, $app, $this->decodeInputs($inputsJson), $this->idempotencyKey('app'));
+
+        return ['status' => 'successful', 'message' => $this->text('app_install_started'), 'successToast' => true];
+    }
+
+    /**
+     * Run the app's uninstall script (ADR 0016).
+     *
+     * @return array<string, mixed>
+     */
+    private function uninstallApp(string $id, string $installation): array
+    {
+        if ($installation === '') {
+            throw new Exception($this->text('app_not_found'));
+        }
+
+        $this->api->uninstallApp($id, $installation, $this->idempotencyKey('app-uninstall'));
+
+        return ['status' => 'successful', 'message' => $this->text('app_uninstall_started'), 'successToast' => true];
+    }
+
+    /**
+     * Run an action of an installed app (e.g. add a VPN client) with its inputs.
+     *
+     * @return array<string, mixed>
+     */
+    private function runAppAction(string $id, string $installation, string $action, string $inputsJson): array
+    {
+        if ($installation === '') {
+            throw new Exception($this->text('app_not_found'));
+        }
+
+        if (preg_match('/^[a-z][a-z0-9_]{0,39}$/', $action) !== 1) {
+            throw new Exception($this->text('app_action_required'));
+        }
+
+        $this->api->runAppAction($id, $installation, $action, $this->decodeInputs($inputsJson), $this->idempotencyKey('app-action'));
+
+        return ['status' => 'successful', 'message' => $this->text('app_action_started'), 'successToast' => true];
+    }
+
+    /**
+     * Inputs sent as JSON in secret_inputs; empty values are left out so the defaults apply.
+     *
+     * @return array<string, string>
+     */
+    private function decodeInputs(string $inputsJson): array
+    {
         $decoded = $inputsJson === '' ? [] : json_decode($inputsJson, true);
 
         if (! is_array($decoded)) {
@@ -578,9 +636,7 @@ class Proxmotion extends ServerModule
             }
         }
 
-        $this->api->installApp($id, $app, $inputs, $this->idempotencyKey('app'));
-
-        return ['status' => 'successful', 'message' => $this->text('app_install_started'), 'successToast' => true];
+        return $inputs;
     }
 
     /**
@@ -603,13 +659,14 @@ class Proxmotion extends ServerModule
      *
      * @return array<string, mixed>
      */
-    private function appFile(string $id, string $installation, string $output): array
+    private function appFile(string $id, string $installation, string $output, string $run = ''): array
     {
         if ($installation === '') {
             throw new Exception($this->text('app_not_found'));
         }
 
-        $data = $this->api->installation($id, $installation);
+        // A file of an action run (e.g. a new VPN client), or of the installation.
+        $data = $run === '' ? $this->api->installation($id, $installation) : $this->api->appRun($id, $installation, $run);
 
         foreach (is_array($data['outputs'] ?? null) ? $data['outputs'] : [] as $item) {
             if (! is_array($item) || ($item['key'] ?? null) !== $output || ! is_string($item['content_base64'] ?? null) || ! is_string($item['filename'] ?? null)) {
@@ -640,9 +697,25 @@ class Proxmotion extends ServerModule
      */
     private function presentApp(array $app): array
     {
+        return [
+            'id' => (string) ($app['id'] ?? ''),
+            'name' => (string) ($app['name'] ?? ''),
+            'description' => $this->recipeText($app['description'] ?? null, ''),
+            'inputs' => $this->presentInputs(is_array($app['inputs'] ?? null) ? $app['inputs'] : []),
+        ];
+    }
+
+    /**
+     * Form fields of declared inputs (an app's or an action's), labels in the customer's language.
+     *
+     * @param array<mixed> $declared
+     * @return list<array<string, mixed>>
+     */
+    private function presentInputs(array $declared): array
+    {
         $inputs = [];
 
-        foreach (is_array($app['inputs'] ?? null) ? $app['inputs'] : [] as $input) {
+        foreach ($declared as $input) {
             if (! is_array($input) || ! isset($input['key'], $input['type'])) {
                 continue;
             }
@@ -661,26 +734,95 @@ class Proxmotion extends ServerModule
             ];
         }
 
+        return $inputs;
+    }
+
+    /**
+     * An installation with its status, outputs (texts shown, files downloaded
+     * on demand), what can be done with it and its latest runs (ADR 0016).
+     *
+     * @param array<string, mixed> $installation
+     * @param list<array<string, mixed>> $runs
+     * @return array<string, mixed>
+     */
+    private function presentInstallation(array $installation, array $runs = []): array
+    {
+        $status = (string) ($installation['status'] ?? '');
+        $actions = [];
+
+        foreach (is_array($installation['actions'] ?? null) ? $installation['actions'] : [] as $action) {
+            if (is_array($action) && isset($action['key'])) {
+                $actions[] = [
+                    'key' => (string) $action['key'],
+                    'label' => $this->recipeText($action['label'] ?? null, (string) $action['key']),
+                    'inputs' => $this->presentInputs(is_array($action['inputs'] ?? null) ? $action['inputs'] : []),
+                ];
+            }
+        }
+
+        $presentedRuns = array_map(fn (array $run): array => $this->presentRun($run, $actions), $runs);
+
         return [
-            'id' => (string) ($app['id'] ?? ''),
-            'name' => (string) ($app['name'] ?? ''),
-            'description' => $this->recipeText($app['description'] ?? null, ''),
-            'inputs' => $inputs,
+            'id' => (string) ($installation['id'] ?? ''),
+            'name' => is_array($installation['app'] ?? null) ? (string) ($installation['app']['name'] ?? '') : '',
+            'status' => $status,
+            'status_label' => $this->text('app_status_' . $status),
+            'busy' => in_array($status, self::APP_BUSY, true),
+            'failed' => $status === 'failed',
+            'progress' => (int) ($installation['progress'] ?? 0),
+            'step' => is_string($installation['step'] ?? null) ? $installation['step'] : null,
+            'error' => is_string($installation['error'] ?? null) ? $installation['error'] : null,
+            'outputs' => $this->presentOutputs($installation),
+            'can_uninstall' => ! empty($installation['can_uninstall']),
+            'actions' => $actions,
+            'runs' => $presentedRuns,
+            'run_busy' => array_filter($presentedRuns, static fn (array $run): bool => $run['busy']) !== [],
         ];
     }
 
     /**
-     * An installation with its status and outputs (texts shown, files downloaded on demand).
+     * An uninstall or action run with its status and outputs.
      *
-     * @param array<string, mixed> $installation
+     * @param array<string, mixed> $run
+     * @param list<array{key: string, label: string, inputs: list<array<string, mixed>>}> $actions the installation's actions (for their labels)
      * @return array<string, mixed>
      */
-    private function presentInstallation(array $installation): array
+    private function presentRun(array $run, array $actions): array
     {
-        $status = (string) ($installation['status'] ?? '');
+        $status = (string) ($run['status'] ?? '');
+        $label = $this->text('app_uninstall');
+
+        if (($run['kind'] ?? null) === 'action') {
+            $label = (string) ($run['action'] ?? '');
+
+            foreach ($actions as $action) {
+                if ($action['key'] === $label) {
+                    $label = $action['label'];
+                }
+            }
+        }
+
+        return [
+            'id' => (string) ($run['id'] ?? ''),
+            'label' => $label,
+            'status' => $status,
+            'status_label' => $this->text('app_run_status_' . $status),
+            'busy' => in_array($status, ['queued', 'running'], true),
+            'failed' => $status === 'failed',
+            'error' => is_string($run['error'] ?? null) ? $run['error'] : null,
+            'outputs' => $this->presentOutputs($run),
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $item an installation or a run
+     * @return list<array<string, mixed>>
+     */
+    private function presentOutputs(array $item): array
+    {
         $outputs = [];
 
-        foreach (is_array($installation['outputs'] ?? null) ? $installation['outputs'] : [] as $output) {
+        foreach (is_array($item['outputs'] ?? null) ? $item['outputs'] : [] as $output) {
             if (! is_array($output) || ! isset($output['key'])) {
                 continue;
             }
@@ -696,18 +838,7 @@ class Proxmotion extends ServerModule
             ];
         }
 
-        return [
-            'id' => (string) ($installation['id'] ?? ''),
-            'name' => is_array($installation['app'] ?? null) ? (string) ($installation['app']['name'] ?? '') : '',
-            'status' => $status,
-            'status_label' => $this->text('app_status_' . $status),
-            'busy' => in_array($status, self::APP_BUSY, true),
-            'failed' => $status === 'failed',
-            'progress' => (int) ($installation['progress'] ?? 0),
-            'step' => is_string($installation['step'] ?? null) ? $installation['step'] : null,
-            'error' => is_string($installation['error'] ?? null) ? $installation['error'] : null,
-            'outputs' => $outputs,
-        ];
+        return $outputs;
     }
 
     /**

@@ -329,6 +329,24 @@ class Module
     {
         $server = $this->requireActiveServer();
         $app = isset($input['app']) ? trim((string) $input['app']) : '';
+
+        if ($app === '') {
+            return $this->lang->get('app_required');
+        }
+
+        $this->client->installApp((string) $server['id'], $app, $this->filledInputs($input), $this->idempotencyKey('app'));
+
+        return 'success';
+    }
+
+    /**
+     * The non-empty inputs[key] values of a form, trimmed.
+     *
+     * @param array<string, mixed> $input
+     * @return array<string, string>
+     */
+    private function filledInputs(array $input): array
+    {
         $values = [];
 
         foreach (isset($input['inputs']) && is_array($input['inputs']) ? $input['inputs'] : [] as $key => $value) {
@@ -337,13 +355,7 @@ class Module
             }
         }
 
-        if ($app === '') {
-            return $this->lang->get('app_required');
-        }
-
-        $this->client->installApp((string) $server['id'], $app, $values, $this->idempotencyKey('app'));
-
-        return 'success';
+        return $values;
     }
 
     /**
@@ -358,15 +370,55 @@ class Module
     }
 
     /**
-     * A file output of an installed app, fetched from Proxmotion when asked
-     * for (never stored in WHMCS).
+     * Uninstall an app (docs/adr/0016): its recipe's uninstall script runs in the server.
+     *
+     * @param array<string, mixed> $input installation (from the form)
+     */
+    public function uninstallApp(array $input): string
+    {
+        $server = $this->requireActiveServer();
+        $this->client->uninstallApp((string) $server['id'], isset($input['installation']) ? (string) $input['installation'] : '', $this->idempotencyKey('app-uninstall'));
+
+        return 'success';
+    }
+
+    /**
+     * Run an action of an installed app (e.g. add a VPN client); empty inputs are left out.
+     *
+     * @param array<string, mixed> $input installation, app_action, inputs[key] (from the form)
+     */
+    public function runAppAction(array $input): string
+    {
+        $server = $this->requireActiveServer();
+        $action = isset($input['app_action']) ? trim((string) $input['app_action']) : '';
+
+        if (preg_match('/^[a-z][a-z0-9_]{0,39}$/', $action) !== 1) {
+            return $this->lang->get('app_action_required');
+        }
+
+        $this->client->runAppAction(
+            (string) $server['id'],
+            isset($input['installation']) ? (string) $input['installation'] : '',
+            $action,
+            $this->filledInputs($input),
+            $this->idempotencyKey('app-action')
+        );
+
+        return 'success';
+    }
+
+    /**
+     * A file output of an installed app, or of one of its action runs when
+     * $run is given, fetched from Proxmotion when asked for (never stored in WHMCS).
      *
      * @return array{filename: string, content: string}|null
      */
-    public function appFile(string $installation, string $output): ?array
+    public function appFile(string $installation, string $output, string $run = ''): ?array
     {
         $server = $this->requireServer();
-        $data = $this->client->installation((string) $server['id'], $installation);
+        $data = $run === ''
+            ? $this->client->installation((string) $server['id'], $installation)
+            : $this->client->appRun((string) $server['id'], $installation, $run);
 
         foreach (isset($data['outputs']) && is_array($data['outputs']) ? $data['outputs'] : [] as $item) {
             if (is_array($item) && ($item['key'] ?? null) === $output && isset($item['content_base64'], $item['filename']) && is_string($item['content_base64'])) {
@@ -415,7 +467,12 @@ class Module
                 $vars['osTemplates'] = $server['status'] === 'active' ? $this->client->osTemplates() : [];
 
                 if ($server['status'] === 'active') {
-                    $vars['installations'] = array_map([$this, 'presentInstallation'], $this->client->installations((string) $server['id']));
+                    foreach ($this->client->installations((string) $server['id']) as $installation) {
+                        // Uninstalls and actions with their outputs (docs/adr/0016), fetched now like the install outputs.
+                        $runs = ($installation['status'] ?? null) === 'removed' ? [] : $this->client->appRuns((string) $server['id'], (string) $installation['id']);
+                        $vars['installations'][] = $this->presentInstallation($installation, $runs);
+                    }
+
                     $vars['apps'] = array_map([$this, 'presentApp'], $this->client->apps((string) $server['id']));
                     $vars['appsBusy'] = count(array_filter($vars['installations'], function (array $installation) {
                         return $installation['busy'];
@@ -585,9 +642,25 @@ class Module
      */
     private function presentApp(array $app): array
     {
+        return [
+            'id' => (string) $app['id'],
+            'name' => (string) $app['name'],
+            'description' => $this->text(isset($app['description']) ? $app['description'] : null, ''),
+            'inputs' => $this->presentInputs(isset($app['inputs']) && is_array($app['inputs']) ? $app['inputs'] : []),
+        ];
+    }
+
+    /**
+     * Form fields of declared inputs (an app's or an action's), labels in the customer's language.
+     *
+     * @param array<mixed> $declared
+     * @return list<array<string, mixed>>
+     */
+    private function presentInputs(array $declared): array
+    {
         $inputs = [];
 
-        foreach (isset($app['inputs']) && is_array($app['inputs']) ? $app['inputs'] : [] as $input) {
+        foreach ($declared as $input) {
             if (!is_array($input) || !isset($input['key'], $input['type'])) {
                 continue;
             }
@@ -604,26 +677,100 @@ class Module
             ];
         }
 
+        return $inputs;
+    }
+
+    /**
+     * An installation with its status, outputs (texts shown, files as download
+     * links), what can be done with it and its latest runs (docs/adr/0016).
+     *
+     * @param array<string, mixed> $installation
+     * @param list<array<string, mixed>> $runs
+     * @return array<string, mixed>
+     */
+    private function presentInstallation(array $installation, array $runs = []): array
+    {
+        $status = (string) $installation['status'];
+        $actions = [];
+
+        foreach (isset($installation['actions']) && is_array($installation['actions']) ? $installation['actions'] : [] as $action) {
+            if (is_array($action) && isset($action['key'])) {
+                $actions[] = [
+                    'key' => (string) $action['key'],
+                    'label' => $this->text(isset($action['label']) ? $action['label'] : null, (string) $action['key']),
+                    'inputs' => $this->presentInputs(isset($action['inputs']) && is_array($action['inputs']) ? $action['inputs'] : []),
+                ];
+            }
+        }
+
+        $presentedRuns = [];
+
+        foreach ($runs as $run) {
+            $presentedRuns[] = $this->presentRun($run, $actions);
+        }
+
         return [
-            'id' => (string) $app['id'],
-            'name' => (string) $app['name'],
-            'description' => $this->text(isset($app['description']) ? $app['description'] : null, ''),
-            'inputs' => $inputs,
+            'id' => (string) $installation['id'],
+            'name' => isset($installation['app']['name']) ? (string) $installation['app']['name'] : '',
+            'status' => $status,
+            'statusLabel' => $this->lang->get('app_status_' . $status),
+            'busy' => in_array($status, ['queued', 'installing', 'uninstalling'], true),
+            'failed' => $status === 'failed',
+            'progress' => isset($installation['progress']) ? (int) $installation['progress'] : 0,
+            'error' => isset($installation['error']) && is_string($installation['error']) ? $installation['error'] : null,
+            'outputs' => $this->presentOutputs($installation),
+            'canUninstall' => !empty($installation['can_uninstall']),
+            'actions' => $actions,
+            'runs' => $presentedRuns,
+            'runBusy' => count(array_filter($presentedRuns, function (array $run) {
+                return $run['busy'];
+            })) > 0,
         ];
     }
 
     /**
-     * An installation with its status and outputs (texts shown, files as download links).
+     * An uninstall or action run with its status and outputs.
      *
-     * @param array<string, mixed> $installation
+     * @param array<string, mixed> $run
+     * @param list<array<string, mixed>> $actions the installation's actions (for their labels)
      * @return array<string, mixed>
      */
-    private function presentInstallation(array $installation): array
+    private function presentRun(array $run, array $actions): array
     {
-        $status = (string) $installation['status'];
+        $status = (string) $run['status'];
+        $label = $this->lang->get('app_uninstall');
+
+        if (($run['kind'] ?? null) === 'action') {
+            $label = isset($run['action']) ? (string) $run['action'] : '';
+
+            foreach ($actions as $action) {
+                if ($action['key'] === $label) {
+                    $label = $action['label'];
+                }
+            }
+        }
+
+        return [
+            'id' => (string) $run['id'],
+            'label' => $label,
+            'status' => $status,
+            'statusLabel' => $this->lang->get('app_run_status_' . $status),
+            'busy' => in_array($status, ['queued', 'running'], true),
+            'failed' => $status === 'failed',
+            'error' => isset($run['error']) && is_string($run['error']) ? $run['error'] : null,
+            'outputs' => $this->presentOutputs($run),
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $item an installation or a run
+     * @return list<array<string, mixed>>
+     */
+    private function presentOutputs(array $item): array
+    {
         $outputs = [];
 
-        foreach (isset($installation['outputs']) && is_array($installation['outputs']) ? $installation['outputs'] : [] as $output) {
+        foreach (isset($item['outputs']) && is_array($item['outputs']) ? $item['outputs'] : [] as $output) {
             if (!is_array($output) || !isset($output['key'])) {
                 continue;
             }
@@ -638,17 +785,7 @@ class Module
             ];
         }
 
-        return [
-            'id' => (string) $installation['id'],
-            'name' => isset($installation['app']['name']) ? (string) $installation['app']['name'] : '',
-            'status' => $status,
-            'statusLabel' => $this->lang->get('app_status_' . $status),
-            'busy' => in_array($status, ['queued', 'installing'], true),
-            'failed' => $status === 'failed',
-            'progress' => isset($installation['progress']) ? (int) $installation['progress'] : 0,
-            'error' => isset($installation['error']) && is_string($installation['error']) ? $installation['error'] : null,
-            'outputs' => $outputs,
-        ];
+        return $outputs;
     }
 
     /**

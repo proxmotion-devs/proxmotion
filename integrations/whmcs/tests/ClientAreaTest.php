@@ -50,7 +50,84 @@ class ClientAreaTest extends ModuleTestCase
                 ['key' => 'client_config', 'type' => 'file', 'label' => ['en' => 'Client configuration', 'tr' => 'İstemci yapılandırması'], 'secret' => true, 'value' => null, 'filename' => 'client.conf', 'content_base64' => base64_encode("[Interface]\nPrivateKey = secret\n")],
                 ['key' => 'endpoint', 'type' => 'text', 'label' => ['en' => 'Server endpoint'], 'secret' => false, 'value' => '203.0.113.10:51820', 'filename' => null, 'content_base64' => null],
             ],
+            'can_uninstall' => true,
+            'actions' => [
+                ['key' => 'add_client', 'label' => ['en' => 'Add a client', 'tr' => 'İstemci ekle'], 'inputs' => [['key' => 'name', 'type' => 'slug', 'label' => ['en' => 'Client name', 'tr' => 'İstemci adı'], 'required' => true, 'default' => null, 'options' => null, 'min' => null, 'max' => null, 'max_length' => 32]], 'outputs' => []],
+            ],
         ], $overrides);
+    }
+
+    /**
+     * @param array<string, mixed> $overrides
+     * @return array<string, mixed>
+     */
+    private static function appRun(array $overrides = []): array
+    {
+        return array_replace([
+            'id' => 'run-uuid',
+            'installation_id' => 'installation-uuid',
+            'kind' => 'action',
+            'action' => 'add_client',
+            'status' => 'succeeded',
+            'progress' => 100,
+            'step' => 'Done',
+            'error' => null,
+            'inputs' => ['name' => 'laptop'],
+            'outputs' => [
+                ['key' => 'client_config', 'type' => 'file', 'label' => ['en' => 'Client configuration'], 'secret' => true, 'value' => null, 'filename' => 'client.conf', 'content_base64' => base64_encode("[Interface]\nPrivateKey = laptop-key\n")],
+            ],
+        ], $overrides);
+    }
+
+    public function test_the_overview_shows_actions_uninstall_and_recent_runs()
+    {
+        $this->showsServer();
+        $this->api = new FakeTransport();
+        $this->serviceHas($this->server());
+        $this->api->on('GET /servers/' . self::SERVER_ID, 200, ['data' => $this->server()]);
+        $this->api->on('GET /os-templates', 200, ['data' => []]);
+        $this->api->on('GET /servers/' . self::SERVER_ID . '/apps', 200, ['data' => [self::installation()]]);
+        $this->api->on('GET /servers/' . self::SERVER_ID . '/apps/installation-uuid/runs', 200, ['data' => [self::appRun(), self::appRun(['id' => 'uninstall-uuid', 'kind' => 'uninstall', 'action' => null, 'status' => 'failed', 'error' => 'systemctl failed', 'outputs' => []])]]);
+        $this->api->on('GET /apps?server=' . self::SERVER_ID, 200, ['data' => []]);
+
+        $installation = $this->module(['clientsdetails' => ['language' => 'turkish']])->clientArea()['templateVariables']['pmx']['installations'][0];
+
+        $this->assertTrue($installation['canUninstall']);
+        $this->assertSame('İstemci ekle', $installation['actions'][0]['label']);
+        $this->assertSame('İstemci adı', $installation['actions'][0]['inputs'][0]['label']);
+        $this->assertSame(['id' => 'run-uuid', 'label' => 'İstemci ekle', 'status' => 'succeeded', 'statusLabel' => 'Tamamlandı', 'busy' => false, 'failed' => false, 'error' => null], array_diff_key($installation['runs'][0], ['outputs' => true]));
+        $this->assertSame('client.conf', $installation['runs'][0]['outputs'][0]['filename']);
+        $this->assertSame(['Kaldır', 'systemctl failed'], [$installation['runs'][1]['label'], $installation['runs'][1]['error']]);
+        $this->assertFalse($installation['runBusy']);
+    }
+
+    public function test_an_app_is_uninstalled_and_an_action_runs_with_its_inputs()
+    {
+        $this->serviceHas($this->server());
+        $this->api->on('DELETE /servers/' . self::SERVER_ID . '/apps/installation-uuid', 202, ['data' => self::appRun(['kind' => 'uninstall', 'status' => 'running'])]);
+        $this->api->on('POST /servers/' . self::SERVER_ID . '/apps/installation-uuid/actions/add_client', 202, ['data' => self::appRun(['status' => 'running', 'outputs' => null])]);
+
+        $this->assertSame('success', $this->module()->uninstallApp(['installation' => 'installation-uuid']));
+        $this->assertStringStartsWith('whmcs-42-app-uninstall-', $this->api->last('DELETE /servers/' . self::SERVER_ID . '/apps/installation-uuid')['headers']['Idempotency-Key']);
+
+        $this->assertSame('success', $this->module()->runAppAction(['installation' => 'installation-uuid', 'app_action' => 'add_client', 'inputs' => ['name' => ' laptop ', 'empty' => '']]));
+        $request = $this->api->last('POST /servers/' . self::SERVER_ID . '/apps/installation-uuid/actions/add_client');
+        $this->assertSame(['inputs' => ['name' => 'laptop']], $request['body']);
+        $this->assertStringStartsWith('whmcs-42-app-action-', $request['headers']['Idempotency-Key']);
+
+        $this->assertSame('Please choose an action.', $this->module()->runAppAction(['installation' => 'installation-uuid', 'app_action' => '../reboot']));
+        $this->assertStringNotContainsString('laptop', (string) json_encode($GLOBALS['whmcs_calls']['logModuleCall']), 'Action inputs are masked in the module log.');
+    }
+
+    public function test_a_file_output_of_a_run_is_downloaded_and_never_logged()
+    {
+        $this->serviceHas($this->server());
+        $this->api->on('GET /servers/' . self::SERVER_ID . '/apps/installation-uuid/runs/run-uuid', 200, ['data' => self::appRun()]);
+
+        $file = $this->module()->appFile('installation-uuid', 'client_config', 'run-uuid');
+
+        $this->assertSame(['filename' => 'client.conf', 'content' => "[Interface]\nPrivateKey = laptop-key\n"], $file);
+        $this->assertStringNotContainsString(base64_encode("[Interface]\nPrivateKey = laptop-key\n"), (string) json_encode($GLOBALS['whmcs_calls']['logModuleCall']));
     }
 
     public function test_the_overview_lists_installed_and_installable_apps_in_the_customers_language()
@@ -61,6 +138,7 @@ class ClientAreaTest extends ModuleTestCase
         $this->api->on('GET /servers/' . self::SERVER_ID, 200, ['data' => $this->server()]);
         $this->api->on('GET /os-templates', 200, ['data' => []]);
         $this->api->on('GET /servers/' . self::SERVER_ID . '/apps', 200, ['data' => [self::installation()]]);
+        $this->api->on('GET /servers/' . self::SERVER_ID . '/apps/installation-uuid/runs', 200, ['data' => []]);
         $this->api->on('GET /apps?server=' . self::SERVER_ID, 200, ['data' => [self::wireguard()]]);
 
         $vars = $this->module(['clientsdetails' => ['language' => 'turkish']])->clientArea()['templateVariables']['pmx'];

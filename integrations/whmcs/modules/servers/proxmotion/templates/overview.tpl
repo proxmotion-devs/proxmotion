@@ -166,6 +166,69 @@
                                             <button type="submit" class="btn btn-default btn-sm">{$pmx.lang.app_retry|escape}</button>
                                         </form>
                                     {/if}
+                                    {if !$installation.runBusy}
+                                        {foreach from=$installation.actions item=appAction}
+                                            <form method="post" action="{$pmxAction}RunAppAction" class="well well-sm" style="margin-top: 8px">
+                                                <input type="hidden" name="token" value="{$token}">
+                                                <input type="hidden" name="installation" value="{$installation.id|escape}">
+                                                <input type="hidden" name="app_action" value="{$appAction.key|escape}">
+                                                <strong>{$appAction.label|escape}</strong>
+                                                {foreach from=$appAction.inputs item=input}
+                                                    <div class="form-group">
+                                                        {if $input.type == 'boolean'}
+                                                            <input type="hidden" name="inputs[{$input.key|escape}]" value="0">
+                                                            <label><input type="checkbox" name="inputs[{$input.key|escape}]" value="1"{if $input.default == '1'} checked{/if}> {$input.label|escape}</label>
+                                                        {else}
+                                                            <label for="pmx-action-{$installation.id|escape}-{$appAction.key|escape}-{$input.key|escape}">{$input.label|escape}</label>
+                                                            {if $input.type == 'enum'}
+                                                                <select id="pmx-action-{$installation.id|escape}-{$appAction.key|escape}-{$input.key|escape}" name="inputs[{$input.key|escape}]" class="form-control">
+                                                                    {foreach from=$input.options item=option}
+                                                                        <option value="{$option|escape}"{if $option == $input.default} selected{/if}>{$option|escape}</option>
+                                                                    {/foreach}
+                                                                </select>
+                                                            {else}
+                                                                <input id="pmx-action-{$installation.id|escape}-{$appAction.key|escape}-{$input.key|escape}" name="inputs[{$input.key|escape}]" class="form-control" value="{$input.default|escape}" autocomplete="off"
+                                                                    type="{if $input.type == 'password'}password{elseif $input.type == 'integer' || $input.type == 'port'}number{elseif $input.type == 'email'}email{else}text{/if}"
+                                                                    {if $input.min !== null} min="{$input.min|escape}"{/if}{if $input.max !== null} max="{$input.max|escape}"{/if}{if $input.required} required{/if}>
+                                                            {/if}
+                                                        {/if}
+                                                    </div>
+                                                {/foreach}
+                                                <button type="submit" class="btn btn-default btn-sm">{$pmx.lang.app_run_submit|escape}</button>
+                                            </form>
+                                        {/foreach}
+                                        {if $installation.canUninstall}
+                                            <form method="post" action="{$pmxAction}UninstallApp" class="form-inline" onsubmit="return confirm('{$pmx.lang.app_uninstall_confirm|escape:'javascript'|escape}');">
+                                                <input type="hidden" name="token" value="{$token}">
+                                                <input type="hidden" name="installation" value="{$installation.id|escape}">
+                                                <button type="submit" class="btn btn-danger btn-sm">{$pmx.lang.app_uninstall|escape}</button>
+                                            </form>
+                                        {/if}
+                                    {else}
+                                        <p class="text-muted small">{$pmx.lang.app_run_busy|escape}</p>
+                                    {/if}
+                                    {if $installation.runs}
+                                        <div class="small" style="margin-top: 8px">
+                                            <span class="text-muted">{$pmx.lang.app_runs|escape}</span>
+                                            {foreach from=$installation.runs item=run}
+                                                <div>
+                                                    {$run.label|escape}:
+                                                    <span class="label {if $run.status == 'succeeded'}label-success{elseif $run.failed}label-danger{elseif $run.busy}label-warning{else}label-default{/if}">{$run.statusLabel|escape}</span>
+                                                    {if $run.error}<span class="text-danger">{$run.error|escape}</span>{/if}
+                                                    {foreach from=$run.outputs item=output}
+                                                        <span class="text-muted">{$output.label|escape}:</span>
+                                                        {if $output.file}
+                                                            <a href="{$pmxAction}DownloadAppFile&amp;installation={$installation.id|escape:'url'}&amp;run={$run.id|escape:'url'}&amp;output={$output.key|escape:'url'}">{$pmx.lang.app_download|escape} ({$output.filename|escape})</a>
+                                                        {elseif $output.url}
+                                                            <a href="{$output.value|escape}" target="_blank" rel="noopener noreferrer">{$output.value|escape}</a>
+                                                        {else}
+                                                            <code>{$output.value|escape}</code>
+                                                        {/if}
+                                                    {/foreach}
+                                                </div>
+                                            {/foreach}
+                                        </div>
+                                    {/if}
                                 </td>
                             </tr>
                         {/foreach}

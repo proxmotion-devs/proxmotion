@@ -239,7 +239,27 @@ function proxmotion_AdminCustomButtonArray()
  */
 function proxmotion_ClientAreaAllowedFunctions()
 {
-    return ['Start', 'Shutdown', 'Reboot', 'Stop', 'Console', 'ResetPassword', 'Reinstall', 'SetRdns', 'ChangeHostname', 'InstallApp', 'RetryApp', 'DownloadAppFile'];
+    return ['Start', 'Shutdown', 'Reboot', 'Stop', 'Console', 'ResetPassword', 'Reinstall', 'SetRdns', 'ChangeHostname', 'InstallApp', 'RetryApp', 'UninstallApp', 'RunAppAction', 'DownloadAppFile'];
+}
+
+/**
+ * @param array<string, mixed> $params
+ */
+function proxmotion_UninstallApp(array $params): string
+{
+    return proxmotion_run($params, function (Module $module) {
+        return $module->uninstallApp($_POST);
+    });
+}
+
+/**
+ * @param array<string, mixed> $params
+ */
+function proxmotion_RunAppAction(array $params): string
+{
+    return proxmotion_run($params, function (Module $module) {
+        return $module->runAppAction($_POST);
+    });
 }
 
 /**
@@ -272,7 +292,11 @@ function proxmotion_DownloadAppFile(array $params): string
 {
     $file = null;
     $error = proxmotion_run($params, function (Module $module) use (&$file) {
-        $file = $module->appFile(isset($_GET['installation']) ? (string) $_GET['installation'] : '', isset($_GET['output']) ? (string) $_GET['output'] : '');
+        $file = $module->appFile(
+            isset($_GET['installation']) ? (string) $_GET['installation'] : '',
+            isset($_GET['output']) ? (string) $_GET['output'] : '',
+            isset($_GET['run']) ? (string) $_GET['run'] : ''
+        );
 
         return 'success';
     });

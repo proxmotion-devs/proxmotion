@@ -35,8 +35,12 @@ final class LanguageTest extends TestCase
         // Keys built from a name: 'setting_' . $key, the busy/not_active choice and app statuses.
         $built = ['setting_package', 'setting_location', 'setting_os_template', 'setting_network_model', 'busy', 'not_active'];
 
-        foreach (['queued', 'installing', 'installed', 'failed', 'removed'] as $status) {
+        foreach (['queued', 'installing', 'installed', 'failed', 'uninstalling', 'uninstall_failed', 'removed'] as $status) {
             $built[] = 'app_status_' . $status;
+        }
+
+        foreach (['queued', 'running', 'succeeded', 'failed'] as $status) {
+            $built[] = 'app_run_status_' . $status;
         }
 
         foreach (['cpu_cores', 'memory_gib', 'disk_gib', 'ipv4_count', 'ipv6_count', 'port_speed_mbps', 'traffic_gb'] as $resource) {
