@@ -180,6 +180,30 @@ class ServerProvisioningTest extends TestCase
         $this->assertContains('2001:db8:100::3', $second->ipAddresses()->pluck('address')->all());
     }
 
+    public function test_ipv6_is_skipped_when_the_location_has_no_ipv6_pool()
+    {
+        $this->package->update(['ipv6_count' => 1]);
+
+        $server = app(ServerCreator::class)->create($this->order());
+
+        $this->assertSame(['203.0.113.2'], $server->ipAddresses()->pluck('address')->all());
+        $this->assertStringNotContainsString('ip6=', $this->proxmox->vms[$server->vmid]['config']['ipconfig0']);
+    }
+
+    public function test_an_ipv6_only_server_needs_an_ipv6_pool()
+    {
+        $this->package->update(['ipv4_count' => 0, 'ipv6_count' => 1]);
+
+        try {
+            app(ServerCreator::class)->create($this->order());
+            $this->fail('An IPv6-only server was created without an IPv6 pool.');
+        } catch (ProvisioningException $e) {
+            $this->assertStringContainsString('IPv6', $e->translatedMessage());
+        }
+
+        $this->assertSame(0, Server::query()->count());
+    }
+
     public function test_nat_is_not_supported_yet()
     {
         $this->expectException(ProvisioningException::class);

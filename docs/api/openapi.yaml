@@ -334,7 +334,7 @@ paths:
                     memory_mib: { type: integer, minimum: 128, maximum: 4194304 }
                     disk_mib: { type: integer, minimum: 1024, maximum: 67108864 }
                     ipv4_count: { type: integer, minimum: 0, maximum: 64 }
-                    ipv6_count: { type: integer, minimum: 0, maximum: 64 }
+                    ipv6_count: { type: integer, minimum: 0, maximum: 64, description: Skipped (no IPv6 addresses) when the location has no active IPv6 pool for the network model; an IPv6 pool that has run out fails the request. }
                     port_speed_mbps: { type: integer, minimum: 1, maximum: 400000 }
                     traffic_bytes: { type: integer, minimum: 1 }
                 reboot: { type: boolean, default: false }
@@ -741,7 +741,7 @@ components:
             memory_mib: { type: integer, minimum: 128, maximum: 4194304 }
             disk_mib: { type: integer, minimum: 1024, maximum: 67108864 }
             ipv4_count: { type: integer, minimum: 0, maximum: 64 }
-            ipv6_count: { type: integer, minimum: 0, maximum: 64 }
+            ipv6_count: { type: integer, minimum: 0, maximum: 64, description: Skipped (no IPv6 addresses) when the location has no active IPv6 pool for the network model; an IPv6 pool that has run out fails the request. }
             port_speed_mbps: { type: integer, minimum: 1, maximum: 400000 }
             traffic_bytes: { type: integer, minimum: 1 }
     Server:

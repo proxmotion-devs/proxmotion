@@ -52,7 +52,9 @@ final class IpAllocator
     }
 
     /**
-     * @throws ProvisioningException
+     * The IPv6 pool, or null when no IPv6 is needed or the location has no
+     * active IPv6 pool for the network model: servers there get no IPv6
+     * addresses. A pool that has run out still fails in assign().
      */
     public function ipv6Pool(Location $location, NetworkModel $model, int $count): ?IpPool
     {
@@ -60,8 +62,7 @@ final class IpAllocator
             return null;
         }
 
-        return $this->pools($location, $model, IpVersion::V6)->first()
-            ?? throw ProvisioningException::noAddresses('IPv6');
+        return $this->pools($location, $model, IpVersion::V6)->first();
     }
 
     /**

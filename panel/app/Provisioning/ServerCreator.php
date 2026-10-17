@@ -62,6 +62,12 @@ final readonly class ServerCreator
 
             $ipv4Pool = $primary->pool ?? $this->ips->ipv4Pool($order->location, $order->networkModel, $spec->ipv4Count);
             $ipv6Pool = $this->ips->ipv6Pool($order->location, $order->networkModel, $spec->ipv6Count);
+
+            // Without an IPv6 pool in the location the server gets IPv4 only, but never no address at all.
+            if ($ipv4Pool === null && $ipv6Pool === null) {
+                throw ProvisioningException::noAddresses('IPv6');
+            }
+
             $bridge = ($ipv4Pool ?? $ipv6Pool)->bridge ?? 'vmbr0';
 
             $placement = $this->placer->place($order->location, $spec, $order->osTemplate, $bridge);

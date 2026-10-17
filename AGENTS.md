@@ -261,6 +261,7 @@ Each `IpPool` declares one network model; each `Package` lists the models it all
 | **NAT VPS** | VPS gets a private IP behind a per-node NAT; customers get an allocated **port range** plus SSH forward; outbound via SNAT | DNAT cannot be configured through the Proxmox API. Design: a panel-managed **NAT gateway VM per node** (small Debian VM, nftables) configured through the Guest Agent — keeps the "no SSH to hosts" rule. Final design to be confirmed in an ADR before Phase 9 |
 | **IPv6** | Per-VPS address(es) or a routed **/64 per VPS** from a /48 or /56 pool | Can be combined with any IPv4 model; routed /64 preferred over a shared /64 to avoid NDP exhaustion issues |
 
+- IPv6 is optional per location: when the location has no active IPv6 pool for the server's network model, its IPv6 addresses are skipped on creation and upgrades (the server gets IPv4 only); a server without IPv4 still needs a pool, and an IPv6 pool that has run out fails the operation.
 - App recipes declare their ports; on NAT VPS, those ports are forwarded automatically within the customer's port range, or the install is rejected if they cannot be.
 - rDNS is only available for public IPs (bridged, routed, IPv6). PTRs are published through a pluggable driver per IP pool (`none` = record only/export, `powerdns`; others optional), see ADR 0003.
 

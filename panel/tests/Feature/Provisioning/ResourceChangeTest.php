@@ -163,6 +163,14 @@ class ResourceChangeTest extends TestCase
         $this->assertSame([$primary->address], $this->server->ipAddresses()->pluck('address')->all());
     }
 
+    public function test_ipv6_is_skipped_on_an_upgrade_when_the_location_has_no_ipv6_pool()
+    {
+        $task = $this->change(ipv6: 1);
+
+        $this->assertSame(TaskStatus::Succeeded, $task->status, (string) $task->error);
+        $this->assertSame(1, $this->server->ipAddresses()->count());
+    }
+
     public function test_additional_addresses_are_configured_inside_the_guest()
     {
         $task = $this->change(ipv4: 3);
