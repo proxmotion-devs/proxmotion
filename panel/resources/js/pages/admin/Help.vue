@@ -320,21 +320,21 @@ const topics = [
                     <li>
                         {{
                             $t(
-                                'General and Compatibility: description, category, the operating system families and versions, minimum resources and network models it needs.',
+                                'Details and Requirements: description and category, then the versions of your OS templates it runs on (ticked), the smallest server it needs in GB and its network models.',
                             )
                         }}
                     </li>
                     <li>
                         {{
                             $t(
-                                'Inputs and outputs: what the customer fills in (each with a type the panel checks) and what the script hands back, such as a URL or a password.',
+                                'Customer form: what the customer fills in (each with a type the panel checks) and what the script hands back, such as a URL or a password.',
                             )
                         }}
                     </li>
                     <li>
                         {{
                             $t(
-                                'Scripts: install.sh and uninstall.sh. Actions: optional extra scripts, such as adding a VPN client.',
+                                'Scripts & actions: install.sh and uninstall.sh, and optional extra scripts such as adding a VPN client. Edit as YAML shows the whole recipe as text.',
                             )
                         }}
                     </li>

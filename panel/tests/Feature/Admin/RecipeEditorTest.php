@@ -219,6 +219,23 @@ class RecipeEditorTest extends AdminTestCase
             ->where('versions.0.status', 'draft'));
     }
 
+    public function test_the_os_picker_gets_the_family_and_version_pairs_of_active_linux_templates()
+    {
+        OsTemplate::factory()->create(['family' => 'debian', 'version' => '13']);
+        OsTemplate::factory()->create(['family' => 'debian', 'version' => '12']);
+        OsTemplate::factory()->create(['name' => 'Debian 12 (copy)', 'family' => 'debian', 'version' => '12']);
+        OsTemplate::factory()->create(['family' => 'Ubuntu', 'version' => '24.04']);
+        OsTemplate::factory()->create(['family' => 'rocky', 'version' => '9', 'is_active' => false]);
+        OsTemplate::factory()->windows()->create();
+
+        $this->get(route('admin.apps.edit', $this->app('docker')))->assertInertia(fn ($page) => $page
+            ->where('osTemplates', [
+                ['family' => 'debian', 'version' => '12'],
+                ['family' => 'debian', 'version' => '13'],
+                ['family' => 'ubuntu', 'version' => '24.04'],
+            ]));
+    }
+
     public function test_versions_are_compared_in_the_history()
     {
         $this->post(route('admin.apps.copy', $this->app('docker')), ['slug' => 'my-docker', 'name' => 'My Docker']);

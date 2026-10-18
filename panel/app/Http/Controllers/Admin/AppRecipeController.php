@@ -15,11 +15,12 @@ use App\Domain\Apps\RecipeInput;
 use App\Domain\Apps\RecipeInvalid;
 use App\Domain\Apps\RecipeLoader;
 use App\Enums\AppRecipeVersionStatus;
+use App\Enums\OsPlatform;
 use App\Http\Controllers\Controller;
-use App\Http\Requests\Admin\OsTemplateRequest;
 use App\Models\AppRecipe;
 use App\Models\AppRecipeVersion;
 use App\Models\AuditLog;
+use App\Models\OsTemplate;
 use App\Models\Server;
 use App\Models\User;
 use App\Provisioning\Exceptions\ProvisioningException;
@@ -109,8 +110,17 @@ class AppRecipeController extends Controller
             ]),
             // requires.os takes template families and groups of them (docs/adr/0016 §3).
             'osGroups' => OsFamilies::GROUPS,
-            'families' => OsTemplateRequest::FAMILIES,
             'library' => $loader->library(),
+            // The Linux family and version pairs of the active OS templates, for the
+            // requirements' OS picker (lowest version first).
+            'osTemplates' => OsTemplate::query()
+                ->where('is_active', true)
+                ->where('platform', OsPlatform::Linux)
+                ->get(['family', 'version'])
+                ->map(fn (OsTemplate $template) => ['family' => strtolower($template->family), 'version' => $template->version])
+                ->unique(fn (array $template) => $template['family'].' '.$template['version'])
+                ->sort(fn (array $a, array $b) => strcmp($a['family'], $b['family']) ?: version_compare($a['version'], $b['version']))
+                ->values(),
         ]);
     }
 
