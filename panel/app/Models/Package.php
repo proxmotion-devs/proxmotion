@@ -36,7 +36,7 @@ use Illuminate\Support\Collection;
  * @property int $sort_order
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
- * @property-read \Illuminate\Database\Eloquent\Collection<int, Cluster> $clusters
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, PlacementGroup> $placementGroups
  */
 #[Fillable([
     'name', 'cpu_cores', 'memory_mib', 'disk_mib', 'traffic_bytes', 'port_speed_mbps',
@@ -69,19 +69,9 @@ class Package extends Model
     }
 
     /**
-     * The clusters the package's servers may be placed on; none means any
-     * cluster of the ordered location (e.g. to keep plans on one CPU type).
-     *
-     * @return BelongsToMany<Cluster, $this>
-     */
-    public function clusters(): BelongsToMany
-    {
-        return $this->belongsToMany(Cluster::class);
-    }
-
-    /**
-     * The placement groups the package's servers go to; none means any
-     * node (docs/adr/0020). Only the groups of the ordered location count.
+     * The placement groups the package's servers go to (e.g. to keep plans on
+     * one CPU type); none means any node (docs/adr/0020). Only the groups of
+     * the ordered location count.
      *
      * @return BelongsToMany<PlacementGroup, $this>
      */

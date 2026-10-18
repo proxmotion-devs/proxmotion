@@ -1,7 +1,7 @@
 # 20. Placement groups
 
 - **Status:** Accepted
-- **Date:** 2026-10-18
+- **Date:** 2026-10-18 (amended the same day: §3, §4 and §7 — packages no longer name clusters, the create form offers a group or a single node)
 - **Builds on:** AGENTS.md 3.6 (placement), the package cluster limit (`cluster_package`), manual node and storage choice on the admin create form.
 
 ## Context
@@ -14,14 +14,15 @@ Proxmox's own resource pools are not the answer. The panel's API token has right
 
 1. **A placement group** (`placement_groups`) is a panel-only record: a name, an optional description and a location. Its members are nodes of that location's clusters (`node_placement_group`) and, optionally, storages of those nodes (`placement_group_storage`). Nothing is written to Proxmox, and the token's rights are unchanged.
 2. **Storages:** a group that lists storages places disks only on those storages. They must take VM disks and be available, but need not be marked *Use for servers*: listing them is the administrator's explicit choice. A group without storages uses each node's *Use for servers* storages. A node of a group with listed storages, none of them on that node, gets no server through that group.
-3. **Packages** may name placement groups (`package_placement_group`), like they name clusters. When they do, servers of the package go only to nodes of its groups in the ordered location. If none of its groups is in that location, the order fails with a clear message. Package clusters still apply as well: a node must pass both limits.
-4. **The admin create form** offers three placements: automatic, a placement group of the location (automatic inside it), or a node chosen by hand. Groups and nodes outside the package's groups are shown but cannot be chosen, and the server refuses them when the form is bypassed. Inside a group, nodes in maintenance are skipped, as in automatic placement.
+3. **Packages** may name placement groups (`package_placement_group`). When they do, servers of the package go only to nodes of its groups in the ordered location. If none of its groups is in that location, the order fails with a clear message. A package without groups may use any node of the location.
+4. **The admin create form** offers two placements, one of which must be chosen: a placement group of the location (automatic inside it) or a single node chosen by hand, optionally with its storage. The billing API has neither and keeps placing automatically within the package's groups (or the whole location). Groups and nodes outside the package's groups are shown but cannot be chosen, and the server refuses them when the form is bypassed. Inside a group, nodes in maintenance are skipped, as in automatic placement.
 5. **Deleting a group that a package names is refused.** Otherwise the package would silently fall back to "any node". Nodes removed by the cluster sync leave their groups; an empty group places nothing.
 6. Placement groups only decide where a new server goes. Existing servers are not moved when a group changes, and the server does not remember the group it was placed through.
+7. **Packages no longer name clusters.** Placement groups replace the package cluster limit (`cluster_package`, dropped). A migration turns each cluster a package named into one placement group, "Cluster <name>", with all of that cluster's nodes and no storages, and gives it to every package that named the cluster. Packages keep placing their servers where they did.
 
 ## Consequences
 
 - Providers can sell plans per hardware class without splitting clusters.
-- Two overlapping limits on packages (clusters and groups). Clusters stay for existing setups; groups are the finer tool.
+- One limit on packages instead of two: a cluster limit is a group with all of the cluster's nodes. Nodes added to the cluster later must be added to such a group by hand.
 - The billing API has no `placement_group` parameter yet: billing systems target groups through packages. Adding one later is a backwards-compatible change.
-- Changing a server's package does not check the new package's clusters or groups (unchanged from before).
+- Changing a server's package does not check the new package's groups (unchanged from before).

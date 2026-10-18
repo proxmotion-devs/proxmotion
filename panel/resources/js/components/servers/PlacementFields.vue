@@ -7,24 +7,22 @@ import { formatMib } from '@/lib/format';
 import type { Option, PlacementNode } from '@/types/admin';
 
 /**
- * Where a new server goes: the best node of the location, the best node of
- * a placement group (docs/adr/0020), or a node (and optionally a storage)
- * chosen by the administrator. Groups and nodes the package does not allow
- * are shown but cannot be chosen; the panel checks the rest (capacity,
- * bridge, template) when the server is created.
+ * Where a new server goes: the best node of a placement group (docs/adr/0020)
+ * or a single node (and optionally a storage) chosen by the administrator.
+ * Groups and nodes the package does not allow are shown but cannot be
+ * chosen; the panel checks the rest (capacity, bridge, template) when the
+ * server is created.
  */
 const props = defineProps<{
     nodes: PlacementNode[];
     groups: (Option & { location: string })[];
     location: string | null;
-    /** The clusters the package allows; empty for any. */
-    clusters: string[];
     /** The placement groups the package allows; empty for any. */
     packageGroups: string[];
     errors: Record<string, string>;
 }>();
 
-const placement = defineModel<'auto' | 'group' | 'node' | null>('placement', {
+const placement = defineModel<'group' | 'node' | null>('placement', {
     required: true,
 });
 const group = defineModel<string | null>('group', { required: true });
@@ -32,15 +30,8 @@ const node = defineModel<string | null>('node', { required: true });
 const storage = defineModel<string>('storage', { required: true });
 
 const placements = computed(() => [
-    {
-        value: 'auto' as const,
-        label:
-            props.packageGroups.length > 0
-                ? trans('Automatic (best node of the package’s groups)')
-                : trans('Automatic (best node of the location)'),
-    },
-    { value: 'group' as const, label: trans('A placement group') },
-    { value: 'node' as const, label: trans('Choose the node and storage') },
+    { value: 'group' as const, label: trans('Placement group') },
+    { value: 'node' as const, label: trans('Single node') },
 ]);
 
 // Keep the first option that is allowed when the current one is not.
@@ -76,13 +67,19 @@ watch(groupOptions, (options) => keepAllowed(group, options), {
     immediate: true,
 });
 
+// Without a usable group in the location, start with a single node.
+if (
+    placement.value === 'group' &&
+    !groupOptions.value.some((option) => !option.disabled)
+) {
+    placement.value = 'node';
+}
+
 const nodeAllowed = (candidate: PlacementNode) =>
-    (props.clusters.length === 0 ||
-        props.clusters.includes(candidate.cluster)) &&
-    (props.packageGroups.length === 0 ||
-        candidate.placement_groups.some((uuid) =>
-            props.packageGroups.includes(uuid),
-        ));
+    props.packageGroups.length === 0 ||
+    candidate.placement_groups.some((uuid) =>
+        props.packageGroups.includes(uuid),
+    );
 
 const nodeOptions = computed(() =>
     props.nodes
@@ -138,7 +135,7 @@ watch(node, () => {
         label="Placement"
         for="placement"
         :error="errors.placement"
-        hint="Automatic placement uses only storages marked “Use for servers”, a placement group its own storages. A chosen node may also be in maintenance."
+        hint="A placement group picks its best node and uses its own storages (or those marked “Use for servers”). A single node may also be in maintenance."
     >
         <NativeSelect
             id="placement"

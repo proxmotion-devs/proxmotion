@@ -146,8 +146,6 @@ export type Package = {
     network_models: NetworkModel[];
     is_active: boolean;
     sort_order: number;
-    /** Empty: any cluster of the ordered location. */
-    cluster_ids: number[];
     /** Empty: any node; otherwise the groups of the ordered location (docs/adr/0020). */
     placement_group_ids: number[];
 };

@@ -2,7 +2,6 @@
 
 namespace Tests\Feature\Provisioning;
 
-use App\Models\Cluster;
 use App\Models\Location;
 use App\Models\Node;
 use App\Models\PlacementGroup;
@@ -125,14 +124,5 @@ class PlacementGroupTest extends TestCase
         }
 
         $this->assertTrue($this->create(['placementGroup' => $allowed])->node->is($this->node));
-    }
-
-    public function test_package_clusters_still_apply_inside_groups()
-    {
-        $this->package->placementGroups()->attach($this->group([$this->node]));
-        $this->package->clusters()->attach(Cluster::factory()->for($this->location)->create());
-
-        $this->expectException(ProvisioningException::class);
-        $this->create();
     }
 }

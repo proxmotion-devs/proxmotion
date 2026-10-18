@@ -39,7 +39,7 @@ const groups = [
     { value: 'ams-nvme', label: 'NVMe', location: 'ams' },
 ];
 
-type Limits = { clusters?: string[]; packageGroups?: string[] };
+type Limits = { packageGroups?: string[] };
 
 const mountFields = (
     limits: Limits,
@@ -54,7 +54,6 @@ const mountFields = (
             nodes,
             groups,
             location: 'ist',
-            clusters: limits.clusters ?? [],
             packageGroups: limits.packageGroups ?? [],
             errors: {},
             placement: 'node',
@@ -91,25 +90,42 @@ const nodeOptions = (wrapper: ReturnType<typeof mountFields>) =>
     );
 
 describe('PlacementFields', () => {
-    it('offers every node of the location when the package names no clusters', () => {
+    it('offers every node of the location when the package names no groups', () => {
         expect(nodeOptions(mountFields({}))).toEqual([
             { value: 'pve1', disabled: false },
             { value: 'pve2', disabled: false },
         ]);
     });
 
-    it('marks nodes outside the package clusters and does not let them be chosen', async () => {
-        const wrapper = mountFields({ clusters: ['xeon'] }, { node: 'pve1' });
-        await flushPromises();
+    it('offers only a placement group or a single node', () => {
+        expect(
+            mountFields({})
+                .findAll('#placement option')
+                .map((option) => (option.element as HTMLOptionElement).value),
+        ).toEqual(['group', 'node']);
+    });
 
-        expect(nodeOptions(wrapper)).toEqual([
-            { value: 'pve1', disabled: true },
-            { value: 'pve2', disabled: false },
+    it('starts with a single node when the location has no usable group', () => {
+        const mountWith = (groupsOfLocation: typeof groups) =>
+            mount(PlacementFields, {
+                props: {
+                    nodes,
+                    groups: groupsOfLocation,
+                    location: 'ist',
+                    packageGroups: [],
+                    errors: {},
+                    placement: 'group',
+                    group: null,
+                    node: null,
+                    storage: '',
+                },
+                global: { mocks: { $t: (key: string) => key } },
+            });
+
+        expect(mountWith([]).emitted('update:placement')?.[0]).toEqual([
+            'node',
         ]);
-        expect(wrapper.find('#node option[value="pve1"]').text()).toContain(
-            'not allowed by this package',
-        );
-        expect(wrapper.props('node')).toBe('pve2');
+        expect(mountWith(groups).emitted('update:placement')).toBeUndefined();
     });
 
     it('moves off a node the newly chosen package does not allow', async () => {
@@ -117,19 +133,22 @@ describe('PlacementFields', () => {
         await flushPromises();
         expect(wrapper.props('node')).toBe('pve2');
 
-        await wrapper.setProps({ clusters: ['epyc'] });
+        await wrapper.setProps({ packageGroups: ['nvme'] });
         await flushPromises();
         expect(wrapper.props('node')).toBe('pve1');
     });
 
     it('chooses no node when the package allows none in the location', async () => {
-        const wrapper = mountFields({ clusters: ['arm'] }, { node: 'pve1' });
+        const wrapper = mountFields(
+            { packageGroups: ['arm'] },
+            { node: 'pve1' },
+        );
         await flushPromises();
 
         expect(wrapper.props('node')).toBeNull();
     });
 
-    it('allows only nodes of the package placement groups', async () => {
+    it('marks nodes outside the package placement groups and does not let them be chosen', async () => {
         const wrapper = mountFields(
             { packageGroups: ['hdd'] },
             { node: 'pve1' },

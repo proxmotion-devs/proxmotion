@@ -106,13 +106,12 @@ class ServerController extends Controller
             'billingSystems' => BillingSystem::options(),
             'locations' => Location::query()->orderBy('name')->get(['uuid', 'name'])
                 ->map(fn (Location $location) => ['value' => $location->uuid, 'label' => $location->name]),
-            'packages' => Package::query()->where('is_active', true)->with(['clusters:id,uuid', 'placementGroups:id,uuid'])->orderBy('sort_order')->orderBy('name')->get()
+            'packages' => Package::query()->where('is_active', true)->with('placementGroups:id,uuid')->orderBy('sort_order')->orderBy('name')->get()
                 ->map(fn (Package $package) => [
                     'value' => $package->uuid,
                     'label' => $package->name,
                     'network_models' => $package->network_models,
-                    // The clusters and placement groups its servers may be placed on; empty for any.
-                    'clusters' => $package->clusters->pluck('uuid')->values(),
+                    // The placement groups its servers may be placed on; empty for any.
                     'placement_groups' => $package->placementGroups->pluck('uuid')->values(),
                 ]),
             'placementGroups' => PlacementGroup::query()->with('location:id,uuid')->orderBy('name')->get()

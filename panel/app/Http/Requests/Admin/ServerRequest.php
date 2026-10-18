@@ -49,9 +49,9 @@ class ServerRequest extends FormRequest
             'ipv6_count' => [Rule::requiredIf($custom), 'nullable', 'integer', 'between:0,64'],
             'port_speed_mbps' => ['nullable', 'integer', 'between:1,400000'],
             'traffic_gb' => ['nullable', 'integer', 'between:1,10000000'],
-            // "auto": the best node of the location; "group": the best node of a placement group
-            // (docs/adr/0020); "node": the node (and optionally storage) chosen here.
-            'placement' => ['nullable', Rule::in(['auto', 'group', 'node'])],
+            // "group": the best node of a placement group (docs/adr/0020); "node": the node
+            // (and optionally storage) chosen here. The billing API still places automatically.
+            'placement' => ['required', Rule::in(['group', 'node'])],
             'placement_group' => ['nullable', 'required_if:placement,group', 'string', Rule::exists('placement_groups', 'uuid')],
             'node' => ['nullable', 'required_if:placement,node', 'string', Rule::exists('nodes', 'uuid')],
             // Empty: the storage of the node with the most room.

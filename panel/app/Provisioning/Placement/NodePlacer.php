@@ -20,9 +20,8 @@ use Illuminate\Support\Collection;
  * Picks the least-used node in a location that can host a server.
  *
  * A node qualifies when it is online, not in maintenance, belongs to an active
- * cluster (one of the package's clusters, when it names any), has the OS
- * template, has the bridge the server's network uses, and still has room for
- * the server's CPU, memory and disk after over-commit.
+ * cluster, has the OS template, has the bridge the server's network uses, and
+ * still has room for the server's CPU, memory and disk after over-commit.
  *
  * Administrators may also choose the node, and optionally its storage: the
  * same checks apply to that node, except that a node in maintenance may be
@@ -40,14 +39,12 @@ final class NodePlacer
             return $this->placeOn($rules->node, $location, $spec, $osTemplate, $bridge, $rules);
         }
 
-        $clusterIds = $rules->clusterIds;
         $templates = $osTemplate->proxmoxTemplates()
-            ->whereHas('cluster', fn ($query) => $query->where('location_id', $location->id)->where('is_active', true)
-                ->when($clusterIds !== [], fn ($query) => $query->whereIn('id', $clusterIds)))
+            ->whereHas('cluster', fn ($query) => $query->where('location_id', $location->id)->where('is_active', true))
             ->get();
 
         if ($templates->isEmpty()) {
-            throw $clusterIds === [] ? ProvisioningException::noTemplate() : ProvisioningException::noPackageCluster();
+            throw ProvisioningException::noTemplate();
         }
 
         $nodes = Node::query()
@@ -90,17 +87,11 @@ final class NodePlacer
      */
     private function placeOn(Node $node, Location $location, ServerSpec $spec, OsTemplate $osTemplate, string $bridge, PlacementRules $rules): Placement
     {
-        $clusterIds = $rules->clusterIds;
-
         // Fresh from the database: capacity and status may have changed since the node was loaded.
         $node = Node::query()->with(['cluster', 'storages', 'bridges'])->findOrFail($node->id);
 
         if ($node->cluster->location_id !== $location->id || ! $node->cluster->is_active) {
             throw new ProvisioningException('The chosen node is not in an active cluster of this location.');
-        }
-
-        if ($clusterIds !== [] && ! in_array($node->cluster_id, $clusterIds, true)) {
-            throw new ProvisioningException('This package may not use the cluster of the chosen node.');
         }
 
         if ($rules->groups !== null && ! in_array($node->id, PlacementGroup::nodeIdsOf($rules->groups), true)) {

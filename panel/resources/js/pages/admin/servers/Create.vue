@@ -36,7 +36,6 @@ const props = defineProps<{
     locations: Option[];
     packages: (Option & {
         network_models: NetworkModel[];
-        clusters: string[];
         placement_groups: string[];
     })[];
     placementGroups: (Option & { location: string })[];
@@ -63,7 +62,7 @@ const form = useForm({
     ipv6_count: 0,
     port_speed_mbps: '' as OptionalNumber,
     traffic_gb: '' as OptionalNumber,
-    placement: 'auto' as 'auto' | 'group' | 'node' | null,
+    placement: 'group' as 'group' | 'node' | null,
     placement_group: null as string | null,
     node: null as string | null,
     storage: '',
@@ -115,7 +114,7 @@ watch(
     { immediate: true },
 );
 
-// A package may limit its servers to some clusters and placement groups (none = any);
+// A package may limit its servers to some placement groups (none = any);
 // custom servers may go anywhere.
 const chosenPackage = computed(() =>
     custom.value
@@ -148,7 +147,7 @@ const submit = () =>
     <div class="flex max-w-2xl flex-col gap-6 p-4">
         <Heading
             title="Create server"
-            description="The best node of the location is chosen automatically unless you choose one. Creation continues in the background."
+            description="Place the server in a placement group or on a single node. Creation continues in the background."
         />
 
         <p
@@ -349,7 +348,6 @@ const submit = () =>
                 :nodes="nodes"
                 :groups="placementGroups"
                 :location="form.location"
-                :clusters="chosenPackage?.clusters ?? []"
                 :package-groups="chosenPackage?.placement_groups ?? []"
                 :errors="form.errors as Record<string, string>"
             />

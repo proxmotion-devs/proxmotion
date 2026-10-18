@@ -35,21 +35,10 @@ class PackageRequest extends FormRequest
             'network_models.*' => ['distinct', Rule::enum(NetworkModel::class)],
             'is_active' => ['required', 'boolean'],
             'sort_order' => ['required', 'integer', 'between:0,65535'],
-            // Empty: any cluster of the ordered location.
-            'cluster_ids' => ['array'],
-            'cluster_ids.*' => ['integer', 'distinct', Rule::exists('clusters', 'id')],
             // Empty: any node; otherwise the groups of the ordered location (docs/adr/0020).
             'placement_group_ids' => ['array'],
             'placement_group_ids.*' => ['integer', 'distinct', Rule::exists('placement_groups', 'id')],
         ];
-    }
-
-    /**
-     * @return list<int>
-     */
-    public function clusterIds(): array
-    {
-        return array_values(array_map('intval', $this->array('cluster_ids')));
     }
 
     /**
@@ -65,7 +54,7 @@ class PackageRequest extends FormRequest
      */
     public function packageData(): array
     {
-        $data = $this->safe()->except(['disk_gib', 'traffic_gb', 'cluster_ids', 'placement_group_ids']);
+        $data = $this->safe()->except(['disk_gib', 'traffic_gb', 'placement_group_ids']);
         $data['disk_mib'] = $this->integer('disk_gib') * 1024;
         $data['traffic_bytes'] = $this->filled('traffic_gb') ? $this->integer('traffic_gb') * 1000 ** 3 : null;
         $data['port_speed_mbps'] = $this->filled('port_speed_mbps') ? $this->integer('port_speed_mbps') : null;

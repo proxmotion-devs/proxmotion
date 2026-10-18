@@ -120,10 +120,9 @@ class NodePlacerTest extends TestCase
         $this->place();
     }
 
-    public function test_the_package_clusters_decide_where_a_server_goes()
+    public function test_the_least_used_node_of_any_cluster_in_the_location_is_chosen()
     {
         // A second, busier cluster in the same location, e.g. other CPUs.
-        $first = $this->cluster;
         $this->cluster = Cluster::factory()->for($this->location)->create();
         $other = $this->addNode('r9-1');
         $this->osTemplate->proxmoxTemplates()->attach(ProxmoxTemplate::query()->forceCreate([
@@ -133,21 +132,7 @@ class NodePlacerTest extends TestCase
         $spec = ServerSpec::fromPackage($this->package);
         $placer = app(NodePlacer::class);
 
-        $this->assertTrue($placer->place($this->location, $spec, $this->osTemplate, 'vmbr0')->node->is($this->node), 'Without clusters, the least used node anywhere.');
-        $this->assertTrue($placer->place($this->location, $spec, $this->osTemplate, 'vmbr0', new PlacementRules([$this->cluster->id]))->node->is($other));
-        $this->assertTrue($placer->place($this->location, $spec, $this->osTemplate, 'vmbr0', new PlacementRules([$first->id]))->node->is($this->node));
-
-        $elsewhere = Cluster::factory()->create();
-        $this->expectExceptionMessage('None of the clusters this package may use is in this location and has this OS template.');
-        $placer->place($this->location, $spec, $this->osTemplate, 'vmbr0', new PlacementRules([$elsewhere->id]));
-    }
-
-    public function test_server_creation_uses_the_package_clusters()
-    {
-        $this->package->clusters()->attach(Cluster::factory()->for($this->location)->create());
-
-        $this->expectExceptionMessage('None of the clusters this package may use is in this location and has this OS template.');
-        app(ServerCreator::class)->create($this->order());
+        $this->assertTrue($placer->place($this->location, $spec, $this->osTemplate, 'vmbr0')->node->is($this->node));
     }
 
     private function placeOn(Node $node, ?string $storage = null): Placement
@@ -217,11 +202,6 @@ class NodePlacerTest extends TestCase
         $this->expectProvisioningError(
             fn () => app(NodePlacer::class)->place($this->location, ServerSpec::fromPackage($this->package), $this->osTemplate, 'vmbr9', new PlacementRules(node: $this->node)),
             'The chosen node does not have the bridge :bridge.',
-        );
-
-        $this->expectProvisioningError(
-            fn () => app(NodePlacer::class)->place($this->location, ServerSpec::fromPackage($this->package), $this->osTemplate, 'vmbr0', new PlacementRules([Cluster::factory()->for($this->location)->create()->id], node: $this->node)),
-            'This package may not use the cluster of the chosen node.',
         );
     }
 

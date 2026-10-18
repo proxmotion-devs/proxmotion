@@ -16,6 +16,7 @@ use App\Models\BillingSystem;
 use App\Models\Cluster;
 use App\Models\IpAddress;
 use App\Models\OsTemplate;
+use App\Models\PlacementGroup;
 use App\Models\ProxmoxTemplate;
 use App\Models\Server;
 use App\Models\Task;
@@ -31,12 +32,16 @@ class ServerManagementTest extends AdminTestCase
 
     private FakeProxmoxCluster $proxmox;
 
+    private PlacementGroup $group;
+
     protected function setUp(): void
     {
         parent::setUp();
 
         $this->buildInfrastructure();
         $this->proxmox = (new FakeProxmoxCluster)->addTemplate(9000)->install();
+        $this->group = PlacementGroup::factory()->for($this->location)->create(['name' => 'General']);
+        $this->group->nodes()->attach($this->node);
     }
 
     /**
@@ -51,6 +56,8 @@ class ServerManagementTest extends AdminTestCase
             'os_template' => $this->osTemplate->uuid,
             'network_model' => 'bridged',
             'hostname' => 'Web1.Example.com',
+            'placement' => 'group',
+            'placement_group' => $this->group->uuid,
             'root_password' => '',
             'ssh_keys' => '',
             ...$overrides,
@@ -93,7 +100,7 @@ class ServerManagementTest extends AdminTestCase
 
         $this->get(route('admin.servers.create'))
             ->assertInertia(fn (Assert $page) => $page
-                ->where('packages.0.clusters', [])
+                ->where('packages.0.placement_groups', [])
                 ->where('nodes.1.value', $pve2->uuid)
                 ->where('nodes.1.cluster', $this->cluster->uuid)
                 ->where('nodes.1.location', $this->location->uuid)
@@ -112,17 +119,27 @@ class ServerManagementTest extends AdminTestCase
         $this->post(route('admin.servers.store'), $this->payload(['placement' => 'node']))->assertSessionHasErrors('node');
     }
 
-    public function test_the_create_form_names_the_clusters_a_package_may_use()
+    public function test_the_create_form_names_the_placement_groups_a_package_may_use()
     {
-        $this->package->clusters()->attach($this->cluster);
+        $this->package->placementGroups()->attach($this->group);
 
         $this->get(route('admin.servers.create'))
-            ->assertInertia(fn (Assert $page) => $page->where('packages.0.clusters', [$this->cluster->uuid]));
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('packages.0.placement_groups', [$this->group->uuid])
+                ->missing('packages.0.clusters'));
 
         // A node outside them is still refused when the form is bypassed.
-        $this->package->clusters()->sync([Cluster::factory()->for($this->location)->create()->id]);
-        $this->post(route('admin.servers.store'), $this->payload(['placement' => 'node', 'node' => $this->node->uuid]))
-            ->assertSessionHasErrors(['server' => __('This package may not use the cluster of the chosen node.')]);
+        $pve2 = $this->addNode('pve2');
+        $this->post(route('admin.servers.store'), $this->payload(['placement' => 'node', 'node' => $pve2->uuid]))
+            ->assertSessionHasErrors(['server' => __('The chosen node is not in a placement group this package may use.')]);
+    }
+
+    public function test_a_placement_group_or_a_single_node_must_be_chosen()
+    {
+        $this->post(route('admin.servers.store'), $this->payload(['placement' => null]))->assertSessionHasErrors('placement');
+        $this->post(route('admin.servers.store'), $this->payload(['placement' => 'auto']))->assertSessionHasErrors('placement');
+        $this->post(route('admin.servers.store'), $this->payload(['placement_group' => null]))->assertSessionHasErrors('placement_group');
+        $this->assertSame(0, Server::query()->count());
     }
 
     public function test_a_server_can_be_created_with_custom_resources_and_no_package()
