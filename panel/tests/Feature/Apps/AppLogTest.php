@@ -6,8 +6,10 @@ use App\Domain\Apps\AppInstaller;
 use App\Domain\Apps\AppLogs;
 use App\Domain\Apps\AppRunner;
 use App\Domain\Apps\InstallationPoller;
+use App\Domain\Apps\LiveAppPolls;
 use App\Domain\Apps\RecipeSynchronizer;
 use App\Domain\Apps\RunPoller;
+use App\Http\Middleware\HandleInertiaRequests;
 use App\Models\AppInstallation;
 use App\Models\AppLog;
 use App\Models\AppRecipe;
@@ -16,6 +18,7 @@ use App\Models\User;
 use App\Provisioning\ServerCreator;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Testing\TestResponse;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\Concerns\BuildsInfrastructure;
 use Tests\Support\FakeProxmoxCluster;
@@ -243,6 +246,52 @@ class AppLogTest extends TestCase
         $this->actingAs($this->admin)->getJson(route('admin.app-logs.show', ['appLog' => $log, 'cursor' => 4]))->assertOk();
 
         $this->assertSame($reads, $this->proxmox->guestLogReads);
+    }
+
+    /**
+     * A refresh of the server page, as usePoll asks for it.
+     */
+    private function refreshServerPage(): TestResponse
+    {
+        return $this->actingAs($this->admin)->get(route('admin.servers.show', $this->server), [
+            'X-Inertia' => 'true',
+            'X-Inertia-Version' => (string) app(HandleInertiaRequests::class)->version(request()),
+            'X-Inertia-Partial-Component' => 'admin/servers/Show',
+            'X-Inertia-Partial-Data' => 'server,tasks,power,agent,apps',
+        ])->assertOk();
+    }
+
+    public function test_refreshes_of_the_server_page_follow_a_running_installer()
+    {
+        $installation = $this->install();
+        $this->reports($installation, ['status' => 'installing', 'progress' => 40, 'step' => 'Creating keys']);
+        $this->printed($installation, "==> Creating keys\n");
+
+        $this->actingAs($this->admin)->get(route('admin.servers.show', $this->server))->assertOk();
+        $this->assertSame(0, $installation->refresh()->progress, 'A full page load does not ask the guest.');
+
+        $page = $this->refreshServerPage();
+
+        $this->assertSame(40, $page->json('props.apps.0.progress'));
+        $this->assertSame('Creating keys', $page->json('props.apps.0.step'));
+        $this->assertSame("==> Creating keys\n", $this->logOf($installation)->content);
+
+        $this->reports($installation, ['status' => 'failed', 'progress' => 40, 'step' => 'Creating keys', 'message' => 'boom']);
+        $this->assertSame('installing', $this->refreshServerPage()->json('props.apps.0.status'), 'Not again within a few seconds.');
+
+        $this->travel(LiveAppPolls::EVERY_SECONDS + 1)->seconds();
+        $this->assertSame('failed', $this->refreshServerPage()->json('props.apps.0.status'));
+    }
+
+    public function test_refreshes_of_the_server_page_follow_a_running_action()
+    {
+        $installation = $this->install();
+        $this->reports($installation, ['status' => 'installed', 'progress' => 100, 'step' => 'Installed']);
+        $this->poll($installation);
+        $run = app(AppRunner::class)->action($installation->refresh(), 'add_client', ['name' => 'laptop'], $this->admin, '127.0.0.1')->refresh();
+        $this->guestFile($run->guestDirectory().'/status.json', json_encode(['status' => 'running', 'progress' => 50, 'step' => 'Adding laptop'], JSON_THROW_ON_ERROR));
+
+        $this->assertSame('Adding laptop', $this->refreshServerPage()->json('props.apps.0.runs.0.step'));
     }
 
     public function test_only_administrators_see_logs()

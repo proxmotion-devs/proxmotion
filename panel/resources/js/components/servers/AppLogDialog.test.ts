@@ -88,12 +88,12 @@ describe('AppLogDialog', () => {
         );
         expect(fetch.mock.calls[0][0]).toBe('/admin/app-logs/log-1');
 
-        await vi.advanceTimersByTimeAsync(3000);
+        await vi.advanceTimersByTimeAsync(2000);
         await flushPromises();
         expect(log()).toBe('one\ntwo');
         expect(fetch.mock.calls[1][0]).toBe('/admin/app-logs/log-1?cursor=4');
 
-        await vi.advanceTimersByTimeAsync(3000);
+        await vi.advanceTimersByTimeAsync(2000);
         await flushPromises();
         expect(log()).toBe('one\ntwo\ndone');
         expect(wrapper.find('[data-test="app-log-live"]').exists()).toBe(false);

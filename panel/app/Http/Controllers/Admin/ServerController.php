@@ -8,6 +8,7 @@ use App\Domain\Apps\AppEligibility;
 use App\Domain\Apps\AppNotEligible;
 use App\Domain\Apps\AppNotEntitled;
 use App\Domain\Apps\AppUpgrades;
+use App\Domain\Apps\LiveAppPolls;
 use App\Domain\Apps\OrderedAppOptions;
 use App\Domain\Apps\RecipeAction;
 use App\Domain\Apps\RecipeInput;
@@ -198,9 +199,14 @@ class ServerController extends Controller
         return to_route('admin.servers.show', $server);
     }
 
-    public function show(Server $server, GuestAgentProbe $agent, AppEligibility $eligibility, AppUpgrades $upgrades, TaskFailer $failer): Response
+    public function show(Request $request, Server $server, GuestAgentProbe $agent, AppEligibility $eligibility, AppUpgrades $upgrades, TaskFailer $failer, LiveAppPolls $live): Response
     {
         $server->load(['node:id,uuid,name', 'cluster:id,uuid,name', 'location:id,name', 'package:id,name', 'billingSystem:id,name', 'osTemplate:id,name,family,version,platform', 'storage:id,name', 'ipAddresses.pool:id,uuid,name,version']);
+
+        // The page's refreshes while an app script runs ask the guest, so step and progress show live (docs/adr/0021).
+        if (in_array('apps', explode(',', (string) $request->header('X-Inertia-Partial-Data')), true)) {
+            $live->server($server);
+        }
 
         return Inertia::render('admin/servers/Show', [
             'server' => [

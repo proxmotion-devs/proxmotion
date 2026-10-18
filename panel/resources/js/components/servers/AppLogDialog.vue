@@ -27,7 +27,7 @@ const props = defineProps<{
 
 const open = defineModel<boolean>('open', { required: true });
 
-const POLL_MS = 3000;
+const POLL_MS = 2000;
 
 const selected = ref<string | null>(null);
 const text = ref('');
