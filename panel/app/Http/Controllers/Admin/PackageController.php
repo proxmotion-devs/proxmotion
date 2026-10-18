@@ -8,6 +8,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\PackageRequest;
 use App\Models\Cluster;
 use App\Models\Package;
+use App\Models\PlacementGroup;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
@@ -19,7 +20,7 @@ class PackageController extends Controller
     {
         return Inertia::render('admin/packages/Index', [
             'packages' => Package::query()
-                ->with('clusters:id')
+                ->with(['clusters:id', 'placementGroups:id'])
                 ->orderBy('sort_order')
                 ->orderBy('name')
                 ->get()
@@ -39,16 +40,21 @@ class PackageController extends Controller
                     'is_active' => $package->is_active,
                     'sort_order' => $package->sort_order,
                     'cluster_ids' => $package->clusters->pluck('id'),
+                    'placement_group_ids' => $package->placementGroups->pluck('id'),
                 ]),
             'clusters' => Cluster::query()->with('location:id,name')->orderBy('name')->get(['id', 'name', 'location_id'])
                 ->map(fn (Cluster $cluster) => ['id' => $cluster->id, 'name' => $cluster->name, 'location' => $cluster->location->name]),
+            'placementGroups' => PlacementGroup::query()->with('location:id,name')->orderBy('name')->get(['id', 'name', 'location_id'])
+                ->map(fn (PlacementGroup $group) => ['id' => $group->id, 'name' => $group->name, 'location' => $group->location->name]),
         ]);
     }
 
     public function store(PackageRequest $request): RedirectResponse
     {
         DB::transaction(function () use ($request) {
-            Package::create($request->packageData())->clusters()->sync($request->clusterIds());
+            $package = Package::create($request->packageData());
+            $package->clusters()->sync($request->clusterIds());
+            $package->placementGroups()->sync($request->placementGroupIds());
         });
 
         $this->toast('success', 'Package created.');
@@ -61,6 +67,7 @@ class PackageController extends Controller
         DB::transaction(function () use ($request, $package) {
             $package->update($request->packageData());
             $package->clusters()->sync($request->clusterIds());
+            $package->placementGroups()->sync($request->placementGroupIds());
         });
 
         $this->toast('success', 'Package updated.');

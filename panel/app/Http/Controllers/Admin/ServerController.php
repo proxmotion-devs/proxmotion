@@ -41,6 +41,7 @@ use App\Models\Location;
 use App\Models\Node;
 use App\Models\OsTemplate;
 use App\Models\Package;
+use App\Models\PlacementGroup;
 use App\Models\Server;
 use App\Models\ServerDrift;
 use App\Models\Storage;
@@ -105,13 +106,20 @@ class ServerController extends Controller
             'billingSystems' => BillingSystem::options(),
             'locations' => Location::query()->orderBy('name')->get(['uuid', 'name'])
                 ->map(fn (Location $location) => ['value' => $location->uuid, 'label' => $location->name]),
-            'packages' => Package::query()->where('is_active', true)->with('clusters:id,uuid')->orderBy('sort_order')->orderBy('name')->get()
+            'packages' => Package::query()->where('is_active', true)->with(['clusters:id,uuid', 'placementGroups:id,uuid'])->orderBy('sort_order')->orderBy('name')->get()
                 ->map(fn (Package $package) => [
                     'value' => $package->uuid,
                     'label' => $package->name,
                     'network_models' => $package->network_models,
-                    // The clusters its servers may be placed on; empty for any.
+                    // The clusters and placement groups its servers may be placed on; empty for any.
                     'clusters' => $package->clusters->pluck('uuid')->values(),
+                    'placement_groups' => $package->placementGroups->pluck('uuid')->values(),
+                ]),
+            'placementGroups' => PlacementGroup::query()->with('location:id,uuid')->orderBy('name')->get()
+                ->map(fn (PlacementGroup $group) => [
+                    'value' => $group->uuid,
+                    'label' => $group->name,
+                    'location' => $group->location->uuid,
                 ]),
             'osTemplates' => $osTemplates->map(fn (OsTemplate $template) => ['value' => $template->uuid, 'label' => $template->name]),
             // Apps that can come with the server (docs/adr/0016 §5).
@@ -119,7 +127,7 @@ class ServerController extends Controller
             // Nodes of active clusters with the storages that take VM disks, for choosing the placement by hand.
             'nodes' => fn () => Node::query()
                 ->whereHas('cluster', fn ($query) => $query->where('is_active', true))
-                ->with(['cluster.location:id,uuid', 'storages' => fn ($query) => $query->where('is_available', true)->orderBy('name')])
+                ->with(['cluster.location:id,uuid', 'placementGroups:id,uuid', 'storages' => fn ($query) => $query->where('is_available', true)->orderBy('name')])
                 ->orderBy('name')
                 ->get()
                 ->map(fn (Node $node) => [
@@ -127,6 +135,7 @@ class ServerController extends Controller
                     'label' => "{$node->name} ({$node->cluster->name})",
                     'location' => $node->cluster->location->uuid,
                     'cluster' => $node->cluster->uuid,
+                    'placement_groups' => $node->placementGroups->pluck('uuid')->values(),
                     'online' => $node->status === NodeStatus::Online,
                     'maintenance' => $node->is_maintenance,
                     'storages' => $node->storages

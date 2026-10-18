@@ -8,6 +8,7 @@ use App\Enums\NodeStatus;
 use App\Models\Location;
 use App\Models\Node;
 use App\Models\OsTemplate;
+use App\Models\PlacementGroup;
 use App\Models\ProxmoxTemplate;
 use App\Models\Server;
 use App\Models\Storage;
@@ -26,22 +27,20 @@ use Illuminate\Support\Collection;
  * Administrators may also choose the node, and optionally its storage: the
  * same checks apply to that node, except that a node in maintenance may be
  * chosen (maintenance only keeps automatic placement away from it).
+ * Placement groups (docs/adr/0020) limit both to their nodes and storages.
  */
 final class NodePlacer
 {
     /**
-     * @param  list<int>  $clusterIds  the clusters the package allows; empty for any
-     * @param  Node|null  $node  a node chosen by an administrator; null to pick one
-     * @param  string|null  $storage  the name of a storage of the chosen node; null to pick one
-     *
      * @throws ProvisioningException
      */
-    public function place(Location $location, ServerSpec $spec, OsTemplate $osTemplate, string $bridge, array $clusterIds = [], ?Node $node = null, ?string $storage = null): Placement
+    public function place(Location $location, ServerSpec $spec, OsTemplate $osTemplate, string $bridge, PlacementRules $rules = new PlacementRules): Placement
     {
-        if ($node !== null) {
-            return $this->placeOn($node, $storage, $location, $spec, $osTemplate, $bridge, $clusterIds);
+        if ($rules->node !== null) {
+            return $this->placeOn($rules->node, $location, $spec, $osTemplate, $bridge, $rules);
         }
 
+        $clusterIds = $rules->clusterIds;
         $templates = $osTemplate->proxmoxTemplates()
             ->whereHas('cluster', fn ($query) => $query->where('location_id', $location->id)->where('is_active', true)
                 ->when($clusterIds !== [], fn ($query) => $query->whereIn('id', $clusterIds)))
@@ -55,13 +54,14 @@ final class NodePlacer
             ->whereIn('cluster_id', $templates->pluck('cluster_id')->unique())
             ->where('status', NodeStatus::Online)
             ->where('is_maintenance', false)
+            ->when($rules->groups !== null, fn ($query) => $query->whereIn('id', PlacementGroup::nodeIdsOf($rules->groups ?? collect())))
             ->with(['storages', 'bridges'])
             ->get();
 
         $candidates = [];
 
         foreach ($nodes as $node) {
-            $storage = $this->pickStorage($node, $spec);
+            $storage = $this->pickStorage($node, $spec, $rules->groups);
 
             if ($storage === null || ! $this->hasBridge($node, $bridge) || ! $this->fits($node, $spec)) {
                 continue;
@@ -74,7 +74,7 @@ final class NodePlacer
         }
 
         if ($candidates === []) {
-            throw ProvisioningException::noCapacity();
+            throw $rules->groups === null ? ProvisioningException::noCapacity() : ProvisioningException::noGroupCapacity();
         }
 
         usort($candidates, fn (array $a, array $b) => $a['score'] <=> $b['score']);
@@ -86,12 +86,12 @@ final class NodePlacer
      * Places the server on the node an administrator chose, saying exactly
      * why when it does not fit.
      *
-     * @param  list<int>  $clusterIds
-     *
      * @throws ProvisioningException
      */
-    private function placeOn(Node $node, ?string $storageName, Location $location, ServerSpec $spec, OsTemplate $osTemplate, string $bridge, array $clusterIds): Placement
+    private function placeOn(Node $node, Location $location, ServerSpec $spec, OsTemplate $osTemplate, string $bridge, PlacementRules $rules): Placement
     {
+        $clusterIds = $rules->clusterIds;
+
         // Fresh from the database: capacity and status may have changed since the node was loaded.
         $node = Node::query()->with(['cluster', 'storages', 'bridges'])->findOrFail($node->id);
 
@@ -101,6 +101,10 @@ final class NodePlacer
 
         if ($clusterIds !== [] && ! in_array($node->cluster_id, $clusterIds, true)) {
             throw new ProvisioningException('This package may not use the cluster of the chosen node.');
+        }
+
+        if ($rules->groups !== null && ! in_array($node->id, PlacementGroup::nodeIdsOf($rules->groups), true)) {
+            throw new ProvisioningException('The chosen node is not in a placement group this package may use.');
         }
 
         $templates = $osTemplate->proxmoxTemplates()->where('proxmox_templates.cluster_id', $node->cluster_id)->get();
@@ -121,7 +125,7 @@ final class NodePlacer
             throw new ProvisioningException('The chosen node does not have enough free CPU, memory or server slots for this server.');
         }
 
-        $storage = $storageName === null ? $this->pickStorage($node, $spec) : $this->chosenStorage($node, $storageName, $spec);
+        $storage = $rules->storage === null ? $this->pickStorage($node, $spec, $rules->groups) : $this->chosenStorage($node, $rules->storage, $spec);
 
         if ($storage === null) {
             throw new ProvisioningException('No storage of the chosen node that is used for servers has room for this disk.');
@@ -224,15 +228,23 @@ final class NodePlacer
     }
 
     /**
-     * The usable storage with the most free (over-committed) space for the disk.
+     * The usable storage with the most free (over-committed) space for the disk:
+     * one marked "use for servers", or within placement groups one a group of
+     * the node allows (docs/adr/0020 §2).
+     *
+     * @param  Collection<int, PlacementGroup>|null  $groups
      */
-    private function pickStorage(Node $node, ServerSpec $spec): ?Storage
+    private function pickStorage(Node $node, ServerSpec $spec, ?Collection $groups = null): ?Storage
     {
         $best = null;
         $bestFree = 0;
 
         foreach ($node->storages as $storage) {
-            if (! $storage->use_for_servers || ! $storage->is_available || ! $storage->supportsVmDisks() || $storage->total_bytes === null) {
+            $allowed = $groups === null
+                ? $storage->use_for_servers
+                : $groups->contains(fn (PlacementGroup $group) => $group->allowsStorage($storage));
+
+            if (! $allowed || ! $storage->is_available || ! $storage->supportsVmDisks() || $storage->total_bytes === null) {
                 continue;
             }
 

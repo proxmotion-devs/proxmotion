@@ -37,6 +37,14 @@ class Location extends Model
     }
 
     /**
+     * @return HasMany<PlacementGroup, $this>
+     */
+    public function placementGroups(): HasMany
+    {
+        return $this->hasMany(PlacementGroup::class);
+    }
+
+    /**
      * @return HasMany<IpPool, $this>
      */
     public function ipPools(): HasMany

@@ -13,11 +13,14 @@ use App\Enums\ServerStatus;
 use App\Enums\TaskType;
 use App\Models\ApiToken;
 use App\Models\Cluster;
+use App\Models\PlacementGroup;
 use App\Models\Server;
 use App\Models\User;
 use App\Provisioning\Exceptions\ProvisioningException;
 use App\Provisioning\Placement\NodePlacer;
+use App\Provisioning\Placement\PlacementRules;
 use App\Proxmox\ProxmoxClientFactory;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -79,7 +82,12 @@ final readonly class ServerCreator
             $bridge = ($ipv4Pool ?? $ipv6Pool)->bridge ?? 'vmbr0';
 
             $clusterIds = $order->package?->clusters()->pluck('clusters.id')->map(fn ($id) => (int) $id)->all() ?? [];
-            $placement = $this->placer->place($order->location, $spec, $order->osTemplate, $bridge, array_values($clusterIds), $order->node, $order->storage);
+            $placement = $this->placer->place($order->location, $spec, $order->osTemplate, $bridge, new PlacementRules(
+                clusterIds: array_values($clusterIds),
+                groups: $this->placementGroups($order),
+                node: $order->node,
+                storage: $order->storage,
+            ));
             $cluster = $placement->node->cluster;
             $vmid = $this->firstFreeVmid($cluster);
 
@@ -103,6 +111,45 @@ final readonly class ServerCreator
         $this->tasks->start($server, TaskType::Create, $actor);
 
         return $server;
+    }
+
+    /**
+     * The placement groups the server must stay in (docs/adr/0020): the one
+     * the administrator chose, else the package's groups in the location,
+     * else none (null).
+     *
+     * @return Collection<int, PlacementGroup>|null
+     *
+     * @throws ProvisioningException
+     */
+    private function placementGroups(NewServer $order): ?Collection
+    {
+        $packageGroups = $order->package?->placementGroups()->with(['nodes', 'storages'])->get() ?? new Collection;
+        $chosen = $order->placementGroup;
+
+        if ($chosen !== null) {
+            if ($chosen->location_id !== $order->location->id) {
+                throw new ProvisioningException('The chosen placement group is not in this location.');
+            }
+
+            if ($packageGroups->isNotEmpty() && ! $packageGroups->contains('id', $chosen->id)) {
+                throw new ProvisioningException('This package may not use the chosen placement group.');
+            }
+
+            return new Collection([$chosen->load(['nodes', 'storages'])]);
+        }
+
+        if ($packageGroups->isEmpty()) {
+            return null;
+        }
+
+        $inLocation = $packageGroups->where('location_id', $order->location->id)->values();
+
+        if ($inLocation->isEmpty()) {
+            throw ProvisioningException::noPackageGroup();
+        }
+
+        return $inLocation;
     }
 
     private function insertServer(NewServer $order, Placement\Placement $placement, Cluster $cluster, int $vmid): Server

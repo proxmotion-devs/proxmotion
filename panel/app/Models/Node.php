@@ -11,6 +11,7 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Carbon;
 
@@ -89,5 +90,13 @@ class Node extends Model
     public function servers(): HasMany
     {
         return $this->hasMany(Server::class);
+    }
+
+    /**
+     * @return BelongsToMany<PlacementGroup, $this>
+     */
+    public function placementGroups(): BelongsToMany
+    {
+        return $this->belongsToMany(PlacementGroup::class);
     }
 }

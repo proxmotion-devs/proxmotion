@@ -23,35 +23,50 @@ defineOptions({
     layout: { breadcrumbs: [{ title: 'Packages', href: index() }] },
 });
 
-type ClusterChoice = { id: number; name: string; location: string };
+type Choice = { id: number; name: string; location: string };
 
-const props = defineProps<{ packages: Package[]; clusters: ClusterChoice[] }>();
+const props = defineProps<{
+    packages: Package[];
+    clusters: Choice[];
+    placementGroups: Choice[];
+}>();
 
-// Clusters grouped by location for the checkboxes.
-const clustersByLocation = computed(() => {
-    const groups = new Map<string, ClusterChoice[]>();
+// Clusters and placement groups grouped by location for the checkboxes.
+const byLocation = (choices: Choice[]) => {
+    const groups = new Map<string, Choice[]>();
 
-    for (const cluster of props.clusters) {
-        groups.set(cluster.location, [
-            ...(groups.get(cluster.location) ?? []),
-            cluster,
+    for (const choice of choices) {
+        groups.set(choice.location, [
+            ...(groups.get(choice.location) ?? []),
+            choice,
         ]);
     }
 
     return [...groups.entries()];
-});
+};
 
-const clusterNames = (pkg: Package) =>
-    props.clusters
-        .filter((cluster) => pkg.cluster_ids.includes(cluster.id))
-        .map((cluster) => cluster.name)
+const clustersByLocation = computed(() => byLocation(props.clusters));
+const groupsByLocation = computed(() => byLocation(props.placementGroups));
+
+const names = (choices: Choice[], ids: number[]) =>
+    choices
+        .filter((choice) => ids.includes(choice.id))
+        .map((choice) => choice.name)
         .join(', ');
 
+const toggled = (
+    ids: number[],
+    id: number,
+    value: boolean | 'indeterminate',
+) =>
+    value === true ? [...ids, id] : ids.filter((existing) => existing !== id);
+
 const toggleCluster = (id: number, value: boolean | 'indeterminate') => {
-    form.cluster_ids =
-        value === true
-            ? [...form.cluster_ids, id]
-            : form.cluster_ids.filter((existing) => existing !== id);
+    form.cluster_ids = toggled(form.cluster_ids, id, value);
+};
+
+const toggleGroup = (id: number, value: boolean | 'indeterminate') => {
+    form.placement_group_ids = toggled(form.placement_group_ids, id, value);
 };
 
 const dialogOpen = ref(false);
@@ -72,6 +87,7 @@ const form = useForm({
     is_active: true,
     sort_order: 0,
     cluster_ids: [] as number[],
+    placement_group_ids: [] as number[],
 });
 
 const openForm = (pkg: Package | null) => {
@@ -97,6 +113,7 @@ const openForm = (pkg: Package | null) => {
                   is_active: pkg.is_active,
                   sort_order: pkg.sort_order,
                   cluster_ids: [...pkg.cluster_ids],
+                  placement_group_ids: [...pkg.placement_group_ids],
               }
             : {
                   name: '',
@@ -113,6 +130,7 @@ const openForm = (pkg: Package | null) => {
                   is_active: true,
                   sort_order: 0,
                   cluster_ids: [],
+                  placement_group_ids: [],
               },
     );
     form.reset();
@@ -269,9 +287,22 @@ const modelLabel = (value: string) =>
                         >
                             {{
                                 pkg.cluster_ids.length
-                                    ? clusterNames(pkg)
+                                    ? names(clusters, pkg.cluster_ids)
                                     : $t('All clusters')
                             }}
+                            <div
+                                v-if="pkg.placement_group_ids.length"
+                                class="text-muted-foreground"
+                            >
+                                {{
+                                    $t('Groups: :groups', {
+                                        groups: names(
+                                            placementGroups,
+                                            pkg.placement_group_ids,
+                                        ),
+                                    })
+                                }}
+                            </div>
                         </td>
                         <td class="px-4 py-3">
                             <div class="flex justify-end gap-1">
@@ -498,6 +529,46 @@ const modelLabel = (value: string) =>
                 class="text-sm text-red-600 dark:text-red-500"
             >
                 {{ form.errors.cluster_ids }}
+            </p>
+        </div>
+        <div v-if="placementGroups.length" class="grid gap-2">
+            <Label>{{ $t('Placement groups') }}</Label>
+            <p class="text-xs text-muted-foreground">
+                {{
+                    $t(
+                        'Servers of this package go only to the nodes and storages of the placement groups you tick in the ordered location. Tick none to use any node.',
+                    )
+                }}
+            </p>
+            <div
+                v-for="[location, locationGroups] in groupsByLocation"
+                :key="location"
+                class="rounded-lg border p-3"
+            >
+                <div class="mb-2 text-sm font-medium">{{ location }}</div>
+                <div class="flex flex-wrap gap-x-4 gap-y-1">
+                    <Label
+                        v-for="group in locationGroups"
+                        :key="group.id"
+                        class="flex items-center gap-2 font-normal"
+                    >
+                        <Checkbox
+                            :model-value="
+                                form.placement_group_ids.includes(group.id)
+                            "
+                            @update:model-value="
+                                (value) => toggleGroup(group.id, value)
+                            "
+                        />
+                        {{ group.name }}
+                    </Label>
+                </div>
+            </div>
+            <p
+                v-if="form.errors.placement_group_ids"
+                class="text-sm text-red-600 dark:text-red-500"
+            >
+                {{ form.errors.placement_group_ids }}
             </p>
         </div>
         <div class="grid gap-4 sm:grid-cols-2">

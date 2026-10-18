@@ -11,6 +11,7 @@ use App\Models\Location;
 use App\Models\Node;
 use App\Models\OsTemplate;
 use App\Models\Package;
+use App\Models\PlacementGroup;
 use SensitiveParameter;
 
 /**
@@ -38,6 +39,8 @@ final readonly class NewServer
         public ?AppRecipe $app = null,
         /** @var array<array-key, mixed> the app's inputs, not validated yet */
         #[SensitiveParameter] public array $appInputs = [],
+        /** A placement group chosen by an administrator: automatic placement inside it (docs/adr/0020). */
+        public ?PlacementGroup $placementGroup = null,
         /** A node chosen by an administrator instead of automatic placement. */
         public ?Node $node = null,
         /** The name of a storage of the chosen node; null takes the one with the most room. */

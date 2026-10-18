@@ -4,6 +4,7 @@ import {
     Disc3,
     Globe,
     KeyRound,
+    LayoutDashboard,
     LayoutGrid,
     LifeBuoy,
     MapPin,
@@ -25,6 +26,7 @@ import { index as ipPools } from '@/routes/admin/ip-pools';
 import { index as locations } from '@/routes/admin/locations';
 import { index as osTemplates } from '@/routes/admin/os-templates';
 import { index as packages } from '@/routes/admin/packages';
+import { index as placementGroups } from '@/routes/admin/placement-groups';
 import { index as servers } from '@/routes/admin/servers';
 import { index as users } from '@/routes/admin/users';
 import type { NavItem } from '@/types';
@@ -43,6 +45,11 @@ export function useMainNavigation(): ComputedRef<NavItem[]> {
         { title: 'DNS providers', href: dnsProviders(), icon: Globe },
         { title: 'OS templates', href: osTemplates(), icon: Disc3 },
         { title: 'Packages', href: packages(), icon: Package },
+        {
+            title: 'Placement groups',
+            href: placementGroups(),
+            icon: LayoutDashboard,
+        },
         { title: 'Apps', href: apps(), icon: AppWindow },
         { title: 'Drift report', href: drifts(), icon: TriangleAlert },
         { title: 'Administrators', href: users(), icon: Users },

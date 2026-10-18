@@ -38,6 +38,9 @@ class PackageRequest extends FormRequest
             // Empty: any cluster of the ordered location.
             'cluster_ids' => ['array'],
             'cluster_ids.*' => ['integer', 'distinct', Rule::exists('clusters', 'id')],
+            // Empty: any node; otherwise the groups of the ordered location (docs/adr/0020).
+            'placement_group_ids' => ['array'],
+            'placement_group_ids.*' => ['integer', 'distinct', Rule::exists('placement_groups', 'id')],
         ];
     }
 
@@ -50,11 +53,19 @@ class PackageRequest extends FormRequest
     }
 
     /**
+     * @return list<int>
+     */
+    public function placementGroupIds(): array
+    {
+        return array_values(array_map('intval', $this->array('placement_group_ids')));
+    }
+
+    /**
      * @return array<string, mixed>
      */
     public function packageData(): array
     {
-        $data = $this->safe()->except(['disk_gib', 'traffic_gb', 'cluster_ids']);
+        $data = $this->safe()->except(['disk_gib', 'traffic_gb', 'cluster_ids', 'placement_group_ids']);
         $data['disk_mib'] = $this->integer('disk_gib') * 1024;
         $data['traffic_bytes'] = $this->filled('traffic_gb') ? $this->integer('traffic_gb') * 1000 ** 3 : null;
         $data['port_speed_mbps'] = $this->filled('port_speed_mbps') ? $this->integer('port_speed_mbps') : null;

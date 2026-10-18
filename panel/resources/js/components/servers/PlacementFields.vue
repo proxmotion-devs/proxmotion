@@ -4,46 +4,93 @@ import { computed, watch } from 'vue';
 import FormField from '@/components/admin/FormField.vue';
 import NativeSelect from '@/components/admin/NativeSelect.vue';
 import { formatMib } from '@/lib/format';
-import type { PlacementNode } from '@/types/admin';
+import type { Option, PlacementNode } from '@/types/admin';
 
 /**
- * Where a new server goes: the best node of the location, or a node (and
- * optionally a storage) chosen by the administrator. Nodes outside the
- * package's clusters are shown but cannot be chosen; the panel checks the
- * rest (capacity, bridge, template) when the server is created.
+ * Where a new server goes: the best node of the location, the best node of
+ * a placement group (docs/adr/0020), or a node (and optionally a storage)
+ * chosen by the administrator. Groups and nodes the package does not allow
+ * are shown but cannot be chosen; the panel checks the rest (capacity,
+ * bridge, template) when the server is created.
  */
 const props = defineProps<{
     nodes: PlacementNode[];
+    groups: (Option & { location: string })[];
     location: string | null;
     /** The clusters the package allows; empty for any. */
     clusters: string[];
+    /** The placement groups the package allows; empty for any. */
+    packageGroups: string[];
     errors: Record<string, string>;
 }>();
 
-const placement = defineModel<'auto' | 'node' | null>('placement', {
+const placement = defineModel<'auto' | 'group' | 'node' | null>('placement', {
     required: true,
 });
+const group = defineModel<string | null>('group', { required: true });
 const node = defineModel<string | null>('node', { required: true });
 const storage = defineModel<string>('storage', { required: true });
 
 const placements = computed(() => [
     {
         value: 'auto' as const,
-        label: trans('Automatic (best node of the location)'),
+        label:
+            props.packageGroups.length > 0
+                ? trans('Automatic (best node of the package’s groups)')
+                : trans('Automatic (best node of the location)'),
     },
+    { value: 'group' as const, label: trans('A placement group') },
     { value: 'node' as const, label: trans('Choose the node and storage') },
 ]);
 
-const allowed = (candidate: PlacementNode) =>
-    props.clusters.length === 0 || props.clusters.includes(candidate.cluster);
+// Keep the first option that is allowed when the current one is not.
+const keepAllowed = (
+    model: { value: string | null },
+    options: { value: string; disabled: boolean }[],
+) => {
+    const current = options.find((option) => option.value === model.value);
+
+    if (current === undefined || current.disabled) {
+        model.value = options.find((option) => !option.disabled)?.value ?? null;
+    }
+};
+
+const groupAllowed = (uuid: string) =>
+    props.packageGroups.length === 0 || props.packageGroups.includes(uuid);
+
+const groupOptions = computed(() =>
+    props.groups
+        .filter((candidate) => candidate.location === props.location)
+        .map((candidate) => ({
+            value: candidate.value,
+            disabled: !groupAllowed(candidate.value),
+            label: groupAllowed(candidate.value)
+                ? candidate.label
+                : trans(':group — not allowed by this package', {
+                      group: candidate.label,
+                  }),
+        })),
+);
+
+watch(groupOptions, (options) => keepAllowed(group, options), {
+    immediate: true,
+});
+
+const nodeAllowed = (candidate: PlacementNode) =>
+    (props.clusters.length === 0 ||
+        props.clusters.includes(candidate.cluster)) &&
+    (props.packageGroups.length === 0 ||
+        candidate.placement_groups.some((uuid) =>
+            props.packageGroups.includes(uuid),
+        ));
 
 const nodeOptions = computed(() =>
     props.nodes
         .filter((candidate) => candidate.location === props.location)
         .map((candidate) => ({
             value: candidate.value,
-            disabled: !allowed(candidate),
-            label: !allowed(candidate)
+            disabled: !nodeAllowed(candidate),
+            label: !nodeAllowed(candidate)
                 ? trans(':node — not allowed by this package', {
                       node: candidate.label,
                   })
@@ -55,19 +102,9 @@ const nodeOptions = computed(() =>
         })),
 );
 
-// Keep the chosen node only while the location and package allow it.
-watch(
-    nodeOptions,
-    (options) => {
-        const current = options.find((option) => option.value === node.value);
-
-        if (current === undefined || current.disabled) {
-            node.value =
-                options.find((option) => !option.disabled)?.value ?? null;
-        }
-    },
-    { immediate: true },
-);
+watch(nodeOptions, (options) => keepAllowed(node, options), {
+    immediate: true,
+});
 
 // "" = the storage of the node with the most room among those used for servers.
 const storageOptions = computed(() => [
@@ -101,12 +138,26 @@ watch(node, () => {
         label="Placement"
         for="placement"
         :error="errors.placement"
-        hint="Automatic placement uses only storages marked “Use for servers”. A chosen node may also be in maintenance."
+        hint="Automatic placement uses only storages marked “Use for servers”, a placement group its own storages. A chosen node may also be in maintenance."
     >
         <NativeSelect
             id="placement"
             v-model="placement"
             :options="placements"
+        />
+    </FormField>
+
+    <FormField
+        v-if="placement === 'group'"
+        label="Placement group"
+        for="placement_group"
+        :error="errors.placement_group"
+    >
+        <NativeSelect
+            id="placement_group"
+            v-model="group"
+            :options="groupOptions"
+            placeholder="No placement group in this location that this package may use"
         />
     </FormField>
 

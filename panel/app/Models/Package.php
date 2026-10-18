@@ -80,6 +80,17 @@ class Package extends Model
     }
 
     /**
+     * The placement groups the package's servers go to; none means any
+     * node (docs/adr/0020). Only the groups of the ordered location count.
+     *
+     * @return BelongsToMany<PlacementGroup, $this>
+     */
+    public function placementGroups(): BelongsToMany
+    {
+        return $this->belongsToMany(PlacementGroup::class);
+    }
+
+    /**
      * @return HasMany<Server, $this>
      */
     public function servers(): HasMany

@@ -37,7 +37,9 @@ const props = defineProps<{
     packages: (Option & {
         network_models: NetworkModel[];
         clusters: string[];
+        placement_groups: string[];
     })[];
+    placementGroups: (Option & { location: string })[];
     osTemplates: Option[];
     apps: OrderedAppOption[];
     nodes: PlacementNode[];
@@ -61,7 +63,8 @@ const form = useForm({
     ipv6_count: 0,
     port_speed_mbps: '' as OptionalNumber,
     traffic_gb: '' as OptionalNumber,
-    placement: 'auto' as 'auto' | 'node' | null,
+    placement: 'auto' as 'auto' | 'group' | 'node' | null,
+    placement_group: null as string | null,
     node: null as string | null,
     storage: '',
     os_template: props.osTemplates[0]?.value ?? null,
@@ -112,12 +115,12 @@ watch(
     { immediate: true },
 );
 
-// A package may limit its servers to some clusters (none = any); custom servers may go anywhere.
-const allowedClusters = computed(() =>
+// A package may limit its servers to some clusters and placement groups (none = any);
+// custom servers may go anywhere.
+const chosenPackage = computed(() =>
     custom.value
-        ? []
-        : (props.packages.find((pkg) => pkg.value === form.package)?.clusters ??
-          []),
+        ? undefined
+        : props.packages.find((pkg) => pkg.value === form.package),
 );
 
 const missing = computed(
@@ -340,11 +343,14 @@ const submit = () =>
 
             <PlacementFields
                 v-model:placement="form.placement"
+                v-model:group="form.placement_group"
                 v-model:node="form.node"
                 v-model:storage="form.storage"
                 :nodes="nodes"
+                :groups="placementGroups"
                 :location="form.location"
-                :clusters="allowedClusters"
+                :clusters="chosenPackage?.clusters ?? []"
+                :package-groups="chosenPackage?.placement_groups ?? []"
                 :errors="form.errors as Record<string, string>"
             />
 

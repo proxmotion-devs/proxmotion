@@ -19,6 +19,7 @@ use App\Http\Controllers\Admin\LocationController;
 use App\Http\Controllers\Admin\NodeController;
 use App\Http\Controllers\Admin\OsTemplateController;
 use App\Http\Controllers\Admin\PackageController;
+use App\Http\Controllers\Admin\PlacementGroupController;
 use App\Http\Controllers\Admin\ServerController;
 use App\Http\Controllers\Admin\StorageController;
 use App\Http\Controllers\Admin\TaskController;
@@ -71,6 +72,8 @@ Route::delete('os-templates/{osTemplate}/scripts/{event}', [GuestScriptControlle
 Route::post('os-templates/{osTemplate}/scripts/{event}/run', [GuestScriptController::class, 'run'])->middleware('throttle:10,1')->name('os-templates.scripts.run');
 
 Route::resource('packages', PackageController::class)->only(['index', 'store', 'update', 'destroy']);
+Route::resource('placement-groups', PlacementGroupController::class)->only(['index', 'store', 'update', 'destroy'])
+    ->parameters(['placement-groups' => 'placementGroup']);
 
 Route::get('apps', [AppController::class, 'index'])->name('apps.index');
 Route::patch('apps/{appRecipe}', [AppController::class, 'update'])->name('apps.update');

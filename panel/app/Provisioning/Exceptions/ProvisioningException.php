@@ -30,6 +30,16 @@ class ProvisioningException extends RuntimeException
         return new self('No node in this location has enough free capacity for this server.');
     }
 
+    public static function noGroupCapacity(): self
+    {
+        return new self('No node of the placement group has enough free capacity and a usable storage for this server.');
+    }
+
+    public static function noPackageGroup(): self
+    {
+        return new self('None of the placement groups this package may use is in this location.');
+    }
+
     public static function noTemplate(): self
     {
         return new self('This OS template is not available on any cluster in this location.');

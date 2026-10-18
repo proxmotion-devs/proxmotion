@@ -56,12 +56,13 @@ class LocationController extends Controller
             'clusters' => $location->clusters()->count(),
             'pools' => $location->ipPools()->count(),
             'servers' => $location->servers()->count(),
+            'groups' => $location->placementGroups()->count(),
         ];
 
         if (array_sum($counts) > 0) {
             $this->toast(
                 'error',
-                'This location still has :clusters clusters, :pools IP pools and :servers servers. Remove them first.',
+                'This location still has :clusters clusters, :pools IP pools, :groups placement groups and :servers servers. Remove them first.',
                 array_map(strval(...), $counts),
             );
 

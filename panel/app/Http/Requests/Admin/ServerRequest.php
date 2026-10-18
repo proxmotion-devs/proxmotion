@@ -11,6 +11,7 @@ use App\Models\Location;
 use App\Models\Node;
 use App\Models\OsTemplate;
 use App\Models\Package;
+use App\Models\PlacementGroup;
 use App\Provisioning\NewServer;
 use App\Provisioning\ServerSpec;
 use App\Rules\Hostname;
@@ -48,8 +49,10 @@ class ServerRequest extends FormRequest
             'ipv6_count' => [Rule::requiredIf($custom), 'nullable', 'integer', 'between:0,64'],
             'port_speed_mbps' => ['nullable', 'integer', 'between:1,400000'],
             'traffic_gb' => ['nullable', 'integer', 'between:1,10000000'],
-            // "auto": the best node of the location; "node": the node (and optionally storage) chosen here.
-            'placement' => ['nullable', Rule::in(['auto', 'node'])],
+            // "auto": the best node of the location; "group": the best node of a placement group
+            // (docs/adr/0020); "node": the node (and optionally storage) chosen here.
+            'placement' => ['nullable', Rule::in(['auto', 'group', 'node'])],
+            'placement_group' => ['nullable', 'required_if:placement,group', 'string', Rule::exists('placement_groups', 'uuid')],
             'node' => ['nullable', 'required_if:placement,node', 'string', Rule::exists('nodes', 'uuid')],
             // Empty: the storage of the node with the most room.
             'storage' => ['nullable', 'string', 'max:191'],
@@ -106,6 +109,9 @@ class ServerRequest extends FormRequest
             primaryIpv4: $this->filled('primary_ipv4') ? $this->string('primary_ipv4')->trim()->toString() : null,
             app: $this->filled('app') ? AppRecipe::query()->with('latestVersion')->where('slug', $this->string('app'))->firstOrFail() : null,
             appInputs: $this->filled('app') ? (array) $this->input('app_inputs', []) : [],
+            placementGroup: $this->input('placement') === 'group'
+                ? PlacementGroup::query()->where('uuid', $this->string('placement_group'))->firstOrFail()
+                : null,
             node: $this->node(),
             storage: $this->node() !== null && $this->filled('storage') ? $this->string('storage')->toString() : null,
         );

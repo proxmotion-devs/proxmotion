@@ -11,6 +11,7 @@ use App\Models\Server;
 use App\Provisioning\Exceptions\ProvisioningException;
 use App\Provisioning\Placement\NodePlacer;
 use App\Provisioning\Placement\Placement;
+use App\Provisioning\Placement\PlacementRules;
 use App\Provisioning\ServerCreator;
 use App\Provisioning\ServerSpec;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -133,12 +134,12 @@ class NodePlacerTest extends TestCase
         $placer = app(NodePlacer::class);
 
         $this->assertTrue($placer->place($this->location, $spec, $this->osTemplate, 'vmbr0')->node->is($this->node), 'Without clusters, the least used node anywhere.');
-        $this->assertTrue($placer->place($this->location, $spec, $this->osTemplate, 'vmbr0', [$this->cluster->id])->node->is($other));
-        $this->assertTrue($placer->place($this->location, $spec, $this->osTemplate, 'vmbr0', [$first->id])->node->is($this->node));
+        $this->assertTrue($placer->place($this->location, $spec, $this->osTemplate, 'vmbr0', new PlacementRules([$this->cluster->id]))->node->is($other));
+        $this->assertTrue($placer->place($this->location, $spec, $this->osTemplate, 'vmbr0', new PlacementRules([$first->id]))->node->is($this->node));
 
         $elsewhere = Cluster::factory()->create();
         $this->expectExceptionMessage('None of the clusters this package may use is in this location and has this OS template.');
-        $placer->place($this->location, $spec, $this->osTemplate, 'vmbr0', [$elsewhere->id]);
+        $placer->place($this->location, $spec, $this->osTemplate, 'vmbr0', new PlacementRules([$elsewhere->id]));
     }
 
     public function test_server_creation_uses_the_package_clusters()
@@ -151,7 +152,7 @@ class NodePlacerTest extends TestCase
 
     private function placeOn(Node $node, ?string $storage = null): Placement
     {
-        return app(NodePlacer::class)->place($this->location, ServerSpec::fromPackage($this->package), $this->osTemplate, 'vmbr0', [], $node, $storage);
+        return app(NodePlacer::class)->place($this->location, ServerSpec::fromPackage($this->package), $this->osTemplate, 'vmbr0', new PlacementRules(node: $node, storage: $storage));
     }
 
     public function test_an_admin_may_choose_the_node_instead_of_the_least_used_one()
@@ -214,12 +215,12 @@ class NodePlacerTest extends TestCase
         $this->node->update(['max_servers' => null]);
 
         $this->expectProvisioningError(
-            fn () => app(NodePlacer::class)->place($this->location, ServerSpec::fromPackage($this->package), $this->osTemplate, 'vmbr9', [], $this->node),
+            fn () => app(NodePlacer::class)->place($this->location, ServerSpec::fromPackage($this->package), $this->osTemplate, 'vmbr9', new PlacementRules(node: $this->node)),
             'The chosen node does not have the bridge :bridge.',
         );
 
         $this->expectProvisioningError(
-            fn () => app(NodePlacer::class)->place($this->location, ServerSpec::fromPackage($this->package), $this->osTemplate, 'vmbr0', [Cluster::factory()->for($this->location)->create()->id], $this->node),
+            fn () => app(NodePlacer::class)->place($this->location, ServerSpec::fromPackage($this->package), $this->osTemplate, 'vmbr0', new PlacementRules([Cluster::factory()->for($this->location)->create()->id], node: $this->node)),
             'This package may not use the cluster of the chosen node.',
         );
     }

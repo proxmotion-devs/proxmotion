@@ -148,6 +148,8 @@ export type Package = {
     sort_order: number;
     /** Empty: any cluster of the ordered location. */
     cluster_ids: number[];
+    /** Empty: any node; otherwise the groups of the ordered location (docs/adr/0020). */
+    placement_group_ids: number[];
 };
 
 export type Paginated<T> = {
@@ -447,6 +449,8 @@ export type AppEntitlement = {
 export type PlacementNode = Option & {
     location: string;
     cluster: string;
+    /** The placement groups the node belongs to. */
+    placement_groups: string[];
     online: boolean;
     maintenance: boolean;
     storages: {
@@ -457,4 +461,16 @@ export type PlacementNode = Option & {
         /** Free space after over-commit and the disks already booked. */
         free_mib: number;
     }[];
+};
+
+/** A placement group (docs/adr/0020): nodes, and optionally storages, of one location. */
+export type PlacementGroup = {
+    uuid: string;
+    name: string;
+    description: string | null;
+    location: { uuid: string; name: string };
+    node_ids: number[];
+    /** Empty: each node's storages marked "use for servers". */
+    storage_ids: number[];
+    packages_count: number;
 };
