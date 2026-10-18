@@ -1,0 +1,87 @@
+format: 2
+slug: hestiacp
+name: HestiaCP
+version: 1.0.0
+category: control-panel
+description:
+    en: The free Hestia Control Panel with nginx (optionally with Apache), PHP-FPM, MariaDB, mail, DNS and FTP. Needs a freshly installed server with a fully qualified hostname.
+    tr: nginx (isteğe bağlı Apache ile), PHP-FPM, MariaDB, e-posta, DNS ve FTP ile ücretsiz Hestia Control Panel. Yeni kurulmuş ve tam nitelikli ana makine adı olan bir sunucu gerektirir.
+maintainers: [{ name: Proxmotion }]
+homepage: https://hestiacp.com/
+requires:
+    platform: linux
+    os: [debian]
+    min_versions: { debian: '12', ubuntu: '22.04' }
+    max_versions: { debian: '13', ubuntu: '26.04' }
+resources: { min_memory_mib: 1024, min_disk_mib: 10240, min_cores: 1 }
+network_models: [bridged, routed]
+install_modes: [order, post]
+billing: free
+license: none
+inputs:
+    - key: hostname
+      type: domain
+      label:
+          en: Panel hostname (optional, e.g. panel.example.com)
+          tr: Panel ana makine adı (isteğe bağlı, örn. panel.example.com)
+    - key: email
+      type: email
+      label:
+          en: Administrator email (optional)
+          tr: Yönetici e-postası (isteğe bağlı)
+    - key: apache
+      type: boolean
+      default: true
+      label: { en: Apache behind nginx, tr: nginx arkasında Apache }
+    - key: mail
+      type: boolean
+      default: true
+      label:
+          en: Mail server (Exim, Dovecot, SpamAssassin)
+          tr: E-posta sunucusu (Exim, Dovecot, SpamAssassin)
+    - key: language
+      type: enum
+      options: [en, tr, de, fr, es, it, nl, pt, ru]
+      default: en
+      label: { en: Panel language, tr: Panel dili }
+outputs:
+    - key: panel_url
+      type: url
+      label: { en: Panel address, tr: Panel adresi }
+    - key: username
+      type: text
+      label: { en: Username, tr: Kullanıcı adı }
+    - key: password
+      type: text
+      secret: true
+      label: { en: Password, tr: Parola }
+    - key: notice
+      type: text
+      label: { en: Notice, tr: Not }
+firewall:
+    - { port: 8083, proto: tcp }
+    - { port: 80, proto: tcp }
+    - { port: 443, proto: tcp }
+    - { port: 21, proto: tcp }
+    - { port: 25, proto: tcp }
+    - { port: 465, proto: tcp }
+    - { port: 587, proto: tcp }
+    - { port: 993, proto: tcp }
+    - { port: 995, proto: tcp }
+    - { port: 53, proto: tcp }
+    - { port: 53, proto: udp }
+includes: [lib.sh]
+lifecycle:
+    install: { script: install.sh, timeout_minutes: 45 }
+actions:
+    - key: reset_password
+      label:
+          en: Reset the administrator password
+          tr: Yönetici parolasını sıfırla
+      script: actions/reset-password.sh
+      outputs:
+          - key: password
+            type: text
+            secret: true
+            label: { en: Password, tr: Parola }
+      timeout_minutes: 2

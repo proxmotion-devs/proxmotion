@@ -1,0 +1,74 @@
+format: 2
+slug: cyberpanel
+name: CyberPanel
+version: 1.0.0
+category: control-panel
+description:
+    en: The free CyberPanel hosting control panel on OpenLiteSpeed with MariaDB and, optionally, mail, DNS and FTP. Needs a freshly installed server.
+    tr: OpenLiteSpeed üzerinde MariaDB ve isteğe bağlı e-posta, DNS ve FTP ile ücretsiz CyberPanel hosting kontrol paneli. Yeni kurulmuş bir sunucu gerektirir.
+maintainers: [{ name: Proxmotion }]
+homepage: https://cyberpanel.net/
+requires:
+    platform: linux
+    os: [ubuntu, almalinux, rocky]
+    min_versions: { ubuntu: '22.04', almalinux: '8', rocky: '8' }
+    max_versions: { ubuntu: '26.04', almalinux: '10', rocky: '8' }
+resources: { min_memory_mib: 1024, min_disk_mib: 10240, min_cores: 1 }
+network_models: [bridged, routed]
+install_modes: [order, post]
+billing: free
+license: none
+inputs:
+    - key: services
+      type: boolean
+      default: true
+      label:
+          en: Mail, DNS and FTP (Postfix, PowerDNS, Pure-FTPd)
+          tr: E-posta, DNS ve FTP (Postfix, PowerDNS, Pure-FTPd)
+    - key: addons
+      type: boolean
+      default: false
+      label:
+          en: Memcached and Redis with their PHP extensions
+          tr: PHP eklentileriyle Memcached ve Redis
+outputs:
+    - key: panel_url
+      type: url
+      label: { en: Panel address, tr: Panel adresi }
+    - key: username
+      type: text
+      label: { en: Username, tr: Kullanıcı adı }
+    - key: password
+      type: text
+      secret: true
+      label: { en: Password, tr: Parola }
+    - key: notice
+      type: text
+      label: { en: Notice, tr: Not }
+firewall:
+    - { port: 8090, proto: tcp }
+    - { port: 80, proto: tcp }
+    - { port: 443, proto: tcp }
+    - { port: 443, proto: udp }
+    - { port: 21, proto: tcp }
+    - { port: 25, proto: tcp }
+    - { port: 465, proto: tcp }
+    - { port: 587, proto: tcp }
+    - { port: 993, proto: tcp }
+    - { port: 53, proto: tcp }
+    - { port: 53, proto: udp }
+includes: [lib.sh]
+lifecycle:
+    install: { script: install.sh, timeout_minutes: 90 }
+actions:
+    - key: reset_password
+      label:
+          en: Reset the administrator password
+          tr: Yönetici parolasını sıfırla
+      script: actions/reset-password.sh
+      outputs:
+          - key: password
+            type: text
+            secret: true
+            label: { en: Password, tr: Parola }
+      timeout_minutes: 2
