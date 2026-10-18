@@ -1,0 +1,65 @@
+format: 2
+slug: lemp
+name: LEMP
+version: 1.0.0
+category: web
+description:
+    en: nginx, MariaDB and PHP-FPM from the distribution's packages, with a database for your site and optionally a Let's Encrypt certificate.
+    tr: Dağıtımın paketlerinden nginx, MariaDB ve PHP-FPM; siteniz için bir veritabanı ve isteğe bağlı olarak Let's Encrypt sertifikası.
+maintainers: [{ name: Proxmotion }]
+homepage: https://nginx.org/
+requires:
+    platform: linux
+    os: [debian]
+    min_versions: { ubuntu: '22.04', debian: '12' }
+resources: { min_memory_mib: 1024, min_disk_mib: 10240, min_cores: 1 }
+network_models: [bridged, routed]
+install_modes: [order, post]
+billing: free
+license: none
+inputs:
+    - key: domain
+      type: domain
+      required: false
+      label: { en: Domain (optional), tr: Alan adı (isteğe bağlı) }
+    - key: letsencrypt
+      type: boolean
+      default: false
+      label:
+          en: Get a Let's Encrypt certificate for the domain (accepts the Let's Encrypt terms)
+          tr: Alan adı için Let's Encrypt sertifikası al (Let's Encrypt koşulları kabul edilir)
+    - key: email
+      type: email
+      required: false
+      label:
+          en: Email for Let's Encrypt (optional)
+          tr: Let's Encrypt için e-posta (isteğe bağlı)
+    - key: database
+      type: slug
+      default: site
+      max_length: 32
+      label: { en: Database name, tr: Veritabanı adı }
+outputs:
+    - key: site_url
+      type: url
+      label: { en: Site address, tr: Site adresi }
+    - key: document_root
+      type: text
+      label: { en: Document root, tr: Belge kökü }
+    - key: database
+      type: text
+      label: { en: Database and user, tr: Veritabanı ve kullanıcı }
+    - key: database_password
+      type: text
+      secret: true
+      label: { en: Database password, tr: Veritabanı parolası }
+    - key: notice
+      type: text
+      label: { en: Notice, tr: Not }
+firewall:
+    - { port: 80, proto: tcp }
+    - { port: 443, proto: tcp }
+includes: [lib.sh]
+lifecycle:
+    install: { script: install.sh, timeout_minutes: 20 }
+    uninstall: { script: uninstall.sh, timeout_minutes: 10 }

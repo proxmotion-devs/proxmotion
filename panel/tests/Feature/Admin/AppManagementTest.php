@@ -41,10 +41,10 @@ class AppManagementTest extends AdminTestCase
             ->assertOk()
             ->assertInertia(fn (Assert $page) => $page
                 ->component('admin/apps/Index')
-                ->has('apps', 10)
-                ->where('apps.1.slug', 'docker')
-                ->where('apps.1.is_active', true)
-                ->where('apps.1.os', ['linux: debian', 'ubuntu ≥ 22.04', 'debian ≥ 12']));
+                ->has('apps', 16)
+                ->where('apps.2.slug', 'docker')
+                ->where('apps.2.is_active', true)
+                ->where('apps.2.os', ['linux: debian', 'ubuntu ≥ 22.04', 'debian ≥ 12']));
     }
 
     public function test_an_admin_can_deactivate_an_app()
@@ -70,8 +70,8 @@ class AppManagementTest extends AdminTestCase
                 ->has('apps', 1)
                 ->where('apps.0.app', 'WireGuard')
                 ->where('apps.0.status', 'installing')
-                ->where('appOptions.1.slug', 'docker')
-                ->where('appOptions.4.inputs.0.key', 'port'));
+                ->where('appOptions', fn ($options) => collect($options)->contains('slug', 'docker')
+                    && collect($options)->firstWhere('slug', 'openvpn')['inputs'][0]['key'] === 'port'));
     }
 
     public function test_invalid_inputs_show_up_on_the_form()
