@@ -40,6 +40,11 @@ esac
 
 pm_step 0 "Preparing"
 
+# Right after the first boot (an app ordered with the server or a reinstall),
+# cloud-init may still be updating packages.
+pm_wait_for_boot 600 >>"$log" 2>&1
+pm_step 0 "Preparing"
+
 if ! command -v jq >/dev/null 2>&1; then
     if command -v apt-get >/dev/null 2>&1; then
         { pm_apt_update && pm_apt_install jq; } >>"$log" 2>&1

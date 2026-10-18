@@ -90,6 +90,58 @@ pm_output_file() {
     install -m 600 "$2" "$PROXMOTION_RUN_DIR/outputs/$1"
 }
 
+# pm_booting: whether cloud-init is still running or a package manager holds
+# its lock (a guest that has only just booted, docs/adr/0016 §5).
+pm_booting() {
+    if command -v cloud-init >/dev/null 2>&1 && cloud-init status 2>/dev/null | grep -Eq 'status: (running|not started)'; then
+        return 0
+    fi
+
+    pm_package_lock_held
+}
+
+# pm_package_lock_held: whether apt, dpkg or dnf/rpm is busy. dpkg, apt and rpm
+# take fcntl locks, which flock cannot see, so this asks fuser (psmisc) about
+# the lock files and falls back to looking for the processes.
+pm_package_lock_held() {
+    local lock
+
+    if command -v fuser >/dev/null 2>&1; then
+        for lock in /var/lib/dpkg/lock-frontend /var/lib/dpkg/lock /var/lib/apt/lists/lock /var/cache/apt/archives/lock /var/lib/rpm/.rpm.lock; do
+            [ -e "$lock" ] && fuser "$lock" >/dev/null 2>&1 && return 0
+        done
+
+        return 1
+    fi
+
+    pgrep -x 'apt|apt-get|aptitude|dpkg|dnf|dnf5|yum|rpm' >/dev/null 2>&1
+}
+
+# pm_wait_for_boot [SECONDS]: wait until cloud-init has finished and no package
+# manager is busy, at most SECONDS (default 600) for both together; returns at
+# once on a server that booted long ago. Running out of time is not an error:
+# the script then meets the lock itself (apt waits for it too, pm_apt_install).
+pm_wait_for_boot() {
+    local deadline=$(($(date +%s) + ${1:-600})) left
+
+    pm_booting || return 0
+    pm_step "$(pm_current progress)" "Waiting for the system to finish starting"
+
+    if command -v cloud-init >/dev/null 2>&1; then
+        left=$((deadline - $(date +%s)))
+        # Exits non-zero when cloud-init failed or was degraded: still go on.
+        if [ "$left" -gt 0 ]; then
+            timeout "$left" cloud-init status --wait >/dev/null 2>&1 || true
+        fi
+    fi
+
+    while pm_package_lock_held && [ "$(date +%s)" -lt "$deadline" ]; do
+        sleep 5
+    done
+
+    return 0
+}
+
 # pm_apt_update / pm_apt_install PACKAGE...: apt without prompts, waiting for other apt runs.
 pm_apt_update() {
     apt-get -o DPkg::Lock::Timeout=600 update -q
