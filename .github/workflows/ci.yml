@@ -26,6 +26,8 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+          # The base branch too, for apps:check-versions.
+          fetch-depth: 0
 
       # PHP is needed by the frontend too: the Wayfinder Vite plugin runs `php artisan`.
       - uses: shivammathur/setup-php@v2
@@ -62,6 +64,14 @@ jobs:
       # App Marketplace recipes against their JSON Schema (ADR 0015, 0016).
       - name: Validate recipes
         run: php artisan apps:validate
+
+      # A changed recipe needs a higher version: apps:sync refuses to replace a
+      # version that is installed (ADR 0016 §2). Compared with the PR's base branch.
+      - name: Recipe versions
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: php artisan apps:check-versions --base="origin/${BASE_REF}"
 
   console-proxy:
     name: Console proxy
