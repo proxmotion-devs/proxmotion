@@ -108,6 +108,18 @@ final class NetworkConfig
     }
 
     /**
+     * The MAC address of net0 in a VM configuration, lower case, or null.
+     *
+     * @param  array<string, mixed>  $config
+     */
+    public function macAddress(array $config): ?string
+    {
+        $mac = $this->macOf(is_string($config['net0'] ?? null) ? $config['net0'] : null);
+
+        return $mac === null ? null : strtolower($mac);
+    }
+
+    /**
      * "virtio=BC:24:11:AA:BB:CC,bridge=vmbr0" → "BC:24:11:AA:BB:CC"
      */
     private function macOf(?string $net0): ?string

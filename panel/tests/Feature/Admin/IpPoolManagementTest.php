@@ -338,4 +338,18 @@ class IpPoolManagementTest extends AdminTestCase
                     '203.0.113.11' => 'Proxmox node',
                 ]));
     }
+
+    public function test_the_pool_page_shows_the_mac_address_of_the_assigned_server()
+    {
+        $pool = IpPool::factory()->create(['network' => '203.0.113.0/24']);
+        $address = $pool->addresses()->create(['address' => '203.0.113.5']);
+        $server = Server::factory()->create();
+        $server->forceFill(['mac_address' => 'bc:24:11:aa:bb:cc'])->save();
+        $address->forceFill(['server_id' => $server->id])->save();
+
+        $this->get(route('admin.ip-pools.show', $pool))
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('addresses.data.0.mac_address', null)
+                ->where('addresses.data.0.server.mac_address', 'bc:24:11:aa:bb:cc'));
+    }
 }

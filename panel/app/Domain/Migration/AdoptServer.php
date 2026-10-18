@@ -18,6 +18,7 @@ use App\Models\Server;
 use App\Models\Task;
 use App\Models\User;
 use App\Provisioning\Exceptions\ProvisioningException;
+use App\Provisioning\Network\NetworkConfig;
 use App\Proxmox\Data\BootDisk;
 use App\Proxmox\Data\VmResource;
 use App\Proxmox\ProxmoxClientFactory;
@@ -29,7 +30,10 @@ use Illuminate\Support\Facades\DB;
  */
 final readonly class AdoptServer
 {
-    public function __construct(private ProxmoxClientFactory $clients) {}
+    public function __construct(
+        private ProxmoxClientFactory $clients,
+        private NetworkConfig $network,
+    ) {}
 
     /**
      * VMs in the cluster (and its resource pool, if set) that the panel doesn't manage yet.
@@ -63,11 +67,11 @@ final readonly class AdoptServer
             ?? throw new ProvisioningException('The node of this VM has not been synced yet. Sync the cluster first.');
 
         // /cluster/resources does not always know the disk size; the config does (read only).
-        $diskMib = $vm->diskBytes !== null
-            ? intdiv($vm->diskBytes, 1024 ** 2)
-            : BootDisk::fromConfig($this->clients->forCluster($cluster)->qemu($vm->node)->config($vm->vmid) ?? [])?->sizeMib;
+        $config = $this->clients->forCluster($cluster)->qemu($vm->node)->config($vm->vmid) ?? [];
+        $diskMib = $vm->diskBytes !== null ? intdiv($vm->diskBytes, 1024 ** 2) : BootDisk::fromConfig($config)?->sizeMib;
+        $macAddress = $this->network->macAddress($config);
 
-        return DB::transaction(function () use ($cluster, $vm, $node, $package, $networkModel, $ipAddressIds, $actor, $externalId, $externalClientId, $diskMib, $billingSystem) {
+        return DB::transaction(function () use ($cluster, $vm, $node, $package, $networkModel, $ipAddressIds, $actor, $externalId, $externalClientId, $diskMib, $macAddress, $billingSystem) {
             $addresses = IpAddress::query()
                 ->whereIn('id', $ipAddressIds)
                 ->whereNull('server_id')
@@ -89,6 +93,7 @@ final readonly class AdoptServer
                 'cluster_id' => $cluster->id,
                 'node_id' => $node->id,
                 'vmid' => $vm->vmid,
+                'mac_address' => $macAddress,
                 'hostname' => $vm->name ?? "vm-{$vm->vmid}",
                 'status' => ServerStatus::Active,
                 'origin' => ServerOrigin::Adopted,

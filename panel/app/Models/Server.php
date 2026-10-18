@@ -35,6 +35,7 @@ use Illuminate\Support\Carbon;
  * @property int|null $storage_id
  * @property int|null $os_template_id
  * @property int $vmid
+ * @property string|null $mac_address
  * @property string $hostname
  * @property ServerStatus $status
  * @property ServerOrigin $origin

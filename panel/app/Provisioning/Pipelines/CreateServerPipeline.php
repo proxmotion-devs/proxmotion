@@ -134,9 +134,13 @@ final readonly class CreateServerPipeline
         }
 
         $qemu->updateConfig($server->vmid, $params);
+
+        // Proxmox generates the MAC address on clone; record the one the VM really has.
+        $config = $qemu->config($server->vmid) ?? [];
+        $server->forceFill(['mac_address' => $this->network->macAddress($config)])->save();
         $task->completeStep('configure');
 
-        return $qemu->config($server->vmid) ?? [];
+        return $config;
     }
 
     /**

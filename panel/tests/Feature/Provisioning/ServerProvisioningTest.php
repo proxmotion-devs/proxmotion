@@ -190,6 +190,15 @@ class ServerProvisioningTest extends TestCase
         $this->assertSame($mac, $this->proxmox->vms[$server->vmid]['config']['net0']);
     }
 
+    public function test_the_mac_address_proxmox_generated_is_recorded()
+    {
+        $server = app(ServerCreator::class)->create($this->order());
+
+        preg_match('/^virtio=([0-9A-F:]{17}),/i', $this->proxmox->vms[$server->vmid]['config']['net0'], $match);
+        $this->assertNotEmpty($match);
+        $this->assertSame(strtolower($match[1]), $server->refresh()->mac_address);
+    }
+
     public function test_routed_ips_use_a_32_with_the_provider_mac()
     {
         $this->ipv4Pool->update(['network_model' => NetworkModel::Routed, 'gateway' => '198.51.100.254']);
@@ -200,6 +209,7 @@ class ServerProvisioningTest extends TestCase
         $config = $this->proxmox->vms[$server->vmid]['config'];
         $this->assertSame('ip=203.0.113.2/32,gw=198.51.100.254', $config['ipconfig0']);
         $this->assertStringStartsWith('virtio=02:00:00:aa:bb:cc,', $config['net0']);
+        $this->assertSame('02:00:00:aa:bb:cc', $server->refresh()->mac_address);
     }
 
     public function test_ipv6_addresses_are_allocated_from_the_pool()

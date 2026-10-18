@@ -106,7 +106,7 @@ class IpPoolController extends Controller
                 ->when($search !== '', fn ($query) => $query->where(
                     fn ($query) => $query->where('address', 'like', "%{$search}%")->orWhere('notes', 'like', "%{$search}%"),
                 ))
-                ->with('server:id,uuid,hostname')
+                ->with('server:id,uuid,hostname,mac_address')
                 ->orderBy('id')
                 ->paginate(100)
                 ->withQueryString()
@@ -121,6 +121,8 @@ class IpPoolController extends Controller
                     'server' => $address->server === null ? null : [
                         'uuid' => $address->server->uuid,
                         'hostname' => $address->server->hostname,
+                        // The MAC Proxmox gave the server's NIC; the address's own is a provider virtual MAC.
+                        'mac_address' => $address->server->mac_address,
                     ],
                 ]),
         ]);

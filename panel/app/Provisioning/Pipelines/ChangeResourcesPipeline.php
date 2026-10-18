@@ -79,6 +79,9 @@ final readonly class ChangeResourcesPipeline
         }
 
         $qemu->updateConfig($server->vmid, $params);
+
+        // Fills it in for servers created before the panel recorded MAC addresses.
+        $server->forceFill(['mac_address' => $this->network->macAddress($current) ?? $server->mac_address])->save();
         $task->completeStep('configure');
     }
 
