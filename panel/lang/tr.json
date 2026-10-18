@@ -1437,7 +1437,6 @@
     "This package may not use the chosen placement group.": "Bu paket seçilen yerleşim grubunu kullanamaz.",
     "Placement groups": "Yerleşim grupları",
     "Placement group": "Yerleşim grubu",
-    "Groups: :groups": "Gruplar: :groups",
     "Servers of this package go only to the nodes and storages of the placement groups you tick in the ordered location. Tick none to use any node.": "Bu paketin sunucuları yalnızca sipariş edilen lokasyonda işaretlediğiniz yerleşim gruplarının node ve depolamalarına yerleştirilir. Herhangi bir node için hiçbirini işaretlemeyin.",
     "Named sets of nodes and storages, e.g. “NVMe EPYC”. Packages and new servers can target a group; placement still picks the best node inside it. Nothing changes on Proxmox.": "Adlandırılmış node ve depolama kümeleri, ör. “NVMe EPYC”. Paketler ve yeni sunucular bir grubu hedefleyebilir; yerleşim yine grup içindeki en uygun node'u seçer. Proxmox'ta hiçbir şey değişmez.",
     "Add placement group": "Yerleşim grubu ekle",
@@ -1452,5 +1451,8 @@
     "Automatic (best node of the package’s groups)": "Otomatik (paketin gruplarındaki en uygun node)",
     "A placement group": "Bir yerleşim grubu",
     ":group — not allowed by this package": ":group — bu paket izin vermiyor",
-    "No placement group in this location that this package may use": "Bu lokasyonda bu paketin kullanabileceği yerleşim grubu yok"
+    "No placement group in this location that this package may use": "Bu lokasyonda bu paketin kullanabileceği yerleşim grubu yok",
+    "No placement groups yet.": "Henüz yerleşim grubu yok.",
+    "Create one under Placement groups": "Yerleşim grupları sayfasından oluşturun",
+    "Any node": "Herhangi bir node"
 }

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Head, useForm } from '@inertiajs/vue3';
+import { Head, Link, useForm } from '@inertiajs/vue3';
 import { Pencil, Plus } from '@lucide/vue';
 import { computed, ref } from 'vue';
 import ConfirmDelete from '@/components/admin/ConfirmDelete.vue';
@@ -16,6 +16,7 @@ import { formatMib, formatTraffic } from '@/lib/format';
 import { optionalNumber } from '@/lib/forms';
 import type { OptionalNumber } from '@/lib/forms';
 import { destroy, index, store, update } from '@/routes/admin/packages';
+import { index as placementGroupsIndex } from '@/routes/admin/placement-groups';
 import { NETWORK_MODELS } from '@/types/admin';
 import type { NetworkModel, Package } from '@/types/admin';
 
@@ -231,6 +232,9 @@ const modelLabel = (value: string) =>
                         <th class="px-4 py-3 font-medium">
                             {{ $t('Clusters') }}
                         </th>
+                        <th class="px-4 py-3 font-medium">
+                            {{ $t('Placement groups') }}
+                        </th>
                         <th class="px-4 py-3" />
                     </tr>
                 </thead>
@@ -290,19 +294,19 @@ const modelLabel = (value: string) =>
                                     ? names(clusters, pkg.cluster_ids)
                                     : $t('All clusters')
                             }}
-                            <div
-                                v-if="pkg.placement_group_ids.length"
-                                class="text-muted-foreground"
-                            >
-                                {{
-                                    $t('Groups: :groups', {
-                                        groups: names(
-                                            placementGroups,
-                                            pkg.placement_group_ids,
-                                        ),
-                                    })
-                                }}
-                            </div>
+                        </td>
+                        <td
+                            class="px-4 py-3 text-xs"
+                            data-test="package-placement-groups"
+                        >
+                            {{
+                                pkg.placement_group_ids.length
+                                    ? names(
+                                          placementGroups,
+                                          pkg.placement_group_ids,
+                                      )
+                                    : $t('Any node')
+                            }}
                         </td>
                         <td class="px-4 py-3">
                             <div class="flex justify-end gap-1">
@@ -325,7 +329,7 @@ const modelLabel = (value: string) =>
                     </tr>
                     <tr v-if="packages.length === 0">
                         <td
-                            colspan="9"
+                            colspan="10"
                             class="px-4 py-10 text-center text-muted-foreground"
                         >
                             {{ $t('No packages yet.') }}
@@ -531,7 +535,7 @@ const modelLabel = (value: string) =>
                 {{ form.errors.cluster_ids }}
             </p>
         </div>
-        <div v-if="placementGroups.length" class="grid gap-2">
+        <div class="grid gap-2" data-test="package-placement-groups-field">
             <Label>{{ $t('Placement groups') }}</Label>
             <p class="text-xs text-muted-foreground">
                 {{
@@ -564,6 +568,18 @@ const modelLabel = (value: string) =>
                     </Label>
                 </div>
             </div>
+            <p
+                v-if="placementGroups.length === 0"
+                class="rounded-lg border border-dashed p-3 text-sm text-muted-foreground"
+            >
+                {{ $t('No placement groups yet.') }}
+                <Link
+                    :href="placementGroupsIndex()"
+                    class="underline underline-offset-4"
+                >
+                    {{ $t('Create one under Placement groups') }}
+                </Link>
+            </p>
             <p
                 v-if="form.errors.placement_group_ids"
                 class="text-sm text-red-600 dark:text-red-500"
