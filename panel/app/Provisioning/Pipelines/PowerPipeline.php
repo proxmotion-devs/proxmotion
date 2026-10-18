@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Provisioning\Pipelines;
 
+use App\Domain\Servers\GuestScripts;
 use App\Enums\PowerAction;
 use App\Enums\ServerStatus;
 use App\Models\Server;
@@ -15,7 +16,8 @@ use Illuminate\Support\Sleep;
 
 /**
  * Suspending stops the VM (clean shutdown, forced after a timeout) and keeps
- * it stopped; unsuspending starts it again. Disks and IPs are kept.
+ * it stopped; unsuspending starts it again and waits for its guest agent.
+ * Disks and IPs are kept.
  *
  * Power actions (start, shutdown, stop, reboot) change only the VM's power
  * state, never the server's status. They do nothing when the VM is already in
@@ -26,7 +28,13 @@ final readonly class PowerPipeline
     /** How long a rebooted VM may take to start again after its shutdown. */
     private const REBOOT_START_SECONDS = 60;
 
-    public function __construct(private ProxmoxClientFactory $clients) {}
+    /** How long an unsuspended server's guest agent may take to answer before it counts as active anyway. */
+    private const UNSUSPEND_AGENT_SECONDS = 180;
+
+    public function __construct(
+        private ProxmoxClientFactory $clients,
+        private GuestScripts $guestScripts,
+    ) {}
 
     public function power(Task $task, PowerAction $action): void
     {
@@ -119,6 +127,7 @@ final readonly class PowerPipeline
         }
 
         $task->completeStep('start');
+        $this->guestScripts->waitForAgentStep($task, $server, self::UNSUSPEND_AGENT_SECONDS);
         $server->forceFill(['status' => ServerStatus::Active, 'suspension_reason' => null])->save();
         $this->clearRebootRequired($server, $qemu);
     }

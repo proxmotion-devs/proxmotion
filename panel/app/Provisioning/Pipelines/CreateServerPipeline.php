@@ -17,7 +17,7 @@ use App\Proxmox\Resources\QemuResource;
 use RuntimeException;
 
 /**
- * Clone → configure → grow disk → anti-spoofing → start.
+ * Clone → configure → grow disk → anti-spoofing → start → wait for the guest agent.
  *
  * Every step checks Proxmox's actual state first, so running the pipeline
  * again after a failure continues where it stopped instead of starting over.
@@ -38,13 +38,16 @@ final readonly class CreateServerPipeline
 
         $this->build($task);
 
-        // Additional addresses and the template's script, once the guest has booted (ADR 0009, 0010).
-        $this->guestScripts->afterInstall($task, $server, waitForAgent: true);
+        // Active only once the new system's guest agent answers (or the wait times out, ADR 0004).
+        $this->guestScripts->waitForAgentStep($task, $server);
+
+        // Additional addresses and the template's script (ADR 0009, 0010).
+        $this->guestScripts->afterInstall($task, $server);
 
         $server->forceFill(['status' => ServerStatus::Active, 'provisioned_at' => now()])->save();
 
         // The app it was ordered with (ADR 0004): never fails the server.
-        $this->apps->startOrdered($task, $server, waitForAgent: true);
+        $this->apps->startOrdered($task, $server);
     }
 
     /**

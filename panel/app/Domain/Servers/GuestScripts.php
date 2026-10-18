@@ -174,10 +174,10 @@ final readonly class GuestScripts
 
     /**
      * After creating or reinstalling a server: its additional addresses, then
-     * the template's own post-install script. Waits for the agent of the new
-     * system only when there is something to run.
+     * the template's own post-install script. The pipeline has waited for the
+     * agent of the new system already (waitForAgentStep()).
      */
-    public function afterInstall(Task $task, Server $server, bool $waitForAgent): void
+    public function afterInstall(Task $task, Server $server): void
     {
         $events = [];
 
@@ -189,24 +189,39 @@ final readonly class GuestScripts
             $events[] = GuestScriptEvent::Provisioned;
         }
 
-        if ($events !== [] && $waitForAgent) {
-            // Waiting for the first boot can take minutes: show it as the first script's step.
-            $task->startStep($events[0]->step());
-            $this->waitForAgent($server);
-        }
-
         foreach ($events as $event) {
             $this->run($task, $server, $event);
         }
     }
 
     /**
+     * The wait_agent step of a server that has just been started: it is ready
+     * once its guest agent answers (password resets, scripts and apps need
+     * it). When the agent does not answer in time the server still runs, so
+     * the step records that and the operation goes on (docs/adr/0004).
+     */
+    public function waitForAgentStep(Task $task, Server $server, int $timeoutSeconds = self::AGENT_TIMEOUT_SECONDS): bool
+    {
+        $task->startStep('wait_agent');
+
+        if (! $this->waitForAgent($server, $timeoutSeconds)) {
+            $task->completeStep('wait_agent', 'The guest agent did not answer within '.intdiv($timeoutSeconds, 60).' minutes.');
+
+            return false;
+        }
+
+        $task->completeStep('wait_agent');
+
+        return true;
+    }
+
+    /**
      * Wait for the agent of a freshly booted server.
      */
-    public function waitForAgent(Server $server): bool
+    public function waitForAgent(Server $server, int $timeoutSeconds = self::AGENT_TIMEOUT_SECONDS): bool
     {
         $agent = $this->clients->forCluster($server->cluster)->guestAgent($server->node->name);
-        $deadline = Carbon::now()->addSeconds(self::AGENT_TIMEOUT_SECONDS);
+        $deadline = Carbon::now()->addSeconds($timeoutSeconds);
 
         while (! $agent->ping($server->vmid)) {
             if (Carbon::now()->greaterThanOrEqualTo($deadline)) {

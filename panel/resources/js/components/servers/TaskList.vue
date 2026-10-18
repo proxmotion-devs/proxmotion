@@ -104,7 +104,8 @@ const stepLabels: Record<string, string> = {
 const plannedSteps: Partial<Record<TaskType, string[]>> = {
     change_resources: ['configure', 'resize', 'addresses', 'apply'],
     change_primary_address: ['addresses', 'guest_addresses'],
-    create: ['clone', 'configure', 'resize', 'firewall', 'start'],
+    create: ['clone', 'configure', 'resize', 'firewall', 'start', 'wait_agent'],
+    unsuspend: ['start', 'wait_agent'],
     terminate: ['stop', 'destroy', 'release_ips'],
     reinstall: [
         'stop',

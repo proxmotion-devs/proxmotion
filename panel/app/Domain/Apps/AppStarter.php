@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace App\Domain\Apps;
 
 use App\Domain\Servers\GuestScriptFailed;
-use App\Domain\Servers\GuestScripts;
 use App\Enums\AppInstallationStatus;
 use App\Enums\AppInstallMode;
 use App\Models\AppInstallation;
@@ -32,7 +31,6 @@ final readonly class AppStarter
         private ProxmoxClientFactory $clients,
         private GuestPackage $package,
         private AppInstallations $installations,
-        private GuestScripts $guestScripts,
     ) {}
 
     /**
@@ -54,11 +52,10 @@ final readonly class AppStarter
 
     /**
      * The post-boot hook of a new or reinstalled system: start the app it was
-     * ordered with. A failure fails the installation, never the server.
-     *
-     * @param  bool  $waitForAgent  false when the pipeline already waited for the agent
+     * ordered with, after the pipeline waited for its agent. A failure fails
+     * the installation, never the server.
      */
-    public function startOrdered(Task $task, Server $server, bool $waitForAgent): void
+    public function startOrdered(Task $task, Server $server): void
     {
         $installation = $server->appInstallations()
             ->with(['recipe', 'version'])
@@ -72,11 +69,6 @@ final readonly class AppStarter
         }
 
         $installation->setRelation('server', $server);
-
-        if ($waitForAgent) {
-            $task->startStep('app_upload');
-            $this->guestScripts->waitForAgent($server);
-        }
 
         try {
             $this->start($task, $installation);

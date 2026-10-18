@@ -12,6 +12,7 @@ use App\Provisioning\Exceptions\ProvisioningException;
 use App\Provisioning\ServerCreator;
 use App\Provisioning\TaskRunner;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Sleep;
 use Tests\Concerns\BuildsInfrastructure;
 use Tests\Support\FakeProxmoxCluster;
 use Tests\TestCase;
@@ -63,7 +64,40 @@ class ServerProvisioningTest extends TestCase
 
         $task = $server->tasks()->sole();
         $this->assertSame(TaskStatus::Succeeded, $task->status);
-        $this->assertSame(['clone', 'configure', 'resize', 'firewall', 'start'], array_column($task->steps, 'key'));
+        $this->assertSame(['clone', 'configure', 'resize', 'firewall', 'start', 'wait_agent'], array_column($task->steps, 'key'));
+    }
+
+    public function test_a_server_becomes_active_only_once_its_guest_agent_answers()
+    {
+        $this->proxmox->agentDown[100] = true;
+        $statuses = [];
+        Sleep::fake(syncWithCarbon: true);
+        Sleep::whenFakingSleep(function () use (&$statuses) {
+            $statuses[] = Server::query()->sole()->status;
+            // The guest finishes its first boot after a while.
+            $this->proxmox->agentDown[100] = count($statuses) < 3;
+        });
+
+        $server = app(ServerCreator::class)->create($this->order());
+
+        $this->assertSame([ServerStatus::Provisioning, ServerStatus::Provisioning, ServerStatus::Provisioning], $statuses);
+        $this->assertSame(ServerStatus::Active, $server->refresh()->status);
+        $step = collect($server->tasks()->sole()->steps)->firstWhere('key', 'wait_agent');
+        $this->assertSame('done', $step['status']);
+        $this->assertNull($step['message']);
+    }
+
+    public function test_a_server_whose_agent_never_answers_is_active_with_a_note()
+    {
+        $this->proxmox->agentDown[100] = true;
+        Sleep::fake(syncWithCarbon: true);
+
+        $server = app(ServerCreator::class)->create($this->order());
+
+        $this->assertSame(ServerStatus::Active, $server->refresh()->status);
+        $task = $server->tasks()->sole();
+        $this->assertSame(TaskStatus::Succeeded, $task->status);
+        $this->assertSame('The guest agent did not answer within 10 minutes.', collect($task->steps)->firstWhere('key', 'wait_agent')['message']);
     }
 
     public function test_concurrent_orders_get_different_vmids_and_addresses()
@@ -222,6 +256,20 @@ class ServerProvisioningTest extends TestCase
         app(TaskRunner::class)->start($server, TaskType::Unsuspend);
         $this->assertSame(ServerStatus::Active, $server->refresh()->status);
         $this->assertSame('running', $this->proxmox->vms[$server->vmid]['status']);
+        $this->assertSame(['start', 'wait_agent'], array_column($server->tasks()->latest('id')->first()->steps, 'key'));
+    }
+
+    public function test_unsuspending_waits_a_few_minutes_for_the_guest_agent()
+    {
+        $server = app(ServerCreator::class)->create($this->order());
+        app(TaskRunner::class)->start($server, TaskType::Suspend);
+        $this->proxmox->agentDown[$server->vmid] = true;
+        Sleep::fake(syncWithCarbon: true);
+
+        app(TaskRunner::class)->start($server, TaskType::Unsuspend);
+
+        $this->assertSame(ServerStatus::Active, $server->refresh()->status);
+        $this->assertSame('The guest agent did not answer within 3 minutes.', collect($server->tasks()->latest('id')->first()->steps)->firstWhere('key', 'wait_agent')['message']);
     }
 
     public function test_terminating_deletes_the_vm_and_frees_the_addresses()

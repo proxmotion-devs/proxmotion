@@ -10,8 +10,6 @@ use App\Domain\Servers\GuestScripts;
 use App\Enums\ServerStatus;
 use App\Models\Task;
 use App\Proxmox\ProxmoxClientFactory;
-use Illuminate\Support\Carbon;
-use Illuminate\Support\Sleep;
 
 /**
  * Stop → delete the VM and its disks → build it again from the chosen OS
@@ -24,9 +22,6 @@ use Illuminate\Support\Sleep;
  */
 final readonly class ReinstallServerPipeline
 {
-    /** How long to wait for the guest agent of the new system to answer. */
-    public const AGENT_TIMEOUT_SECONDS = 600;
-
     public function __construct(
         private ProxmoxClientFactory $clients,
         private CreateServerPipeline $create,
@@ -61,39 +56,17 @@ final readonly class ReinstallServerPipeline
         $task->completeStep('destroy');
 
         $this->create->build($task, $previousNet0);
-        $this->waitForGuestAgent($task);
+
+        // The new system is ready once its guest agent answers; if it never
+        // does (template without agent), the server still runs and the reinstall succeeds.
+        $this->guestScripts->waitForAgentStep($task, $server);
 
         // Additional addresses and the template's script (ADR 0009, 0010).
-        $this->guestScripts->afterInstall($task, $server, waitForAgent: false);
+        $this->guestScripts->afterInstall($task, $server);
 
         $server->forceFill(['status' => ServerStatus::Active, 'root_password_unrevealed' => true])->save();
 
         // The app chosen with the new system (ADR 0004): never fails the reinstall.
-        $this->appStarter->startOrdered($task, $server, waitForAgent: false);
-    }
-
-    /**
-     * The new system is ready once its guest agent answers. If it never does
-     * (template without agent, slow first boot), the server is still running:
-     * the step records that and the reinstall succeeds.
-     */
-    private function waitForGuestAgent(Task $task): void
-    {
-        $server = $task->server;
-        $agent = $this->clients->forCluster($server->cluster)->guestAgent($server->node->name);
-        $deadline = Carbon::now()->addSeconds(self::AGENT_TIMEOUT_SECONDS);
-        $task->startStep('wait_agent');
-
-        while (! $agent->ping($server->vmid)) {
-            if (Carbon::now()->greaterThanOrEqualTo($deadline)) {
-                $task->completeStep('wait_agent', 'The guest agent did not answer within '.(self::AGENT_TIMEOUT_SECONDS / 60).' minutes.');
-
-                return;
-            }
-
-            Sleep::for(5)->seconds();
-        }
-
-        $task->completeStep('wait_agent');
+        $this->appStarter->startOrdered($task, $server);
     }
 }
