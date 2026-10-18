@@ -338,12 +338,12 @@ class AppInstallTest extends TestCase
         $this->install('docker');
     }
 
-    public function test_inactive_and_paid_apps_cannot_be_installed()
+    public function test_inactive_apps_and_paid_apps_without_entitlement_cannot_be_installed()
     {
         AppRecipe::query()->where('slug', 'docker')->update(['is_active' => false]);
         $paid = AppRecipe::factory()->withDefinition(['billing' => 'paid'])->create();
 
-        foreach (['docker' => 'This app is not available.', $paid->slug => 'Paid apps cannot be installed yet.'] as $slug => $message) {
+        foreach (['docker' => 'This app is not available.', $paid->slug => 'This app has to be bought for the server first.'] as $slug => $message) {
             try {
                 $this->install($slug);
                 $this->fail("{$slug} was installed.");

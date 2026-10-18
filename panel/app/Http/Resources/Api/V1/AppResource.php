@@ -20,6 +20,16 @@ use Illuminate\Http\Resources\Json\JsonResource;
  */
 class AppResource extends JsonResource
 {
+    /** Whether the server the catalog was asked for may install this paid app (docs/adr/0019); null without a server. */
+    private ?bool $entitled = null;
+
+    public function withEntitlement(?bool $entitled): static
+    {
+        $this->entitled = $entitled;
+
+        return $this;
+    }
+
     /**
      * @return array<string, mixed>
      */
@@ -56,6 +66,7 @@ class AppResource extends JsonResource
             // docs/adr/0016 §4: what installed copies offer.
             'can_uninstall' => $recipe->canUninstall(),
             'actions' => array_map(fn (RecipeAction $action) => $action->toArray(), $recipe->actions),
+            'entitled' => $this->when($this->entitled !== null, fn () => $this->entitled),
         ];
     }
 }

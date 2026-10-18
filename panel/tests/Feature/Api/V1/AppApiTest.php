@@ -2,10 +2,12 @@
 
 namespace Tests\Feature\Api\V1;
 
+use App\Domain\Apps\AppEntitlements;
 use App\Domain\Apps\InstallationPoller;
 use App\Domain\Apps\RecipeSynchronizer;
 use App\Domain\Apps\RunPoller;
 use App\Enums\ApiScope;
+use App\Enums\AppEntitlementSource;
 use App\Enums\AppInstallationStatus;
 use App\Jobs\DeliverWebhook;
 use App\Models\AppInstallation;
@@ -94,6 +96,31 @@ class AppApiTest extends ApiTestCase
         $this->assertSame([], $this->api('GET', '/api/v1/apps?os_template='.$windows->uuid)->assertOk()->json('data'));
         $this->assertSame(['openvpn', 'wireguard'], array_column($this->api('GET', '/api/v1/apps?package='.$small->uuid)->json('data'), 'id'));
         $this->assertSame(['docker', 'fastpanel', 'openvpn', 'wireguard'], array_column($this->api('GET', '/api/v1/apps?os_template='.$this->osTemplate->uuid.'&server='.$this->server->uuid)->json('data'), 'id'));
+    }
+
+    public function test_paid_apps_are_listed_and_say_whether_the_server_is_entitled()
+    {
+        $openvpn = AppRecipe::query()->with('latestVersion')->where('slug', 'openvpn')->firstOrFail();
+        $version = $openvpn->latestVersion;
+        $this->assertNotNull($version);
+        $version->forceFill(['definition' => ['billing' => 'paid'] + $version->definition])->save();
+
+        $catalog = $this->api('GET', '/api/v1/apps')->assertOk()->json('data');
+        $this->assertSame('paid', collect($catalog)->firstWhere('id', 'openvpn')['billing']);
+        $this->assertArrayNotHasKey('entitled', $catalog[0], 'Only with a server.');
+
+        $entitled = fn (): array => array_column($this->api('GET', '/api/v1/apps?server='.$this->server->uuid)->assertOk()->json('data'), 'entitled', 'id');
+        $this->assertFalse($entitled()['openvpn']);
+        $this->assertTrue($entitled()['wireguard']);
+
+        $this->api('POST', "/api/v1/servers/{$this->server->uuid}/apps", ['app' => 'openvpn'])
+            ->assertUnprocessable()
+            ->assertJsonPath('message', 'This app has to be bought for the server first.');
+
+        app(AppEntitlements::class)->grant($this->server, $openvpn->refresh(), AppEntitlementSource::Api, null);
+
+        $this->assertTrue($entitled()['openvpn']);
+        $this->api('POST', "/api/v1/servers/{$this->server->uuid}/apps", ['app' => 'openvpn'])->assertAccepted();
     }
 
     public function test_the_catalog_refuses_servers_of_another_billing_system()

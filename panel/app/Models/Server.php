@@ -191,6 +191,16 @@ class Server extends Model
     }
 
     /**
+     * Rights to install paid apps (docs/adr/0019), revoked ones included.
+     *
+     * @return HasMany<AppEntitlement, $this>
+     */
+    public function appEntitlements(): HasMany
+    {
+        return $this->hasMany(AppEntitlement::class);
+    }
+
+    /**
      * @return HasOne<Task, $this>
      */
     public function latestTask(): HasOne

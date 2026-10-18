@@ -7,6 +7,7 @@ namespace App\Http\Controllers\Api\V1;
 use App\Domain\Apps\AppEligibility;
 use App\Domain\Apps\AppInstallConflict;
 use App\Domain\Apps\AppInstaller;
+use App\Domain\Apps\AppNotEntitled;
 use App\Domain\Apps\AppRunner;
 use App\Enums\ApiScope;
 use App\Enums\AppInstallMode;
@@ -56,13 +57,19 @@ class AppController extends ApiController
         $server = $request->filled('server') ? Server::query()->with('osTemplate')->where('uuid', $request->string('server'))->first() : null;
         $mode = $request->enum('mode', AppInstallMode::class) ?? AppInstallMode::Post;
 
-        $apps = AppRecipe::query()->with('latestVersion')->where('is_active', true)->orderBy('name')->get()
-            ->filter(fn (AppRecipe $app) => $server !== null
-                ? $eligibility->forServer($app, $server, mode: $mode) === null
-                : $eligibility->forCatalog($app, $osTemplate, $package, $mode) === null)
-            ->values();
+        $apps = AppRecipe::query()->with('latestVersion')->where('is_active', true)->orderBy('name')->get();
 
-        return AppResource::collection($apps);
+        if ($server === null) {
+            return AppResource::collection($apps->filter(fn (AppRecipe $app) => $eligibility->forCatalog($app, $osTemplate, $package, $mode) === null)->values());
+        }
+
+        // Paid apps the server has no right to yet are listed as apps to buy (docs/adr/0019).
+        $problems = $apps->mapWithKeys(fn (AppRecipe $app) => [$app->id => $eligibility->forServer($app, $server, mode: $mode)]);
+
+        return AppResource::collection($apps
+            ->filter(fn (AppRecipe $app) => $problems[$app->id] === null || $problems[$app->id] instanceof AppNotEntitled)
+            ->values()
+            ->map(fn (AppRecipe $app) => (new AppResource($app))->withEntitlement($problems[$app->id] === null)));
     }
 
     public function installations(Request $request, Server $server): AnonymousResourceCollection

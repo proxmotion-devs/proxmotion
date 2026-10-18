@@ -14,15 +14,21 @@ use App\Models\Server;
 
 /**
  * Whether an app may be installed (docs/adr/0015, 0016 §3, §5): active with
- * an approved version, free (paid apps need entitlements, Phase 5b), the
- * install mode among the recipe's (later on a running server, or with the
- * system a server is ordered or reinstalled with), a template whose
- * platform, family (or family group) and version fit the recipe, enough
- * resources and a supported network model. Ineligible apps are not listed
- * and cannot be installed.
+ * an approved version, the install mode among the recipe's (later on a
+ * running server, or with the system a server is ordered or reinstalled
+ * with), a template whose platform, family (or family group) and version
+ * fit the recipe, enough resources and a supported network model.
+ * Ineligible apps are not listed and cannot be installed.
+ *
+ * Paid apps (docs/adr/0019) also need an active entitlement on the server,
+ * except when a new server is ordered with them (the order grants one).
+ * That is checked last and reported as AppNotEntitled, so the catalog can
+ * still list them as apps to buy.
  */
-final class AppEligibility
+final readonly class AppEligibility
 {
+    public function __construct(private AppEntitlements $entitlements) {}
+
     /**
      * Why the app cannot be installed on the server now, or null.
      *
@@ -30,16 +36,29 @@ final class AppEligibility
      */
     public function forServer(AppRecipe $app, Server $server, ?AppRecipeVersion $version = null, AppInstallMode $mode = AppInstallMode::Post): ?AppNotEligible
     {
-        return $this->check($app, $version, $mode, $server->osTemplate, $server->cpu_cores, $server->memory_mib, $server->disk_mib, $server->network_model);
+        return $this->check($app, $version, $mode, $server->osTemplate, $server->cpu_cores, $server->memory_mib, $server->disk_mib, $server->network_model)
+            ?? $this->entitlement($app, $version, $server);
     }
 
     /**
      * Why the app cannot come with a system built from this template and
-     * these resources (a new server, or a reinstall), or null.
+     * these resources, or null: a new server, or a reinstall of $server.
      */
-    public function forOrder(AppRecipe $app, OsTemplate $osTemplate, int $cores, int $memoryMib, int $diskMib, NetworkModel $networkModel): ?AppNotEligible
+    public function forOrder(AppRecipe $app, OsTemplate $osTemplate, int $cores, int $memoryMib, int $diskMib, NetworkModel $networkModel, ?Server $server = null): ?AppNotEligible
     {
-        return $this->check($app, null, AppInstallMode::Order, $osTemplate, $cores, $memoryMib, $diskMib, $networkModel);
+        return $this->check($app, null, AppInstallMode::Order, $osTemplate, $cores, $memoryMib, $diskMib, $networkModel)
+            ?? ($server === null ? null : $this->entitlement($app, null, $server));
+    }
+
+    private function entitlement(AppRecipe $app, ?AppRecipeVersion $version, Server $server): ?AppNotEntitled
+    {
+        $recipe = ($version ?? $app->latestVersion)?->recipe();
+
+        if ($recipe === null || $recipe->billing !== 'paid' || $this->entitlements->has($server, $app)) {
+            return null;
+        }
+
+        return new AppNotEntitled('This app has to be bought for the server first.');
     }
 
     /**
@@ -90,10 +109,6 @@ final class AppEligibility
     {
         if (! $app->is_active) {
             return new AppNotEligible('This app is not available.');
-        }
-
-        if ($recipe->billing !== 'free') {
-            return new AppNotEligible('Paid apps cannot be installed yet.');
         }
 
         if (! $recipe->allowsInstallMode($mode)) {

@@ -102,7 +102,8 @@ paths:
         only the apps that can be installed on a server with them; with `server` (one of the
         token's billing system's servers), only those installable on it now. With `mode=order`,
         the apps that can come with a new server (`app` of `POST /servers`) or a reinstall instead
-        of those installed later (docs/adr/0016 §5). Paid apps are not installable yet.
+        of those installed later (docs/adr/0016 §5). Paid apps are listed too; with `server`, a paid
+        app without an entitlement is listed with `entitled: false` (docs/adr/0019).
       operationId: listApps
       parameters:
         - { name: os_template, in: query, required: false, schema: { type: string, format: uuid } }
@@ -1157,8 +1158,9 @@ components:
             min_memory_mib: { type: integer }
             min_disk_mib: { type: integer }
         network_models: { type: array, items: { $ref: '#/components/schemas/NetworkModel' } }
-        install_modes: { type: array, items: { type: string, enum: [order, post] }, description: '`order` (at order time) is not supported yet.' }
-        billing: { type: string, enum: [free, paid] }
+        install_modes: { type: array, items: { type: string, enum: [order, post] }, description: '`order`: can come with a new server or a reinstall (`app` of `POST /servers`); `post`: can be installed later on a running server.' }
+        billing: { type: string, enum: [free, paid], description: '`paid`: installing it later needs an entitlement on the server (`POST /servers/{id}/app-entitlements`); ordering a server with it grants one (docs/adr/0019).' }
+        entitled: { type: boolean, description: 'Only with the `server` filter: whether that server may install the app now. `false` for a paid app without an entitlement (offer to buy it); free apps are always `true`.' }
         license: { type: string, enum: [none, external], description: '`external`: the licence is sold separately.' }
         inputs:
           type: array

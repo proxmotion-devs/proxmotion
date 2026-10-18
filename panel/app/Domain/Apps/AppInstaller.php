@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Domain\Apps;
 
+use App\Enums\AppEntitlementSource;
 use App\Enums\AppInstallationStatus;
 use App\Enums\AppInstallMode;
 use App\Enums\NetworkModel;
@@ -33,6 +34,7 @@ final readonly class AppInstaller
         private AppEligibility $eligibility,
         private InputValidator $inputs,
         private TaskRunner $tasks,
+        private AppEntitlements $entitlements,
     ) {}
 
     /**
@@ -86,14 +88,15 @@ final readonly class AppInstaller
      * docs/adr/0016 §5) before anything is reserved or changed.
      *
      * @param  array<array-key, mixed>  $inputs  as given by the billing system or administrator
+     * @param  Server|null  $server  the server being reinstalled; a paid app needs its entitlement (docs/adr/0019)
      * @return array<string, string|int|bool> the validated inputs
      *
      * @throws ValidationException for invalid inputs (under app_inputs.<key>)
      * @throws AppNotEligible
      */
-    public function validateOrdered(AppRecipe $app, array $inputs, OsTemplate $osTemplate, int $cores, int $memoryMib, int $diskMib, NetworkModel $networkModel): array
+    public function validateOrdered(AppRecipe $app, array $inputs, OsTemplate $osTemplate, int $cores, int $memoryMib, int $diskMib, NetworkModel $networkModel, ?Server $server = null): array
     {
-        $problem = $this->eligibility->forOrder($app, $osTemplate, $cores, $memoryMib, $diskMib, $networkModel);
+        $problem = $this->eligibility->forOrder($app, $osTemplate, $cores, $memoryMib, $diskMib, $networkModel, $server);
 
         if ($problem !== null) {
             throw $problem;
@@ -126,6 +129,11 @@ final readonly class AppInstaller
         ])->save();
 
         AuditLog::record('app.install_requested', $actor, $server, ['app' => $app->slug, 'installation' => $installation->uuid, 'mode' => AppInstallMode::Order->value], $ipAddress);
+
+        // The order paid for a paid app (docs/adr/0019); a reinstall already had the right.
+        if ($app->recipe()->billing === 'paid') {
+            $this->entitlements->grant($server, $app, AppEntitlementSource::Order, $actor, null, $ipAddress);
+        }
 
         return $installation;
     }

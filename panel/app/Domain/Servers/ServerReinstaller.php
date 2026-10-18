@@ -64,7 +64,7 @@ final readonly class ServerReinstaller
      */
     public function request(Server $server, OsTemplate $osTemplate, array $sshKeys, User|ApiToken $actor, ?string $ipAddress, ?AppRecipe $app = null, #[SensitiveParameter] array $appInputs = []): Task
     {
-        $appValues = $app === null ? [] : $this->apps->validateOrdered($app, $appInputs, $osTemplate, $server->cpu_cores, $server->memory_mib, $server->disk_mib, $server->network_model);
+        $appValues = $app === null ? [] : $this->apps->validateOrdered($app, $appInputs, $osTemplate, $server->cpu_cores, $server->memory_mib, $server->disk_mib, $server->network_model, $server);
 
         return DB::transaction(function () use ($server, $osTemplate, $sshKeys, $actor, $ipAddress, $app, $appValues) {
             $server->forceFill([

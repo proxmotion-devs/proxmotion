@@ -10,4 +10,4 @@ use App\Provisioning\Exceptions\ProvisioningException;
  * The app cannot be installed on this server or with this OS and package
  * (docs/adr/0015). The API answers 422.
  */
-final class AppNotEligible extends ProvisioningException {}
+class AppNotEligible extends ProvisioningException {}
