@@ -1,6 +1,6 @@
 # 16. Recipe format v2: versions, lifecycle and operating systems
 
-- **Status:** Accepted (phase 1 built 2026-10-17)
+- **Status:** Accepted (phases 1, 2 and 4 built 2026-10-17 and 2026-10-18)
 - **Date:** 2026-10-17
 - **Builds on:** ADR 0015 (App Marketplace). Distribution and trust: ADR 0017.
 
@@ -95,8 +95,8 @@ All run like the install of ADR 0015: a short `app_run` server task writes the p
 
 ### 5. Order-time and reinstall installs (Phase 5b)
 
-- `POST /servers` and `POST /servers/{id}/reinstall` accept `app` and `inputs`. The panel checks eligibility against the chosen template before accepting (`422`), stores a `queued` installation with `mode: order`, and the create/reinstall pipeline queues the install task after the guest agent answers (ADR 0004 post-boot hook). A failed app install never fails the server's creation.
-- The WHMCS configurable option and the WISECP order answer `app` map to the slug; app inputs come from fields named `app_<key>`.
+- `POST /servers` and `POST /servers/{id}/reinstall` accept `app` and `app_inputs` (*revised 2026-10-18*: `inputs` would be ambiguous next to the server's own fields). The panel checks eligibility against the chosen template, resources and network model before anything is reserved (`422` under `app`, invalid inputs under `app_inputs.<key>`), stores a `queued` installation with `mode: order` in the same transaction as the server or the reinstall task, and the create/reinstall pipeline starts it as its last step once the guest agent answers (ADR 0004 post-boot hook; *revised 2026-10-18*: a step of the same task instead of a queued `install_app` task, so nothing else can start in between). A failed app start never fails the server's creation or the reinstall. A reinstall drops an app still queued for a system that never booted. `GET /apps?mode=order` lists the apps that can come with a new system.
+- The WHMCS configurable option `app` maps to the slug and app inputs come from custom fields named `app_<key>`. WISECP's order answers are fixed by the module, so it has the answers `app` and `app_inputs` (one `key=value` per line) (*revised 2026-10-18*). Paid apps: ADR 0019.
 
 ### 6. Validation and tooling
 
@@ -116,5 +116,5 @@ All run like the install of ADR 0015: a short `app_run` server task writes the p
 1. **v2 format and stored versions:** schema, loader (v1 compatible), `app_recipe_versions`, installation → version, OS requirements and eligibility, `apps:make`; bundled recipes to v2. *Built 2026-10-17:* `recipes/_schema/recipe-v2.schema.json`; `apps:sync` stores each version (published; ADR 0018 archives the previous one) and refuses a changed version that installations use (raise the version; an unused one is replaced in place); a retry keeps the installation's version; `os_templates.capabilities` (later replaced by OS families and groups, §3); `pm_pkg_install` in `_lib/proxmotion.sh`; the bundled recipes are format 2, version 1.1.0, and accept Ubuntu ≥ 22.04 and Debian ≥ 12 through apt. Windows recipes load but are not offered until the runner exists. The API's `App` gained `format` and `requires`. Uninstall, upgrade and action scripts are validated and stored but not run yet.
 2. **Uninstall and actions:** runner operations, API, webhooks, admin UI, WHMCS and WISECP; WireGuard/OpenVPN client actions. *Built 2026-10-17 in the panel:* `app_runs` (`AppRun`, `AppRunner`, `AppRunPipeline`, `RunPoller`), `app_run` task, uninstall statuses `uninstalling` and `uninstall_failed`, API (`DELETE /servers/{id}/apps/{installation}`, `POST .../actions/{key}`, `GET .../runs/{run}`), the four webhooks, admin buttons and dialogs; a finished uninstall deletes the installation's directory in the guest. WireGuard and OpenVPN 1.2.0: several clients (add, revoke, list), uninstall; Docker 1.2.0: uninstall (images and volumes kept). The WHMCS client area and the WISECP Apps tool show action forms, uninstall and the latest runs (`GET .../runs`) with downloads of run outputs. **Not done yet:** runs against a real Proxmox, WHMCS or WISECP.
 3. **Upgrade:** version ranges, API, billing modules.
-4. **Order-time and reinstall installs (5b).**
+4. **Order-time and reinstall installs (5b).** *Built 2026-10-18:* `app_installations.mode`, `AppStarter` (shared by `install_app` and the post-boot step), order eligibility (`AppEligibility::forOrder`), `ServerCreator`/`ServerReinstaller` with an app, admin create form and reinstall dialog (`OrderedAppOptions`), API fields and `mode=order`, WHMCS (`app` option, `app_<key>` fields, reinstall form) and WISECP (order answers, *Reinstall with an app* in the Apps tool); paid apps and entitlements with ADR 0019. **Not done yet:** runs against a real Proxmox, WHMCS or WISECP.
 5. **Windows runner** when the first Windows recipe is written.

@@ -1,6 +1,6 @@
 # 4. First-boot work through the Guest Agent instead of cloud-init snippets
 
-- **Status:** Accepted
+- **Status:** Accepted (the app post-boot hook built 2026-10-18, ADR 0016 §5)
 - **Date:** 2026-10-16
 
 ## Context
