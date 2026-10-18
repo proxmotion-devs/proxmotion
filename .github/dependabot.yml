@@ -24,3 +24,27 @@ updates:
       interval: "weekly"
     cooldown:
       default-days: 5
+
+  - package-ecosystem: "npm"
+    directory: "/deploy/console-proxy"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 5
+
+  - package-ecosystem: "docker"
+    directories:
+      - "/deploy/docker"
+      - "/deploy/console-proxy"
+      - "/deploy/proxmox"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 5
+
+  - package-ecosystem: "docker-compose"
+    directory: "/deploy/docker"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 5

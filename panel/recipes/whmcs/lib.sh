@@ -1,5 +1,7 @@
 #!/bin/bash
 # Shared by the WHMCS scripts.
+# The paths are used by the scripts that source this file.
+# shellcheck disable=SC2034
 
 WHMCS_ROOT=/var/www/whmcs
 WHMCS_NGINX_SITE=/etc/nginx/sites-available/proxmotion-whmcs

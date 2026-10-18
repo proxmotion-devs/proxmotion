@@ -25,7 +25,8 @@ return [
     |
     */
 
-    'docs_url' => env('PROXMOTION_DOCS_URL'),
+    // `?: null`: an empty PROXMOTION_DOCS_URL= (as in .env.example) means unset.
+    'docs_url' => env('PROXMOTION_DOCS_URL') ?: null,
 
     /*
     |--------------------------------------------------------------------------
