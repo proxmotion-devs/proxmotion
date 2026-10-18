@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { Head, Link, router, setLayoutProps, usePoll } from '@inertiajs/vue3';
 import { Eye, Monitor, Pause, Play, RotateCcw } from '@lucide/vue';
-import { computed, watch } from 'vue';
+import { computed, ref, watch } from 'vue';
 import ConfirmDelete from '@/components/admin/ConfirmDelete.vue';
 import DriftList from '@/components/admin/DriftList.vue';
 import ServerStatusBadge from '@/components/admin/ServerStatusBadge.vue';
@@ -156,17 +156,63 @@ const post = (action: ReturnType<typeof suspend>) =>
 const modelLabel =
     NETWORK_MODELS.find((model) => model.value === props.server.network_model)
         ?.label ?? props.server.network_model;
+
+// Overview, apps and tasks on their own tabs. The tab survives the redirect
+// back after an action (e.g. installing an app) for this server.
+type Tab = 'overview' | 'apps' | 'tasks';
+const tabKey = `server-tab:${props.server.uuid}`;
+const storedTab = (): Tab | null => {
+    try {
+        const value = sessionStorage.getItem(tabKey);
+
+        return value === 'overview' || value === 'apps' || value === 'tasks'
+            ? value
+            : null;
+    } catch {
+        return null;
+    }
+};
+const tab = ref<Tab>(
+    props.revealedAppOutputs ? 'apps' : (storedTab() ?? 'overview'),
+);
+
+watch(tab, (value) => {
+    try {
+        sessionStorage.setItem(tabKey, value);
+    } catch {
+        // Private windows: the tab is simply not remembered.
+    }
+});
+
+const tabs = computed(() => [
+    { value: 'overview' as Tab, label: 'Overview', count: null },
+    {
+        value: 'apps' as Tab,
+        label: 'Apps',
+        count: props.apps.filter((app) => app.status !== 'removed').length,
+    },
+    { value: 'tasks' as Tab, label: 'Tasks', count: null },
+]);
+
+const runningTasks = computed(() =>
+    props.tasks.filter(
+        (task) => task.status === 'queued' || task.status === 'running',
+    ),
+);
+
+const active = computed(() => props.server.status === 'active');
 </script>
 
 <template>
     <Head :title="server.hostname" />
 
-    <div class="flex flex-col gap-8 p-4">
+    <div class="flex flex-col gap-6 p-4">
+        <!-- Who the server is, its state and the everyday controls. -->
         <div class="flex flex-wrap items-start justify-between gap-4">
             <div class="flex flex-col gap-2">
                 <Heading
                     :title="server.hostname"
-                    :description="`VMID ${server.vmid} · ${server.node}`"
+                    :description="`VMID ${server.vmid} · ${server.node} · ${server.os_template ?? '—'}`"
                 />
                 <div class="flex flex-wrap gap-2">
                     <ServerStatusBadge :status="server.status" />
@@ -177,8 +223,14 @@ const modelLabel =
                     />
                 </div>
             </div>
-            <div class="flex flex-wrap gap-2">
-                <Button v-if="server.status === 'active'" as-child>
+            <div class="flex flex-wrap items-center gap-2">
+                <PowerControls
+                    v-if="active"
+                    :power="power"
+                    :busy="busy"
+                    :action="powerAction"
+                />
+                <Button v-if="active" size="sm" as-child>
                     <a
                         :href="openConsole(server.uuid).url"
                         target="_blank"
@@ -189,58 +241,13 @@ const modelLabel =
                     </a>
                 </Button>
                 <Button
-                    v-if="server.status === 'active'"
-                    variant="outline"
-                    @click="post(suspend(server.uuid))"
-                >
-                    <Pause class="h-4 w-4" />
-                    {{ $t('Suspend') }}
-                </Button>
-                <Button
-                    v-if="server.status === 'suspended'"
-                    variant="outline"
-                    @click="post(unsuspend(server.uuid))"
-                >
-                    <Play class="h-4 w-4" />
-                    {{ $t('Unsuspend') }}
-                </Button>
-                <ResourcesDialog
-                    v-if="server.status === 'active'"
-                    :action="resources(server.uuid)"
-                    :options="resourceOptions"
-                    :disabled="busy"
-                />
-                <HostnameDialog
-                    v-if="server.status === 'active'"
-                    :action="changeHostname(server.uuid)"
-                    :hostname="server.hostname"
-                    :platform="server.platform"
-                    :disabled="busy"
-                />
-                <ReinstallDialog
-                    v-if="server.status === 'active'"
-                    :action="reinstall(server.uuid)"
-                    :hostname="server.hostname"
-                    :options="reinstallOptions"
-                    :disabled="busy"
-                />
-                <Button
                     v-if="server.status === 'error'"
-                    variant="outline"
+                    size="sm"
                     @click="post(retry(server.uuid))"
                 >
                     <RotateCcw class="h-4 w-4" />
                     {{ $t('Retry') }}
                 </Button>
-                <ConfirmDelete
-                    v-if="
-                        ['active', 'suspended', 'error'].includes(server.status)
-                    "
-                    with-label
-                    :action="destroy(server.uuid)"
-                    :name="server.hostname"
-                    description="The VM and its disks are deleted on Proxmox and its IP addresses are released. This cannot be undone."
-                />
             </div>
         </div>
 
@@ -256,220 +263,350 @@ const modelLabel =
             }}
         </p>
 
+        <p
+            v-if="active && agent === false"
+            class="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm"
+            data-test="agent-unreachable"
+        >
+            {{
+                $t(
+                    'Password reset, reinstall and apps need a running qemu-guest-agent in the server.',
+                )
+            }}
+        </p>
+
         <DriftList v-if="drifts.length > 0" :drifts="drifts" />
 
-        <PowerControls
-            v-if="server.status === 'active'"
-            :power="power"
-            :busy="busy"
-            :action="powerAction"
-        />
+        <div role="tablist" class="flex gap-1 border-b">
+            <button
+                v-for="item in tabs"
+                :key="item.value"
+                type="button"
+                role="tab"
+                :aria-selected="tab === item.value"
+                :data-test="`tab-${item.value}`"
+                class="-mb-px border-b-2 px-3 py-2 text-sm font-medium transition-colors"
+                :class="
+                    tab === item.value
+                        ? 'border-primary text-foreground'
+                        : 'border-transparent text-muted-foreground hover:text-foreground'
+                "
+                @click="tab = item.value"
+            >
+                {{ $t(item.label) }}
+                <span
+                    v-if="item.count"
+                    class="ml-1 rounded-full bg-muted px-1.5 text-xs"
+                    >{{ item.count }}</span
+                >
+                <span
+                    v-if="item.value === 'tasks' && runningTasks.length"
+                    class="ml-1 inline-block h-2 w-2 rounded-full bg-amber-500"
+                />
+            </button>
+        </div>
 
-        <dl
-            class="grid gap-4 rounded-xl border p-4 text-sm sm:grid-cols-2 lg:grid-cols-4"
-        >
-            <div>
-                <dt class="text-muted-foreground">
-                    {{ $t('Billing service ID') }}
-                </dt>
-                <dd class="font-mono font-medium">
-                    {{ server.external_id ?? '—' }}
-                </dd>
-                <dd
-                    v-if="server.external_client_id"
-                    class="text-xs text-muted-foreground"
-                >
-                    {{
-                        $t('Client ID: :id', { id: server.external_client_id })
-                    }}
-                </dd>
-                <dd
-                    v-if="server.billing_system"
-                    class="text-xs text-muted-foreground"
-                >
-                    {{ server.billing_system }}
-                </dd>
+        <template v-if="tab === 'overview'">
+            <TaskList v-if="runningTasks.length" :tasks="runningTasks" />
+
+            <div class="grid gap-4 lg:grid-cols-3">
+                <section class="flex flex-col gap-3 rounded-xl border p-4">
+                    <div class="flex items-center justify-between gap-2">
+                        <h3 class="font-medium">{{ $t('Resources') }}</h3>
+                        <ResourcesDialog
+                            v-if="active"
+                            :action="resources(server.uuid)"
+                            :options="resourceOptions"
+                            :disabled="busy"
+                        />
+                    </div>
+                    <dl class="grid gap-2 text-sm">
+                        <div>
+                            <dt class="text-muted-foreground">
+                                {{ $t('Package') }}
+                            </dt>
+                            <dd class="font-medium">
+                                {{ server.package ?? $t('Custom') }}
+                            </dd>
+                        </div>
+                        <div>
+                            <dt class="text-muted-foreground">
+                                {{ $t('CPU, memory and disk') }}
+                            </dt>
+                            <dd>
+                                {{ server.cpu_cores }} vCPU ·
+                                {{ formatMib(server.memory_mib) }} ·
+                                {{ formatMib(server.disk_mib) }}
+                            </dd>
+                        </div>
+                        <div>
+                            <dt class="text-muted-foreground">
+                                {{ $t('Port speed and traffic') }}
+                            </dt>
+                            <dd>
+                                {{
+                                    server.port_speed_mbps
+                                        ? `${server.port_speed_mbps} Mbps`
+                                        : '∞ Mbps'
+                                }}
+                                · {{ formatTraffic(server.traffic_bytes) }}
+                            </dd>
+                        </div>
+                    </dl>
+                </section>
+
+                <section class="flex flex-col gap-3 rounded-xl border p-4">
+                    <h3 class="font-medium">{{ $t('Access') }}</h3>
+                    <dl class="grid gap-2 text-sm">
+                        <div>
+                            <dt class="text-muted-foreground">
+                                {{ $t('Root password') }}
+                            </dt>
+                            <dd
+                                v-if="revealedPassword"
+                                class="font-mono text-xs break-all select-all"
+                            >
+                                {{ revealedPassword }}
+                            </dd>
+                            <dd v-else-if="server.has_password">
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    @click="post(password(server.uuid))"
+                                >
+                                    <Eye class="h-4 w-4" />
+                                    {{ $t('Show') }}
+                                </Button>
+                            </dd>
+                            <dd v-else>—</dd>
+                        </div>
+                        <div v-if="active">
+                            <dt class="text-muted-foreground">
+                                {{ $t('Guest agent') }}
+                            </dt>
+                            <dd class="font-medium">
+                                <template v-if="agent === undefined">{{
+                                    $t('Checking…')
+                                }}</template>
+                                <template v-else-if="agent === true">{{
+                                    $t('Reachable')
+                                }}</template>
+                                <template v-else-if="agent === false">{{
+                                    $t('Not reachable')
+                                }}</template>
+                                <template v-else>{{ $t('Unknown') }}</template>
+                            </dd>
+                        </div>
+                    </dl>
+                    <div v-if="active" class="mt-auto flex flex-wrap gap-2">
+                        <ResetPasswordButton
+                            :action="resetPassword(server.uuid)"
+                            :disabled="busy || agent === false"
+                        />
+                        <HostnameDialog
+                            :action="changeHostname(server.uuid)"
+                            :hostname="server.hostname"
+                            :platform="server.platform"
+                            :disabled="busy"
+                        />
+                    </div>
+                </section>
+
+                <section class="flex flex-col gap-3 rounded-xl border p-4">
+                    <h3 class="font-medium">
+                        {{ $t('Placement and billing') }}
+                    </h3>
+                    <dl class="grid gap-2 text-sm">
+                        <div>
+                            <dt class="text-muted-foreground">
+                                {{ $t('Location') }}
+                            </dt>
+                            <dd class="font-medium">{{ server.location }}</dd>
+                            <dd class="text-xs">
+                                <Link
+                                    :href="showCluster(server.cluster.uuid)"
+                                    class="hover:underline"
+                                    >{{ server.cluster.name }}</Link
+                                >
+                                ·
+                                <span class="font-mono">{{ server.node }}</span>
+                                <template v-if="server.storage">
+                                    · {{ server.storage }}</template
+                                >
+                            </dd>
+                        </div>
+                        <div>
+                            <dt class="text-muted-foreground">
+                                {{ $t('Billing service ID') }}
+                            </dt>
+                            <dd class="font-mono font-medium">
+                                {{ server.external_id ?? '—' }}
+                            </dd>
+                            <dd
+                                v-if="server.billing_system"
+                                class="text-xs text-muted-foreground"
+                            >
+                                {{ server.billing_system }}
+                            </dd>
+                            <dd
+                                v-if="server.external_client_id"
+                                class="text-xs text-muted-foreground"
+                            >
+                                {{
+                                    $t('Client ID: :id', {
+                                        id: server.external_client_id,
+                                    })
+                                }}
+                            </dd>
+                        </div>
+                        <div>
+                            <dt class="text-muted-foreground">
+                                {{ $t('Created') }}
+                            </dt>
+                            <dd>
+                                {{
+                                    formatDateTime(
+                                        server.provisioned_at ??
+                                            server.created_at,
+                                    )
+                                }}
+                            </dd>
+                        </div>
+                    </dl>
+                </section>
             </div>
-            <div>
-                <dt class="text-muted-foreground">{{ $t('Package') }}</dt>
-                <dd class="font-medium">
-                    {{ server.package ?? $t('Custom') }}
-                </dd>
-                <dd class="text-xs text-muted-foreground">
-                    {{ server.cpu_cores }} vCPU ·
-                    {{ formatMib(server.memory_mib) }} ·
-                    {{ formatMib(server.disk_mib) }}
-                </dd>
-                <dd class="text-xs text-muted-foreground">
-                    {{
-                        server.port_speed_mbps
-                            ? `${server.port_speed_mbps} Mbps`
-                            : '∞ Mbps'
-                    }}
-                    ·
-                    {{ formatTraffic(server.traffic_bytes) }}
-                </dd>
-            </div>
-            <div>
-                <dt class="text-muted-foreground">
-                    {{ $t('Operating system') }}
-                </dt>
-                <dd class="font-medium">{{ server.os_template ?? '—' }}</dd>
-            </div>
-            <div>
-                <dt class="text-muted-foreground">{{ $t('Location') }}</dt>
-                <dd class="font-medium">{{ server.location }}</dd>
-                <dd class="text-xs">
-                    <Link
-                        :href="showCluster(server.cluster.uuid)"
-                        class="hover:underline"
-                        >{{ server.cluster.name }}</Link
-                    >
-                    · <span class="font-mono">{{ server.node }}</span>
-                    <template v-if="server.storage">
-                        · {{ server.storage }}</template
-                    >
-                </dd>
-            </div>
-            <div class="sm:col-span-2">
-                <dt class="text-muted-foreground">
-                    {{ $t('IP addresses') }} · {{ $t(modelLabel) }}
-                </dt>
-                <dd
-                    v-for="address in server.addresses"
-                    :key="address.address"
-                    class="font-mono text-xs"
-                >
-                    {{ address.address }}
-                    <StatusBadge
-                        v-if="address.primary"
-                        tone="neutral"
-                        label="Primary"
-                        class="mx-1"
-                    />
-                    <Link
-                        :href="showPool(address.pool.uuid)"
-                        class="text-muted-foreground hover:underline"
-                        >({{ address.pool.name }})</Link
-                    >
-                    <span v-if="address.ptr" class="text-muted-foreground">
-                        → {{ address.ptr }}</span
-                    >
-                    <span
-                        v-if="address.ptr_pending"
-                        class="text-amber-700 dark:text-amber-400"
-                    >
-                        ({{ $t('pending') }})</span
-                    >
-                    <RdnsDialog
-                        v-if="server.status === 'active'"
-                        :action="rdns(server.uuid)"
-                        :address="address.address"
-                        :ptr="address.ptr"
-                    />
-                </dd>
-                <dd v-if="server.addresses.length === 0">—</dd>
-                <dd v-if="server.status === 'active'" class="mt-2">
+
+            <section class="flex flex-col gap-3 rounded-xl border p-4">
+                <div class="flex flex-wrap items-center justify-between gap-2">
+                    <h3 class="font-medium">
+                        {{ $t('IP addresses') }}
+                        <span class="text-sm font-normal text-muted-foreground"
+                            >· {{ $t(modelLabel) }}</span
+                        >
+                    </h3>
                     <PrimaryAddressDialog
+                        v-if="active"
                         :action="primaryAddress(server.uuid)"
                         :addresses="server.addresses"
                         :disabled="busy"
                     />
-                </dd>
-            </div>
-            <div v-if="server.status === 'active'">
-                <dt class="text-muted-foreground">{{ $t('Guest agent') }}</dt>
-                <dd class="font-medium">
-                    <template v-if="agent === undefined">{{
-                        $t('Checking…')
-                    }}</template>
-                    <template v-else-if="agent === true">{{
-                        $t('Reachable')
-                    }}</template>
-                    <template v-else-if="agent === false">{{
-                        $t('Not reachable')
-                    }}</template>
-                    <template v-else>{{ $t('Unknown') }}</template>
-                </dd>
-                <dd
-                    v-if="agent === false"
-                    class="text-xs text-muted-foreground"
-                >
-                    {{
-                        $t(
-                            'Password reset, reinstall and apps need a running qemu-guest-agent in the server.',
-                        )
-                    }}
-                </dd>
-            </div>
-            <div>
-                <dt class="text-muted-foreground">{{ $t('Root password') }}</dt>
-                <dd
-                    v-if="revealedPassword"
-                    class="font-mono text-xs break-all select-all"
-                >
-                    {{ revealedPassword }}
-                </dd>
-                <dd v-else-if="server.has_password">
+                </div>
+                <ul class="flex flex-col gap-1">
+                    <li
+                        v-for="address in server.addresses"
+                        :key="address.address"
+                        class="flex flex-wrap items-center gap-x-2 font-mono text-xs"
+                    >
+                        {{ address.address }}
+                        <StatusBadge
+                            v-if="address.primary"
+                            tone="neutral"
+                            label="Primary"
+                        />
+                        <Link
+                            :href="showPool(address.pool.uuid)"
+                            class="text-muted-foreground hover:underline"
+                            >({{ address.pool.name }})</Link
+                        >
+                        <span v-if="address.ptr" class="text-muted-foreground">
+                            → {{ address.ptr }}</span
+                        >
+                        <span
+                            v-if="address.ptr_pending"
+                            class="text-amber-700 dark:text-amber-400"
+                        >
+                            ({{ $t('pending') }})</span
+                        >
+                        <RdnsDialog
+                            v-if="active"
+                            :action="rdns(server.uuid)"
+                            :address="address.address"
+                            :ptr="address.ptr"
+                        />
+                    </li>
+                    <li v-if="server.addresses.length === 0">—</li>
+                </ul>
+            </section>
+
+            <!-- Operations that interrupt or remove the server. -->
+            <section
+                v-if="['active', 'suspended', 'error'].includes(server.status)"
+                class="flex flex-col gap-3 rounded-xl border border-destructive/30 p-4"
+                data-test="server-lifecycle"
+            >
+                <div>
+                    <h3 class="font-medium">
+                        {{ $t('Suspend, reinstall or delete') }}
+                    </h3>
+                    <p class="text-sm text-muted-foreground">
+                        {{
+                            $t(
+                                'Billing systems usually do this for you. Reinstalling and deleting cannot be undone.',
+                            )
+                        }}
+                    </p>
+                </div>
+                <div class="flex flex-wrap gap-2">
                     <Button
+                        v-if="active"
                         variant="outline"
                         size="sm"
-                        @click="post(password(server.uuid))"
+                        :disabled="busy"
+                        @click="post(suspend(server.uuid))"
                     >
-                        <Eye class="h-4 w-4" />
-                        {{ $t('Show') }}
+                        <Pause class="h-4 w-4" />
+                        {{ $t('Suspend') }}
                     </Button>
-                </dd>
-                <dd v-else>—</dd>
-                <dd v-if="server.status === 'active'" class="mt-1">
-                    <ResetPasswordButton
-                        :action="resetPassword(server.uuid)"
-                        :disabled="busy || agent === false"
+                    <Button
+                        v-if="server.status === 'suspended'"
+                        variant="outline"
+                        size="sm"
+                        :disabled="busy"
+                        @click="post(unsuspend(server.uuid))"
+                    >
+                        <Play class="h-4 w-4" />
+                        {{ $t('Unsuspend') }}
+                    </Button>
+                    <ReinstallDialog
+                        v-if="active"
+                        :action="reinstall(server.uuid)"
+                        :hostname="server.hostname"
+                        :options="reinstallOptions"
+                        :disabled="busy"
                     />
-                </dd>
-            </div>
-            <div>
-                <dt class="text-muted-foreground">{{ $t('Created') }}</dt>
-                <dd>
-                    {{
-                        formatDateTime(
-                            server.provisioned_at ?? server.created_at,
-                        )
-                    }}
-                </dd>
-            </div>
-        </dl>
+                    <ConfirmDelete
+                        with-label
+                        :action="destroy(server.uuid)"
+                        :name="server.hostname"
+                        description="The VM and its disks are deleted on Proxmox and its IP addresses are released. This cannot be undone."
+                    />
+                </div>
+            </section>
+        </template>
 
-        <section
-            v-if="server.status === 'active' || apps.length"
-            class="flex flex-col gap-4"
-        >
-            <Heading variant="small" title="Apps" />
+        <template v-else-if="tab === 'apps'">
             <AppList
                 :apps="apps"
                 :options="appOptions"
                 :action="installApp(server.uuid)"
-                :disabled="server.status !== 'active' || agent === false"
+                :disabled="!active || agent === false"
                 :revealed="revealedAppOutputs"
             />
-        </section>
 
-        <section
-            v-if="entitlements.length || entitlementOptions.length"
-            class="flex flex-col gap-4"
-        >
-            <Heading variant="small" title="Paid apps" />
-            <AppEntitlementList
-                :entitlements="entitlements"
-                :options="entitlementOptions"
-                :action="grantEntitlement(server.uuid)"
-                :disabled="server.status === 'terminated'"
-            />
-        </section>
+            <section
+                v-if="entitlements.length || entitlementOptions.length"
+                class="flex flex-col gap-4"
+            >
+                <Heading variant="small" title="Paid apps" />
+                <AppEntitlementList
+                    :entitlements="entitlements"
+                    :options="entitlementOptions"
+                    :action="grantEntitlement(server.uuid)"
+                    :disabled="server.status === 'terminated'"
+                />
+            </section>
+        </template>
 
-        <section class="flex flex-col gap-4">
-            <Heading variant="small" title="Tasks" />
-            <TaskList :tasks="tasks" />
-        </section>
+        <TaskList v-else :tasks="tasks" />
     </div>
 </template>

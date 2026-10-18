@@ -40,7 +40,12 @@ const submit = () =>
 </script>
 
 <template>
-    <Button variant="outline" :disabled="disabled" @click="openDialog">
+    <Button
+        variant="outline"
+        size="sm"
+        :disabled="disabled"
+        @click="openDialog"
+    >
         <Tag class="h-4 w-4" />
         {{ $t('Change hostname') }}
     </Button>
