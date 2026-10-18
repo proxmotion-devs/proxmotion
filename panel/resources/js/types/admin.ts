@@ -442,3 +442,19 @@ export type AppEntitlement = {
     created_at: string | null;
     revoked_at: string | null;
 };
+
+/** A node offered for placing a new server by hand, with its storages for VM disks. */
+export type PlacementNode = Option & {
+    location: string;
+    cluster: string;
+    online: boolean;
+    maintenance: boolean;
+    storages: {
+        name: string;
+        type: string;
+        shared: boolean;
+        use_for_servers: boolean;
+        /** Free space after over-commit and the disks already booked. */
+        free_mib: number;
+    }[];
+};

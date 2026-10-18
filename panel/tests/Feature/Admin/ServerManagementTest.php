@@ -93,7 +93,9 @@ class ServerManagementTest extends AdminTestCase
 
         $this->get(route('admin.servers.create'))
             ->assertInertia(fn (Assert $page) => $page
+                ->where('packages.0.clusters', [])
                 ->where('nodes.1.value', $pve2->uuid)
+                ->where('nodes.1.cluster', $this->cluster->uuid)
                 ->where('nodes.1.location', $this->location->uuid)
                 ->where('nodes.1.storages.1.name', 'nvme')
                 ->where('nodes.1.storages.1.free_mib', 100 * 1024));
@@ -108,6 +110,19 @@ class ServerManagementTest extends AdminTestCase
         $this->post(route('admin.servers.store'), $this->payload(['hostname' => 'web2.example.com', 'placement' => 'node', 'node' => $pve2->uuid, 'storage' => 'missing']))
             ->assertSessionHasErrors('server');
         $this->post(route('admin.servers.store'), $this->payload(['placement' => 'node']))->assertSessionHasErrors('node');
+    }
+
+    public function test_the_create_form_names_the_clusters_a_package_may_use()
+    {
+        $this->package->clusters()->attach($this->cluster);
+
+        $this->get(route('admin.servers.create'))
+            ->assertInertia(fn (Assert $page) => $page->where('packages.0.clusters', [$this->cluster->uuid]));
+
+        // A node outside them is still refused when the form is bypassed.
+        $this->package->clusters()->sync([Cluster::factory()->for($this->location)->create()->id]);
+        $this->post(route('admin.servers.store'), $this->payload(['placement' => 'node', 'node' => $this->node->uuid]))
+            ->assertSessionHasErrors(['server' => __('This package may not use the cluster of the chosen node.')]);
     }
 
     public function test_a_server_can_be_created_with_custom_resources_and_no_package()

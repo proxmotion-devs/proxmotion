@@ -6,16 +6,21 @@ import FormField from '@/components/admin/FormField.vue';
 import NativeSelect from '@/components/admin/NativeSelect.vue';
 import Heading from '@/components/Heading.vue';
 import OrderedAppFields from '@/components/servers/OrderedAppFields.vue';
+import PlacementFields from '@/components/servers/PlacementFields.vue';
 import InputError from '@/components/InputError.vue';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Spinner } from '@/components/ui/spinner';
-import { formatMib } from '@/lib/format';
 import { optionalNumber } from '@/lib/forms';
 import type { OptionalNumber } from '@/lib/forms';
 import { create, index, store } from '@/routes/admin/servers';
 import { NETWORK_MODELS } from '@/types/admin';
-import type { NetworkModel, Option, OrderedAppOption } from '@/types/admin';
+import type {
+    NetworkModel,
+    Option,
+    OrderedAppOption,
+    PlacementNode,
+} from '@/types/admin';
 
 defineOptions({
     layout: {
@@ -29,24 +34,14 @@ defineOptions({
 const props = defineProps<{
     billingSystems: Option[];
     locations: Option[];
-    packages: (Option & { network_models: NetworkModel[] })[];
+    packages: (Option & {
+        network_models: NetworkModel[];
+        clusters: string[];
+    })[];
     osTemplates: Option[];
     apps: OrderedAppOption[];
-    nodes: NodeOption[];
+    nodes: PlacementNode[];
 }>();
-
-type NodeOption = Option & {
-    location: string;
-    online: boolean;
-    maintenance: boolean;
-    storages: {
-        name: string;
-        type: string;
-        shared: boolean;
-        use_for_servers: boolean;
-        free_mib: number;
-    }[];
-};
 
 const form = useForm({
     billing_system: '' as string | null,
@@ -117,67 +112,12 @@ watch(
     { immediate: true },
 );
 
-const placements = computed(() => [
-    {
-        value: 'auto' as const,
-        label: trans('Automatic (best node of the location)'),
-    },
-    { value: 'node' as const, label: trans('Choose the node and storage') },
-]);
-
-const locationNodes = computed(() =>
-    props.nodes.filter((node) => node.location === form.location),
-);
-
-const nodeOptions = computed(() =>
-    locationNodes.value.map((node) => ({
-        value: node.value,
-        label: !node.online
-            ? trans(':node — offline', { node: node.label })
-            : node.maintenance
-              ? trans(':node — maintenance', { node: node.label })
-              : node.label,
-    })),
-);
-
-watch(
-    locationNodes,
-    (nodes) => {
-        if (!nodes.some((node) => node.value === form.node)) {
-            form.node = nodes[0]?.value ?? null;
-        }
-    },
-    { immediate: true },
-);
-
-// "" = the storage of the node with the most room among those used for servers.
-const storageOptions = computed(() => [
-    { value: '', label: trans('Automatic (most free space)') },
-    ...(
-        props.nodes.find((node) => node.value === form.node)?.storages ?? []
-    ).map((storage) => ({
-        value: storage.name,
-        label: trans(':storage (:type) — :free free', {
-            storage: storage.name,
-            type: storage.shared
-                ? `${storage.type}, ${trans('shared')}`
-                : storage.type,
-            free: formatMib(storage.free_mib),
-        }),
-    })),
-]);
-
-watch(
-    () => form.node,
-    () => {
-        if (
-            !storageOptions.value.some(
-                (option) => option.value === form.storage,
-            )
-        ) {
-            form.storage = '';
-        }
-    },
+// A package may limit its servers to some clusters (none = any); custom servers may go anywhere.
+const allowedClusters = computed(() =>
+    custom.value
+        ? []
+        : (props.packages.find((pkg) => pkg.value === form.package)?.clusters ??
+          []),
 );
 
 const missing = computed(
@@ -398,44 +338,15 @@ const submit = () =>
                 </div>
             </fieldset>
 
-            <FormField
-                label="Placement"
-                for="placement"
-                :error="form.errors.placement"
-                hint="Automatic placement uses only storages marked “Use for servers”. A chosen node may also be in maintenance."
-            >
-                <NativeSelect
-                    id="placement"
-                    v-model="form.placement"
-                    :options="placements"
-                />
-            </FormField>
-
-            <div
-                v-if="form.placement === 'node'"
-                class="grid gap-4 sm:grid-cols-2"
-            >
-                <FormField label="Node" for="node" :error="form.errors.node">
-                    <NativeSelect
-                        id="node"
-                        v-model="form.node"
-                        :options="nodeOptions"
-                        placeholder="No node in this location"
-                    />
-                </FormField>
-                <FormField
-                    label="Storage"
-                    for="storage"
-                    :error="form.errors.storage"
-                    hint="Free space after over-commit and the disks already booked."
-                >
-                    <NativeSelect
-                        id="storage"
-                        v-model="form.storage"
-                        :options="storageOptions"
-                    />
-                </FormField>
-            </div>
+            <PlacementFields
+                v-model:placement="form.placement"
+                v-model:node="form.node"
+                v-model:storage="form.storage"
+                :nodes="nodes"
+                :location="form.location"
+                :clusters="allowedClusters"
+                :errors="form.errors as Record<string, string>"
+            />
 
             <div class="grid gap-4 sm:grid-cols-2">
                 <FormField

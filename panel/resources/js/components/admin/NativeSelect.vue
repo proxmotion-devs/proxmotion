@@ -3,7 +3,7 @@ import type { HTMLAttributes } from 'vue';
 import { cn } from '@/lib/utils';
 
 defineProps<{
-    options: { value: T; label: string }[];
+    options: { value: T; label: string; disabled?: boolean }[];
     placeholder?: string;
     class?: HTMLAttributes['class'];
 }>();
@@ -28,6 +28,7 @@ const model = defineModel<T | null>({ required: true });
             v-for="option in options"
             :key="option.value"
             :value="option.value"
+            :disabled="option.disabled"
         >
             {{ option.label }}
         </option>

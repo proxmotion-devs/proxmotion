@@ -1412,7 +1412,6 @@
     ":storage (:type) — :free free": ":storage (:type) — :free boş",
     "shared": "paylaşımlı",
     "Automatic placement uses only storages marked “Use for servers”. A chosen node may also be in maintenance.": "Otomatik yerleşim yalnızca “Sunucular için kullan” işaretli depolamaları kullanır. Seçilen node bakımda da olabilir.",
-    "No node in this location": "Bu lokasyonda node yok",
     "Free space after over-commit and the disks already booked.": "Aşırı tahsis ve ayrılmış diskler hesaba katıldıktan sonraki boş alan.",
     "The chosen node is not in an active cluster of this location.": "Seçilen node bu lokasyonun etkin bir kümesinde değil.",
     "This package may not use the cluster of the chosen node.": "Bu paket seçilen node'un kümesini kullanamaz.",
@@ -1422,5 +1421,7 @@
     "The chosen node does not have enough free CPU, memory or server slots for this server.": "Seçilen node'da bu sunucu için yeterli boş CPU, bellek veya sunucu kotası yok.",
     "No storage of the chosen node that is used for servers has room for this disk.": "Seçilen node'un sunucular için kullanılan depolamalarının hiçbirinde bu disk için yer yok.",
     "The storage :storage of the chosen node is not available for VM disks.": "Seçilen node'un :storage depolaması VM diskleri için kullanılamıyor.",
-    "The storage :storage does not have room for this disk.": ":storage depolamasında bu disk için yer yok."
+    "The storage :storage does not have room for this disk.": ":storage depolamasında bu disk için yer yok.",
+    "No node in this location that this package may use": "Bu lokasyonda bu paketin kullanabileceği node yok",
+    ":node — not allowed by this package": ":node — bu paket izin vermiyor"
 }

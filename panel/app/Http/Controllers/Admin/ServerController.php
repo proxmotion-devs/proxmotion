@@ -105,11 +105,13 @@ class ServerController extends Controller
             'billingSystems' => BillingSystem::options(),
             'locations' => Location::query()->orderBy('name')->get(['uuid', 'name'])
                 ->map(fn (Location $location) => ['value' => $location->uuid, 'label' => $location->name]),
-            'packages' => Package::query()->where('is_active', true)->orderBy('sort_order')->orderBy('name')->get()
+            'packages' => Package::query()->where('is_active', true)->with('clusters:id,uuid')->orderBy('sort_order')->orderBy('name')->get()
                 ->map(fn (Package $package) => [
                     'value' => $package->uuid,
                     'label' => $package->name,
                     'network_models' => $package->network_models,
+                    // The clusters its servers may be placed on; empty for any.
+                    'clusters' => $package->clusters->pluck('uuid')->values(),
                 ]),
             'osTemplates' => $osTemplates->map(fn (OsTemplate $template) => ['value' => $template->uuid, 'label' => $template->name]),
             // Apps that can come with the server (docs/adr/0016 §5).
@@ -124,6 +126,7 @@ class ServerController extends Controller
                     'value' => $node->uuid,
                     'label' => "{$node->name} ({$node->cluster->name})",
                     'location' => $node->cluster->location->uuid,
+                    'cluster' => $node->cluster->uuid,
                     'online' => $node->status === NodeStatus::Online,
                     'maintenance' => $node->is_maintenance,
                     'storages' => $node->storages
