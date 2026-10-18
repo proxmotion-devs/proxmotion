@@ -245,7 +245,7 @@ function proxmotion_AdminCustomButtonArray()
  */
 function proxmotion_ClientAreaAllowedFunctions()
 {
-    return ['Start', 'Shutdown', 'Reboot', 'Stop', 'Console', 'ResetPassword', 'Reinstall', 'SetRdns', 'ChangeHostname', 'InstallApp', 'RetryApp', 'UninstallApp', 'RunAppAction', 'DownloadAppFile'];
+    return ['Start', 'Shutdown', 'Reboot', 'Stop', 'Console', 'ResetPassword', 'Reinstall', 'SetRdns', 'ChangeHostname', 'InstallApp', 'RetryApp', 'UninstallApp', 'UpgradeApp', 'RunAppAction', 'DownloadAppFile'];
 }
 
 /**
@@ -255,6 +255,16 @@ function proxmotion_UninstallApp(array $params): string
 {
     return proxmotion_run($params, function (Module $module) {
         return $module->uninstallApp($_POST);
+    });
+}
+
+/**
+ * @param array<string, mixed> $params
+ */
+function proxmotion_UpgradeApp(array $params): string
+{
+    return proxmotion_run($params, function (Module $module) {
+        return $module->upgradeApp($_POST);
     });
 }
 

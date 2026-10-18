@@ -154,7 +154,7 @@
                             <tr>
                                 <td><strong>{$installation.name|escape}</strong></td>
                                 <td>
-                                    <span class="label {if $installation.status == 'installed'}label-success{elseif $installation.failed}label-danger{elseif $installation.busy}label-warning{else}label-default{/if}">{$installation.statusLabel|escape}</span>
+                                    <span class="label {if $installation.status == 'installed'}label-success{elseif $installation.danger}label-danger{elseif $installation.busy}label-warning{else}label-default{/if}">{$installation.statusLabel|escape}</span>
                                     {if $installation.busy} {$installation.progress|escape}%{/if}
                                     {if $installation.error}<div class="text-danger small">{$installation.error|escape}</div>{/if}
                                 </td>
@@ -209,6 +209,34 @@
                                                 <button type="submit" class="btn btn-default btn-sm">{$pmx.lang.app_run_submit|escape}</button>
                                             </form>
                                         {/foreach}
+                                        {if $installation.upgrade}
+                                            <form method="post" action="{$pmxAction}UpgradeApp" class="well well-sm" style="margin-top: 8px" onsubmit="return confirm('{$pmx.lang.app_upgrade_confirm|escape:'javascript'|escape}');">
+                                                <input type="hidden" name="token" value="{$token}">
+                                                <input type="hidden" name="installation" value="{$installation.id|escape}">
+                                                {foreach from=$installation.upgrade.inputs item=input}
+                                                    <div class="form-group">
+                                                        {if $input.type == 'boolean'}
+                                                            <input type="hidden" name="inputs[{$input.key|escape}]" value="0">
+                                                            <label><input type="checkbox" name="inputs[{$input.key|escape}]" value="1"{if $input.default == '1'} checked{/if}> {$input.label|escape}</label>
+                                                        {else}
+                                                            <label for="pmx-upgrade-{$installation.id|escape}-{$input.key|escape}">{$input.label|escape}</label>
+                                                            {if $input.type == 'enum'}
+                                                                <select id="pmx-upgrade-{$installation.id|escape}-{$input.key|escape}" name="inputs[{$input.key|escape}]" class="form-control">
+                                                                    {foreach from=$input.options item=option}
+                                                                        <option value="{$option|escape}"{if $option == $input.default} selected{/if}>{$option|escape}</option>
+                                                                    {/foreach}
+                                                                </select>
+                                                            {else}
+                                                                <input id="pmx-upgrade-{$installation.id|escape}-{$input.key|escape}" name="inputs[{$input.key|escape}]" class="form-control" value="{$input.default|escape}" autocomplete="off"
+                                                                    type="{if $input.type == 'password'}password{elseif $input.type == 'integer' || $input.type == 'port'}number{elseif $input.type == 'email'}email{else}text{/if}"
+                                                                    {if $input.min !== null} min="{$input.min|escape}"{/if}{if $input.max !== null} max="{$input.max|escape}"{/if}{if $input.required} required{/if}>
+                                                            {/if}
+                                                        {/if}
+                                                    </div>
+                                                {/foreach}
+                                                <button type="submit" class="btn btn-primary btn-sm">{$installation.upgrade.label|escape}</button>
+                                            </form>
+                                        {/if}
                                         {if $installation.canUninstall}
                                             <form method="post" action="{$pmxAction}UninstallApp" class="form-inline" onsubmit="return confirm('{$pmx.lang.app_uninstall_confirm|escape:'javascript'|escape}');">
                                                 <input type="hidden" name="token" value="{$token}">

@@ -120,6 +120,35 @@ class ClientAreaTest extends ModuleTestCase
         $this->assertStringNotContainsString('laptop', (string) json_encode($GLOBALS['whmcs_calls']['logModuleCall']), 'Action inputs are masked in the module log.');
     }
 
+    public function test_an_offered_upgrade_is_shown_and_sent_with_the_new_inputs()
+    {
+        $upgrade = ['version' => '1.4.0', 'inputs' => [['key' => 'dns', 'type' => 'domain', 'label' => ['en' => 'DNS server', 'tr' => 'DNS sunucusu'], 'required' => true, 'default' => null, 'options' => null, 'min' => null, 'max' => null, 'max_length' => null]]];
+        $this->serviceHas($this->server());
+        $this->api->on('GET /servers/' . self::SERVER_ID, 200, ['data' => $this->server()]);
+        $this->api->on('GET /os-templates', 200, ['data' => []]);
+        $this->api->on('GET /servers/' . self::SERVER_ID . '/apps', 200, ['data' => [self::installation(['upgrade' => $upgrade]), self::installation(['id' => 'failed-uuid', 'status' => 'upgrade_failed', 'error' => 'apt failed', 'upgrade' => null])]]);
+        $this->api->on('GET /servers/' . self::SERVER_ID . '/apps/installation-uuid/runs', 200, ['data' => [self::appRun(['kind' => 'upgrade', 'action' => null, 'target_version' => '1.4.0', 'outputs' => []])]]);
+        $this->api->on('GET /servers/' . self::SERVER_ID . '/apps/failed-uuid/runs', 200, ['data' => []]);
+        $this->api->on('GET /apps?server=' . self::SERVER_ID, 200, ['data' => []]);
+        $this->api->on('POST /servers/' . self::SERVER_ID . '/apps/installation-uuid/upgrade', 202, ['data' => self::appRun(['kind' => 'upgrade', 'action' => null, 'status' => 'running', 'outputs' => null])]);
+
+        $installations = $this->module(['clientsdetails' => ['language' => 'turkish']])->clientArea()['templateVariables']['pmx']['installations'];
+
+        $this->assertSame('1.4.0', $installations[0]['upgrade']['version']);
+        $this->assertSame('1.4.0 sürümüne yükselt', $installations[0]['upgrade']['label']);
+        $this->assertSame('DNS sunucusu', $installations[0]['upgrade']['inputs'][0]['label']);
+        $this->assertSame('1.4.0 sürümüne yükselt', $installations[0]['runs'][0]['label']);
+        $this->assertNull($installations[1]['upgrade']);
+        $this->assertSame(['Yükseltme başarısız', true, false], [$installations[1]['statusLabel'], $installations[1]['danger'], $installations[1]['failed']]);
+
+        $this->assertSame('success', $this->module()->upgradeApp(['installation' => 'installation-uuid', 'inputs' => ['dns' => ' dns.example.com ', 'empty' => '']]));
+        $request = $this->api->last('POST /servers/' . self::SERVER_ID . '/apps/installation-uuid/upgrade');
+        $this->assertSame(['inputs' => ['dns' => 'dns.example.com']], $request['body']);
+        $this->assertStringStartsWith('whmcs-42-app-upgrade-', $request['headers']['Idempotency-Key']);
+        $this->assertStringNotContainsString('dns.example.com', (string) json_encode($GLOBALS['whmcs_calls']['logModuleCall']), 'Upgrade inputs are masked in the module log.');
+        $this->assertContains('UpgradeApp', proxmotion_ClientAreaAllowedFunctions());
+    }
+
     public function test_a_file_output_of_a_run_is_downloaded_and_never_logged()
     {
         $this->serviceHas($this->server());

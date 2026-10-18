@@ -415,6 +415,24 @@ class Module
         return 'success';
     }
 
+
+    /**
+     * Upgrade an app to its newer version (docs/adr/0016); empty inputs are left out.
+     *
+     * @param array<string, mixed> $input installation, inputs[key] (from the form)
+     */
+    public function upgradeApp(array $input): string
+    {
+        $server = $this->requireActiveServer();
+        $this->client->upgradeApp(
+            (string) $server['id'],
+            isset($input['installation']) ? (string) $input['installation'] : '',
+            $this->filledInputs($input),
+            $this->idempotencyKey('app-upgrade')
+        );
+
+        return 'success';
+    }
     /**
      * Run an action of an installed app (e.g. add a VPN client); empty inputs are left out.
      *
@@ -840,12 +858,14 @@ class Module
             'name' => isset($installation['app']['name']) ? (string) $installation['app']['name'] : '',
             'status' => $status,
             'statusLabel' => $this->lang->get('app_status_' . $status),
-            'busy' => in_array($status, ['queued', 'installing', 'uninstalling'], true),
+            'busy' => in_array($status, ['queued', 'installing', 'uninstalling', 'upgrading'], true),
             'failed' => $status === 'failed',
+            'danger' => in_array($status, ['failed', 'uninstall_failed', 'upgrade_failed'], true),
             'progress' => isset($installation['progress']) ? (int) $installation['progress'] : 0,
             'error' => isset($installation['error']) && is_string($installation['error']) ? $installation['error'] : null,
             'outputs' => $this->presentOutputs($installation),
             'canUninstall' => !empty($installation['can_uninstall']),
+            'upgrade' => $this->presentUpgrade($installation),
             'actions' => $actions,
             'runs' => $presentedRuns,
             'runBusy' => count(array_filter($presentedRuns, function (array $run) {
@@ -855,7 +875,28 @@ class Module
     }
 
     /**
-     * An uninstall or action run with its status and outputs.
+     * The newer version the installation can be upgraded to with the inputs it adds, or null.
+     *
+     * @param array<string, mixed> $installation
+     * @return array{version: string, label: string, inputs: list<array<string, mixed>>}|null
+     */
+    private function presentUpgrade(array $installation): ?array
+    {
+        $upgrade = isset($installation['upgrade']) && is_array($installation['upgrade']) ? $installation['upgrade'] : null;
+
+        if ($upgrade === null || !isset($upgrade['version'])) {
+            return null;
+        }
+
+        return [
+            'version' => (string) $upgrade['version'],
+            'label' => $this->lang->get('app_upgrade_to', ['version' => (string) $upgrade['version']]),
+            'inputs' => $this->presentInputs(isset($upgrade['inputs']) && is_array($upgrade['inputs']) ? $upgrade['inputs'] : []),
+        ];
+    }
+
+    /**
+     * An uninstall, upgrade or action run with its status and outputs.
      *
      * @param array<string, mixed> $run
      * @param list<array<string, mixed>> $actions the installation's actions (for their labels)
@@ -865,6 +906,10 @@ class Module
     {
         $status = (string) $run['status'];
         $label = $this->lang->get('app_uninstall');
+
+        if (($run['kind'] ?? null) === 'upgrade') {
+            $label = $this->lang->get('app_upgrade_to', ['version' => isset($run['target_version']) ? (string) $run['target_version'] : '']);
+        }
 
         if (($run['kind'] ?? null) === 'action') {
             $label = isset($run['action']) ? (string) $run['action'] : '';

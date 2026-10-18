@@ -337,6 +337,18 @@ class ApiClient
         return $this->dataOf($this->request('DELETE', '/servers/' . rawurlencode($id) . '/apps/' . rawurlencode($installation), null, $idempotencyKey));
     }
 
+
+    /**
+     * Upgrade an installed app to the version its `upgrade` names (docs/adr/0016),
+     * with values for the inputs that version adds.
+     *
+     * @param array<string, string> $inputs
+     * @return array<string, mixed> the queued run
+     */
+    public function upgradeApp(string $id, string $installation, array $inputs, string $idempotencyKey): array
+    {
+        return $this->dataOf($this->request('POST', '/servers/' . rawurlencode($id) . '/apps/' . rawurlencode($installation) . '/upgrade', ['inputs' => (object) $inputs], $idempotencyKey));
+    }
     /**
      * Run an action of an installed app, e.g. adding a VPN client.
      *
