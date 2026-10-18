@@ -468,6 +468,8 @@
     "Operating systems customers can install. Each one points to a cloud-init VM template on every cluster that offers it.": "Müşterilerin kurabileceği işletim sistemleri. Her biri, onu sunan her kümedeki bir cloud-init VM şablonuna bağlanır.",
     "Optional.": "İsteğe bağlı.",
     "Optional. One key per line.": "İsteğe bağlı. Her satıra bir anahtar.",
+    "No app": "Uygulama yok",
+    "Optional. Installed through the guest agent once the server has booted.": "İsteğe bağlı. Sunucu açıldıktan sonra guest agent üzerinden kurulur.",
     "Optional. The customer's ID in your billing system.": "İsteğe bağlı. Müşterinin faturalama sistemindeki ID'si.",
     "Optional. The service ID in your billing system.": "İsteğe bağlı. Faturalama sistemindeki hizmet ID'si.",
     "Or confirm with password": "Ya da şifreyle onaylayın",

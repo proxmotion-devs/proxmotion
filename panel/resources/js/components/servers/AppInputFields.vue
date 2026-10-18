@@ -11,11 +11,16 @@ import type { AppInput, AppText } from '@/types/admin';
  * Fields for the declared inputs of an app or one of its actions
  * (docs/adr/0015, 0016); the panel validates the values again.
  */
-defineProps<{
-    inputs: AppInput[];
-    errors: Record<string, string>;
-    idPrefix: string;
-}>();
+withDefaults(
+    defineProps<{
+        inputs: AppInput[];
+        errors: Record<string, string>;
+        idPrefix: string;
+        // Where the panel puts the errors: <errorPrefix>.<key>.
+        errorPrefix?: string;
+    }>(),
+    { errorPrefix: 'inputs' },
+);
 
 const values = defineModel<Record<string, string | number | boolean>>({
     required: true,
@@ -53,7 +58,7 @@ const inputType = (input: AppInput) =>
             v-else
             :label="text(input.label, input.key)"
             :for="`${idPrefix}_${input.key}`"
-            :error="errors[`inputs.${input.key}`]"
+            :error="errors[`${errorPrefix}.${input.key}`]"
         >
             <NativeSelect
                 v-if="input.type === 'enum'"

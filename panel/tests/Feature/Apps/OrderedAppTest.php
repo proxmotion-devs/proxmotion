@@ -109,7 +109,7 @@ class OrderedAppTest extends TestCase
             $this->orderWith('openvpn', ['port' => 70000]);
             $this->fail('Invalid inputs were accepted.');
         } catch (ValidationException $e) {
-            $this->assertSame(['inputs.port'], array_keys($e->errors()));
+            $this->assertSame(['app_inputs.port'], array_keys($e->errors()));
         }
 
         $this->assertSame(0, Server::query()->count());

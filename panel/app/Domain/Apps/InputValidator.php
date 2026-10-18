@@ -22,13 +22,14 @@ final class InputValidator
 
     /**
      * @param  array<array-key, mixed>  $given
+     * @param  string  $field  where the errors go: <field>.<key>
      * @return array<string, string|int|bool> the values to install with
      *
-     * @throws ValidationException with errors under inputs.<key>
+     * @throws ValidationException with errors under <field>.<key> (inputs.<key> by default)
      */
-    public function validate(Recipe $recipe, array $given): array
+    public function validate(Recipe $recipe, array $given, string $field = 'inputs'): array
     {
-        return $this->validateInputs($recipe->inputs, $given);
+        return $this->validateInputs($recipe->inputs, $given, $field);
     }
 
     /**
@@ -36,18 +37,19 @@ final class InputValidator
      *
      * @param  list<RecipeInput>  $declared
      * @param  array<array-key, mixed>  $given
+     * @param  string  $field  where the errors go: <field>.<key>
      * @return array<string, string|int|bool>
      *
-     * @throws ValidationException with errors under inputs.<key>
+     * @throws ValidationException with errors under <field>.<key> (inputs.<key> by default)
      */
-    public function validateInputs(array $declared, array $given): array
+    public function validateInputs(array $declared, array $given, string $field = 'inputs'): array
     {
         $errors = [];
         $keys = array_map(fn (RecipeInput $input) => $input->key, $declared);
 
         foreach (array_keys($given) as $key) {
             if (! in_array((string) $key, $keys, true)) {
-                $errors['inputs.'.$key][] = __('This app has no input :key.', ['key' => (string) $key]);
+                $errors[$field.'.'.$key][] = __('This app has no input :key.', ['key' => (string) $key]);
             }
         }
 
@@ -58,7 +60,7 @@ final class InputValidator
 
             if ($value === null || $value === '') {
                 if ($input->required) {
-                    $errors['inputs.'.$input->key][] = __('The :input field is required.', ['input' => $input->key]);
+                    $errors[$field.'.'.$input->key][] = __('The :input field is required.', ['input' => $input->key]);
                 }
 
                 continue;
@@ -67,7 +69,7 @@ final class InputValidator
             $validator = Validator::make([$input->key => $value], [$input->key => $this->rules($input)]);
 
             if ($validator->fails()) {
-                $errors['inputs.'.$input->key] = $validator->errors()->get($input->key);
+                $errors[$field.'.'.$input->key] = $validator->errors()->get($input->key);
 
                 continue;
             }

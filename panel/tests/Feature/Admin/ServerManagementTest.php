@@ -2,14 +2,19 @@
 
 namespace Tests\Feature\Admin;
 
+use App\Domain\Apps\RecipeSynchronizer;
+use App\Enums\AppInstallationStatus;
+use App\Enums\AppInstallMode;
 use App\Enums\ServerOrigin;
 use App\Enums\ServerStatus;
 use App\Enums\TaskStatus;
 use App\Enums\TaskType;
+use App\Models\AppRecipe;
 use App\Models\AuditLog;
 use App\Models\BillingSystem;
 use App\Models\Cluster;
 use App\Models\IpAddress;
+use App\Models\OsTemplate;
 use App\Models\ProxmoxTemplate;
 use App\Models\Server;
 use App\Models\Task;
@@ -217,6 +222,45 @@ class ServerManagementTest extends AdminTestCase
         $this->package->update(['network_models' => ['routed']]);
 
         $this->post(route('admin.servers.store'), $this->payload())->assertSessionHasErrors('network_model');
+    }
+
+    public function test_the_create_form_offers_the_apps_each_template_fits()
+    {
+        app(RecipeSynchronizer::class)->sync();
+        $windows = OsTemplate::factory()->windows()->create();
+
+        $this->get(route('admin.servers.create'))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('admin/servers/Create')
+                ->where('apps', fn ($apps) => collect($apps)->firstWhere('slug', 'wireguard')['os_templates'] === [$this->osTemplate->uuid])
+                ->where('apps', fn ($apps) => collect($apps)->every(fn (array $app) => ! in_array($windows->uuid, $app['os_templates'], true))));
+    }
+
+    public function test_a_server_can_be_created_with_an_app()
+    {
+        app(RecipeSynchronizer::class)->sync();
+
+        $this->post(route('admin.servers.store'), $this->payload(['app' => 'openvpn', 'app_inputs' => ['port' => 1195]]))
+            ->assertSessionHasNoErrors();
+
+        $installation = Server::query()->sole()->appInstallations()->sole();
+        $this->assertSame('openvpn', $installation->recipe->slug);
+        $this->assertSame(AppInstallMode::Order, $installation->mode);
+        $this->assertSame(AppInstallationStatus::Installing, $installation->status);
+        $this->assertSame(['port' => 1195, 'protocol' => 'udp'], $installation->inputs);
+    }
+
+    public function test_apps_that_do_not_fit_and_invalid_app_inputs_are_shown_on_the_form()
+    {
+        app(RecipeSynchronizer::class)->sync();
+        AppRecipe::query()->where('slug', 'docker')->update(['is_active' => false]);
+
+        $this->post(route('admin.servers.store'), $this->payload(['app' => 'docker']))->assertSessionHasErrors('app');
+        $this->post(route('admin.servers.store'), $this->payload(['app' => 'openvpn', 'app_inputs' => ['port' => 70000]]))->assertSessionHasErrors('app_inputs.port');
+        $this->post(route('admin.servers.store'), $this->payload(['app' => 'no-such-app']))->assertSessionHasErrors('app');
+
+        $this->assertSame(0, Server::query()->count());
     }
 
     public function test_provisioning_problems_are_shown_on_the_form()

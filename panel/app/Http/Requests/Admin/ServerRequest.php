@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Requests\Admin;
 
 use App\Enums\NetworkModel;
+use App\Models\AppRecipe;
 use App\Models\BillingSystem;
 use App\Models\Location;
 use App\Models\OsTemplate;
@@ -54,6 +55,9 @@ class ServerRequest extends FormRequest
             // Empty: a random password is generated.
             'root_password' => ['nullable', 'string', 'min:12', 'max:128'],
             'ssh_keys' => ['nullable', 'string', 'max:16384', new SshPublicKeys],
+            // An app installed once the server has booted (docs/adr/0016 §5); checked by the creator.
+            'app' => ['nullable', 'string', Rule::exists('app_recipes', 'slug')],
+            'app_inputs' => ['nullable', 'array'],
         ];
     }
 
@@ -94,6 +98,8 @@ class ServerRequest extends FormRequest
             externalClientId: $this->filled('external_client_id') ? $this->string('external_client_id')->trim()->toString() : null,
             billingSystem: $this->billingSystem(),
             primaryIpv4: $this->filled('primary_ipv4') ? $this->string('primary_ipv4')->trim()->toString() : null,
+            app: $this->filled('app') ? AppRecipe::query()->with('latestVersion')->where('slug', $this->string('app'))->firstOrFail() : null,
+            appInputs: $this->filled('app') ? (array) $this->input('app_inputs', []) : [],
         );
     }
 

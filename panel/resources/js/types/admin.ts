@@ -264,9 +264,10 @@ export type ResourceOptions = {
     current: ResourceValues & { package: string };
 };
 
-/** Choices for ReinstallDialog: OS templates of the server's cluster. */
+/** Choices for ReinstallDialog: OS templates of the server's cluster and the apps that can come with them. */
 export type ReinstallOptions = {
     osTemplates: Option[];
+    apps: OrderedAppOption[];
 };
 
 /** What TaskList needs. */
@@ -391,3 +392,6 @@ export type AppInput = {
 };
 
 export type AppOption = { slug: string; name: string; inputs: AppInput[] };
+
+// An app that can come with a new system, and the OS templates it fits (docs/adr/0016 §5).
+export type OrderedAppOption = AppOption & { os_templates: string[] };

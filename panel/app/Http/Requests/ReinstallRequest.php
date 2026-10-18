@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Requests;
 
 use App\Domain\Servers\ServerReinstaller;
+use App\Models\AppRecipe;
 use App\Models\OsTemplate;
 use App\Models\Server;
 use App\Rules\SshPublicKeys;
@@ -44,7 +45,23 @@ class ReinstallRequest extends FormRequest
                     $fail(__('Type the hostname of the server to confirm.'));
                 }
             }],
+            // An app installed once the new system has booted (docs/adr/0016 §5); checked by the reinstaller.
+            'app' => ['nullable', 'string', Rule::exists('app_recipes', 'slug')],
+            'app_inputs' => ['nullable', 'array'],
         ];
+    }
+
+    public function app(): ?AppRecipe
+    {
+        return $this->filled('app') ? AppRecipe::query()->with('latestVersion')->where('slug', $this->string('app'))->firstOrFail() : null;
+    }
+
+    /**
+     * @return array<array-key, mixed>
+     */
+    public function appInputs(): array
+    {
+        return (array) $this->input('app_inputs', []);
     }
 
     public function osTemplate(): OsTemplate

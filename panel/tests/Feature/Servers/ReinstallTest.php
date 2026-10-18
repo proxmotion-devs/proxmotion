@@ -2,9 +2,13 @@
 
 namespace Tests\Feature\Servers;
 
+use App\Domain\Apps\RecipeSynchronizer;
+use App\Enums\AppInstallationStatus;
+use App\Enums\AppInstallMode;
 use App\Enums\ServerStatus;
 use App\Enums\TaskStatus;
 use App\Enums\TaskType;
+use App\Models\AppRecipe;
 use App\Models\AuditLog;
 use App\Models\OsTemplate;
 use App\Models\ProxmoxTemplate;
@@ -191,5 +195,33 @@ class ReinstallTest extends TestCase
         $this->actingAs($this->admin)
             ->get(route('admin.servers.show', $this->server))
             ->assertInertia(fn (Assert $page) => $page->has('reinstallOptions.osTemplates', 2));
+    }
+
+    public function test_an_app_can_come_with_the_new_system()
+    {
+        app(RecipeSynchronizer::class)->sync();
+
+        $this->actingAs($this->admin)
+            ->get(route('admin.servers.show', $this->server))
+            ->assertInertia(fn (Assert $page) => $page->where('reinstallOptions.apps', fn ($apps) => in_array($this->debian->uuid, collect($apps)->firstWhere('slug', 'wireguard')['os_templates'], true)));
+
+        $this->reinstall(['app' => 'wireguard', 'app_inputs' => ['port' => 51900]])->assertSessionHasNoErrors();
+
+        $installation = $this->server->appInstallations()->sole();
+        $this->assertSame(AppInstallMode::Order, $installation->mode);
+        $this->assertSame(AppInstallationStatus::Installing, $installation->status);
+        $this->assertSame(TaskType::Reinstall, $installation->task?->type);
+        $this->assertSame(['port' => 51900], $installation->inputs);
+    }
+
+    public function test_an_app_that_does_not_fit_refuses_the_reinstall()
+    {
+        app(RecipeSynchronizer::class)->sync();
+        AppRecipe::query()->where('slug', 'docker')->update(['is_active' => false]);
+
+        $this->reinstall(['app' => 'docker'])->assertSessionHasErrors('app');
+        $this->reinstall(['app' => 'openvpn', 'app_inputs' => ['protocol' => 'sctp']])->assertSessionHasErrors('app_inputs.protocol');
+
+        $this->assertSame(0, Task::query()->where('type', TaskType::Reinstall)->count());
     }
 }

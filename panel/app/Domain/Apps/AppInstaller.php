@@ -88,7 +88,7 @@ final readonly class AppInstaller
      * @param  array<array-key, mixed>  $inputs  as given by the billing system or administrator
      * @return array<string, string|int|bool> the validated inputs
      *
-     * @throws ValidationException for invalid inputs
+     * @throws ValidationException for invalid inputs (under app_inputs.<key>)
      * @throws AppNotEligible
      */
     public function validateOrdered(AppRecipe $app, array $inputs, OsTemplate $osTemplate, int $cores, int $memoryMib, int $diskMib, NetworkModel $networkModel): array
@@ -99,7 +99,7 @@ final readonly class AppInstaller
             throw $problem;
         }
 
-        return $this->inputs->validate($app->recipe(), $inputs);
+        return $this->inputs->validate($app->recipe(), $inputs, 'app_inputs');
     }
 
     /**

@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace App\Http\Controllers\Admin;
 
 use App\Domain\Apps\AppEligibility;
+use App\Domain\Apps\AppNotEligible;
+use App\Domain\Apps\OrderedAppOptions;
 use App\Domain\Apps\RecipeAction;
 use App\Domain\Apps\RecipeInput;
 use App\Domain\Servers\GuestAgentProbe;
@@ -86,8 +88,10 @@ class ServerController extends Controller
         ]);
     }
 
-    public function create(): Response
+    public function create(OrderedAppOptions $orderedApps): Response
     {
+        $osTemplates = OsTemplate::query()->where('is_active', true)->orderBy('sort_order')->orderBy('name')->get();
+
         return Inertia::render('admin/servers/Create', [
             'billingSystems' => BillingSystem::options(),
             'locations' => Location::query()->orderBy('name')->get(['uuid', 'name'])
@@ -98,8 +102,9 @@ class ServerController extends Controller
                     'label' => $package->name,
                     'network_models' => $package->network_models,
                 ]),
-            'osTemplates' => OsTemplate::query()->where('is_active', true)->orderBy('sort_order')->orderBy('name')->get(['uuid', 'name'])
-                ->map(fn (OsTemplate $template) => ['value' => $template->uuid, 'label' => $template->name]),
+            'osTemplates' => $osTemplates->map(fn (OsTemplate $template) => ['value' => $template->uuid, 'label' => $template->name]),
+            // Apps that can come with the server (docs/adr/0016 §5).
+            'apps' => fn () => $orderedApps->for($osTemplates),
         ]);
     }
 
@@ -107,6 +112,8 @@ class ServerController extends Controller
     {
         try {
             $server = $creator->create($request->toNewServer(), $admin);
+        } catch (AppNotEligible $e) {
+            throw ValidationException::withMessages(['app' => $e->translatedMessage()]);
         } catch (ProvisioningException $e) {
             throw ValidationException::withMessages(['server' => $e->translatedMessage()]);
         } catch (ProxmoxException $e) {
@@ -286,7 +293,9 @@ class ServerController extends Controller
     public function reinstall(ReinstallRequest $request, Server $server, #[CurrentUser] User $admin, ServerReinstaller $reinstaller): RedirectResponse
     {
         try {
-            $reinstaller->request($server, $request->osTemplate(), $request->sshKeys(), $admin, $request->ip());
+            $reinstaller->request($server, $request->osTemplate(), $request->sshKeys(), $admin, $request->ip(), $request->app(), $request->appInputs());
+        } catch (AppNotEligible $e) {
+            throw ValidationException::withMessages(['app' => $e->translatedMessage()]);
         } catch (ProvisioningException $e) {
             $this->toast('error', $e->getMessage());
 

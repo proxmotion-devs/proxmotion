@@ -5,6 +5,7 @@ import { computed, watch } from 'vue';
 import FormField from '@/components/admin/FormField.vue';
 import NativeSelect from '@/components/admin/NativeSelect.vue';
 import Heading from '@/components/Heading.vue';
+import OrderedAppFields from '@/components/servers/OrderedAppFields.vue';
 import InputError from '@/components/InputError.vue';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -13,7 +14,7 @@ import { optionalNumber } from '@/lib/forms';
 import type { OptionalNumber } from '@/lib/forms';
 import { create, index, store } from '@/routes/admin/servers';
 import { NETWORK_MODELS } from '@/types/admin';
-import type { NetworkModel, Option } from '@/types/admin';
+import type { NetworkModel, Option, OrderedAppOption } from '@/types/admin';
 
 defineOptions({
     layout: {
@@ -29,6 +30,7 @@ const props = defineProps<{
     locations: Option[];
     packages: (Option & { network_models: NetworkModel[] })[];
     osTemplates: Option[];
+    apps: OrderedAppOption[];
 }>();
 
 const form = useForm({
@@ -55,6 +57,8 @@ const form = useForm({
     primary_ipv4: '',
     root_password: '',
     ssh_keys: '',
+    app: '',
+    app_inputs: {} as Record<string, string | number | boolean>,
 });
 
 const custom = computed(() => form.resource_mode === 'custom');
@@ -337,6 +341,14 @@ const submit = () =>
                     />
                 </FormField>
             </div>
+
+            <OrderedAppFields
+                v-model:app="form.app"
+                v-model:inputs="form.app_inputs"
+                :options="apps"
+                :os-template="form.os_template"
+                :errors="form.errors as Record<string, string>"
+            />
 
             <FormField
                 label="Hostname"

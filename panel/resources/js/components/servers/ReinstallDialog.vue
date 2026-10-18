@@ -4,6 +4,7 @@ import { RefreshCw } from '@lucide/vue';
 import { ref } from 'vue';
 import FormField from '@/components/admin/FormField.vue';
 import NativeSelect from '@/components/admin/NativeSelect.vue';
+import OrderedAppFields from '@/components/servers/OrderedAppFields.vue';
 import { Button } from '@/components/ui/button';
 import {
     Dialog,
@@ -16,16 +17,19 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Spinner } from '@/components/ui/spinner';
+import type { OrderedAppOption } from '@/types/admin';
 import type { RouteDefinition } from '@/wayfinder';
 
 /**
- * Choose an OS, optionally paste SSH keys, type the hostname, and wipe the server.
+ * Choose an OS, optionally paste SSH keys and pick an app installed on the
+ * new system, type the hostname, and wipe the server.
  */
 const props = defineProps<{
     action: RouteDefinition<'post'>;
     hostname: string;
     options: {
         osTemplates: { value: string; label: string }[];
+        apps: OrderedAppOption[];
     };
     disabled?: boolean;
 }>();
@@ -36,6 +40,8 @@ const form = useForm({
     os_template: props.options.osTemplates[0]?.value ?? null,
     ssh_keys: '',
     confirm_hostname: '',
+    app: '',
+    app_inputs: {} as Record<string, string | number | boolean>,
 });
 
 const submit = () =>
@@ -43,7 +49,7 @@ const submit = () =>
         preserveScroll: true,
         onSuccess: () => {
             open.value = false;
-            form.reset('confirm_hostname');
+            form.reset('confirm_hostname', 'app', 'app_inputs');
         },
     });
 </script>
@@ -83,6 +89,14 @@ const submit = () =>
                         :options="options.osTemplates"
                     />
                 </FormField>
+
+                <OrderedAppFields
+                    v-model:app="form.app"
+                    v-model:inputs="form.app_inputs"
+                    :options="options.apps"
+                    :os-template="form.os_template"
+                    :errors="form.errors as Record<string, string>"
+                />
 
                 <FormField
                     label="SSH public keys"
