@@ -10,7 +10,7 @@ use Tests\TestCase;
  * Translation keys are the English source strings. These tests make sure every
  * key the UI uses has a translation in every non-English locale. Detected:
  *
- * - $t('…'), trans('…'), __('…') and $this->toast('type', '…')
+ * - $t('…'), trans('…'), __('…') and $this->toast('type', '…'); also $t("…") and trans("…")
  * - static title/description/label/hint/submit-label attributes (Heading, FormField, <Head>, …)
  * - string literals in bound :title/:description/:label/:hint/:submit-label attributes
  * - title/description/label/detail/buttonText properties in scripts (breadcrumbs, nav items, …)
@@ -18,6 +18,8 @@ use Tests\TestCase;
 class TranslationsTest extends TestCase
 {
     private const LITERAL = "'((?:[^'\\\\]|\\\\.)*)'";
+
+    private const DOUBLE_QUOTED = '"((?:[^"\\\\]|\\\\.)*)"';
 
     private const TRANSLATED_ATTRIBUTES = 'title|description|label|hint|submit-label';
 
@@ -65,6 +67,8 @@ class TranslationsTest extends TestCase
         $patterns = [
             // $t('key'), trans('key'), __('key')
             '/(?:\$t|\btrans|\b__)\(\s*'.self::LITERAL.'/',
+            // $t("key's"): the formatter switches to double quotes for keys with an apostrophe
+            '/(?:\$t|\btrans)\(\s*'.self::DOUBLE_QUOTED.'/',
             // $t(condition ? 'a' : 'b')
             '/\$t\(\s*[\w.]+\s*\?\s*'.self::LITERAL.'\s*:\s*'.self::LITERAL.'/',
             // $this->toast('success', 'key')

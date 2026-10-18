@@ -146,7 +146,7 @@ const submit = () => {
         <GuideBox
             id="os-templates"
             title="How to add an OS template"
-            topic="iso-download"
+            topic="template-guide"
         >
             <ol>
                 <li>
@@ -166,7 +166,7 @@ const submit = () => {
                 <li>
                     {{
                         $t(
-                            'Install cloud-init and qemu-guest-agent, clean the machine identity, add a CloudInit drive and convert the VM to a template. Help has every command.',
+                            'Install cloud-init (Windows: Cloudbase-Init) and the guest agent, add a CloudInit drive and convert the VM to a template. The guide in Help has every step for Linux and Windows.',
                         )
                     }}
                 </li>
