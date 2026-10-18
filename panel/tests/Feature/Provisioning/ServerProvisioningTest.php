@@ -199,6 +199,22 @@ class ServerProvisioningTest extends TestCase
         $this->assertSame(strtolower($match[1]), $server->refresh()->mac_address);
     }
 
+    public function test_a_failed_save_of_the_server_still_ends_the_task_and_marks_the_server()
+    {
+        // E.g. a column the database does not have yet: every save carrying it fails.
+        Server::saving(function (Server $server) {
+            if ($server->isDirty('mac_address')) {
+                throw new \RuntimeException('no such column: mac_address');
+            }
+        });
+
+        $server = app(ServerCreator::class)->create($this->order());
+
+        $this->assertSame(ServerStatus::Error, $server->refresh()->status);
+        $this->assertNull($server->mac_address);
+        $this->assertSame(TaskStatus::Failed, $server->tasks()->latest('id')->first()->status);
+    }
+
     public function test_routed_ips_use_a_32_with_the_provider_mac()
     {
         $this->ipv4Pool->update(['network_model' => NetworkModel::Routed, 'gateway' => '198.51.100.254']);

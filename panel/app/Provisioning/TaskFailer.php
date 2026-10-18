@@ -23,16 +23,22 @@ final class TaskFailer
 
     public function fail(Task $task, string $message): void
     {
+        // The pipeline may have failed while saving these models: drop what it
+        // left unsaved, or the same error would stop the task from ending.
+        $task->discardChanges();
+
+        // These leave the VM half-built or half-deleted; the others leave it as it was.
+        // The server goes first: should this fail, the task is still open and
+        // RunServerTask::failed() ends both.
+        if (in_array($task->type, [TaskType::Create, TaskType::Terminate, TaskType::Reinstall], true)) {
+            $task->server->discardChanges()->forceFill(['status' => ServerStatus::Error])->save();
+        }
+
         $task->forceFill([
             'status' => TaskStatus::Failed,
             'error' => $message,
             'finished_at' => now(),
         ])->save();
-
-        // These leave the VM half-built or half-deleted; the others leave it as it was.
-        if (in_array($task->type, [TaskType::Create, TaskType::Terminate, TaskType::Reinstall], true)) {
-            $task->server->forceFill(['status' => ServerStatus::Error])->save();
-        }
 
         $this->notify($task);
     }
