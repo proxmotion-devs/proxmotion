@@ -57,21 +57,48 @@ final readonly class ServerCreator
             throw ProvisioningException::noAddresses('IPv4');
         }
 
-        if ($order->primaryIpv4 !== null && $spec->ipv4Count === 0) {
+        if (($order->primaryIpv4 !== null || $order->ipv4Pool !== null) && $spec->ipv4Count === 0) {
             throw new ProvisioningException('A primary IPv4 address needs at least one IPv4 address.');
+        }
+
+        if ($order->additionalIpv4 !== [] && $order->primaryIpv4 === null) {
+            throw new ProvisioningException('Choose the primary IPv4 address before additional ones.');
+        }
+
+        if ($order->additionalIpv4 !== []) {
+            $chosen = [$order->primaryIpv4, ...$order->additionalIpv4];
+
+            if (count($chosen) > $spec->ipv4Count) {
+                throw new ProvisioningException('This server gets only :count IPv4 addresses.', ['count' => (string) $spec->ipv4Count]);
+            }
+
+            if (count(array_unique($chosen)) !== count($chosen)) {
+                throw new ProvisioningException('Each IPv4 address can be chosen only once.');
+            }
         }
 
         $appInputs = $order->app === null ? [] : $this->apps->validateOrdered($order->app, $order->appInputs, $order->osTemplate, $spec->cpuCores, $spec->memoryMib, $spec->diskMib, $order->networkModel);
 
         $server = Cache::lock("provisioning:location:{$order->location->id}", 30)->block(15, function () use ($order, $spec, $appInputs, $actor) {
-            // A chosen primary decides the pool; the other IPv4 addresses come from the same one.
-            $primary = $order->primaryIpv4 === null ? null : $this->ips->freeAddress($order->location, $order->networkModel, IpVersion::V4, $order->primaryIpv4);
+            // A chosen pool or primary decides the pool; the other IPv4 addresses come from the same one.
+            $chosenPool = $order->ipv4Pool;
 
-            if ($primary !== null && $this->ips->freeIpv4Count($primary->pool) < $spec->ipv4Count) {
+            if ($chosenPool !== null && ! $this->ips->usableIpv4Pool($chosenPool, $order->location, $order->networkModel)) {
+                throw new ProvisioningException('The IPv4 pool :pool is not an active pool of this location for the chosen network model.', ['pool' => $chosenPool->name]);
+            }
+
+            $primary = match (true) {
+                $order->primaryIpv4 === null => null,
+                $chosenPool !== null => $this->ips->freeIpv4Of($chosenPool, $order->primaryIpv4),
+                default => $this->ips->freeAddress($order->location, $order->networkModel, IpVersion::V4, $order->primaryIpv4),
+            };
+            $ipv4Pool = $primary->pool ?? $chosenPool ?? $this->ips->ipv4Pool($order->location, $order->networkModel, $spec->ipv4Count);
+
+            if ($ipv4Pool !== null && $this->ips->freeIpv4Count($ipv4Pool) < $spec->ipv4Count) {
                 throw ProvisioningException::noAddresses('IPv4');
             }
 
-            $ipv4Pool = $primary->pool ?? $this->ips->ipv4Pool($order->location, $order->networkModel, $spec->ipv4Count);
+            $additional = array_map(fn (string $address) => $this->ips->freeIpv4Of($ipv4Pool ?? throw ProvisioningException::noAddresses('IPv4'), $address), $order->additionalIpv4);
             $ipv6Pool = $this->ips->ipv6Pool($order->location, $order->networkModel, $spec->ipv6Count);
 
             // Without an IPv6 pool in the location the server gets IPv4 only, but never no address at all.
@@ -89,14 +116,19 @@ final readonly class ServerCreator
             $cluster = $placement->node->cluster;
             $vmid = $this->firstFreeVmid($cluster);
 
-            return DB::transaction(function () use ($order, $spec, $placement, $cluster, $vmid, $ipv4Pool, $ipv6Pool, $primary, $appInputs, $actor) {
+            return DB::transaction(function () use ($order, $spec, $placement, $cluster, $vmid, $ipv4Pool, $ipv6Pool, $primary, $additional, $appInputs, $actor) {
                 $server = $this->insertServer($order, $placement, $cluster, $vmid);
 
                 if ($primary !== null) {
                     $primary->forceFill(['server_id' => $server->id, 'is_primary' => true, 'assigned_at' => now()])->save();
                 }
 
-                $this->ips->assign($server, $ipv4Pool, $spec->ipv4Count - ($primary !== null ? 1 : 0), $ipv6Pool, $spec->ipv6Count);
+                foreach ($additional as $address) {
+                    $address->forceFill(['server_id' => $server->id, 'assigned_at' => now()])->save();
+                }
+
+                $chosen = ($primary !== null ? 1 : 0) + count($additional);
+                $this->ips->assign($server, $ipv4Pool, $spec->ipv4Count - $chosen, $ipv6Pool, $spec->ipv6Count);
 
                 if ($order->app !== null) {
                     $this->apps->queueOrdered($server, $order->app, $appInputs, $actor, null);

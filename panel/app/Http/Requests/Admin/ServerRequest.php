@@ -7,6 +7,7 @@ namespace App\Http\Requests\Admin;
 use App\Enums\NetworkModel;
 use App\Models\AppRecipe;
 use App\Models\BillingSystem;
+use App\Models\IpPool;
 use App\Models\Location;
 use App\Models\Node;
 use App\Models\OsTemplate;
@@ -59,8 +60,11 @@ class ServerRequest extends FormRequest
             'os_template' => ['required', 'string', Rule::exists('os_templates', 'uuid')->where('is_active', true)],
             'network_model' => ['required', Rule::enum(NetworkModel::class)->except([NetworkModel::Nat])],
             'hostname' => ['required', 'string', 'max:253', new Hostname],
-            // Empty: the next free address of the location's pools.
-            'primary_ipv4' => ['nullable', 'ipv4'],
+            // Empty: the first pool of the location with room for the server's addresses.
+            'ipv4_pool' => ['nullable', 'string', Rule::exists('ip_pools', 'uuid')],
+            // Chosen IPv4 addresses, the first one primary; missing ones are the next free of the pool.
+            'ipv4_addresses' => ['nullable', 'array', 'max:64'],
+            'ipv4_addresses.*' => ['ipv4', 'distinct'],
             // Empty: a random password is generated.
             'root_password' => ['nullable', 'string', 'min:12', 'max:128'],
             'ssh_keys' => ['nullable', 'string', 'max:16384', new SshPublicKeys],
@@ -106,7 +110,9 @@ class ServerRequest extends FormRequest
             externalId: $this->filled('external_id') ? $this->string('external_id')->trim()->toString() : null,
             externalClientId: $this->filled('external_client_id') ? $this->string('external_client_id')->trim()->toString() : null,
             billingSystem: $this->billingSystem(),
-            primaryIpv4: $this->filled('primary_ipv4') ? $this->string('primary_ipv4')->trim()->toString() : null,
+            primaryIpv4: $this->ipv4Addresses()[0] ?? null,
+            ipv4Pool: $this->filled('ipv4_pool') ? IpPool::query()->where('uuid', $this->string('ipv4_pool'))->firstOrFail() : null,
+            additionalIpv4: array_slice($this->ipv4Addresses(), 1),
             app: $this->filled('app') ? AppRecipe::query()->with('latestVersion')->where('slug', $this->string('app'))->firstOrFail() : null,
             appInputs: $this->filled('app') ? (array) $this->input('app_inputs', []) : [],
             placementGroup: $this->input('placement') === 'group'
@@ -115,6 +121,14 @@ class ServerRequest extends FormRequest
             node: $this->node(),
             storage: $this->node() !== null && $this->filled('storage') ? $this->string('storage')->toString() : null,
         );
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function ipv4Addresses(): array
+    {
+        return array_values(array_map(fn ($address) => trim((string) $address), $this->array('ipv4_addresses')));
     }
 
     /**

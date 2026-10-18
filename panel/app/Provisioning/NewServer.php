@@ -7,6 +7,7 @@ namespace App\Provisioning;
 use App\Enums\NetworkModel;
 use App\Models\AppRecipe;
 use App\Models\BillingSystem;
+use App\Models\IpPool;
 use App\Models\Location;
 use App\Models\Node;
 use App\Models\OsTemplate;
@@ -35,6 +36,10 @@ final readonly class NewServer
         public ?BillingSystem $billingSystem = null,
         /** A free address to use as the primary IPv4 address instead of the next free one (docs/adr/0011). */
         public ?string $primaryIpv4 = null,
+        /** The IPv4 pool to take the addresses from instead of the first with room. */
+        public ?IpPool $ipv4Pool = null,
+        /** @var list<string> free addresses of the same pool given besides the primary; the rest are the next free ones */
+        public array $additionalIpv4 = [],
         /** An app to install once the server has booted (docs/adr/0016 §5). */
         public ?AppRecipe $app = null,
         /** @var array<array-key, mixed> the app's inputs, not validated yet */

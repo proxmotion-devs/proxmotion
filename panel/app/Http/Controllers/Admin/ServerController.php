@@ -21,6 +21,7 @@ use App\Domain\Servers\ServerReinstaller;
 use App\Enums\AppInstallationStatus;
 use App\Enums\AppRunKind;
 use App\Enums\AppRunStatus;
+use App\Enums\IpVersion;
 use App\Enums\NodeStatus;
 use App\Enums\PowerAction;
 use App\Enums\ServerStatus;
@@ -37,6 +38,7 @@ use App\Models\AppRecipe;
 use App\Models\AppRun;
 use App\Models\BillingSystem;
 use App\Models\IpAddress;
+use App\Models\IpPool;
 use App\Models\Location;
 use App\Models\Node;
 use App\Models\OsTemplate;
@@ -49,6 +51,7 @@ use App\Models\Task;
 use App\Models\User;
 use App\Provisioning\Exceptions\ProvisioningException;
 use App\Provisioning\Exceptions\TaskAlreadyRunning;
+use App\Provisioning\IpAllocator;
 use App\Provisioning\Placement\NodePlacer;
 use App\Provisioning\PrimaryAddressChanger;
 use App\Provisioning\ResourceChanger;
@@ -65,6 +68,11 @@ use Inertia\Response;
 
 class ServerController extends Controller
 {
+    /**
+     * Free addresses per pool offered on the create form; larger pools list the first ones.
+     */
+    private const CHOOSABLE_ADDRESSES = 1024;
+
     public function __construct(
         private readonly TaskRunner $tasks,
         private readonly ServerPower $power,
@@ -98,7 +106,7 @@ class ServerController extends Controller
         ]);
     }
 
-    public function create(OrderedAppOptions $orderedApps, NodePlacer $placer): Response
+    public function create(OrderedAppOptions $orderedApps, NodePlacer $placer, IpAllocator $ips): Response
     {
         $osTemplates = OsTemplate::query()->where('is_active', true)->orderBy('sort_order')->orderBy('name')->get();
 
@@ -111,8 +119,24 @@ class ServerController extends Controller
                     'value' => $package->uuid,
                     'label' => $package->name,
                     'network_models' => $package->network_models,
+                    'ipv4_count' => $package->ipv4_count,
                     // The placement groups its servers may be placed on; empty for any.
                     'placement_groups' => $package->placementGroups->pluck('uuid')->values(),
+                ]),
+            // Active IPv4 pools with their free addresses, for choosing the addresses by hand.
+            'ipv4Pools' => fn () => IpPool::query()
+                ->where('is_active', true)
+                ->where('version', IpVersion::V4)
+                ->with('location:id,uuid')
+                ->orderBy('name')
+                ->get()
+                ->map(fn (IpPool $pool) => [
+                    'value' => $pool->uuid,
+                    'label' => "{$pool->name} ({$pool->network})",
+                    'location' => $pool->location->uuid,
+                    'network_model' => $pool->network_model,
+                    'free' => $ips->freeIpv4Count($pool),
+                    'addresses' => $ips->freeIpv4Addresses($pool, self::CHOOSABLE_ADDRESSES),
                 ]),
             'placementGroups' => PlacementGroup::query()->with('location:id,uuid')->orderBy('name')->get()
                 ->map(fn (PlacementGroup $group) => [

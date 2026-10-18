@@ -5,6 +5,7 @@ import { computed, watch } from 'vue';
 import FormField from '@/components/admin/FormField.vue';
 import NativeSelect from '@/components/admin/NativeSelect.vue';
 import Heading from '@/components/Heading.vue';
+import Ipv4Fields from '@/components/servers/Ipv4Fields.vue';
 import OrderedAppFields from '@/components/servers/OrderedAppFields.vue';
 import PlacementFields from '@/components/servers/PlacementFields.vue';
 import InputError from '@/components/InputError.vue';
@@ -16,6 +17,7 @@ import type { OptionalNumber } from '@/lib/forms';
 import { create, index, store } from '@/routes/admin/servers';
 import { NETWORK_MODELS } from '@/types/admin';
 import type {
+    Ipv4PoolOption,
     NetworkModel,
     Option,
     OrderedAppOption,
@@ -36,9 +38,11 @@ const props = defineProps<{
     locations: Option[];
     packages: (Option & {
         network_models: NetworkModel[];
+        ipv4_count: number;
         placement_groups: string[];
     })[];
     placementGroups: (Option & { location: string })[];
+    ipv4Pools: Ipv4PoolOption[];
     osTemplates: Option[];
     apps: OrderedAppOption[];
     nodes: PlacementNode[];
@@ -69,7 +73,8 @@ const form = useForm({
     os_template: props.osTemplates[0]?.value ?? null,
     network_model: null as NetworkModel | null,
     hostname: '',
-    primary_ipv4: '',
+    ipv4_pool: '',
+    ipv4_addresses: [] as string[],
     root_password: '',
     ssh_keys: '',
     app: '',
@@ -120,6 +125,13 @@ const chosenPackage = computed(() =>
     custom.value
         ? undefined
         : props.packages.find((pkg) => pkg.value === form.package),
+);
+
+// How many IPv4 addresses the server gets, for choosing them.
+const ipv4Count = computed(() =>
+    custom.value
+        ? Number(form.ipv4_count) || 0
+        : (chosenPackage.value?.ipv4_count ?? 0),
 );
 
 const missing = computed(
@@ -399,20 +411,15 @@ const submit = () =>
                 />
             </FormField>
 
-            <FormField
-                label="Primary IPv4 address"
-                for="primary_ipv4"
-                :error="form.errors.primary_ipv4"
-                hint="Optional. A free address of this location's pools; empty takes the next free one."
-            >
-                <Input
-                    id="primary_ipv4"
-                    v-model="form.primary_ipv4"
-                    class="font-mono"
-                    autocomplete="off"
-                    placeholder="203.0.113.10"
-                />
-            </FormField>
+            <Ipv4Fields
+                v-model:pool="form.ipv4_pool"
+                v-model:addresses="form.ipv4_addresses"
+                :pools="ipv4Pools"
+                :location="form.location"
+                :network-model="form.network_model"
+                :count="ipv4Count"
+                :errors="form.errors as Record<string, string>"
+            />
 
             <FormField
                 label="Root password"

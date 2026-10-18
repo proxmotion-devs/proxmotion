@@ -472,3 +472,12 @@ export type PlacementGroup = {
     storage_ids: number[];
     packages_count: number;
 };
+
+/** An active IPv4 pool offered on the create form, with its first free addresses. */
+export type Ipv4PoolOption = Option & {
+    location: string;
+    network_model: NetworkModel;
+    /** All free addresses; `addresses` may list only the first of them. */
+    free: number;
+    addresses: string[];
+};

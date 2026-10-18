@@ -3,6 +3,7 @@
 namespace Tests\Feature\Admin;
 
 use App\Domain\Apps\RecipeSynchronizer;
+use App\Domain\Networking\GenerateIpAddresses;
 use App\Enums\AppEntitlementSource;
 use App\Enums\AppInstallationStatus;
 use App\Enums\AppInstallMode;
@@ -15,6 +16,7 @@ use App\Models\AuditLog;
 use App\Models\BillingSystem;
 use App\Models\Cluster;
 use App\Models\IpAddress;
+use App\Models\IpPool;
 use App\Models\OsTemplate;
 use App\Models\PlacementGroup;
 use App\Models\ProxmoxTemplate;
@@ -139,6 +141,59 @@ class ServerManagementTest extends AdminTestCase
         $this->post(route('admin.servers.store'), $this->payload(['placement' => null]))->assertSessionHasErrors('placement');
         $this->post(route('admin.servers.store'), $this->payload(['placement' => 'auto']))->assertSessionHasErrors('placement');
         $this->post(route('admin.servers.store'), $this->payload(['placement_group' => null]))->assertSessionHasErrors('placement_group');
+        $this->assertSame(0, Server::query()->count());
+    }
+
+    public function test_the_ipv4_pool_and_addresses_can_be_chosen()
+    {
+        $this->get(route('admin.servers.create'))
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('packages.0.ipv4_count', 1)
+                ->where('ipv4Pools.0.value', $this->ipv4Pool->uuid)
+                ->where('ipv4Pools.0.location', $this->location->uuid)
+                ->where('ipv4Pools.0.network_model', 'bridged')
+                ->where('ipv4Pools.0.addresses', ['203.0.113.2', '203.0.113.3', '203.0.113.4', '203.0.113.5', '203.0.113.6'])
+                ->where('ipv4Pools.0.free', 5));
+
+        // Three addresses: two ticked (the first is primary), the third the next free one.
+        $this->post(route('admin.servers.store'), $this->payload([
+            'resource_mode' => 'custom',
+            'package' => null,
+            'cpu_cores' => 1,
+            'memory_mib' => 1024,
+            'disk_gib' => 10,
+            'ipv4_count' => 3,
+            'ipv6_count' => 0,
+            'ipv4_pool' => $this->ipv4Pool->uuid,
+            'ipv4_addresses' => ['203.0.113.5', '203.0.113.3'],
+        ]))->assertSessionHasNoErrors();
+
+        $server = Server::query()->sole();
+        $addresses = $server->ipAddresses()->get();
+        $this->assertSame(['203.0.113.2', '203.0.113.3', '203.0.113.5'], $addresses->pluck('address')->sort()->values()->all());
+        $this->assertTrue($addresses->firstWhere('address', '203.0.113.5')?->is_primary);
+        $this->assertStringContainsString('ip=203.0.113.5/29', (string) $this->proxmox->vms[$server->vmid]['config']['ipconfig0']);
+    }
+
+    public function test_chosen_ipv4_addresses_must_be_free_addresses_of_the_pool_and_fit_the_server()
+    {
+        $elsewhere = IpPool::factory()->create(['network' => '198.51.100.0/29', 'gateway' => '198.51.100.1']);
+        app(GenerateIpAddresses::class)->handle($elsewhere);
+        IpAddress::query()->where('address', '203.0.113.4')->update(['is_reserved' => true]);
+
+        $pool = $this->ipv4Pool->name;
+
+        foreach ([
+            __('The IPv4 pool :pool is not an active pool of this location for the chosen network model.', ['pool' => $elsewhere->name]) => ['ipv4_pool' => $elsewhere->uuid],
+            __(':address is not a free address of the pool :pool.', ['address' => '198.51.100.2', 'pool' => $pool]) => ['ipv4_pool' => $this->ipv4Pool->uuid, 'ipv4_addresses' => ['198.51.100.2']],
+            __(':address is not a free address of the pool :pool.', ['address' => '203.0.113.4', 'pool' => $pool]) => ['ipv4_pool' => $this->ipv4Pool->uuid, 'ipv4_addresses' => ['203.0.113.4']],
+            __('This server gets only :count IPv4 addresses.', ['count' => '1']) => ['ipv4_pool' => $this->ipv4Pool->uuid, 'ipv4_addresses' => ['203.0.113.2', '203.0.113.3']],
+        ] as $message => $overrides) {
+            $this->post(route('admin.servers.store'), $this->payload($overrides))->assertSessionHasErrors(['server' => $message]);
+        }
+
+        $this->post(route('admin.servers.store'), $this->payload(['ipv4_addresses' => ['203.0.113.2', '203.0.113.2']]))
+            ->assertSessionHasErrors('ipv4_addresses.0');
         $this->assertSame(0, Server::query()->count());
     }
 

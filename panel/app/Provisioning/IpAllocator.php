@@ -151,6 +151,37 @@ final class IpAllocator
         return $this->freeIpv4($pool)->count();
     }
 
+    /**
+     * Whether a server of this location and network model may take IPv4
+     * addresses from the pool (an active IPv4 pool of the same location and model).
+     */
+    public function usableIpv4Pool(IpPool $pool, Location $location, NetworkModel $model): bool
+    {
+        return $this->pools($location, $model, IpVersion::V4)->contains('id', $pool->id);
+    }
+
+    /**
+     * A free, unreserved IPv4 address of this pool, locked for update. Caller
+     * holds the allocation lock and assigns it.
+     *
+     * @throws ProvisioningException
+     */
+    public function freeIpv4Of(IpPool $pool, string $address): IpAddress
+    {
+        return $this->freeIpv4($pool)->where('address', $address)->lockForUpdate()->first()
+            ?? throw new ProvisioningException(':address is not a free address of the pool :pool.', ['address' => $address, 'pool' => $pool->name]);
+    }
+
+    /**
+     * The free IPv4 addresses of a pool in allocation order, for choosing them by hand.
+     *
+     * @return list<string>
+     */
+    public function freeIpv4Addresses(IpPool $pool, int $limit): array
+    {
+        return array_values($this->freeIpv4($pool)->orderBy('id')->limit($limit)->pluck('address')->map(fn ($address) => (string) $address)->all());
+    }
+
     public function release(Server $server): void
     {
         $this->reverseDns->release($server);
