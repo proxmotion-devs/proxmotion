@@ -3,6 +3,7 @@
 namespace Tests\Feature\Admin;
 
 use App\Enums\NetworkModel;
+use App\Enums\OsPlatform;
 use App\Models\Cluster;
 use App\Models\Node;
 use App\Models\OsTemplate;
@@ -53,6 +54,50 @@ class CatalogManagementTest extends AdminTestCase
 
         $this->assertSame(0, $os->proxmoxTemplates()->count());
         $this->assertFalse($os->refresh()->is_active);
+    }
+
+    public function test_the_platform_follows_the_family()
+    {
+        $this->post(route('admin.os-templates.store'), [
+            'name' => 'Windows Server 2022',
+            'family' => 'windows',
+            'version' => '2022',
+            'is_active' => true,
+        ])->assertSessionHasNoErrors();
+
+        $os = OsTemplate::query()->sole();
+        $this->assertSame(OsPlatform::Windows, $os->platform);
+
+        $this->put(route('admin.os-templates.update', $os), [
+            'name' => 'Debian 12',
+            'family' => 'debian',
+            'version' => '12',
+            'is_active' => true,
+            'platform' => 'windows',
+        ])->assertSessionHasNoErrors();
+
+        $this->assertSame(OsPlatform::Linux, $os->refresh()->platform);
+    }
+
+    public function test_templates_not_offered_yet_are_suggested_once_per_name()
+    {
+        $first = Node::factory()->create(['name' => 'pve1']);
+        $second = Node::factory()->for($first->cluster)->create(['name' => 'pve2']);
+        $template = fn (Node $node, int $vmid, string $name) => ProxmoxTemplate::query()->forceCreate([
+            'cluster_id' => $node->cluster_id, 'node_id' => $node->id, 'vmid' => $vmid, 'name' => $name,
+        ]);
+        $ubuntu = [$template($first, 9000, 'ubuntu-2404-cloud')->id, $template($second, 9001, 'ubuntu-2404-cloud')->id];
+        $mapped = $template($first, 9002, 'debian-12');
+        OsTemplate::factory()->create()->proxmoxTemplates()->attach($mapped);
+
+        $this->get(route('admin.os-templates.index'))
+            ->assertInertia(fn (Assert $page) => $page
+                ->has('found', 1)
+                ->where('found.0.name', 'ubuntu-2404-cloud')
+                ->where('found.0.proxmox_template_ids', $ubuntu)
+                ->where('found.0.guess', ['name' => 'Ubuntu 24.04 LTS', 'family' => 'ubuntu', 'version' => '24.04'])
+                ->has('found.0.places', 2)
+                ->has('proxmoxTemplates', 3));
     }
 
     public function test_os_template_family_is_validated()

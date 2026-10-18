@@ -21,6 +21,7 @@ use Illuminate\Support\Carbon;
  * @property Carbon|null $updated_at
  * @property-read Cluster $cluster
  * @property-read Node $node
+ * @property int|null $os_templates_count
  */
 class ProxmoxTemplate extends Model
 {

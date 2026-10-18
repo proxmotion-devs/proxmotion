@@ -20,39 +20,46 @@ import {
     store,
     update,
 } from '@/routes/admin/os-templates';
-import type { OsPlatform, OsTemplate, ProxmoxTemplate } from '@/types/admin';
+import type { OsTemplate, ProxmoxTemplate } from '@/types/admin';
 
 defineOptions({
     layout: { breadcrumbs: [{ title: 'OS templates', href: index() }] },
 });
 
+/** Proxmox templates no OS template uses yet, one entry per name. */
+type FoundTemplate = {
+    name: string;
+    proxmox_template_ids: number[];
+    places: string[];
+    guess: { name: string; family: string; version: string };
+};
+
 const props = defineProps<{
     templates: OsTemplate[];
     proxmoxTemplates: ProxmoxTemplate[];
+    found: FoundTemplate[];
     families: string[];
 }>();
-
-const platformOptions: { value: OsPlatform; label: string }[] = [
-    { value: 'linux', label: 'Linux' },
-    { value: 'windows', label: 'Windows' },
-];
 
 const familyOptions = computed(() =>
     props.families.map((family) => ({ value: family, label: family })),
 );
 
-// Proxmox templates grouped by cluster for the mapping checkboxes.
-const templatesByCluster = computed(() => {
+// The same image usually has the same name on every node and cluster, so
+// templates are picked by name: one tick maps all of them.
+const templatesByName = computed(() => {
     const groups = new Map<string, ProxmoxTemplate[]>();
 
     for (const template of props.proxmoxTemplates) {
-        groups.set(template.cluster, [
-            ...(groups.get(template.cluster) ?? []),
-            template,
-        ]);
+        const name = template.name ?? `#${template.vmid}`;
+        groups.set(name, [...(groups.get(name) ?? []), template]);
     }
 
-    return [...groups.entries()];
+    return [...groups.entries()].map(([name, templates]) => ({
+        name,
+        templates,
+        ids: templates.map((template) => template.id),
+    }));
 });
 
 const mappedLabel = (template: OsTemplate) =>
@@ -70,39 +77,46 @@ const form = useForm({
     name: '',
     family: 'ubuntu' as string | null,
     version: '',
-    platform: 'linux' as OsPlatform | null,
     is_active: true,
     sort_order: 0,
     proxmox_template_ids: [] as number[],
 });
 
-const openForm = (template: OsTemplate | null) => {
+const openForm = (
+    template: OsTemplate | null,
+    found: FoundTemplate | null = null,
+) => {
     editing.value = template;
     form.clearErrors();
     form.defaults({
-        name: template?.name ?? '',
-        family: template?.family ?? 'ubuntu',
-        version: template?.version ?? '',
-        platform: template?.platform ?? 'linux',
+        name: template?.name ?? found?.guess.name ?? '',
+        family: template?.family ?? found?.guess.family ?? 'ubuntu',
+        version: template?.version ?? found?.guess.version ?? '',
         is_active: template?.is_active ?? true,
         sort_order: template?.sort_order ?? 0,
-        proxmox_template_ids: [...(template?.proxmox_template_ids ?? [])],
+        proxmox_template_ids: [
+            ...(template?.proxmox_template_ids ??
+                found?.proxmox_template_ids ??
+                []),
+        ],
     });
     form.reset();
     dialogOpen.value = true;
 };
 
-// The platform picks the default guest scripts; follow the family the admin picks.
-// The family alone tells app recipes what the template is (docs/adr/0016 §3).
-const familyChanged = () => {
-    form.platform = form.family === 'windows' ? 'windows' : 'linux';
+const groupState = (ids: number[]): boolean | 'indeterminate' => {
+    const picked = ids.filter((id) => form.proxmox_template_ids.includes(id));
+
+    if (picked.length === 0) {
+        return false;
+    }
+
+    return picked.length === ids.length ? true : 'indeterminate';
 };
 
-const toggleMapping = (id: number, value: boolean | 'indeterminate') => {
-    form.proxmox_template_ids =
-        value === true
-            ? [...form.proxmox_template_ids, id]
-            : form.proxmox_template_ids.filter((existing) => existing !== id);
+const toggleGroup = (ids: number[], value: boolean | 'indeterminate') => {
+    const others = form.proxmox_template_ids.filter((id) => !ids.includes(id));
+    form.proxmox_template_ids = value === true ? [...others, ...ids] : others;
 };
 
 const submit = () => {
@@ -127,6 +141,52 @@ const submit = () => {
                 {{ $t('Add OS template') }}
             </Button>
         </div>
+
+        <section
+            v-if="found.length"
+            class="flex flex-col gap-3 rounded-xl border border-dashed p-4"
+            data-test="found-templates"
+        >
+            <div>
+                <h3 class="font-medium">{{ $t('Found on Proxmox') }}</h3>
+                <p class="text-sm text-muted-foreground">
+                    {{
+                        $t(
+                            'VM templates that are not offered yet. Add one to check the suggested name and version, then save.',
+                        )
+                    }}
+                </p>
+            </div>
+            <ul class="flex flex-col divide-y">
+                <li
+                    v-for="item in found"
+                    :key="item.name"
+                    class="flex flex-wrap items-center justify-between gap-2 py-2"
+                >
+                    <div class="min-w-0">
+                        <div class="text-sm font-medium">
+                            {{ item.name }}
+                            <span
+                                v-if="item.guess.family !== 'other'"
+                                class="font-normal text-muted-foreground"
+                                >→ {{ item.guess.name }}</span
+                            >
+                        </div>
+                        <div class="font-mono text-xs text-muted-foreground">
+                            {{ item.places.join(', ') }}
+                        </div>
+                    </div>
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        @click="openForm(null, item)"
+                    >
+                        <Plus class="h-4 w-4" />
+                        {{ $t('Add') }}
+                    </Button>
+                </li>
+            </ul>
+        </section>
 
         <div class="overflow-x-auto rounded-xl border">
             <table class="w-full text-sm">
@@ -233,24 +293,17 @@ const submit = () => {
                 placeholder="Ubuntu 24.04 LTS"
             />
         </FormField>
-        <div class="grid gap-4 sm:grid-cols-4">
+        <div class="grid gap-4 sm:grid-cols-2">
             <FormField
-                label="Platform"
-                for="platform"
-                :error="form.errors.platform"
+                label="Family"
+                for="family"
+                :error="form.errors.family"
+                hint="Apps and the default scripts (Linux or Windows) follow the family."
             >
-                <NativeSelect
-                    id="platform"
-                    v-model="form.platform"
-                    :options="platformOptions"
-                />
-            </FormField>
-            <FormField label="Family" for="family" :error="form.errors.family">
                 <NativeSelect
                     id="family"
                     v-model="form.family"
                     :options="familyOptions"
-                    @change="familyChanged"
                 />
             </FormField>
             <FormField
@@ -265,30 +318,14 @@ const submit = () => {
                     placeholder="24.04"
                 />
             </FormField>
-            <FormField
-                label="Sort order"
-                for="sort_order"
-                :error="form.errors.sort_order"
-            >
-                <Input
-                    id="sort_order"
-                    v-model.number="form.sort_order"
-                    type="number"
-                    min="0"
-                />
-            </FormField>
         </div>
-        <Label class="flex items-center gap-3 font-normal">
-            <Checkbox v-model="form.is_active" />
-            {{ $t('Active (offered to customers)') }}
-        </Label>
 
         <div class="grid gap-2">
             <Label>{{ $t('Proxmox templates') }}</Label>
             <p class="text-xs text-muted-foreground">
                 {{
                     $t(
-                        'Pick the matching template on each cluster. With local storage, pick one per node.',
+                        'Tick the VM template with this system. Templates with the same name on other nodes and clusters are picked with it.',
                     )
                 }}
             </p>
@@ -305,30 +342,32 @@ const submit = () => {
                     $t('Clusters')
                 }}</Link>
             </p>
-            <div
-                v-for="[cluster, clusterTemplates] in templatesByCluster"
-                :key="cluster"
-                class="rounded-lg border p-3"
-            >
-                <div class="mb-2 text-sm font-medium">{{ cluster }}</div>
+            <div v-else class="flex flex-col divide-y rounded-lg border">
                 <Label
-                    v-for="candidate in clusterTemplates"
-                    :key="candidate.id"
-                    class="flex items-center gap-3 py-1 font-normal"
+                    v-for="group in templatesByName"
+                    :key="group.name"
+                    class="flex items-start gap-3 p-3 font-normal"
                 >
                     <Checkbox
-                        :model-value="
-                            form.proxmox_template_ids.includes(candidate.id)
-                        "
+                        class="mt-0.5"
+                        :model-value="groupState(group.ids)"
                         @update:model-value="
-                            (value) => toggleMapping(candidate.id, value)
+                            (value) => toggleGroup(group.ids, value)
                         "
                     />
-                    <span class="font-mono text-xs">#{{ candidate.vmid }}</span>
-                    <span>{{ candidate.name ?? '—' }}</span>
-                    <span class="text-xs text-muted-foreground"
-                        >({{ candidate.node }})</span
-                    >
+                    <span class="flex flex-col gap-0.5">
+                        <span>{{ group.name }}</span>
+                        <span class="font-mono text-xs text-muted-foreground">
+                            {{
+                                group.templates
+                                    .map(
+                                        (template) =>
+                                            `${template.cluster} / ${template.node} #${template.vmid}`,
+                                    )
+                                    .join(', ')
+                            }}
+                        </span>
+                    </span>
                 </Label>
             </div>
             <p
@@ -337,6 +376,25 @@ const submit = () => {
             >
                 {{ form.errors.proxmox_template_ids }}
             </p>
+        </div>
+
+        <div class="grid gap-4 sm:grid-cols-2">
+            <Label class="flex items-center gap-3 font-normal">
+                <Checkbox v-model="form.is_active" />
+                {{ $t('Active (offered to customers)') }}
+            </Label>
+            <FormField
+                label="Sort order"
+                for="sort_order"
+                :error="form.errors.sort_order"
+            >
+                <Input
+                    id="sort_order"
+                    v-model.number="form.sort_order"
+                    type="number"
+                    min="0"
+                />
+            </FormField>
         </div>
     </FormDialog>
 </template>

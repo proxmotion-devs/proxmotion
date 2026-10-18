@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Admin;
 
+use App\Domain\Infrastructure\TemplateNameGuess;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\OsTemplateRequest;
 use App\Models\OsTemplate;
@@ -17,6 +18,13 @@ class OsTemplateController extends Controller
 {
     public function index(): Response
     {
+        $proxmoxTemplates = ProxmoxTemplate::query()
+            ->with(['cluster:id,name', 'node:id,name'])
+            ->withCount('osTemplates')
+            ->orderBy('cluster_id')
+            ->orderBy('vmid')
+            ->get();
+
         return Inertia::render('admin/os-templates/Index', [
             'templates' => OsTemplate::query()
                 ->with('proxmoxTemplates:id')
@@ -33,18 +41,24 @@ class OsTemplateController extends Controller
                     'sort_order' => $template->sort_order,
                     'proxmox_template_ids' => $template->proxmoxTemplates->pluck('id'),
                 ]),
-            'proxmoxTemplates' => ProxmoxTemplate::query()
-                ->with(['cluster:id,name', 'node:id,name'])
-                ->orderBy('cluster_id')
-                ->orderBy('vmid')
-                ->get()
-                ->map(fn (ProxmoxTemplate $template) => [
-                    'id' => $template->id,
-                    'vmid' => $template->vmid,
-                    'name' => $template->name,
-                    'cluster' => $template->cluster->name,
-                    'node' => $template->node->name,
-                ]),
+            'proxmoxTemplates' => $proxmoxTemplates->map(fn (ProxmoxTemplate $template) => [
+                'id' => $template->id,
+                'vmid' => $template->vmid,
+                'name' => $template->name,
+                'cluster' => $template->cluster->name,
+                'node' => $template->node->name,
+            ])->values(),
+            // Templates no OS template uses yet, one entry per name (the same
+            // image on several nodes or clusters), with a guess to start from.
+            'found' => $proxmoxTemplates->filter(fn (ProxmoxTemplate $template) => $template->os_templates_count === 0)
+                ->groupBy(fn (ProxmoxTemplate $template) => $template->name ?? "#{$template->vmid}")
+                ->map(fn ($group, string $name) => [
+                    'name' => $name,
+                    'proxmox_template_ids' => $group->pluck('id')->values(),
+                    'places' => $group->map(fn (ProxmoxTemplate $template) => "{$template->cluster->name} / {$template->node->name} #{$template->vmid}")->values(),
+                    'guess' => TemplateNameGuess::fromName($group->first()?->name),
+                ])
+                ->values(),
             'families' => OsTemplateRequest::FAMILIES,
         ]);
     }
@@ -52,7 +66,7 @@ class OsTemplateController extends Controller
     public function store(OsTemplateRequest $request): RedirectResponse
     {
         DB::transaction(function () use ($request) {
-            $template = OsTemplate::create($request->safe()->except('proxmox_template_ids'));
+            $template = OsTemplate::create($request->templateData());
             $template->proxmoxTemplates()->sync($request->array('proxmox_template_ids'));
         });
 
@@ -64,7 +78,7 @@ class OsTemplateController extends Controller
     public function update(OsTemplateRequest $request, OsTemplate $osTemplate): RedirectResponse
     {
         DB::transaction(function () use ($request, $osTemplate) {
-            $osTemplate->update($request->safe()->except('proxmox_template_ids'));
+            $osTemplate->update($request->templateData());
             $osTemplate->proxmoxTemplates()->sync($request->array('proxmox_template_ids'));
         });
 
