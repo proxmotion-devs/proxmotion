@@ -1,6 +1,13 @@
 <script setup lang="ts">
 import { router, useForm, usePage } from '@inertiajs/vue3';
-import { PackagePlus, Play, RotateCcw, Trash2 } from '@lucide/vue';
+import {
+    CircleArrowUp,
+    PackagePlus,
+    Play,
+    RotateCcw,
+    Trash2,
+} from '@lucide/vue';
+import { trans } from 'laravel-vue-i18n';
 import { computed, ref } from 'vue';
 import FormDialog from '@/components/admin/FormDialog.vue';
 import FormField from '@/components/admin/FormField.vue';
@@ -13,6 +20,7 @@ import {
     action as actionRoute,
     retry,
     uninstall,
+    upgrade as upgradeRoute,
 } from '@/routes/admin/app-installations';
 import type {
     AppAction,
@@ -28,8 +36,8 @@ import type { RouteDefinition } from '@/wayfinder';
 
 /**
  * Apps installed on a server (docs/adr/0015) with their progress, their
- * actions and uninstall (docs/adr/0016) with the latest runs, and a dialog
- * to install one of the apps that fit the server.
+ * actions, upgrade and uninstall (docs/adr/0016) with the latest runs, and a
+ * dialog to install one of the apps that fit the server.
  */
 const props = defineProps<{
     apps: AppInstallation[];
@@ -49,6 +57,8 @@ const statusLabels: Record<AppInstallationStatus, string> = {
     failed: 'Failed',
     uninstalling: 'Uninstalling',
     uninstall_failed: 'Uninstall failed',
+    upgrading: 'Upgrading',
+    upgrade_failed: 'Upgrade failed',
     removed: 'Removed',
 };
 const statusTone: Record<
@@ -61,6 +71,8 @@ const statusTone: Record<
     failed: 'danger',
     uninstalling: 'warning',
     uninstall_failed: 'danger',
+    upgrading: 'warning',
+    upgrade_failed: 'danger',
     removed: 'neutral',
 };
 const runStatusLabels: Record<AppRunStatus, string> = {
@@ -90,8 +102,9 @@ const runBusy = (app: AppInstallation) =>
 const busy = computed(() =>
     props.apps.some(
         (app) =>
-            ['queued', 'installing', 'uninstalling'].includes(app.status) ||
-            runBusy(app),
+            ['queued', 'installing', 'uninstalling', 'upgrading'].includes(
+                app.status,
+            ) || runBusy(app),
     ),
 );
 
@@ -197,8 +210,45 @@ const submitUninstall = () => {
     });
 };
 
-const runLabel = (run: AppRun) =>
-    run.kind === 'uninstall' ? null : text(run.action, '');
+// Upgrade
+const upgradeOpen = ref(false);
+const upgrading = ref<AppInstallation | null>(null);
+const upgradeForm = useForm<{
+    inputs: Record<string, string | number | boolean>;
+}>({ inputs: {} });
+
+// Refusals of the upgrade itself, e.g. a version that no longer fits.
+const upgradeError = computed(
+    () => (upgradeForm.errors as Record<string, string | undefined>).upgrade,
+);
+
+const openUpgrade = (app: AppInstallation) => {
+    upgrading.value = app;
+    upgradeForm.clearErrors();
+    upgradeForm.inputs = defaults(app.upgrade?.inputs ?? []);
+    upgradeOpen.value = true;
+};
+
+const submitUpgrade = () => {
+    if (upgrading.value === null) {
+        return;
+    }
+
+    upgradeForm.submit(upgradeRoute(upgrading.value.uuid), {
+        preserveScroll: true,
+        onSuccess: () => (upgradeOpen.value = false),
+    });
+};
+
+const runLabel = (run: AppRun) => {
+    if (run.kind === 'upgrade') {
+        return trans('Upgrade to :version', {
+            version: run.target_version ?? '',
+        });
+    }
+
+    return run.kind === 'uninstall' ? trans('Uninstall') : text(run.action, '');
+};
 </script>
 
 <template>
@@ -252,9 +302,7 @@ const runLabel = (run: AppRun) =>
                                     :key="run.uuid"
                                     class="flex flex-wrap items-center gap-2"
                                 >
-                                    <span>{{
-                                        runLabel(run) ?? $t('Uninstall')
-                                    }}</span>
+                                    <span>{{ runLabel(run) }}</span>
                                     <StatusBadge
                                         :tone="runStatusTone[run.status]"
                                         :label="runStatusLabels[run.status]"
@@ -302,6 +350,21 @@ const runLabel = (run: AppRun) =>
                                 >
                                     <Play class="h-4 w-4" />
                                     {{ text(appAction.label, appAction.key) }}
+                                </Button>
+                                <Button
+                                    v-if="app.upgrade"
+                                    variant="outline"
+                                    size="sm"
+                                    :disabled="disabled || busy"
+                                    data-test="app-upgrade"
+                                    @click="openUpgrade(app)"
+                                >
+                                    <CircleArrowUp class="h-4 w-4" />
+                                    {{
+                                        $t('Upgrade to :version', {
+                                            version: app.upgrade.version,
+                                        })
+                                    }}
                                 </Button>
                                 <Button
                                     v-if="app.status === 'failed'"
@@ -377,6 +440,29 @@ const runLabel = (run: AppRun) =>
             :inputs="running?.action.inputs ?? []"
             :errors="actionForm.errors as Record<string, string>"
             id-prefix="app_action_input"
+        />
+    </FormDialog>
+
+    <FormDialog
+        v-model:open="upgradeOpen"
+        title="Upgrade app"
+        description="The new version's upgrade script runs inside the server and keeps the app's data and settings. If it fails, the app keeps its current version and the upgrade can be tried again."
+        submit-label="Upgrade"
+        :processing="upgradeForm.processing"
+        @submit="submitUpgrade"
+    >
+        <p class="text-sm font-medium">
+            {{ upgrading?.app }} {{ upgrading?.version }} →
+            {{ upgrading?.upgrade?.version }}
+        </p>
+        <p v-if="upgradeError" class="text-sm text-red-600 dark:text-red-500">
+            {{ upgradeError }}
+        </p>
+        <AppInputFields
+            v-model="upgradeForm.inputs"
+            :inputs="upgrading?.upgrade?.inputs ?? []"
+            :errors="upgradeForm.errors as Record<string, string>"
+            id-prefix="app_upgrade_input"
         />
     </FormDialog>
 

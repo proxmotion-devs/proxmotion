@@ -50,6 +50,25 @@ final readonly class AppEligibility
             ?? ($server === null ? null : $this->entitlement($app, null, $server));
     }
 
+    /**
+     * Why an installed app cannot be upgraded to this version on its server,
+     * or null (docs/adr/0016 §4): active, and the version fits the server's
+     * operating system, resources and network model. Install modes and
+     * entitlements were settled when the app was installed.
+     */
+    public function forUpgrade(AppRecipe $app, AppRecipeVersion $version, Server $server): ?AppNotEligible
+    {
+        $recipe = $version->recipe();
+
+        if (! $app->is_active || $recipe->platform !== 'linux') {
+            return new AppNotEligible('This app is not available.');
+        }
+
+        return $this->os($recipe, $server->osTemplate)
+            ?? $this->resources($recipe, $server->cpu_cores, $server->memory_mib, $server->disk_mib)
+            ?? ($recipe->supportsNetworkModel($server->network_model) ? null : new AppNotEligible('This app does not support the server\'s network model.'));
+    }
+
     private function entitlement(AppRecipe $app, ?AppRecipeVersion $version, Server $server): ?AppNotEntitled
     {
         $recipe = ($version ?? $app->latestVersion)?->recipe();

@@ -336,15 +336,19 @@ export type AppInstallationStatus =
     | 'failed'
     | 'uninstalling'
     | 'uninstall_failed'
+    | 'upgrading'
+    | 'upgrade_failed'
     | 'removed';
 
 export type AppRunStatus = 'queued' | 'running' | 'succeeded' | 'failed';
 
-/** An uninstall or action of an installed app (docs/adr/0016). */
+/** An uninstall, upgrade or action of an installed app (docs/adr/0016). */
 export type AppRun = {
     uuid: string;
-    kind: 'uninstall' | 'action';
+    kind: 'uninstall' | 'upgrade' | 'action';
     action: AppText | null;
+    /** The version an upgrade moves to. */
+    target_version: string | null;
     status: AppRunStatus;
     step: string | null;
     error: string | null;
@@ -365,6 +369,8 @@ export type AppInstallation = {
     finished_at: string | null;
     can_uninstall: boolean;
     actions: AppAction[];
+    /** The version it can be upgraded to and the inputs that version adds. */
+    upgrade: { version: string; inputs: AppInput[] } | null;
     runs: AppRun[];
 };
 

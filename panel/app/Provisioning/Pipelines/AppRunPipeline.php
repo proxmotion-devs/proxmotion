@@ -7,6 +7,7 @@ namespace App\Provisioning\Pipelines;
 use App\Domain\Apps\AppRuns;
 use App\Domain\Apps\GuestPackage;
 use App\Domain\Servers\GuestScriptFailed;
+use App\Enums\AppRunKind;
 use App\Enums\AppRunStatus;
 use App\Models\AppRun;
 use App\Models\Task;
@@ -16,8 +17,9 @@ use stdClass;
 use Throwable;
 
 /**
- * Starts an uninstall or an action inside the server (docs/adr/0016 §4):
- * writes the installation's recipe version again, the run's inputs.json and
+ * Starts an uninstall, upgrade or action inside the server (docs/adr/0016 §4):
+ * writes the installation's recipe version again (an upgrade: the version it
+ * upgrades to, with its install inputs), the run's inputs.json and
  * a fresh status.json to runs/<run>/ of the installation's directory, then
  * starts `run.sh <script> <run directory>` detached with systemd-run. The
  * task ends there; apps:poll follows the run's status.json.
@@ -34,7 +36,7 @@ final readonly class AppRunPipeline
     {
         $uuid = is_string($task->input['run'] ?? null) ? $task->input['run'] : '';
         $run = AppRun::query()
-            ->with(['installation.recipe', 'installation.version'])
+            ->with(['installation.recipe', 'installation.version', 'targetVersion'])
             ->where('uuid', $uuid)
             ->whereHas('installation', fn ($query) => $query->where('server_id', $task->server_id))
             ->first();
@@ -72,7 +74,9 @@ final readonly class AppRunPipeline
             throw new GuestScriptFailed('The guest agent did not answer: is the server running with qemu-guest-agent?');
         }
 
-        $this->package->upload($agent, $server, $installation);
+        // An upgrade writes the version it upgrades to, with the install inputs for it (docs/adr/0016 §4).
+        $upgrade = $run->kind === AppRunKind::Upgrade;
+        $this->package->upload($agent, $server, $installation, $upgrade ? $run->runVersion() : null, $upgrade ? $run->inputs : null);
         $agent->run($server->vmid, ['mkdir', '-p', '-m', '700', $directory]);
         $agent->writeFile($server->vmid, $directory.'/inputs.json', GuestPackage::json($run->inputs === [] ? new stdClass : $run->inputs));
         $agent->writeFile($server->vmid, $directory.'/status.json', GuestPackage::startingStatus());

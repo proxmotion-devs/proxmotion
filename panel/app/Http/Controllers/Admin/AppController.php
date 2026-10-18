@@ -119,6 +119,28 @@ class AppController extends Controller
     }
 
     /**
+     * Upgrade to the app's published version with the inputs it adds (docs/adr/0016 §4).
+     */
+    public function upgrade(Request $request, AppInstallation $appInstallation, #[CurrentUser] User $admin, AppRunner $runner): RedirectResponse
+    {
+        $data = $request->validate(['inputs' => ['nullable', 'array']]);
+
+        try {
+            $runner->upgrade($appInstallation, $data['inputs'] ?? [], $admin, $request->ip());
+        } catch (TaskAlreadyRunning|AppInstallConflict $e) {
+            $this->toast('error', $e->translatedMessage());
+
+            return back();
+        } catch (ProvisioningException $e) {
+            throw ValidationException::withMessages(['upgrade' => $e->translatedMessage()]);
+        }
+
+        $this->toast('info', 'Upgrading the app…');
+
+        return back();
+    }
+
+    /**
      * Run one of the app's actions with its inputs (docs/adr/0016 §4).
      */
     public function action(Request $request, AppInstallation $appInstallation, string $action, #[CurrentUser] User $admin, AppRunner $runner): RedirectResponse

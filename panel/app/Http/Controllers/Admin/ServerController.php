@@ -7,6 +7,7 @@ namespace App\Http\Controllers\Admin;
 use App\Domain\Apps\AppEligibility;
 use App\Domain\Apps\AppNotEligible;
 use App\Domain\Apps\AppNotEntitled;
+use App\Domain\Apps\AppUpgrades;
 use App\Domain\Apps\OrderedAppOptions;
 use App\Domain\Apps\RecipeAction;
 use App\Domain\Apps\RecipeInput;
@@ -127,7 +128,7 @@ class ServerController extends Controller
         return to_route('admin.servers.show', $server);
     }
 
-    public function show(Server $server, GuestAgentProbe $agent, AppEligibility $eligibility, TaskFailer $failer): Response
+    public function show(Server $server, GuestAgentProbe $agent, AppEligibility $eligibility, AppUpgrades $upgrades, TaskFailer $failer): Response
     {
         $server->load(['node:id,uuid,name', 'cluster:id,uuid,name', 'location:id,name', 'package:id,name', 'billingSystem:id,name', 'osTemplate:id,name,family,version,platform', 'storage:id,name', 'ipAddresses.pool:id,uuid,name,version']);
 
@@ -187,10 +188,11 @@ class ServerController extends Controller
                 ->map(fn (ServerDrift $drift) => DriftController::present($drift)),
             'agent' => Inertia::defer(fn () => $server->status === ServerStatus::Active ? $agent->reachable($server) : null),
             'apps' => $server->appInstallations()
-                ->with(['recipe:id,slug,name', 'version', 'runs' => fn ($query) => $query->latest('id')->limit(50)])
+                ->with(['recipe:id,slug,name,is_active,latest_version_id', 'recipe.latestVersion', 'version', 'runs' => fn ($query) => $query->with('targetVersion')->latest('id')->limit(50)])
                 ->latest('id')
                 ->get()
-                ->map(function (AppInstallation $installation) {
+                ->map(function (AppInstallation $installation) use ($server, $upgrades) {
+                    $installation->setRelation('server', $server);
                     $recipe = $installation->version->recipe();
 
                     return [
@@ -208,9 +210,11 @@ class ServerController extends Controller
                         'actions' => $installation->status === AppInstallationStatus::Installed
                             ? array_map(fn (RecipeAction $action) => ['key' => $action->key, 'label' => $action->label, 'inputs' => array_map(fn (RecipeInput $input) => $input->toArray(), $action->inputs)], $recipe->actions)
                             : [],
+                        'upgrade' => $upgrades->offer($installation),
                         'runs' => $installation->runs->take(5)->map(fn (AppRun $run) => [
                             'uuid' => $run->uuid,
                             'kind' => $run->kind,
+                            'target_version' => $run->targetVersion?->version,
                             'action' => $run->action === null ? null : ($recipe->action($run->action)->label ?? ['en' => $run->action]),
                             'status' => $run->status,
                             'step' => $run->step,

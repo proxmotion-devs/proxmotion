@@ -74,7 +74,7 @@ class AppController extends ApiController
 
     public function installations(Request $request, Server $server): AnonymousResourceCollection
     {
-        $installations = $server->appInstallations()->with(['recipe', 'version', 'server', 'task'])->latest('id')->get();
+        $installations = $server->appInstallations()->with(['recipe.latestVersion', 'version', 'server.osTemplate', 'task'])->latest('id')->get();
         $outputs = $this->token($request)->hasScope(ApiScope::AppsSecrets);
 
         return AppInstallationResource::collection($installations->map(fn (AppInstallation $installation) => (new AppInstallationResource($installation))->withOutputs($outputs)));
@@ -83,7 +83,7 @@ class AppController extends ApiController
     public function show(Request $request, Server $server, AppInstallation $installation): JsonResponse
     {
         $this->ensureBelongs($server, $installation);
-        $installation->load(['recipe', 'version', 'server', 'task']);
+        $installation->load(['recipe.latestVersion', 'version', 'server.osTemplate', 'task']);
 
         return (new AppInstallationResource($installation))
             ->withOutputs($this->token($request)->hasScope(ApiScope::AppsSecrets))
@@ -130,6 +130,21 @@ class AppController extends ApiController
     }
 
     /**
+     * Upgrade to the version the installation's `upgrade` names, with values
+     * for the inputs it adds (docs/adr/0016 §4): 202 with the run; the
+     * installation moves to the new version when it succeeds (app.upgraded /
+     * app.upgrade_failed).
+     */
+    public function upgrade(Request $request, Server $server, AppInstallation $installation, AppRunner $runner): JsonResponse
+    {
+        $this->ensureBelongs($server, $installation);
+        $request->validate(['inputs' => ['nullable', 'array']]);
+        $inputs = $request->input('inputs');
+
+        return $this->runResponse(fn () => $runner->upgrade($installation, is_array($inputs) ? $inputs : [], $this->token($request), $request->ip()));
+    }
+
+    /**
      * Run an action of an installed app with its inputs: 202 with the run.
      */
     public function action(Request $request, Server $server, AppInstallation $installation, string $action, AppRunner $runner): JsonResponse
@@ -149,7 +164,7 @@ class AppController extends ApiController
     {
         $this->ensureBelongs($server, $installation);
         $outputs = $this->token($request)->hasScope(ApiScope::AppsSecrets);
-        $runs = $installation->runs()->with(['installation.version', 'task'])->latest('id')->limit(10)->get();
+        $runs = $installation->runs()->with(['installation.version', 'targetVersion', 'task'])->latest('id')->limit(10)->get();
 
         return AppRunResource::collection($runs->map(fn (AppRun $run) => (new AppRunResource($run))->withOutputs($outputs)));
     }
@@ -165,7 +180,7 @@ class AppController extends ApiController
             throw (new ModelNotFoundException)->setModel(AppRun::class, [$run->uuid]);
         }
 
-        return (new AppRunResource($run->load(['installation.version', 'task'])))
+        return (new AppRunResource($run->load(['installation.version', 'targetVersion', 'task'])))
             ->withOutputs($this->token($request)->hasScope(ApiScope::AppsSecrets))
             ->response();
     }
@@ -183,7 +198,7 @@ class AppController extends ApiController
             return response()->json(['message' => $e->translatedMessage()], 422);
         }
 
-        return (new AppRunResource($run->refresh()->load(['installation.version', 'task'])))->response()->setStatusCode(202);
+        return (new AppRunResource($run->refresh()->load(['installation.version', 'targetVersion', 'task'])))->response()->setStatusCode(202);
     }
 
     /**
@@ -198,6 +213,6 @@ class AppController extends ApiController
 
     private function installationAccepted(AppInstallation $installation): JsonResponse
     {
-        return (new AppInstallationResource($installation->refresh()->load(['recipe', 'version', 'server', 'task'])))->response()->setStatusCode(202);
+        return (new AppInstallationResource($installation->refresh()->load(['recipe.latestVersion', 'version', 'server.osTemplate', 'task'])))->response()->setStatusCode(202);
     }
 }

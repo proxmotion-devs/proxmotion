@@ -7,6 +7,7 @@ namespace App\Domain\Apps;
 use App\Domain\Servers\GuestScriptFailed;
 use App\Enums\IpVersion;
 use App\Models\AppInstallation;
+use App\Models\AppRecipeVersion;
 use App\Models\Server;
 use App\Proxmox\Exceptions\ProxmoxException;
 use App\Proxmox\Resources\GuestAgentResource;
@@ -23,17 +24,22 @@ final readonly class GuestPackage
     public function __construct(private RecipeLoader $recipes) {}
 
     /**
+     * @param  AppRecipeVersion|null  $version  another version than the installation's (an upgrade's target)
+     * @param  array<string, string|int|bool>|null  $inputs  install inputs for that version
+     *
      * @throws ProxmoxException
      * @throws GuestScriptFailed
      */
-    public function upload(GuestAgentResource $agent, Server $server, AppInstallation $installation): void
+    public function upload(GuestAgentResource $agent, Server $server, AppInstallation $installation, ?AppRecipeVersion $version = null, ?array $inputs = null): void
     {
+        $version ??= $installation->version;
+        $inputs ??= $installation->inputs;
         $directory = $installation->guestDirectory();
-        $files = $this->recipes->library() + $installation->version->files + [
-            'inputs.json' => self::json($installation->inputs === [] ? new stdClass : $installation->inputs),
+        $files = $this->recipes->library() + $version->files + [
+            'inputs.json' => self::json($inputs === [] ? new stdClass : $inputs),
             'server.json' => self::json($this->serverFacts($server) + [
                 // run.sh compares them with /etc/os-release before any script runs (docs/adr/0016 §3).
-                'os_release' => OsFamilies::osReleaseIds($installation->version->recipe()->families),
+                'os_release' => OsFamilies::osReleaseIds($version->recipe()->families),
             ]),
         ];
 

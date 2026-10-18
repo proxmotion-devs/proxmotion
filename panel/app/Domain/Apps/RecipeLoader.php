@@ -243,6 +243,11 @@ final class RecipeLoader
             $errors[] = 'Output keys must be unique.';
         }
 
+        // docs/adr/0016 §1: the installed versions the upgrade script accepts (only older ones are ever upgraded).
+        if (isset($recipe->lifecycle['upgrade']) && ! VersionRange::isValid($recipe->lifecycle['upgrade']['from'] ?? '')) {
+            $errors[] = 'lifecycle.upgrade.from is not a version range such as ">=1.0.0 <1.2.0".';
+        }
+
         foreach ($recipe->inputs as $input) {
             if ($input->min !== null && $input->max !== null && $input->min > $input->max) {
                 $errors[] = "Input {$input->key}: min is larger than max.";

@@ -89,7 +89,7 @@ final class Webhooks
     }
 
     /**
-     * Tell the billing system that an uninstall or an action finished
+     * Tell the billing system that an uninstall, upgrade or action finished
      * (docs/adr/0016 §4), with the installation and the run, without outputs.
      */
     public function appRunFinished(AppRun $run): void
@@ -98,6 +98,7 @@ final class Webhooks
         $event = match ($run->kind) {
             AppRunKind::Uninstall => $succeeded ? WebhookEvent::AppUninstalled : WebhookEvent::AppUninstallFailed,
             AppRunKind::Action => $succeeded ? WebhookEvent::AppActionSucceeded : WebhookEvent::AppActionFailed,
+            AppRunKind::Upgrade => $succeeded ? WebhookEvent::AppUpgraded : WebhookEvent::AppUpgradeFailed,
         };
         $installation = $run->installation;
 

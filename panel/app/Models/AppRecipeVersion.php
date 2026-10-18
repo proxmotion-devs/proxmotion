@@ -83,6 +83,15 @@ class AppRecipeVersion extends Model
         return $this->hasMany(AppInstallation::class);
     }
 
+    /**
+     * Installed with this version, or an upgrade run moves an installation to it:
+     * its content must not change any more.
+     */
+    public function inUse(): bool
+    {
+        return $this->installations()->exists() || AppRun::query()->where('target_version_id', $this->id)->exists();
+    }
+
     public function recipe(): Recipe
     {
         return $this->parsed ??= Recipe::fromArray($this->definition);

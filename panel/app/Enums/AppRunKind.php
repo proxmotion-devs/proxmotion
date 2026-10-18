@@ -11,4 +11,7 @@ enum AppRunKind: string
 {
     case Uninstall = 'uninstall';
     case Action = 'action';
+
+    /** Moves the installation to a newer version of its recipe with the new version's upgrade script. */
+    case Upgrade = 'upgrade';
 }

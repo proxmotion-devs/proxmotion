@@ -35,6 +35,10 @@ enum WebhookEvent: string
     case AppActionSucceeded = 'app.action_succeeded';
     case AppActionFailed = 'app.action_failed';
 
+    /** An installed app was upgraded to a newer version of its recipe, or the upgrade failed (docs/adr/0016 §4). */
+    case AppUpgraded = 'app.upgraded';
+    case AppUpgradeFailed = 'app.upgrade_failed';
+
     /**
      * Events an endpoint can subscribe to.
      *
@@ -85,6 +89,8 @@ enum WebhookEvent: string
             self::AppUninstallFailed => 'App uninstall failed',
             self::AppActionSucceeded => 'App action succeeded',
             self::AppActionFailed => 'App action failed',
+            self::AppUpgraded => 'App upgraded',
+            self::AppUpgradeFailed => 'App upgrade failed',
         };
     }
 }

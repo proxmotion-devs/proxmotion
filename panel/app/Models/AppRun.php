@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Models;
 
 use App\Domain\Apps\RecipeAction;
+use App\Domain\Apps\RecipeInput;
 use App\Domain\Apps\RecipeOutput;
 use App\Enums\AppRunKind;
 use App\Enums\AppRunStatus;
@@ -16,9 +17,10 @@ use Illuminate\Support\Carbon;
 use LogicException;
 
 /**
- * An uninstall or an action of an installed app (docs/adr/0016 §4). It runs
- * in its own directory inside the server (runs/<uuid> of the installation)
- * with the installation's recipe version. Inputs and outputs are encrypted.
+ * An uninstall, upgrade or action of an installed app (docs/adr/0016 §4). It
+ * runs in its own directory inside the server (runs/<uuid> of the
+ * installation) with the installation's recipe version; an upgrade with the
+ * version it upgrades to (the installation moves to it when it succeeds). Inputs and outputs are encrypted.
  * Only the App Marketplace code writes runs, so nothing is fillable.
  *
  * @property int $id
@@ -26,6 +28,7 @@ use LogicException;
  * @property int $app_installation_id
  * @property AppRunKind $kind
  * @property string|null $action key of the action
+ * @property int|null $target_version_id the version an upgrade moves to
  * @property AppRunStatus $status
  * @property array<string, string|int|bool> $inputs validated values
  * @property array<string, array{type: string, value: string, filename?: string|null}>|null $outputs by key; file contents base64-encoded
@@ -40,6 +43,7 @@ use LogicException;
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  * @property-read AppInstallation $installation
+ * @property-read AppRecipeVersion|null $targetVersion
  * @property-read Task|null $task
  */
 class AppRun extends Model
@@ -80,6 +84,27 @@ class AppRun extends Model
     }
 
     /**
+     * The version an upgrade moves the installation to (kind upgrade).
+     *
+     * @return BelongsTo<AppRecipeVersion, $this>
+     */
+    public function targetVersion(): BelongsTo
+    {
+        return $this->belongsTo(AppRecipeVersion::class, 'target_version_id');
+    }
+
+    /**
+     * The recipe version whose scripts this run uses: the target of an
+     * upgrade, the installation's own version otherwise.
+     */
+    public function runVersion(): AppRecipeVersion
+    {
+        return $this->kind === AppRunKind::Upgrade
+            ? ($this->targetVersion ?? throw new LogicException("Upgrade {$this->uuid} has no target version."))
+            : $this->installation->version;
+    }
+
+    /**
      * The action this run performs (kind action).
      */
     public function recipeAction(): ?RecipeAction
@@ -92,27 +117,52 @@ class AppRun extends Model
      */
     public function script(): string
     {
-        $recipe = $this->installation->version->recipe();
-        $script = $this->kind === AppRunKind::Uninstall ? $recipe->lifecycleScript('uninstall') : $this->recipeAction()?->script;
+        $script = match ($this->kind) {
+            AppRunKind::Uninstall => $this->installation->version->recipe()->lifecycleScript('uninstall'),
+            AppRunKind::Upgrade => $this->runVersion()->recipe()->lifecycleScript('upgrade'),
+            AppRunKind::Action => $this->recipeAction()?->script,
+        };
 
         return $script ?? throw new LogicException("Run {$this->uuid} has no script in its recipe version.");
     }
 
     /**
-     * Outputs the script declares (actions only).
+     * Outputs the script declares: an action's, or for an upgrade the
+     * outputs of the version it upgrades to (they replace the installation's).
      *
      * @return list<RecipeOutput>
      */
     public function declaredOutputs(): array
     {
-        return $this->recipeAction()->outputs ?? [];
+        return match ($this->kind) {
+            AppRunKind::Uninstall => [],
+            AppRunKind::Upgrade => $this->runVersion()->recipe()->outputs,
+            AppRunKind::Action => $this->recipeAction()->outputs ?? [],
+        };
+    }
+
+    /**
+     * The inputs the run was started with: an action's own, or for an
+     * upgrade the install inputs of the version it upgrades to.
+     *
+     * @return list<RecipeInput>
+     */
+    public function declaredInputs(): array
+    {
+        return match ($this->kind) {
+            AppRunKind::Uninstall => [],
+            AppRunKind::Upgrade => $this->runVersion()->recipe()->inputs,
+            AppRunKind::Action => $this->recipeAction()->inputs ?? [],
+        };
     }
 
     public function timeoutMinutes(): int
     {
-        return $this->kind === AppRunKind::Uninstall
-            ? ($this->installation->version->recipe()->lifecycle['uninstall']['timeout_minutes'] ?? 5)
-            : ($this->recipeAction()->timeoutMinutes ?? 5);
+        return match ($this->kind) {
+            AppRunKind::Uninstall => $this->installation->version->recipe()->lifecycle['uninstall']['timeout_minutes'] ?? 5,
+            AppRunKind::Upgrade => $this->runVersion()->recipe()->lifecycle['upgrade']['timeout_minutes'] ?? 10,
+            AppRunKind::Action => $this->recipeAction()->timeoutMinutes ?? 5,
+        };
     }
 
     public function guestDirectory(): string

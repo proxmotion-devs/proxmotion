@@ -54,7 +54,7 @@ final readonly class RecipeSynchronizer
                     continue;
                 }
 
-                if ($version !== null && $version->installations()->exists()) {
+                if ($version !== null && $version->inUse()) {
                     throw new RecipeInvalid($slug, ["Version {$recipe->version} changed but is used by installations: raise the version."]);
                 }
 

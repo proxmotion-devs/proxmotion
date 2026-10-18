@@ -212,7 +212,7 @@ final readonly class AppInstaller
     private function ensureNothingRunning(Server $server): void
     {
         $busy = $server->appInstallations()
-            ->whereIn('status', [AppInstallationStatus::Queued, AppInstallationStatus::Installing, AppInstallationStatus::Uninstalling])
+            ->whereIn('status', AppInstallationStatus::busy())
             ->exists();
 
         if ($busy) {

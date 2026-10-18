@@ -21,6 +21,7 @@ use App\Models\WebhookDelivery;
 use App\Models\WebhookEndpoint;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
+use Tests\Concerns\PublishesRecipeVersions;
 
 /**
  * App Marketplace endpoints (docs/adr/0015): the catalog, installing,
@@ -28,6 +29,8 @@ use Illuminate\Support\Str;
  */
 class AppApiTest extends ApiTestCase
 {
+    use PublishesRecipeVersions;
+
     private Server $server;
 
     protected function setUp(): void
@@ -288,6 +291,56 @@ class AppApiTest extends ApiTestCase
         $this->assertStringNotContainsString('phone-secret', $delivery->payload);
     }
 
+    public function test_upgrading_answers_202_with_the_run_and_sends_a_webhook()
+    {
+        Queue::fake([DeliverWebhook::class]);
+        WebhookEndpoint::factory()->for($this->billingSystem)->create();
+        $installation = $this->installed();
+        $uri = "/api/v1/servers/{$this->server->uuid}/apps/{$installation->uuid}";
+
+        $this->api('GET', $uri)->assertJsonPath('data.upgrade', null);
+        $this->api('POST', "{$uri}/upgrade")->assertUnprocessable()->assertJsonPath('message', 'No upgrade is available for this app.');
+
+        $inputs = [
+            ['key' => 'port', 'type' => 'port', 'default' => 51820],
+            ['key' => 'dns', 'type' => 'domain', 'label' => ['en' => 'DNS server']],
+        ];
+        $this->publishVersion('wireguard', '1.4.0', changes: ['inputs' => $inputs]);
+
+        $this->api('GET', $uri)
+            ->assertJsonPath('data.app.version', '1.3.0')
+            ->assertJsonPath('data.upgrade.version', '1.4.0')
+            ->assertJsonPath('data.upgrade.inputs.0.key', 'dns')
+            ->assertJsonCount(1, 'data.upgrade.inputs');
+
+        [, $readOnly] = $this->issueToken([ApiScope::ServersRead]);
+        $this->api('POST', "{$uri}/upgrade", ['inputs' => ['dns' => 'dns.example.com']], secret: $readOnly)->assertForbidden();
+        $this->api('POST', "{$uri}/upgrade", ['inputs' => []])->assertUnprocessable()->assertJsonValidationErrors('inputs.dns');
+
+        $id = $this->api('POST', "{$uri}/upgrade", ['inputs' => ['dns' => 'dns.example.com']])
+            ->assertAccepted()
+            ->assertJsonPath('data.kind', 'upgrade')
+            ->assertJsonPath('data.target_version', '1.4.0')
+            ->assertJsonPath('data.inputs', ['port' => 51820, 'dns' => 'dns.example.com'])
+            ->json('data.id');
+
+        $this->api('GET', $uri)->assertJsonPath('data.status', 'upgrading')->assertJsonPath('data.upgrade', null);
+        $this->api('POST', "{$uri}/upgrade", ['inputs' => ['dns' => 'dns.example.com']])->assertConflict();
+
+        $run = AppRun::query()->where('uuid', $id)->sole();
+        $this->proxmox->guestFiles[$this->server->vmid][$run->guestDirectory().'/status.json'] = '{"status":"succeeded"}';
+        app(RunPoller::class)->poll($run);
+
+        $this->api('GET', $uri)->assertJsonPath('data.status', 'installed')->assertJsonPath('data.app.version', '1.4.0')->assertJsonPath('data.upgrade', null);
+        $this->api('GET', "{$uri}/runs/{$id}")->assertJsonPath('data.status', 'succeeded')->assertJsonPath('data.outputs', []);
+
+        $delivery = WebhookDelivery::query()->where('event', 'app.upgraded')->sole();
+        $payload = json_decode($delivery->payload, true);
+        $this->assertSame('1.4.0', $payload['data']['installation']['app']['version']);
+        $this->assertSame('upgrade', $payload['data']['run']['kind']);
+        $this->assertStringNotContainsString('PrivateKey', $delivery->payload);
+    }
+
     public function test_runs_and_installations_of_other_servers_are_not_found()
     {
         $installation = $this->installed();
@@ -296,6 +349,7 @@ class AppApiTest extends ApiTestCase
         $foreignRun = AppRun::query()->forceCreate(['uuid' => (string) Str::uuid(), 'app_installation_id' => $foreign->id, 'kind' => 'uninstall', 'status' => 'failed', 'inputs' => []]);
 
         $this->api('DELETE', "/api/v1/servers/{$this->server->uuid}/apps/{$foreign->uuid}")->assertNotFound();
+        $this->api('POST', "/api/v1/servers/{$this->server->uuid}/apps/{$foreign->uuid}/upgrade")->assertNotFound();
         $this->api('POST', "/api/v1/servers/{$this->server->uuid}/apps/{$foreign->uuid}/actions/add_client", ['inputs' => ['name' => 'x1']])->assertNotFound();
         $this->api('GET', "/api/v1/servers/{$this->server->uuid}/apps/{$installation->uuid}/runs/{$foreignRun->uuid}")->assertNotFound();
         $this->assertSame(0, AppRun::query()->where('app_installation_id', $installation->id)->count());

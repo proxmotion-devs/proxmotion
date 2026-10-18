@@ -48,6 +48,7 @@ Route::middleware(['api.scope:servers:write', 'api.idempotent'])->group(function
     Route::post('servers/{server}/apps', [AppController::class, 'store'])->name('servers.apps.store');
     Route::post('servers/{server}/apps/{installation}/retry', [AppController::class, 'retry'])->name('servers.apps.retry');
     Route::delete('servers/{server}/apps/{installation}', [AppController::class, 'uninstall'])->name('servers.apps.uninstall');
+    Route::post('servers/{server}/apps/{installation}/upgrade', [AppController::class, 'upgrade'])->name('servers.apps.upgrade');
     Route::post('servers/{server}/apps/{installation}/actions/{action}', [AppController::class, 'action'])->where('action', '[a-z][a-z0-9_]{0,39}')->name('servers.apps.action');
     Route::post('servers/{server}/app-entitlements', [AppEntitlementController::class, 'store'])->name('servers.app-entitlements.store');
     Route::delete('servers/{server}/app-entitlements/{app}', [AppEntitlementController::class, 'destroy'])->where('app', '[a-z0-9][a-z0-9-]{0,49}')->name('servers.app-entitlements.destroy');

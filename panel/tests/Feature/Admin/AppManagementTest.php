@@ -11,6 +11,7 @@ use App\Models\Server;
 use App\Provisioning\ServerCreator;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\Concerns\BuildsInfrastructure;
+use Tests\Concerns\PublishesRecipeVersions;
 use Tests\Support\FakeProxmoxCluster;
 
 /**
@@ -18,7 +19,7 @@ use Tests\Support\FakeProxmoxCluster;
  */
 class AppManagementTest extends AdminTestCase
 {
-    use BuildsInfrastructure;
+    use BuildsInfrastructure, PublishesRecipeVersions;
 
     private FakeProxmoxCluster $proxmox;
 
@@ -108,6 +109,33 @@ class AppManagementTest extends AdminTestCase
         $this->assertSame(AppInstallationStatus::Uninstalling, $installation->refresh()->status);
         $this->assertSame(1, AuditLog::query()->where('action', 'app.uninstall_requested')->count());
         $this->assertSame(1, AuditLog::query()->where('action', 'app.action_requested')->count());
+    }
+
+    public function test_admins_upgrade_an_app_from_the_server_page()
+    {
+        $installation = AppInstallation::factory()->for($this->server)->for(AppRecipe::query()->where('slug', 'wireguard')->sole(), 'recipe')->create(['inputs' => ['port' => 51820]]);
+        $this->publishVersion('wireguard', '1.4.0', changes: ['inputs' => [
+            ['key' => 'port', 'type' => 'port', 'default' => 51820],
+            ['key' => 'dns', 'type' => 'domain'],
+        ]]);
+
+        $this->get(route('admin.servers.show', $this->server))
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('apps.0.upgrade.version', '1.4.0')
+                ->where('apps.0.upgrade.inputs.0.key', 'dns'));
+
+        $this->post(route('admin.app-installations.upgrade', $installation), ['inputs' => []])->assertSessionHasErrors('inputs.dns');
+        $this->post(route('admin.app-installations.upgrade', $installation), ['inputs' => ['dns' => 'dns.example.com']])->assertRedirect();
+
+        $this->assertSame(AppInstallationStatus::Upgrading, $installation->refresh()->status);
+        $this->assertSame(1, AuditLog::query()->where('action', 'app.upgrade_requested')->count());
+
+        $this->get(route('admin.servers.show', $this->server))
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('apps.0.status', 'upgrading')
+                ->where('apps.0.upgrade', null)
+                ->where('apps.0.runs.0.kind', 'upgrade')
+                ->where('apps.0.runs.0.target_version', '1.4.0'));
     }
 
     public function test_a_failed_installation_can_be_retried()

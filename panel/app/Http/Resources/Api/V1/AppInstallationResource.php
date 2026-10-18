@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Resources\Api\V1;
 
+use App\Domain\Apps\AppUpgrades;
 use App\Domain\Apps\RecipeAction;
 use App\Domain\Apps\RecipeOutput;
 use App\Enums\AppInstallationStatus;
@@ -61,10 +62,12 @@ class AppInstallationResource extends JsonResource
             'step' => $this->step,
             'error' => $this->error,
             'inputs' => (object) $inputs,
-            'outputs' => $this->when($this->outputs, fn () => $this->status === AppInstallationStatus::Installed ? self::outputsOf($recipe->outputs, $this->resource->outputs ?? []) : []),
+            'outputs' => $this->when($this->outputs, fn () => in_array($this->status, [AppInstallationStatus::Installed, AppInstallationStatus::UpgradeFailed], true) ? self::outputsOf($recipe->outputs, $this->resource->outputs ?? []) : []),
             // docs/adr/0016 §4: what can be done with the installation.
             'can_uninstall' => $recipe->canUninstall() && $this->status->canUninstall(),
             'actions' => $this->status === AppInstallationStatus::Installed ? array_map(fn (RecipeAction $action) => $action->toArray(), $recipe->actions) : [],
+            // The version it can be upgraded to and the inputs that version adds, or null.
+            'upgrade' => app(AppUpgrades::class)->offer($this->resource),
             'task_id' => $this->task?->uuid,
             'created_at' => $this->created_at?->toIso8601String(),
             'started_at' => $this->started_at?->toIso8601String(),

@@ -7,9 +7,10 @@ namespace App\Enums;
 /**
  * docs/adr/0015: queued → installing → installed; queued|installing → failed
  * (retryable); installed|failed → removed when the server is reinstalled or
- * terminated. docs/adr/0016: installed|failed|uninstall_failed →
- * uninstalling → removed | uninstall_failed. Actions run in AppRun records
- * and leave the status alone.
+ * terminated. docs/adr/0016: installed|failed|uninstall_failed|upgrade_failed
+ * → uninstalling → removed | uninstall_failed; installed|upgrade_failed →
+ * upgrading → installed (new version) | upgrade_failed (old version kept).
+ * Actions run in AppRun records and leave the status alone.
  */
 enum AppInstallationStatus: string
 {
@@ -29,15 +30,29 @@ enum AppInstallationStatus: string
     /** The uninstall script failed; the app may be partly removed. Uninstalling can be tried again. */
     case UninstallFailed = 'uninstall_failed';
 
+    /** The upgrade script of a newer recipe version runs inside the server. */
+    case Upgrading = 'upgrading';
+
+    /** The upgrade script failed; the installation keeps its old version. Upgrading can be tried again. */
+    case UpgradeFailed = 'upgrade_failed';
+
     /** Uninstalled, or the server was reinstalled or terminated. */
     case Removed = 'removed';
 
     /**
-     * Still running: another app cannot be installed or uninstalled on the server meanwhile.
+     * Statuses of a script still running: another app cannot be installed,
+     * uninstalled or upgraded on the server meanwhile.
+     *
+     * @return list<self>
      */
+    public static function busy(): array
+    {
+        return [self::Queued, self::Installing, self::Uninstalling, self::Upgrading];
+    }
+
     public function isBusy(): bool
     {
-        return $this === self::Queued || $this === self::Installing || $this === self::Uninstalling;
+        return in_array($this, self::busy(), true);
     }
 
     /**
@@ -45,7 +60,15 @@ enum AppInstallationStatus: string
      */
     public function canUninstall(): bool
     {
-        return in_array($this, [self::Installed, self::Failed, self::UninstallFailed], true);
+        return in_array($this, [self::Installed, self::Failed, self::UninstallFailed, self::UpgradeFailed], true);
+    }
+
+    /**
+     * Can be upgraded (when a newer version of its recipe accepts it).
+     */
+    public function canUpgrade(): bool
+    {
+        return $this === self::Installed || $this === self::UpgradeFailed;
     }
 
     /**
@@ -60,6 +83,8 @@ enum AppInstallationStatus: string
             self::Failed => 'Failed',
             self::Uninstalling => 'Uninstalling',
             self::UninstallFailed => 'Uninstall failed',
+            self::Upgrading => 'Upgrading',
+            self::UpgradeFailed => 'Upgrade failed',
             self::Removed => 'Removed',
         };
     }

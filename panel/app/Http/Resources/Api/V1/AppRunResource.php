@@ -10,7 +10,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
 /**
- * An uninstall or an action of an installed app (docs/adr/0016 §4). Password
+ * An uninstall, upgrade or action of an installed app (docs/adr/0016 §4). Password
  * inputs are never shown; outputs only for tokens with the apps:secrets
  * scope (withOutputs()), file contents base64-encoded.
  *
@@ -32,11 +32,11 @@ class AppRunResource extends JsonResource
      */
     public function toArray(Request $request): array
     {
-        $action = $this->recipeAction();
+        $declared = $this->declaredInputs();
         $inputs = [];
 
         foreach ($this->inputs as $key => $value) {
-            foreach ($action->inputs ?? [] as $input) {
+            foreach ($declared as $input) {
                 if ($input->key === $key && ! $input->isSecret()) {
                     $inputs[$key] = $value;
                 }
@@ -48,6 +48,8 @@ class AppRunResource extends JsonResource
             'installation_id' => $this->installation->uuid,
             'kind' => $this->kind->value,
             'action' => $this->action,
+            // The version an upgrade moves the installation to.
+            'target_version' => $this->targetVersion?->version,
             'status' => $this->status->value,
             'progress' => $this->progress,
             'step' => $this->step,
