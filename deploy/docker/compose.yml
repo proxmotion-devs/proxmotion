@@ -62,7 +62,7 @@ services:
       CONSOLE_PROXY_SECRET: ${CONSOLE_PROXY_SECRET:-local-dev-console-secret}
 
   nginx:
-    image: nginx:1.27-alpine
+    image: nginx:1.29-alpine
     ports:
       - "8000:80"
     volumes:
