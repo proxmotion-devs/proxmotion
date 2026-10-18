@@ -40,7 +40,7 @@ class AppManagementTest extends AdminTestCase
             ->assertOk()
             ->assertInertia(fn (Assert $page) => $page
                 ->component('admin/apps/Index')
-                ->has('apps', 4)
+                ->has('apps', 5)
                 ->where('apps.0.slug', 'docker')
                 ->where('apps.0.is_active', true)
                 ->where('apps.0.os', ['linux: debian', 'ubuntu ≥ 22.04', 'debian ≥ 12']));

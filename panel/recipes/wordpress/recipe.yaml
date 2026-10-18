@@ -1,0 +1,87 @@
+format: 2
+slug: wordpress
+name: WordPress
+version: 1.0.0
+category: web
+description:
+    en: WordPress on nginx, PHP-FPM and MariaDB, optionally with a Let's Encrypt certificate for its domain.
+    tr: nginx, PHP-FPM ve MariaDB üzerinde WordPress; isteğe bağlı olarak alan adı için Let's Encrypt sertifikasıyla.
+maintainers: [{ name: Proxmotion }]
+homepage: https://wordpress.org/
+requires:
+    platform: linux
+    os: [debian]
+    min_versions: { ubuntu: '22.04', debian: '12' }
+resources: { min_memory_mib: 1024, min_disk_mib: 10240, min_cores: 1 }
+network_models: [bridged, routed]
+install_modes: [order, post]
+billing: free
+license: none
+inputs:
+    - key: admin_email
+      type: email
+      required: true
+      label: { en: Administrator email, tr: Yönetici e-postası }
+    - key: admin_user
+      type: slug
+      default: admin
+      max_length: 32
+      label: { en: Administrator username, tr: Yönetici kullanıcı adı }
+    - key: site_title
+      type: string
+      default: WordPress
+      max_length: 100
+      label: { en: Site title, tr: Site başlığı }
+    - key: language
+      type: enum
+      options: [en_US, tr_TR, de_DE, fr_FR, es_ES, it_IT, nl_NL, pt_BR, ru_RU]
+      default: en_US
+      label: { en: Language, tr: Dil }
+    - key: domain
+      type: domain
+      label: { en: Domain (optional), tr: Alan adı (isteğe bağlı) }
+    - key: letsencrypt
+      type: boolean
+      default: false
+      label:
+          en: Get a Let's Encrypt certificate for the domain (accepts the Let's Encrypt terms)
+          tr: Alan adı için Let's Encrypt sertifikası al (Let's Encrypt koşulları kabul edilir)
+outputs:
+    - key: site_url
+      type: url
+      label: { en: Site address, tr: Site adresi }
+    - key: admin_url
+      type: url
+      label: { en: Administration, tr: Yönetim paneli }
+    - key: username
+      type: text
+      label: { en: Username, tr: Kullanıcı adı }
+    - key: password
+      type: text
+      secret: true
+      label: { en: Password, tr: Parola }
+    - key: notice
+      type: text
+      label: { en: Notice, tr: Not }
+firewall:
+    - { port: 80, proto: tcp }
+    - { port: 443, proto: tcp }
+includes: [lib.sh]
+lifecycle:
+    install: { script: install.sh, timeout_minutes: 20 }
+    uninstall: { script: uninstall.sh, timeout_minutes: 5 }
+actions:
+    - key: reset_password
+      label:
+          en: Reset the administrator password
+          tr: Yönetici parolasını sıfırla
+      script: actions/reset-password.sh
+      outputs:
+          - key: username
+            type: text
+            label: { en: Username, tr: Kullanıcı adı }
+          - key: password
+            type: text
+            secret: true
+            label: { en: Password, tr: Parola }
+      timeout_minutes: 2
