@@ -17,8 +17,10 @@ jobs:
     name: Panel (PHP ${{ matrix.php }})
     runs-on: ubuntu-latest
     strategy:
+      # Report every PHP version even when one of them fails.
+      fail-fast: false
       matrix:
-        php: ['8.3', '8.4']
+        php: ['8.3', '8.4', '8.5']
     defaults:
       run:
         working-directory: panel
