@@ -5,6 +5,7 @@ import {
     Globe,
     KeyRound,
     LayoutGrid,
+    LifeBuoy,
     MapPin,
     Network,
     Package,
@@ -14,7 +15,7 @@ import {
 } from '@lucide/vue';
 import { computed } from 'vue';
 import type { ComputedRef } from 'vue';
-import { dashboard } from '@/routes/admin';
+import { dashboard, help } from '@/routes/admin';
 import { index as apps } from '@/routes/admin/apps';
 import { index as billingSystems } from '@/routes/admin/billing-systems';
 import { index as clusters } from '@/routes/admin/clusters';
@@ -46,5 +47,6 @@ export function useMainNavigation(): ComputedRef<NavItem[]> {
         { title: 'Drift report', href: drifts(), icon: TriangleAlert },
         { title: 'Administrators', href: users(), icon: Users },
         { title: 'Billing systems', href: billingSystems(), icon: KeyRound },
+        { title: 'Help', href: help(), icon: LifeBuoy },
     ]);
 }

@@ -17,6 +17,18 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Documentation
+    |--------------------------------------------------------------------------
+    |
+    | Where the full guides (the repository's docs/ folder) can be read, e.g.
+    | your fork or mirror. The Help page links to it when set.
+    |
+    */
+
+    'docs_url' => env('PROXMOTION_DOCS_URL'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Browser console
     |--------------------------------------------------------------------------
     |

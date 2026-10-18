@@ -4,6 +4,7 @@ import { Ban, KeyRound, Pencil, Plus, Webhook } from '@lucide/vue';
 import { ref } from 'vue';
 import FormDialog from '@/components/admin/FormDialog.vue';
 import FormField from '@/components/admin/FormField.vue';
+import GuideBox from '@/components/admin/GuideBox.vue';
 import StatusBadge from '@/components/admin/StatusBadge.vue';
 import WebhookEndpointDialog from '@/components/admin/WebhookEndpointDialog.vue';
 import Heading from '@/components/Heading.vue';
@@ -176,6 +177,36 @@ const statusOf = (token: ApiToken) => {
                 {{ $t('Add billing system') }}
             </Button>
         </div>
+
+        <GuideBox
+            id="billing-systems"
+            title="How to connect WHMCS or WISECP"
+            topic="billing"
+        >
+            <ol>
+                <li>
+                    {{
+                        $t(
+                            'Add the billing system and create an API token for it. The token is shown once.',
+                        )
+                    }}
+                </li>
+                <li>
+                    {{
+                        $t(
+                            'Install the module: integrations/whmcs (WHMCS 8 and 9) or integrations/wisecp (WISECP 5). Their README files list the settings.',
+                        )
+                    }}
+                </li>
+                <li>
+                    {{
+                        $t(
+                            "Enter the panel address and the token on the billing system's server, then test the connection.",
+                        )
+                    }}
+                </li>
+            </ol>
+        </GuideBox>
 
         <p
             v-if="billingSystems.length === 0"

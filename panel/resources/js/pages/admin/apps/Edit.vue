@@ -16,6 +16,7 @@ import { computed, ref } from 'vue';
 import ConfirmDelete from '@/components/admin/ConfirmDelete.vue';
 import FormDialog from '@/components/admin/FormDialog.vue';
 import FormField from '@/components/admin/FormField.vue';
+import GuideBox from '@/components/admin/GuideBox.vue';
 import NativeSelect from '@/components/admin/NativeSelect.vue';
 import StatusBadge from '@/components/admin/StatusBadge.vue';
 import CodeEditor from '@/components/apps/CodeEditor.vue';
@@ -567,6 +568,44 @@ const statusLabels = {
         >
             {{ error }}
         </p>
+
+        <GuideBox
+            v-if="app.editable"
+            id="app-editor"
+            title="Writing a recipe"
+            topic="apps"
+        >
+            <ul>
+                <li>
+                    {{
+                        $t(
+                            'Go through the tabs from left to right. Compatibility decides which servers the app is offered for.',
+                        )
+                    }}
+                </li>
+                <li>
+                    {{
+                        $t(
+                            'Scripts run as root: start with set -euo pipefail and make them safe to run twice.',
+                        )
+                    }}
+                </li>
+                <li>
+                    {{
+                        $t(
+                            'Read inputs with pm_input KEY, report progress with pm_step and hand back results with pm_output. Never paste inputs into commands unquoted.',
+                        )
+                    }}
+                </li>
+                <li>
+                    {{
+                        $t(
+                            'Save draft shows what to fix before publishing. Installed copies keep their version.',
+                        )
+                    }}
+                </li>
+            </ul>
+        </GuideBox>
 
         <nav class="flex flex-wrap gap-1 border-b">
             <button

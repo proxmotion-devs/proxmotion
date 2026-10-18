@@ -4,6 +4,7 @@ import { Plus, RefreshCw } from '@lucide/vue';
 import { ref } from 'vue';
 import ClusterFormDialog from '@/components/admin/ClusterFormDialog.vue';
 import ConfirmDelete from '@/components/admin/ConfirmDelete.vue';
+import GuideBox from '@/components/admin/GuideBox.vue';
 import StatusBadge from '@/components/admin/StatusBadge.vue';
 import Heading from '@/components/Heading.vue';
 import { useClusterSync } from '@/composables/useClusterSync';
@@ -41,6 +42,43 @@ const { syncing, startSync } = useClusterSync();
                 {{ $t('Add cluster') }}
             </Button>
         </div>
+
+        <GuideBox
+            id="clusters"
+            title="How to connect Proxmox"
+            topic="troubleshooting"
+        >
+            <ol>
+                <li>
+                    {{
+                        $t(
+                            "In Proxmox, create a resource pool for the panel's servers and a user with an API token (privilege separation off).",
+                        )
+                    }}
+                </li>
+                <li>
+                    {{
+                        $t(
+                            'Give the user PVEVMAdmin and PVEPoolAdmin on the pool, PVEAuditor on / and PVEDatastoreUser on /storage.',
+                        )
+                    }}
+                </li>
+                <li>
+                    {{
+                        $t(
+                            'Add the cluster here with the API host, the token ID (user@realm!name), the secret and the pool. A standalone node is added the same way.',
+                        )
+                    }}
+                </li>
+                <li>
+                    {{
+                        $t(
+                            'Open the cluster and run Check permissions: it lists missing and excess privileges.',
+                        )
+                    }}
+                </li>
+            </ol>
+        </GuideBox>
 
         <p
             v-if="locations.length === 0"

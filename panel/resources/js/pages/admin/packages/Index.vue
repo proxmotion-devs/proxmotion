@@ -5,6 +5,7 @@ import { computed, ref } from 'vue';
 import ConfirmDelete from '@/components/admin/ConfirmDelete.vue';
 import FormDialog from '@/components/admin/FormDialog.vue';
 import FormField from '@/components/admin/FormField.vue';
+import GuideBox from '@/components/admin/GuideBox.vue';
 import StatusBadge from '@/components/admin/StatusBadge.vue';
 import Heading from '@/components/Heading.vue';
 import { Button } from '@/components/ui/button';
@@ -161,6 +162,36 @@ const modelLabel = (value: string) =>
                 {{ $t('Add package') }}
             </Button>
         </div>
+
+        <GuideBox
+            id="packages"
+            title="How packages are used"
+            topic="getting-started"
+        >
+            <ul>
+                <li>
+                    {{
+                        $t(
+                            "A package is a plan: the billing system's product names it, and new servers get its resources.",
+                        )
+                    }}
+                </li>
+                <li>
+                    {{
+                        $t(
+                            'Changing a package does not change existing servers. Use Change resources on a server, or the upgrade in the billing system.',
+                        )
+                    }}
+                </li>
+                <li>
+                    {{
+                        $t(
+                            'Apps are only offered when the package has the resources they need.',
+                        )
+                    }}
+                </li>
+            </ul>
+        </GuideBox>
 
         <div class="overflow-x-auto rounded-xl border">
             <table class="w-full text-sm">

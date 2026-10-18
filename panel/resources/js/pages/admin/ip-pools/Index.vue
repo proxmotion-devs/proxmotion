@@ -4,6 +4,7 @@ import { Plus } from '@lucide/vue';
 import { ref } from 'vue';
 import ConfirmDelete from '@/components/admin/ConfirmDelete.vue';
 import IpPoolFormDialog from '@/components/admin/IpPoolFormDialog.vue';
+import GuideBox from '@/components/admin/GuideBox.vue';
 import StatusBadge from '@/components/admin/StatusBadge.vue';
 import Heading from '@/components/Heading.vue';
 import { Button } from '@/components/ui/button';
@@ -44,6 +45,36 @@ const modelLabel = (value: string) =>
                 {{ $t('Add IP pool') }}
             </Button>
         </div>
+
+        <GuideBox
+            id="ip-pools"
+            title="How to add an IP pool"
+            topic="getting-started"
+        >
+            <ul>
+                <li>
+                    {{
+                        $t(
+                            "Bridged: the subnet is on the node's bridge and servers use its gateway. Routed: single addresses routed to the node, e.g. failover IPs.",
+                        )
+                    }}
+                </li>
+                <li>
+                    {{
+                        $t(
+                            'Enter the network, gateway and the Proxmox bridge (and VLAN tag, if any). In a shared data-centre subnet, add only the addresses that are yours.',
+                        )
+                    }}
+                </li>
+                <li>
+                    {{
+                        $t(
+                            'An IPv6 pool is optional: without one, servers get IPv4 only.',
+                        )
+                    }}
+                </li>
+            </ul>
+        </GuideBox>
 
         <p
             v-if="locations.length === 0"

@@ -10,6 +10,7 @@ import {
 } from '@lucide/vue';
 import type { Component } from 'vue';
 import { computed } from 'vue';
+import GuideBox from '@/components/admin/GuideBox.vue';
 import Heading from '@/components/Heading.vue';
 import { dashboard } from '@/routes/admin';
 import { index as clusters } from '@/routes/admin/clusters';
@@ -111,6 +112,20 @@ const cards = computed<Card[]>(() => [
             title="Admin dashboard"
             description="Overview of the infrastructure connected to the panel."
         />
+
+        <GuideBox
+            id="dashboard"
+            title="New to Proxmotion?"
+            topic="getting-started"
+        >
+            <p>
+                {{
+                    $t(
+                        'Set the panel up in this order: location, Proxmox cluster, IP pool, OS templates, packages, billing system. Help shows which steps are done and explains each page.',
+                    )
+                }}
+            </p>
+        </GuideBox>
 
         <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             <Link

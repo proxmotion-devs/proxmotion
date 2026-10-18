@@ -11,6 +11,7 @@ use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Admin\DnsProviderController;
 use App\Http\Controllers\Admin\DriftController;
 use App\Http\Controllers\Admin\GuestScriptController;
+use App\Http\Controllers\Admin\HelpController;
 use App\Http\Controllers\Admin\IpAddressController;
 use App\Http\Controllers\Admin\IpPoolController;
 use App\Http\Controllers\Admin\IpPoolRdnsController;
@@ -33,6 +34,7 @@ use Illuminate\Support\Facades\Route;
 */
 
 Route::get('/', DashboardController::class)->name('dashboard');
+Route::get('help', HelpController::class)->name('help');
 
 Route::get('drifts', [DriftController::class, 'index'])->name('drifts.index');
 Route::post('drifts/{drift}/accept', [DriftController::class, 'accept'])->name('drifts.accept');

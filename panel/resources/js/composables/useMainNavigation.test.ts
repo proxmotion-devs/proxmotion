@@ -19,6 +19,7 @@ describe('useMainNavigation', () => {
             '/admin/drifts',
             '/admin/users',
             '/admin/billing-systems',
+            '/admin/help',
         ]);
     });
 });

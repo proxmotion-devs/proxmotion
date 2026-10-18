@@ -5,6 +5,7 @@ import { computed, ref } from 'vue';
 import ConfirmDelete from '@/components/admin/ConfirmDelete.vue';
 import FormDialog from '@/components/admin/FormDialog.vue';
 import FormField from '@/components/admin/FormField.vue';
+import GuideBox from '@/components/admin/GuideBox.vue';
 import NativeSelect from '@/components/admin/NativeSelect.vue';
 import StatusBadge from '@/components/admin/StatusBadge.vue';
 import Heading from '@/components/Heading.vue';
@@ -141,6 +142,43 @@ const submit = () => {
                 {{ $t('Add OS template') }}
             </Button>
         </div>
+
+        <GuideBox
+            id="os-templates"
+            title="How to add an OS template"
+            topic="os-templates"
+        >
+            <ol>
+                <li>
+                    {{
+                        $t(
+                            'Build a cloud-init template with qemu-guest-agent on Proxmox, e.g. with deploy/proxmox/build-templates.sh.',
+                        )
+                    }}
+                </li>
+                <li>
+                    {{
+                        $t(
+                            "Put it in the panel's resource pool and sync the cluster.",
+                        )
+                    }}
+                </li>
+                <li>
+                    {{
+                        $t(
+                            'Templates nothing uses yet appear under Found on Proxmox with a suggested name: click Add. Or use Add OS template and tick the Proxmox templates.',
+                        )
+                    }}
+                </li>
+                <li>
+                    {{
+                        $t(
+                            'Check the family and version: apps use them to decide whether they fit a server.',
+                        )
+                    }}
+                </li>
+            </ol>
+        </GuideBox>
 
         <section
             v-if="found.length"

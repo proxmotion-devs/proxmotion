@@ -4,6 +4,7 @@ import { Pencil, Plus } from '@lucide/vue';
 import { ref } from 'vue';
 import FormDialog from '@/components/admin/FormDialog.vue';
 import FormField from '@/components/admin/FormField.vue';
+import GuideBox from '@/components/admin/GuideBox.vue';
 import StatusBadge from '@/components/admin/StatusBadge.vue';
 import Heading from '@/components/Heading.vue';
 import { Button } from '@/components/ui/button';
@@ -84,6 +85,32 @@ const submitCreate = () =>
                 {{ $t('New app') }}
             </Button>
         </div>
+
+        <GuideBox id="apps" title="How to add an app" topic="apps">
+            <ol>
+                <li>
+                    {{
+                        $t(
+                            'Bundled apps are ready to use. Deactivate the ones you do not want to offer.',
+                        )
+                    }}
+                </li>
+                <li>
+                    {{
+                        $t(
+                            'New app creates a draft from a working skeleton. Fill in the tabs, write install.sh and save the draft.',
+                        )
+                    }}
+                </li>
+                <li>
+                    {{
+                        $t(
+                            'Publish it, then try it on a test server of your own. Deactivate it while something is wrong.',
+                        )
+                    }}
+                </li>
+            </ol>
+        </GuideBox>
 
         <div class="overflow-x-auto rounded-xl border">
             <table class="w-full text-sm">
