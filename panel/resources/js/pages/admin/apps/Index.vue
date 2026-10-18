@@ -86,7 +86,7 @@ const submitCreate = () =>
             </Button>
         </div>
 
-        <GuideBox id="apps" title="How to add an app" topic="apps">
+        <GuideBox id="apps" title="How to add an app" topic="apps-own">
             <ol>
                 <li>
                     {{

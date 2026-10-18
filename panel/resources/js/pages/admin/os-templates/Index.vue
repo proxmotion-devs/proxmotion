@@ -146,13 +146,27 @@ const submit = () => {
         <GuideBox
             id="os-templates"
             title="How to add an OS template"
-            topic="os-templates"
+            topic="iso-download"
         >
             <ol>
                 <li>
                     {{
                         $t(
-                            'Build a cloud-init template with qemu-guest-agent on Proxmox, e.g. with deploy/proxmox/build-templates.sh.',
+                            'In Proxmox, download the installer ISO: node, storage, ISO Images, Download from URL.',
+                        )
+                    }}
+                </li>
+                <li>
+                    {{
+                        $t(
+                            'Create a VM with QEMU Agent ticked and install a minimal system: one root partition, no swap, no LVM.',
+                        )
+                    }}
+                </li>
+                <li>
+                    {{
+                        $t(
+                            'Install cloud-init and qemu-guest-agent, clean the machine identity, add a CloudInit drive and convert the VM to a template. Help has every command.',
                         )
                     }}
                 </li>

@@ -46,7 +46,7 @@ const { syncing, startSync } = useClusterSync();
         <GuideBox
             id="clusters"
             title="How to connect Proxmox"
-            topic="troubleshooting"
+            topic="trouble-permissions"
         >
             <ol>
                 <li>

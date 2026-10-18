@@ -181,7 +181,7 @@ const statusOf = (token: ApiToken) => {
         <GuideBox
             id="billing-systems"
             title="How to connect WHMCS or WISECP"
-            topic="billing"
+            topic="billing-connect"
         >
             <ol>
                 <li>

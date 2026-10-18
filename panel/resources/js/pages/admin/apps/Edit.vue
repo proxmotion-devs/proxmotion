@@ -573,7 +573,7 @@ const statusLabels = {
             v-if="app.editable"
             id="app-editor"
             title="Writing a recipe"
-            topic="apps"
+            topic="apps-scripts"
         >
             <ul>
                 <li>
