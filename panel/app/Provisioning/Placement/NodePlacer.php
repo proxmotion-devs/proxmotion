@@ -19,22 +19,26 @@ use Illuminate\Support\Collection;
  * Picks the least-used node in a location that can host a server.
  *
  * A node qualifies when it is online, not in maintenance, belongs to an active
- * cluster, has the OS template, has the bridge the server's network uses, and
- * still has room for the server's CPU, memory and disk after over-commit.
+ * cluster (one of the package's clusters, when it names any), has the OS
+ * template, has the bridge the server's network uses, and still has room for
+ * the server's CPU, memory and disk after over-commit.
  */
 final class NodePlacer
 {
     /**
+     * @param  list<int>  $clusterIds  the clusters the package allows; empty for any
+     *
      * @throws ProvisioningException
      */
-    public function place(Location $location, ServerSpec $spec, OsTemplate $osTemplate, string $bridge): Placement
+    public function place(Location $location, ServerSpec $spec, OsTemplate $osTemplate, string $bridge, array $clusterIds = []): Placement
     {
         $templates = $osTemplate->proxmoxTemplates()
-            ->whereHas('cluster', fn ($query) => $query->where('location_id', $location->id)->where('is_active', true))
+            ->whereHas('cluster', fn ($query) => $query->where('location_id', $location->id)->where('is_active', true)
+                ->when($clusterIds !== [], fn ($query) => $query->whereIn('id', $clusterIds)))
             ->get();
 
         if ($templates->isEmpty()) {
-            throw ProvisioningException::noTemplate();
+            throw $clusterIds === [] ? ProvisioningException::noTemplate() : ProvisioningException::noPackageCluster();
         }
 
         $nodes = Node::query()

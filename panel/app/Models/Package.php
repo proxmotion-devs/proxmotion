@@ -11,6 +11,7 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Casts\AsEnumCollection;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
@@ -35,6 +36,7 @@ use Illuminate\Support\Collection;
  * @property int $sort_order
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, Cluster> $clusters
  */
 #[Fillable([
     'name', 'cpu_cores', 'memory_mib', 'disk_mib', 'traffic_bytes', 'port_speed_mbps',
@@ -64,6 +66,17 @@ class Package extends Model
             'is_active' => 'boolean',
             'sort_order' => 'integer',
         ];
+    }
+
+    /**
+     * The clusters the package's servers may be placed on; none means any
+     * cluster of the ordered location (e.g. to keep plans on one CPU type).
+     *
+     * @return BelongsToMany<Cluster, $this>
+     */
+    public function clusters(): BelongsToMany
+    {
+        return $this->belongsToMany(Cluster::class);
     }
 
     /**

@@ -146,6 +146,8 @@ export type Package = {
     network_models: NetworkModel[];
     is_active: boolean;
     sort_order: number;
+    /** Empty: any cluster of the ordered location. */
+    cluster_ids: number[];
 };
 
 export type Paginated<T> = {

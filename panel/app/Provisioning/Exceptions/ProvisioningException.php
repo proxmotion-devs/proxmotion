@@ -35,6 +35,11 @@ class ProvisioningException extends RuntimeException
         return new self('This OS template is not available on any cluster in this location.');
     }
 
+    public static function noPackageCluster(): self
+    {
+        return new self('None of the clusters this package may use is in this location and has this OS template.');
+    }
+
     public static function noAddresses(string $version): self
     {
         return new self('No free :version addresses are left in this location for the chosen network model.', ['version' => $version]);

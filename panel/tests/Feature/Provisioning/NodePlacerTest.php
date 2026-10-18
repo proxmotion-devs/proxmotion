@@ -4,10 +4,13 @@ namespace Tests\Feature\Provisioning;
 
 use App\Enums\NodeStatus;
 use App\Enums\ServerStatus;
+use App\Models\Cluster;
+use App\Models\ProxmoxTemplate;
 use App\Models\Server;
 use App\Provisioning\Exceptions\ProvisioningException;
 use App\Provisioning\Placement\NodePlacer;
 use App\Provisioning\Placement\Placement;
+use App\Provisioning\ServerCreator;
 use App\Provisioning\ServerSpec;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Concerns\BuildsInfrastructure;
@@ -112,6 +115,36 @@ class NodePlacerTest extends TestCase
         $this->expectExceptionMessage('This OS template is not available on any cluster in this location.');
 
         $this->place();
+    }
+
+    public function test_the_package_clusters_decide_where_a_server_goes()
+    {
+        // A second, busier cluster in the same location, e.g. other CPUs.
+        $first = $this->cluster;
+        $this->cluster = Cluster::factory()->for($this->location)->create();
+        $other = $this->addNode('r9-1');
+        $this->osTemplate->proxmoxTemplates()->attach(ProxmoxTemplate::query()->forceCreate([
+            'cluster_id' => $this->cluster->id, 'node_id' => $other->id, 'vmid' => 9100, 'name' => 'debian-12',
+        ]));
+        Server::factory()->for($other)->create(['memory_mib' => 32768]);
+        $spec = ServerSpec::fromPackage($this->package);
+        $placer = app(NodePlacer::class);
+
+        $this->assertTrue($placer->place($this->location, $spec, $this->osTemplate, 'vmbr0')->node->is($this->node), 'Without clusters, the least used node anywhere.');
+        $this->assertTrue($placer->place($this->location, $spec, $this->osTemplate, 'vmbr0', [$this->cluster->id])->node->is($other));
+        $this->assertTrue($placer->place($this->location, $spec, $this->osTemplate, 'vmbr0', [$first->id])->node->is($this->node));
+
+        $elsewhere = Cluster::factory()->create();
+        $this->expectExceptionMessage('None of the clusters this package may use is in this location and has this OS template.');
+        $placer->place($this->location, $spec, $this->osTemplate, 'vmbr0', [$elsewhere->id]);
+    }
+
+    public function test_server_creation_uses_the_package_clusters()
+    {
+        $this->package->clusters()->attach(Cluster::factory()->for($this->location)->create());
+
+        $this->expectExceptionMessage('None of the clusters this package may use is in this location and has this OS template.');
+        app(ServerCreator::class)->create($this->order());
     }
 
     private function expectNoCapacity(): void

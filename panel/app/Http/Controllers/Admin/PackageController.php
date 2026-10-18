@@ -6,8 +6,10 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\PackageRequest;
+use App\Models\Cluster;
 use App\Models\Package;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -17,6 +19,7 @@ class PackageController extends Controller
     {
         return Inertia::render('admin/packages/Index', [
             'packages' => Package::query()
+                ->with('clusters:id')
                 ->orderBy('sort_order')
                 ->orderBy('name')
                 ->get()
@@ -35,13 +38,18 @@ class PackageController extends Controller
                     'network_models' => $package->network_models,
                     'is_active' => $package->is_active,
                     'sort_order' => $package->sort_order,
+                    'cluster_ids' => $package->clusters->pluck('id'),
                 ]),
+            'clusters' => Cluster::query()->with('location:id,name')->orderBy('name')->get(['id', 'name', 'location_id'])
+                ->map(fn (Cluster $cluster) => ['id' => $cluster->id, 'name' => $cluster->name, 'location' => $cluster->location->name]),
         ]);
     }
 
     public function store(PackageRequest $request): RedirectResponse
     {
-        Package::create($request->packageData());
+        DB::transaction(function () use ($request) {
+            Package::create($request->packageData())->clusters()->sync($request->clusterIds());
+        });
 
         $this->toast('success', 'Package created.');
 
@@ -50,7 +58,10 @@ class PackageController extends Controller
 
     public function update(PackageRequest $request, Package $package): RedirectResponse
     {
-        $package->update($request->packageData());
+        DB::transaction(function () use ($request, $package) {
+            $package->update($request->packageData());
+            $package->clusters()->sync($request->clusterIds());
+        });
 
         $this->toast('success', 'Package updated.');
 

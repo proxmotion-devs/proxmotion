@@ -107,6 +107,31 @@ class CatalogManagementTest extends AdminTestCase
         $this->assertNull($package->refresh()->traffic_bytes);
     }
 
+    public function test_packages_can_be_limited_to_clusters()
+    {
+        $clusters = Cluster::factory()->count(2)->create();
+        $package = Package::factory()->create();
+        $data = [
+            ...$package->only(['name', 'cpu_cores', 'memory_mib', 'ipv4_count', 'ipv6_count', 'snapshot_slots', 'backup_slots', 'sort_order']),
+            'disk_gib' => 40,
+            'network_models' => ['bridged'],
+            'is_active' => true,
+        ];
+
+        $this->put(route('admin.packages.update', $package), [...$data, 'cluster_ids' => [$clusters[1]->id]])->assertSessionHasNoErrors();
+
+        $this->assertSame([$clusters[1]->id], $package->clusters()->pluck('clusters.id')->all());
+        $this->get(route('admin.packages.index'))
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('packages.0.cluster_ids', [$clusters[1]->id])
+                ->has('clusters', 2));
+
+        $this->put(route('admin.packages.update', $package), [...$data, 'cluster_ids' => []])->assertSessionHasNoErrors();
+        $this->assertSame(0, $package->clusters()->count());
+
+        $this->put(route('admin.packages.update', $package), [...$data, 'cluster_ids' => [999]])->assertSessionHasErrors('cluster_ids.0');
+    }
+
     public function test_packages_need_at_least_one_network_model()
     {
         $this->post(route('admin.packages.store'), [
