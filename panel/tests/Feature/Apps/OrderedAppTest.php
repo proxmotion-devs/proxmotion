@@ -3,6 +3,7 @@
 namespace Tests\Feature\Apps;
 
 use App\Domain\Apps\AppNotEligible;
+use App\Domain\Apps\InstallationPoller;
 use App\Domain\Apps\RecipeSynchronizer;
 use App\Domain\Servers\ServerReinstaller;
 use App\Enums\AppInstallationStatus;
@@ -113,6 +114,23 @@ class OrderedAppTest extends TestCase
         }
 
         $this->assertSame(0, Server::query()->count());
+    }
+
+    public function test_an_ordered_app_gets_extra_time_for_the_boot_wait()
+    {
+        $server = $this->orderWith('wireguard');
+        $installation = $server->appInstallations()->sole();
+        $this->proxmox->agentDown[$server->vmid] = true;
+
+        $this->travel(11)->minutes();
+        app(InstallationPoller::class)->poll($installation->refresh());
+        $this->assertSame(AppInstallationStatus::Installing, $installation->refresh()->status, 'The recipe timeout of 10 minutes does not include the boot wait.');
+
+        $this->travel(10)->minutes();
+        app(InstallationPoller::class)->poll($installation->refresh());
+        $installation->refresh();
+        $this->assertSame(AppInstallationStatus::Failed, $installation->status);
+        $this->assertSame('The installation did not finish within 20 minutes.', $installation->error);
     }
 
     public function test_the_server_becomes_active_when_its_agent_never_answers()

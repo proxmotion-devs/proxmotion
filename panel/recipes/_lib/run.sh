@@ -41,7 +41,8 @@ esac
 pm_step 0 "Preparing"
 
 # Right after the first boot (an app ordered with the server or a reinstall),
-# cloud-init may still be updating packages.
+# cloud-init may still be updating packages. The panel gives such installs
+# this much extra time (AppInstallation::BOOT_WAIT_MINUTES).
 pm_wait_for_boot 600 >>"$log" 2>&1
 pm_step 0 "Preparing"
 

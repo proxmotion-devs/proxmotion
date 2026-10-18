@@ -76,8 +76,6 @@ final readonly class InstallationPoller
 
     private function timedOut(AppInstallation $installation): void
     {
-        $minutes = $installation->version->recipe()->timeoutMinutes;
-
-        $this->installations->failed($installation, __('The installation did not finish within :minutes minutes.', ['minutes' => (string) $minutes]));
+        $this->installations->failed($installation, __('The installation did not finish within :minutes minutes.', ['minutes' => (string) $installation->timeoutMinutes()]));
     }
 }

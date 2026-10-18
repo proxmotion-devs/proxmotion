@@ -118,10 +118,27 @@ class AppInstallation extends Model
     }
 
     /**
-     * When the installer counts as hung: the recipe's timeout after the latest start.
+     * How long the runner may wait for cloud-init and the package locks after
+     * the first boot (pm_wait_for_boot in recipes/_lib, docs/adr/0016 §5).
+     */
+    public const int BOOT_WAIT_MINUTES = 10;
+
+    /**
+     * The recipe's install timeout, plus the boot wait for an app installed
+     * with the ordered or reinstalled system.
+     */
+    public function timeoutMinutes(): int
+    {
+        $minutes = $this->version->recipe()->timeoutMinutes;
+
+        return $this->mode === AppInstallMode::Order ? $minutes + self::BOOT_WAIT_MINUTES : $minutes;
+    }
+
+    /**
+     * When the installer counts as hung: the timeout after the latest start.
      */
     public function deadline(): ?CarbonInterface
     {
-        return $this->started_at?->copy()->addMinutes($this->version->recipe()->timeoutMinutes);
+        return $this->started_at?->copy()->addMinutes($this->timeoutMinutes());
     }
 }
