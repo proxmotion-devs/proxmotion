@@ -147,6 +147,24 @@ final class NodePlacer
     }
 
     /**
+     * What a node can still take after over-commit, as placement counts it:
+     * vCPU cores, memory and servers; null where the node sets no limit (or
+     * its size is not known yet).
+     *
+     * @return array{cpu_cores: float|null, memory_mib: float|null, servers: int|null}
+     */
+    public function freeCapacity(Node $node): array
+    {
+        $booked = $this->booked($node);
+
+        return [
+            'cpu_cores' => $node->cpu_cores === null ? null : $node->cpu_cores * (float) $node->cpu_overcommit - $booked['cpu'],
+            'memory_mib' => $node->memory_bytes === null ? null : intdiv($node->memory_bytes, 1024 ** 2) * (float) $node->memory_overcommit - $booked['memory_mib'],
+            'servers' => $node->max_servers === null ? null : $node->max_servers - $booked['count'],
+        ];
+    }
+
+    /**
      * Over-committed capacity of a storage minus the disks booked on it.
      */
     public function freeDiskMib(Storage $storage, Node $node): float

@@ -16,6 +16,25 @@ use App\Models\Server;
 final class ResourceOptions
 {
     /**
+     * A package's resources in the units of the resource forms (disk in GiB,
+     * traffic in GB; null port speed or traffic is unlimited).
+     *
+     * @return array{cpu_cores: int, memory_mib: int, disk_gib: int, ipv4_count: int, ipv6_count: int, port_speed_mbps: int|null, traffic_gb: int|null}
+     */
+    public static function packageValues(Package $package): array
+    {
+        return [
+            'cpu_cores' => $package->cpu_cores,
+            'memory_mib' => $package->memory_mib,
+            'disk_gib' => intdiv($package->disk_mib, 1024),
+            'ipv4_count' => $package->ipv4_count,
+            'ipv6_count' => $package->ipv6_count,
+            'port_speed_mbps' => $package->port_speed_mbps,
+            'traffic_gb' => $package->traffic_bytes === null ? null : intdiv($package->traffic_bytes, 1000 ** 3),
+        ];
+    }
+
+    /**
      * @return array{packages: list<array<string, mixed>>, current: array<string, mixed>}
      */
     public static function for(Server $server): array
@@ -25,13 +44,7 @@ final class ResourceOptions
             ->map(fn (Package $package) => [
                 'value' => $package->uuid,
                 'label' => $package->name,
-                'cpu_cores' => $package->cpu_cores,
-                'memory_mib' => $package->memory_mib,
-                'disk_gib' => intdiv($package->disk_mib, 1024),
-                'ipv4_count' => $package->ipv4_count,
-                'ipv6_count' => $package->ipv6_count,
-                'port_speed_mbps' => $package->port_speed_mbps,
-                'traffic_gb' => $package->traffic_bytes === null ? null : intdiv($package->traffic_bytes, 1000 ** 3),
+                ...self::packageValues($package),
             ]);
 
         return [

@@ -119,7 +119,8 @@ class ServerController extends Controller
                     'value' => $package->uuid,
                     'label' => $package->name,
                     'network_models' => $package->network_models,
-                    'ipv4_count' => $package->ipv4_count,
+                    // Its values fill the resource fields, which stay editable.
+                    ...ResourceOptions::packageValues($package),
                     // The placement groups its servers may be placed on; empty for any.
                     'placement_groups' => $package->placementGroups->pluck('uuid')->values(),
                 ]),
@@ -138,11 +139,13 @@ class ServerController extends Controller
                     'free' => $ips->freeIpv4Count($pool),
                     'addresses' => $ips->freeIpv4Addresses($pool, self::CHOOSABLE_ADDRESSES),
                 ]),
-            'placementGroups' => PlacementGroup::query()->with('location:id,uuid')->orderBy('name')->get()
+            'placementGroups' => PlacementGroup::query()->with(['location:id,uuid', 'storages:id,name,node_id', 'storages.node:id,uuid'])->orderBy('name')->get()
                 ->map(fn (PlacementGroup $group) => [
                     'value' => $group->uuid,
                     'label' => $group->name,
                     'location' => $group->location->uuid,
+                    // "<node uuid>/<storage name>" of the storages it lists; empty: those marked "use for servers".
+                    'storages' => $group->storages->map(fn (Storage $storage) => "{$storage->node->uuid}/{$storage->name}")->values(),
                 ]),
             'osTemplates' => $osTemplates->map(fn (OsTemplate $template) => ['value' => $template->uuid, 'label' => $template->name]),
             // Apps that can come with the server (docs/adr/0016 §5).
@@ -161,6 +164,8 @@ class ServerController extends Controller
                     'placement_groups' => $node->placementGroups->pluck('uuid')->values(),
                     'online' => $node->status === NodeStatus::Online,
                     'maintenance' => $node->is_maintenance,
+                    // What is left after over-commit, to warn before a server does not fit.
+                    'capacity' => $placer->freeCapacity($node),
                     'storages' => $node->storages
                         ->filter(fn (Storage $storage) => $storage->supportsVmDisks() && $storage->total_bytes !== null)
                         ->map(fn (Storage $storage) => [

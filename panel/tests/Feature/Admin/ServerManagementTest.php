@@ -53,7 +53,8 @@ class ServerManagementTest extends AdminTestCase
     {
         return [
             'location' => $this->location->uuid,
-            'resource_mode' => 'package',
+            // The package's values, as the form fills them in.
+            'cpu_cores' => 2, 'memory_mib' => 4096, 'disk_gib' => 40, 'ipv4_count' => 1, 'ipv6_count' => 0, 'port_speed_mbps' => 1000, 'traffic_gb' => 2000,
             'package' => $this->package->uuid,
             'os_template' => $this->osTemplate->uuid,
             'network_model' => 'bridged',
@@ -157,7 +158,6 @@ class ServerManagementTest extends AdminTestCase
 
         // Three addresses: two ticked (the first is primary), the third the next free one.
         $this->post(route('admin.servers.store'), $this->payload([
-            'resource_mode' => 'custom',
             'package' => null,
             'cpu_cores' => 1,
             'memory_mib' => 1024,
@@ -197,10 +197,47 @@ class ServerManagementTest extends AdminTestCase
         $this->assertSame(0, Server::query()->count());
     }
 
+    public function test_package_values_fill_the_form_and_stay_editable()
+    {
+        $this->get(route('admin.servers.create'))
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('admin/servers/Create')
+                ->where('packages.0.cpu_cores', 2)
+                ->where('packages.0.memory_mib', 4096)
+                ->where('packages.0.disk_gib', 40)
+                ->where('packages.0.port_speed_mbps', 1000)
+                ->where('packages.0.traffic_gb', 2000)
+                // 16 cores with an over-commit of 4.
+                ->where('nodes.0.capacity.cpu_cores', 64)
+                ->where('nodes.0.capacity.servers', null)
+                ->where('placementGroups.0.storages', []));
+
+        // The package with more memory and disk, and unlimited port speed.
+        $this->post(route('admin.servers.store'), $this->payload([
+            'memory_mib' => 8192,
+            'disk_gib' => 80,
+            'port_speed_mbps' => null,
+        ]))->assertSessionHasNoErrors();
+
+        $server = Server::query()->sole();
+        $this->assertTrue($server->package?->is($this->package), 'The server keeps the package link.');
+        $this->assertSame(2, $server->cpu_cores);
+        $this->assertSame(8192, $server->memory_mib);
+        $this->assertSame(80 * 1024, $server->disk_mib);
+        $this->assertNull($server->port_speed_mbps);
+        $this->assertSame(2000 * 1000 ** 3, $server->traffic_bytes);
+    }
+
+    public function test_resources_are_required_even_with_a_package()
+    {
+        $this->post(route('admin.servers.store'), $this->payload(['cpu_cores' => null, 'disk_gib' => null]))
+            ->assertSessionHasErrors(['cpu_cores', 'disk_gib']);
+        $this->assertDatabaseCount('servers', 0);
+    }
+
     public function test_a_server_can_be_created_with_custom_resources_and_no_package()
     {
         $this->post(route('admin.servers.store'), $this->payload([
-            'resource_mode' => 'custom',
             'package' => null,
             'cpu_cores' => 3,
             'memory_mib' => 3072,
@@ -234,7 +271,7 @@ class ServerManagementTest extends AdminTestCase
         $this->package->update(['network_models' => ['routed']]);
 
         $this->post(route('admin.servers.store'), $this->payload([
-            'resource_mode' => 'custom',
+            'package' => null,
             'cpu_cores' => 1, 'memory_mib' => 1024, 'disk_gib' => 20, 'ipv4_count' => 1, 'ipv6_count' => 0,
         ]))->assertSessionHasNoErrors();
     }
@@ -242,7 +279,7 @@ class ServerManagementTest extends AdminTestCase
     public function test_custom_resources_are_validated()
     {
         $this->post(route('admin.servers.store'), $this->payload([
-            'resource_mode' => 'custom',
+            'package' => null,
             'cpu_cores' => 0,
             'memory_mib' => 64,
             'disk_gib' => null,
@@ -251,7 +288,7 @@ class ServerManagementTest extends AdminTestCase
         ]))->assertSessionHasErrors(['cpu_cores', 'memory_mib', 'disk_gib']);
 
         $this->post(route('admin.servers.store'), $this->payload([
-            'resource_mode' => 'custom',
+            'package' => null,
             'cpu_cores' => 1, 'memory_mib' => 1024, 'disk_gib' => 20, 'ipv4_count' => 0, 'ipv6_count' => 0,
         ]))->assertSessionHasErrors('ipv4_count');
 

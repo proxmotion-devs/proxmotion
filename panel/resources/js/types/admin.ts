@@ -451,6 +451,12 @@ export type PlacementNode = Option & {
     placement_groups: string[];
     online: boolean;
     maintenance: boolean;
+    /** What is left after over-commit; null where the node sets no limit. */
+    capacity: {
+        cpu_cores: number | null;
+        memory_mib: number | null;
+        servers: number | null;
+    };
     storages: {
         name: string;
         type: string;
@@ -459,6 +465,26 @@ export type PlacementNode = Option & {
         /** Free space after over-commit and the disks already booked. */
         free_mib: number;
     }[];
+};
+
+/** A placement group offered on the create form. */
+export type PlacementGroupOption = Option & {
+    location: string;
+    /** "<node uuid>/<storage name>" of the storages it lists; empty: those marked "use for servers". */
+    storages: string[];
+};
+
+/** A package offered on the create form; its values fill the resource fields. */
+export type PackageOption = Option & {
+    network_models: NetworkModel[];
+    placement_groups: string[];
+    cpu_cores: number;
+    memory_mib: number;
+    disk_gib: number;
+    ipv4_count: number;
+    ipv6_count: number;
+    port_speed_mbps: number | null;
+    traffic_gb: number | null;
 };
 
 /** A placement group (docs/adr/0020): nodes, and optionally storages, of one location. */
@@ -480,4 +506,15 @@ export type Ipv4PoolOption = Option & {
     /** All free addresses; `addresses` may list only the first of them. */
     free: number;
     addresses: string[];
+};
+
+/** The resources entered on the create form ("" port speed or traffic = unlimited). */
+export type NewServerResources = {
+    cpu_cores: number;
+    memory_mib: number;
+    disk_gib: number;
+    ipv4_count: number;
+    ipv6_count: number;
+    port_speed_mbps: number | '';
+    traffic_gb: number | '';
 };

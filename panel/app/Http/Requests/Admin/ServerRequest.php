@@ -31,23 +31,22 @@ class ServerRequest extends FormRequest
      */
     public function rules(): array
     {
-        $custom = $this->input('resource_mode') === 'custom';
-
         return [
             // The billing system that owns the server, and the ids of the service and customer there.
             'billing_system' => ['nullable', 'required_with:external_id,external_client_id', 'string', Rule::exists('billing_systems', 'uuid')],
             'external_id' => ['nullable', 'string', 'max:191', Rule::unique('servers', 'live_external_id')->where('billing_system_id', $this->billingSystem()?->id)],
             'external_client_id' => ['nullable', 'string', 'max:191'],
             'location' => ['required', 'string', Rule::exists('locations', 'uuid')],
-            // "package": resources from a package; "custom": entered below (admins only).
-            'resource_mode' => ['required', Rule::in(['package', 'custom'])],
-            'package' => [Rule::requiredIf(! $custom), 'nullable', 'string', Rule::exists('packages', 'uuid')->where('is_active', true)],
+            // Optional: the server keeps the link (e.g. for billing upgrades); its values only
+            // prefill the form, and the resources below are always what the server gets.
+            'package' => ['nullable', 'string', Rule::exists('packages', 'uuid')->where('is_active', true)],
             // Same limits as the package form.
-            'cpu_cores' => [Rule::requiredIf($custom), 'nullable', 'integer', 'between:1,512'],
-            'memory_mib' => [Rule::requiredIf($custom), 'nullable', 'integer', 'between:128,4194304'],
-            'disk_gib' => [Rule::requiredIf($custom), 'nullable', 'integer', 'between:1,65536'],
-            'ipv4_count' => [Rule::requiredIf($custom), 'nullable', 'integer', 'between:0,64'],
-            'ipv6_count' => [Rule::requiredIf($custom), 'nullable', 'integer', 'between:0,64'],
+            'cpu_cores' => ['required', 'integer', 'between:1,512'],
+            'memory_mib' => ['required', 'integer', 'between:128,4194304'],
+            'disk_gib' => ['required', 'integer', 'between:1,65536'],
+            'ipv4_count' => ['required', 'integer', 'between:0,64'],
+            'ipv6_count' => ['required', 'integer', 'between:0,64'],
+            // Empty: unlimited.
             'port_speed_mbps' => ['nullable', 'integer', 'between:1,400000'],
             'traffic_gb' => ['nullable', 'integer', 'between:1,10000000'],
             // "group": the best node of a placement group (docs/adr/0020); "node": the node
@@ -90,7 +89,7 @@ class ServerRequest extends FormRequest
                 $validator->errors()->add('network_model', __('This package does not allow the selected network model.'));
             }
 
-            if ($package === null && $this->integer('ipv4_count') + $this->integer('ipv6_count') === 0) {
+            if ($this->integer('ipv4_count') + $this->integer('ipv6_count') === 0) {
                 $validator->errors()->add('ipv4_count', __('A server needs at least one IP address.'));
             }
         }];
@@ -149,25 +148,19 @@ class ServerRequest extends FormRequest
     }
 
     /**
-     * The chosen package, or null for custom resources.
+     * The chosen package, or null for a server without one.
      */
     private function package(): ?Package
     {
-        if ($this->input('resource_mode') === 'custom') {
-            return null;
-        }
-
-        return Package::query()->where('uuid', $this->string('package'))->firstOrFail();
+        return $this->filled('package') ? Package::query()->where('uuid', $this->string('package'))->firstOrFail() : null;
     }
 
+    /**
+     * The resources as entered: with a package, its values changed where the
+     * administrator changed them.
+     */
     private function spec(): ServerSpec
     {
-        $package = $this->package();
-
-        if ($package !== null) {
-            return ServerSpec::fromPackage($package);
-        }
-
         return new ServerSpec(
             cpuCores: $this->integer('cpu_cores'),
             memoryMib: $this->integer('memory_mib'),

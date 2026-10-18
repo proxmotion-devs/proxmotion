@@ -15,6 +15,7 @@ const node = (
     placement_groups: [],
     online: true,
     maintenance: false,
+    capacity: { cpu_cores: null, memory_mib: null, servers: null },
     storages: [
         {
             name: 'local-lvm',
