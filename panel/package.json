@@ -22,7 +22,7 @@
         "@laravel/passkeys": "^0.4.0",
         "@lucide/vue": "^1.17.0",
         "@novnc/novnc": "^1.7.0",
-        "@vueuse/core": "^12.8.2",
+        "@vueuse/core": "^15.0.0",
         "class-variance-authority": "^0.7.1",
         "clsx": "^2.1.1",
         "codemirror": "^6.0.1",
