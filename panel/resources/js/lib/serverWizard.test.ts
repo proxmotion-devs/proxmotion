@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vite-plus/test';
 import {
     firstStepWithError,
+    automaticFit,
     groupFit,
     groupStorages,
     nodeProblems,
@@ -49,6 +50,8 @@ describe('firstStepWithError', () => {
             firstStepWithError({ 'app_inputs.port': 'x', ssh_keys: 'y' }),
         ).toBe(2);
         expect(firstStepWithError({ 'ipv4_addresses.0': 'x' })).toBe(3);
+        expect(firstStepWithError({ resource_mode: 'x' })).toBe(0);
+        expect(firstStepWithError({ node: 'x', package: 'y' })).toBe(1);
         expect(firstStepWithError({ server: 'No capacity' })).toBe(
             WIZARD_STEPS.length - 1,
         );
@@ -126,6 +129,40 @@ describe('groupFit', () => {
         // Only pve2 lists a storage in the group, and pve2 has too little memory.
         expect(groupFit(group(['pve2/nvme']), nodes, size)).toEqual({
             total: 2,
+            fitting: 0,
+        });
+    });
+});
+
+describe('automaticFit', () => {
+    const nodes = [
+        node('pve1'),
+        node('pve2', {
+            placement_groups: ['hdd'],
+            capacity: { cpu_cores: 1, memory_mib: 8192, servers: null },
+        }),
+        node('pve3', { maintenance: true }),
+        node('ams1', { location: 'ams' }),
+    ];
+    const groups = [
+        group(),
+        { value: 'hdd', label: 'HDD', location: 'ist', storages: [] },
+    ];
+
+    it('considers every node of the location for a package without groups', () => {
+        expect(automaticFit('ist', [], groups, nodes, size)).toEqual({
+            total: 2,
+            fitting: 1,
+        });
+    });
+
+    it('stays inside the package groups of the location', () => {
+        expect(automaticFit('ist', ['hdd'], groups, nodes, size)).toEqual({
+            total: 1,
+            fitting: 0,
+        });
+        expect(automaticFit('ams', ['nvme'], groups, nodes, size)).toEqual({
+            total: 0,
             fitting: 0,
         });
     });

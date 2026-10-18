@@ -5,13 +5,12 @@ import type { PlacementNode } from '@/types/admin';
 
 const node = (
     value: string,
-    cluster: string,
     overrides: Partial<PlacementNode> = {},
 ): PlacementNode => ({
     value,
     label: value,
     location: 'ist',
-    cluster,
+    cluster: 'c1',
     placement_groups: [],
     online: true,
     maintenance: false,
@@ -29,9 +28,9 @@ const node = (
 });
 
 const nodes = [
-    node('pve1', 'epyc', { placement_groups: ['nvme'] }),
-    node('pve2', 'xeon', { placement_groups: ['hdd'] }),
-    node('ams1', 'epyc', { location: 'ams' }),
+    node('pve1'),
+    node('pve2', { maintenance: true }),
+    node('ams1', { location: 'ams' }),
 ];
 
 const groups = [
@@ -40,11 +39,13 @@ const groups = [
     { value: 'ams-nvme', label: 'NVMe', location: 'ams' },
 ];
 
-type Limits = { packageGroups?: string[] };
-
 const mountFields = (
-    limits: Limits,
-    chosen: { node?: string; group?: string } = {},
+    chosen: {
+        placement?: 'group' | 'node';
+        node?: string;
+        group?: string;
+    } = {},
+    groupsOfLocation = groups,
 ) => {
     // Deferred: the component already emits while it is mounted.
     const later = (props: Record<string, unknown>) =>
@@ -53,14 +54,15 @@ const mountFields = (
     const wrapper = mount(PlacementFields, {
         props: {
             nodes,
-            groups,
+            groups: groupsOfLocation,
             location: 'ist',
-            packageGroups: limits.packageGroups ?? [],
             errors: {},
-            placement: 'node',
+            placement: chosen.placement ?? 'node',
             group: chosen.group ?? null,
             node: chosen.node ?? null,
             storage: '',
+            'onUpdate:placement': (value: string | null) =>
+                later({ placement: value }),
             'onUpdate:group': (value: string | null) => later({ group: value }),
             'onUpdate:node': (value: string | null) => later({ node: value }),
             'onUpdate:storage': (value: string) => later({ storage: value }),
@@ -71,116 +73,52 @@ const mountFields = (
     return wrapper;
 };
 
-const options = (
-    wrapper: ReturnType<typeof mountFields>,
-    select: string,
-    values: string[],
-) =>
+const values = (wrapper: ReturnType<typeof mountFields>, select: string) =>
     wrapper
         .findAll(`${select} option`)
         .map((option) => option.element as HTMLOptionElement)
         // Leave out the placeholder.
-        .filter((option) => values.includes(option.value))
-        .map((option) => ({ value: option.value, disabled: option.disabled }));
-
-const nodeOptions = (wrapper: ReturnType<typeof mountFields>) =>
-    options(
-        wrapper,
-        '#node',
-        nodes.map((candidate) => candidate.value),
-    );
+        .filter((option) => !option.disabled)
+        .map((option) => option.value);
 
 describe('PlacementFields', () => {
-    it('offers every node of the location when the package names no groups', () => {
-        expect(nodeOptions(mountFields({}))).toEqual([
-            { value: 'pve1', disabled: false },
-            { value: 'pve2', disabled: false },
-        ]);
-    });
-
     it('offers only a placement group or a single node', () => {
+        expect(values(mountFields(), '#placement')).toEqual(['group', 'node']);
+    });
+
+    it('offers the nodes of the location, marking those in maintenance', () => {
+        const wrapper = mountFields();
+
+        expect(values(wrapper, '#node')).toEqual(['pve1', 'pve2']);
+        expect(wrapper.find('#node option[value="pve2"]').text()).toContain(
+            'maintenance',
+        );
+    });
+
+    it('offers the groups of the location and picks the first', async () => {
+        const wrapper = mountFields({ placement: 'group' });
+        await flushPromises();
+
+        expect(values(wrapper, '#placement_group')).toEqual(['nvme', 'hdd']);
+        expect(wrapper.props('group')).toBe('nvme');
+    });
+
+    it('moves to a node of the new location', async () => {
+        const wrapper = mountFields({ node: 'pve1' });
+        await flushPromises();
+
+        await wrapper.setProps({ location: 'ams' });
+        await flushPromises();
+        expect(wrapper.props('node')).toBe('ams1');
+    });
+
+    it('starts with a single node when the location has no group', async () => {
+        const wrapper = mountFields({ placement: 'group' }, []);
+        await flushPromises();
+
+        expect(wrapper.props('placement')).toBe('node');
         expect(
-            mountFields({})
-                .findAll('#placement option')
-                .map((option) => (option.element as HTMLOptionElement).value),
-        ).toEqual(['group', 'node']);
-    });
-
-    it('starts with a single node when the location has no usable group', () => {
-        const mountWith = (groupsOfLocation: typeof groups) =>
-            mount(PlacementFields, {
-                props: {
-                    nodes,
-                    groups: groupsOfLocation,
-                    location: 'ist',
-                    packageGroups: [],
-                    errors: {},
-                    placement: 'group',
-                    group: null,
-                    node: null,
-                    storage: '',
-                },
-                global: { mocks: { $t: (key: string) => key } },
-            });
-
-        expect(mountWith([]).emitted('update:placement')?.[0]).toEqual([
-            'node',
-        ]);
-        expect(mountWith(groups).emitted('update:placement')).toBeUndefined();
-    });
-
-    it('moves off a node the newly chosen package does not allow', async () => {
-        const wrapper = mountFields({}, { node: 'pve2' });
-        await flushPromises();
-        expect(wrapper.props('node')).toBe('pve2');
-
-        await wrapper.setProps({ packageGroups: ['nvme'] });
-        await flushPromises();
-        expect(wrapper.props('node')).toBe('pve1');
-    });
-
-    it('chooses no node when the package allows none in the location', async () => {
-        const wrapper = mountFields(
-            { packageGroups: ['arm'] },
-            { node: 'pve1' },
-        );
-        await flushPromises();
-
-        expect(wrapper.props('node')).toBeNull();
-    });
-
-    it('marks nodes outside the package placement groups and does not let them be chosen', async () => {
-        const wrapper = mountFields(
-            { packageGroups: ['hdd'] },
-            { node: 'pve1' },
-        );
-        await flushPromises();
-
-        expect(nodeOptions(wrapper)).toEqual([
-            { value: 'pve1', disabled: true },
-            { value: 'pve2', disabled: false },
-        ]);
-        expect(wrapper.props('node')).toBe('pve2');
-    });
-
-    it('offers the groups of the location and disables those the package does not allow', async () => {
-        const wrapper = mountFields(
-            { packageGroups: ['hdd'] },
-            { group: 'nvme' },
-        );
-        await wrapper.setProps({ placement: 'group' });
-        await flushPromises();
-
-        expect(
-            options(
-                wrapper,
-                '#placement_group',
-                groups.map((group) => group.value),
-            ),
-        ).toEqual([
-            { value: 'nvme', disabled: true },
-            { value: 'hdd', disabled: false },
-        ]);
-        expect(wrapper.props('group')).toBe('hdd');
+            mountFields({ placement: 'group' }).emitted('update:placement'),
+        ).toBeUndefined();
     });
 });

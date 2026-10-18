@@ -7,13 +7,14 @@ import type { PlacementGroupOption, PlacementNode } from '@/types/admin';
  */
 export const WIZARD_STEPS = [
     {
-        key: 'placement',
-        title: 'Location & placement',
-        fields: ['location', 'placement', 'placement_group', 'node', 'storage'],
+        key: 'type',
+        title: 'Type & location',
+        fields: ['resource_mode', 'location'],
     },
     {
+        // A package (placed automatically) or custom resources and their placement.
         key: 'resources',
-        title: 'Resources',
+        title: 'Resources & placement',
         fields: [
             'package',
             'cpu_cores',
@@ -23,6 +24,10 @@ export const WIZARD_STEPS = [
             'ipv6_count',
             'port_speed_mbps',
             'traffic_gb',
+            'placement',
+            'placement_group',
+            'node',
+            'storage',
         ],
     },
     {
@@ -137,6 +142,48 @@ export function groupStorages(
         : node.storages.filter((candidate) =>
               group.storages.includes(`${node.value}/${candidate.name}`),
           );
+}
+
+/**
+ * Automatic placement of a package server, as the billing API does it: the
+ * nodes of the location (not in maintenance), within the package's placement
+ * groups when it names any, and how many of them a server of this size fits on.
+ */
+export function automaticFit(
+    location: string | null,
+    packageGroups: string[],
+    groups: PlacementGroupOption[],
+    nodes: PlacementNode[],
+    size: ServerSize,
+): { total: number; fitting: number } {
+    const usable = groups.filter(
+        (group) =>
+            group.location === location && packageGroups.includes(group.value),
+    );
+    const members = nodes.filter(
+        (node) =>
+            node.location === location &&
+            !node.maintenance &&
+            (packageGroups.length === 0 ||
+                usable.some((group) =>
+                    node.placement_groups.includes(group.value),
+                )),
+    );
+    const storagesOf = (node: PlacementNode) =>
+        packageGroups.length === 0
+            ? node.storages.filter((storage) => storage.use_for_servers)
+            : usable
+                  .filter((group) =>
+                      node.placement_groups.includes(group.value),
+                  )
+                  .flatMap((group) => groupStorages(group, node));
+
+    return {
+        total: members.length,
+        fitting: members.filter(
+            (node) => nodeProblems(node, size, storagesOf(node)).length === 0,
+        ).length,
+    };
 }
 
 /**

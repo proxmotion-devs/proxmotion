@@ -51,20 +51,35 @@ class ServerManagementTest extends AdminTestCase
      */
     private function payload(array $overrides = []): array
     {
+        // A package server: its resources, placed automatically.
         return [
+            'resource_mode' => 'package',
             'location' => $this->location->uuid,
-            // The package's values, as the form fills them in.
-            'cpu_cores' => 2, 'memory_mib' => 4096, 'disk_gib' => 40, 'ipv4_count' => 1, 'ipv6_count' => 0, 'port_speed_mbps' => 1000, 'traffic_gb' => 2000,
             'package' => $this->package->uuid,
             'os_template' => $this->osTemplate->uuid,
             'network_model' => 'bridged',
             'hostname' => 'Web1.Example.com',
-            'placement' => 'group',
-            'placement_group' => $this->group->uuid,
             'root_password' => '',
             'ssh_keys' => '',
             ...$overrides,
         ];
+    }
+
+    /**
+     * A custom server: resources entered, placed in the placement group.
+     *
+     * @return array<string, mixed>
+     */
+    private function customPayload(array $overrides = []): array
+    {
+        return $this->payload([
+            'resource_mode' => 'custom',
+            'package' => null,
+            'cpu_cores' => 1, 'memory_mib' => 1024, 'disk_gib' => 20, 'ipv4_count' => 1, 'ipv6_count' => 0,
+            'placement' => 'group',
+            'placement_group' => $this->group->uuid,
+            ...$overrides,
+        ]);
     }
 
     public function test_an_admin_can_create_a_server()
@@ -110,38 +125,69 @@ class ServerManagementTest extends AdminTestCase
                 ->where('nodes.1.storages.1.name', 'nvme')
                 ->where('nodes.1.storages.1.free_mib', 100 * 1024));
 
-        $this->post(route('admin.servers.store'), $this->payload(['placement' => 'node', 'node' => $pve2->uuid, 'storage' => 'nvme']))
+        $this->post(route('admin.servers.store'), $this->customPayload(['placement' => 'node', 'node' => $pve2->uuid, 'storage' => 'nvme']))
             ->assertSessionHasNoErrors();
 
         $server = Server::query()->where('hostname', 'web1.example.com')->sole();
         $this->assertTrue($server->node->is($pve2));
         $this->assertSame('nvme', $server->storage?->name);
 
-        $this->post(route('admin.servers.store'), $this->payload(['hostname' => 'web2.example.com', 'placement' => 'node', 'node' => $pve2->uuid, 'storage' => 'missing']))
+        $this->post(route('admin.servers.store'), $this->customPayload(['hostname' => 'web2.example.com', 'placement' => 'node', 'node' => $pve2->uuid, 'storage' => 'missing']))
             ->assertSessionHasErrors('server');
-        $this->post(route('admin.servers.store'), $this->payload(['placement' => 'node']))->assertSessionHasErrors('node');
+        $this->post(route('admin.servers.store'), $this->customPayload(['placement' => 'node']))->assertSessionHasErrors('node');
     }
 
-    public function test_the_create_form_names_the_placement_groups_a_package_may_use()
+    public function test_a_package_server_is_placed_automatically_in_the_package_groups()
     {
+        // pve2 is less used, but only pve1 is in the package's group.
+        $this->addNode('pve2');
+        Server::factory()->for($this->node)->create(['memory_mib' => 32768]);
         $this->package->placementGroups()->attach($this->group);
 
         $this->get(route('admin.servers.create'))
-            ->assertInertia(fn (Assert $page) => $page
-                ->where('packages.0.placement_groups', [$this->group->uuid])
-                ->missing('packages.0.clusters'));
+            ->assertInertia(fn (Assert $page) => $page->where('packages', fn ($packages) => collect($packages)
+                ->firstWhere('value', $this->package->uuid)['placement_groups'] === [$this->group->uuid]));
 
-        // A node outside them is still refused when the form is bypassed.
+        $this->post(route('admin.servers.store'), $this->payload())->assertSessionHasNoErrors();
+
+        $this->assertTrue(Server::query()->where('hostname', 'web1.example.com')->sole()->node->is($this->node));
+    }
+
+    public function test_a_package_server_without_groups_goes_to_the_best_node_of_the_location()
+    {
         $pve2 = $this->addNode('pve2');
-        $this->post(route('admin.servers.store'), $this->payload(['placement' => 'node', 'node' => $pve2->uuid]))
-            ->assertSessionHasErrors(['server' => __('The chosen node is not in a placement group this package may use.')]);
+        Server::factory()->for($this->node)->create(['memory_mib' => 32768]);
+        $this->osTemplate->proxmoxTemplates()->attach(ProxmoxTemplate::query()->forceCreate([
+            'cluster_id' => $this->cluster->id, 'node_id' => $pve2->id, 'vmid' => 9001, 'name' => 'ubuntu-2404-cloudinit',
+        ]));
+        $this->proxmox->addTemplate(9001, 'pve2');
+
+        $this->post(route('admin.servers.store'), $this->payload())->assertSessionHasNoErrors();
+
+        $this->assertTrue(Server::query()->where('hostname', 'web1.example.com')->sole()->node->is($pve2));
+    }
+
+    public function test_a_package_server_takes_no_placement_and_only_the_package_resources()
+    {
+        $this->post(route('admin.servers.store'), $this->payload(['placement' => 'node', 'node' => $this->node->uuid]))
+            ->assertSessionHasErrors('placement');
+
+        // Resources sent with a package are ignored: the server gets the package's.
+        $this->post(route('admin.servers.store'), $this->payload(['cpu_cores' => 8, 'memory_mib' => 16384, 'disk_gib' => 200]))
+            ->assertSessionHasNoErrors();
+
+        $server = Server::query()->sole();
+        $this->assertTrue($server->package?->is($this->package));
+        $this->assertSame([2, 4096, 40960], [$server->cpu_cores, $server->memory_mib, $server->disk_mib]);
+        $this->post(route('admin.servers.store'), $this->payload(['hostname' => 'web2.example.com', 'package' => null]))
+            ->assertSessionHasErrors('package');
     }
 
     public function test_a_placement_group_or_a_single_node_must_be_chosen()
     {
-        $this->post(route('admin.servers.store'), $this->payload(['placement' => null]))->assertSessionHasErrors('placement');
-        $this->post(route('admin.servers.store'), $this->payload(['placement' => 'auto']))->assertSessionHasErrors('placement');
-        $this->post(route('admin.servers.store'), $this->payload(['placement_group' => null]))->assertSessionHasErrors('placement_group');
+        $this->post(route('admin.servers.store'), $this->customPayload(['placement' => null]))->assertSessionHasErrors('placement');
+        $this->post(route('admin.servers.store'), $this->customPayload(['placement' => 'auto']))->assertSessionHasErrors('placement');
+        $this->post(route('admin.servers.store'), $this->customPayload(['placement_group' => null]))->assertSessionHasErrors('placement_group');
         $this->assertSame(0, Server::query()->count());
     }
 
@@ -157,8 +203,7 @@ class ServerManagementTest extends AdminTestCase
                 ->where('ipv4Pools.0.free', 5));
 
         // Three addresses: two ticked (the first is primary), the third the next free one.
-        $this->post(route('admin.servers.store'), $this->payload([
-            'package' => null,
+        $this->post(route('admin.servers.store'), $this->customPayload([
             'cpu_cores' => 1,
             'memory_mib' => 1024,
             'disk_gib' => 10,
@@ -197,7 +242,7 @@ class ServerManagementTest extends AdminTestCase
         $this->assertSame(0, Server::query()->count());
     }
 
-    public function test_package_values_fill_the_form_and_stay_editable()
+    public function test_the_create_form_shows_package_resources_and_free_capacity()
     {
         $this->get(route('admin.servers.create'))
             ->assertInertia(fn (Assert $page) => $page
@@ -211,34 +256,20 @@ class ServerManagementTest extends AdminTestCase
                 ->where('nodes.0.capacity.cpu_cores', 64)
                 ->where('nodes.0.capacity.servers', null)
                 ->where('placementGroups.0.storages', []));
-
-        // The package with more memory and disk, and unlimited port speed.
-        $this->post(route('admin.servers.store'), $this->payload([
-            'memory_mib' => 8192,
-            'disk_gib' => 80,
-            'port_speed_mbps' => null,
-        ]))->assertSessionHasNoErrors();
-
-        $server = Server::query()->sole();
-        $this->assertTrue($server->package?->is($this->package), 'The server keeps the package link.');
-        $this->assertSame(2, $server->cpu_cores);
-        $this->assertSame(8192, $server->memory_mib);
-        $this->assertSame(80 * 1024, $server->disk_mib);
-        $this->assertNull($server->port_speed_mbps);
-        $this->assertSame(2000 * 1000 ** 3, $server->traffic_bytes);
     }
 
-    public function test_resources_are_required_even_with_a_package()
+    public function test_custom_servers_need_their_resources_and_a_placement()
     {
-        $this->post(route('admin.servers.store'), $this->payload(['cpu_cores' => null, 'disk_gib' => null]))
+        $this->post(route('admin.servers.store'), $this->customPayload(['cpu_cores' => null, 'disk_gib' => null]))
             ->assertSessionHasErrors(['cpu_cores', 'disk_gib']);
+        $this->post(route('admin.servers.store'), $this->payload(['resource_mode' => 'other']))
+            ->assertSessionHasErrors('resource_mode');
         $this->assertDatabaseCount('servers', 0);
     }
 
     public function test_a_server_can_be_created_with_custom_resources_and_no_package()
     {
-        $this->post(route('admin.servers.store'), $this->payload([
-            'package' => null,
+        $this->post(route('admin.servers.store'), $this->customPayload([
             'cpu_cores' => 3,
             'memory_mib' => 3072,
             'disk_gib' => 30,
@@ -270,16 +301,14 @@ class ServerManagementTest extends AdminTestCase
     {
         $this->package->update(['network_models' => ['routed']]);
 
-        $this->post(route('admin.servers.store'), $this->payload([
-            'package' => null,
+        $this->post(route('admin.servers.store'), $this->customPayload([
             'cpu_cores' => 1, 'memory_mib' => 1024, 'disk_gib' => 20, 'ipv4_count' => 1, 'ipv6_count' => 0,
         ]))->assertSessionHasNoErrors();
     }
 
     public function test_custom_resources_are_validated()
     {
-        $this->post(route('admin.servers.store'), $this->payload([
-            'package' => null,
+        $this->post(route('admin.servers.store'), $this->customPayload([
             'cpu_cores' => 0,
             'memory_mib' => 64,
             'disk_gib' => null,
@@ -287,8 +316,7 @@ class ServerManagementTest extends AdminTestCase
             'ipv6_count' => 0,
         ]))->assertSessionHasErrors(['cpu_cores', 'memory_mib', 'disk_gib']);
 
-        $this->post(route('admin.servers.store'), $this->payload([
-            'package' => null,
+        $this->post(route('admin.servers.store'), $this->customPayload([
             'cpu_cores' => 1, 'memory_mib' => 1024, 'disk_gib' => 20, 'ipv4_count' => 0, 'ipv6_count' => 0,
         ]))->assertSessionHasErrors('ipv4_count');
 

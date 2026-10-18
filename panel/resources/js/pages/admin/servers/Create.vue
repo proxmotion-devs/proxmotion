@@ -9,6 +9,7 @@ import Heading from '@/components/Heading.vue';
 import CapacityNote from '@/components/servers/CapacityNote.vue';
 import Ipv4Fields from '@/components/servers/Ipv4Fields.vue';
 import OrderedAppFields from '@/components/servers/OrderedAppFields.vue';
+import PackageFields from '@/components/servers/PackageFields.vue';
 import PlacementFields from '@/components/servers/PlacementFields.vue';
 import ResourceFields from '@/components/servers/ResourceFields.vue';
 import InputError from '@/components/InputError.vue';
@@ -52,13 +53,16 @@ const props = defineProps<{
 }>();
 
 const form = useForm({
+    // "package": its resources, placed automatically; "custom": entered and placed by hand.
+    resource_mode: (props.packages.length > 0 ? 'package' : 'custom') as
+        | 'package'
+        | 'custom',
     location: props.locations[0]?.value ?? null,
+    package: props.packages[0]?.value ?? '',
     placement: 'group' as 'group' | 'node' | null,
     placement_group: null as string | null,
     node: null as string | null,
     storage: '',
-    // "" = no package: every resource is entered by hand.
-    package: '',
     resources: {
         cpu_cores: 1,
         memory_mib: 1024,
@@ -89,8 +93,23 @@ const step = ref(0);
 const reached = ref(0);
 const last = WIZARD_STEPS.length - 1;
 
+const custom = computed(() => form.resource_mode === 'custom');
+
+const modes = computed(() => [
+    {
+        value: 'package' as const,
+        label: trans('Package (resources and placement from the package)'),
+    },
+    {
+        value: 'custom' as const,
+        label: trans('Custom (enter resources, choose a group or node)'),
+    },
+]);
+
 const chosenPackage = computed(() =>
-    props.packages.find((pkg) => pkg.value === form.package),
+    custom.value
+        ? undefined
+        : props.packages.find((pkg) => pkg.value === form.package),
 );
 
 // Packages limit the network models; without one any model goes (NAT comes later).
@@ -114,13 +133,30 @@ watch(
     { immediate: true },
 );
 
+// The resources the server gets: the package's, or those entered.
+const resources = computed<NewServerResources>(() => {
+    const pkg = chosenPackage.value;
+
+    return pkg
+        ? {
+              cpu_cores: pkg.cpu_cores,
+              memory_mib: pkg.memory_mib,
+              disk_gib: pkg.disk_gib,
+              ipv4_count: pkg.ipv4_count,
+              ipv6_count: pkg.ipv6_count,
+              port_speed_mbps: pkg.port_speed_mbps ?? '',
+              traffic_gb: pkg.traffic_gb ?? '',
+          }
+        : form.resources;
+});
+
 const size = computed(() => ({
-    cpu_cores: Number(form.resources.cpu_cores) || 0,
-    memory_mib: Number(form.resources.memory_mib) || 0,
-    disk_mib: (Number(form.resources.disk_gib) || 0) * 1024,
+    cpu_cores: Number(resources.value.cpu_cores) || 0,
+    memory_mib: Number(resources.value.memory_mib) || 0,
+    disk_mib: (Number(resources.value.disk_gib) || 0) * 1024,
 }));
 
-const ipv4Count = computed(() => Number(form.resources.ipv4_count) || 0);
+const ipv4Count = computed(() => Number(resources.value.ipv4_count) || 0);
 
 // "" = none: the server belongs to no billing system and has no billing ids.
 const billingSystemOptions = computed(() => [
@@ -134,14 +170,16 @@ const missing = computed(
 
 // What a step needs before the next one opens; the server checks the rest.
 const complete = computed<boolean[]>(() => [
-    form.location !== null &&
-        (form.placement === 'group'
-            ? form.placement_group !== null
-            : form.node !== null),
-    size.value.cpu_cores > 0 &&
-        size.value.memory_mib > 0 &&
-        size.value.disk_mib > 0 &&
-        ipv4Count.value + (Number(form.resources.ipv6_count) || 0) > 0,
+    form.location !== null,
+    custom.value
+        ? size.value.cpu_cores > 0 &&
+          size.value.memory_mib > 0 &&
+          size.value.disk_mib > 0 &&
+          ipv4Count.value + (Number(form.resources.ipv6_count) || 0) > 0 &&
+          (form.placement === 'group'
+              ? form.placement_group !== null
+              : form.node !== null)
+        : chosenPackage.value !== undefined,
     form.os_template !== null,
     form.network_model !== null,
     form.hostname.trim() !== '',
@@ -169,23 +207,21 @@ const limit = (value: number | '', unit: string) =>
 
 // What the review step shows, as [label, value] rows.
 const summary = computed(() => {
-    const placementLabel =
-        form.placement === 'group'
-            ? trans('Placement group: :name', {
-                  name: optionLabel(
-                      props.placementGroups,
-                      form.placement_group,
-                  ),
-              })
-            : trans('Single node: :name', {
-                  name: optionLabel(props.nodes, form.node),
-              }) + (form.storage === '' ? '' : ` · ${form.storage}`);
-    const r = form.resources;
+    const placementLabel = !custom.value
+        ? trans('Automatic (from the package)')
+        : form.placement === 'group'
+          ? trans('Placement group: :name', {
+                name: optionLabel(props.placementGroups, form.placement_group),
+            })
+          : trans('Single node: :name', {
+                name: optionLabel(props.nodes, form.node),
+            }) + (form.storage === '' ? '' : ` · ${form.storage}`);
+    const r = resources.value;
 
     return [
         [trans('Location'), optionLabel(props.locations, form.location)],
         [trans('Placement'), placementLabel],
-        [trans('Package'), chosenPackage.value?.label ?? trans('No package')],
+        [trans('Package'), chosenPackage.value?.label ?? trans('Custom')],
         [
             trans('Resources'),
             `${r.cpu_cores} vCPU · ${formatMib(Number(r.memory_mib))} · ${formatMib(Number(r.disk_gib) * 1024)}`,
@@ -221,13 +257,30 @@ const submit = () => {
         return;
     }
 
-    form.transform(({ resources, ...data }) => ({
-        ...data,
-        ...resources,
-        package: data.package === '' ? null : data.package,
-        port_speed_mbps: optionalNumber(resources.port_speed_mbps),
-        traffic_gb: optionalNumber(resources.traffic_gb),
-    })).submit(store(), {
+    // A package brings its resources and placement; a custom server sends its own.
+    form.transform(
+        ({
+            resources: entered,
+            placement,
+            placement_group,
+            node,
+            storage,
+            ...data
+        }) =>
+            data.resource_mode === 'package'
+                ? data
+                : {
+                      ...data,
+                      ...entered,
+                      package: null,
+                      placement,
+                      placement_group,
+                      node,
+                      storage,
+                      port_speed_mbps: optionalNumber(entered.port_speed_mbps),
+                      traffic_gb: optionalNumber(entered.traffic_gb),
+                  },
+    ).submit(store(), {
         // Back to the first step with an error.
         onError: (problems) => {
             step.value = firstStepWithError(problems) ?? step.value;
@@ -242,7 +295,7 @@ const submit = () => {
     <div class="flex max-w-3xl flex-col gap-6 p-4">
         <Heading
             title="Create server"
-            description="Place the server in a placement group or on a single node. Creation continues in the background."
+            description="Create a server from a package, or with custom resources in a placement group or on a node you choose. Creation continues in the background."
         />
 
         <p
@@ -279,6 +332,24 @@ const submit = () => {
         <form class="grid gap-4" @submit.prevent="submit">
             <template v-if="step === 0">
                 <FormField
+                    label="Server type"
+                    for="resource_mode"
+                    :error="errors.resource_mode"
+                    hint="A package server gets the package's resources and is placed like a billing order. A custom server gets the resources you enter, in a placement group or on a node you choose."
+                >
+                    <NativeSelect
+                        id="resource_mode"
+                        v-model="form.resource_mode"
+                        :options="
+                            packages.length > 0
+                                ? modes
+                                : modes.filter(
+                                      (mode) => mode.value === 'custom',
+                                  )
+                        "
+                    />
+                </FormField>
+                <FormField
                     label="Location"
                     for="location"
                     :error="errors.location"
@@ -289,6 +360,24 @@ const submit = () => {
                         :options="locations"
                     />
                 </FormField>
+            </template>
+
+            <template v-else-if="step === 1 && !custom">
+                <PackageFields
+                    v-model:package="form.package"
+                    :packages="packages"
+                    :groups="placementGroups"
+                    :nodes="nodes"
+                    :location="form.location"
+                    :errors="errors"
+                />
+            </template>
+
+            <template v-else-if="step === 1">
+                <ResourceFields
+                    v-model:values="form.resources"
+                    :errors="errors"
+                />
                 <PlacementFields
                     v-model:placement="form.placement"
                     v-model:group="form.placement_group"
@@ -297,16 +386,6 @@ const submit = () => {
                     :nodes="nodes"
                     :groups="placementGroups"
                     :location="form.location"
-                    :package-groups="chosenPackage?.placement_groups ?? []"
-                    :errors="errors"
-                />
-            </template>
-
-            <template v-else-if="step === 1">
-                <ResourceFields
-                    v-model:package="form.package"
-                    v-model:values="form.resources"
-                    :packages="packages"
                     :errors="errors"
                 />
                 <CapacityNote
@@ -461,6 +540,7 @@ const submit = () => {
                     </div>
                 </dl>
                 <CapacityNote
+                    v-if="custom"
                     :nodes="nodes"
                     :groups="placementGroups"
                     :placement="form.placement"

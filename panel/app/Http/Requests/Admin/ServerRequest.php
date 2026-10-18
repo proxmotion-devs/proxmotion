@@ -31,27 +31,31 @@ class ServerRequest extends FormRequest
      */
     public function rules(): array
     {
+        $custom = $this->custom();
+
         return [
             // The billing system that owns the server, and the ids of the service and customer there.
             'billing_system' => ['nullable', 'required_with:external_id,external_client_id', 'string', Rule::exists('billing_systems', 'uuid')],
             'external_id' => ['nullable', 'string', 'max:191', Rule::unique('servers', 'live_external_id')->where('billing_system_id', $this->billingSystem()?->id)],
             'external_client_id' => ['nullable', 'string', 'max:191'],
             'location' => ['required', 'string', Rule::exists('locations', 'uuid')],
-            // Optional: the server keeps the link (e.g. for billing upgrades); its values only
-            // prefill the form, and the resources below are always what the server gets.
-            'package' => ['nullable', 'string', Rule::exists('packages', 'uuid')->where('is_active', true)],
+            // "package": the package's resources, placed automatically like an order from the
+            // billing API (best node of its placement groups, or of the location without
+            // groups); "custom": resources entered below, placed in a group or on one node.
+            'resource_mode' => ['required', Rule::in(['package', 'custom'])],
+            'package' => [Rule::requiredIf(! $custom), 'nullable', 'string', Rule::exists('packages', 'uuid')->where('is_active', true)],
             // Same limits as the package form.
-            'cpu_cores' => ['required', 'integer', 'between:1,512'],
-            'memory_mib' => ['required', 'integer', 'between:128,4194304'],
-            'disk_gib' => ['required', 'integer', 'between:1,65536'],
-            'ipv4_count' => ['required', 'integer', 'between:0,64'],
-            'ipv6_count' => ['required', 'integer', 'between:0,64'],
+            'cpu_cores' => [Rule::requiredIf($custom), 'nullable', 'integer', 'between:1,512'],
+            'memory_mib' => [Rule::requiredIf($custom), 'nullable', 'integer', 'between:128,4194304'],
+            'disk_gib' => [Rule::requiredIf($custom), 'nullable', 'integer', 'between:1,65536'],
+            'ipv4_count' => [Rule::requiredIf($custom), 'nullable', 'integer', 'between:0,64'],
+            'ipv6_count' => [Rule::requiredIf($custom), 'nullable', 'integer', 'between:0,64'],
             // Empty: unlimited.
             'port_speed_mbps' => ['nullable', 'integer', 'between:1,400000'],
             'traffic_gb' => ['nullable', 'integer', 'between:1,10000000'],
-            // "group": the best node of a placement group (docs/adr/0020); "node": the node
-            // (and optionally storage) chosen here. The billing API still places automatically.
-            'placement' => ['required', Rule::in(['group', 'node'])],
+            // Custom servers only: "group", the best node of a placement group (docs/adr/0020);
+            // "node", the node (and optionally storage) chosen here.
+            'placement' => [Rule::requiredIf($custom), Rule::prohibitedIf(! $custom), 'nullable', Rule::in(['group', 'node'])],
             'placement_group' => ['nullable', 'required_if:placement,group', 'string', Rule::exists('placement_groups', 'uuid')],
             'node' => ['nullable', 'required_if:placement,node', 'string', Rule::exists('nodes', 'uuid')],
             // Empty: the storage of the node with the most room.
@@ -89,7 +93,7 @@ class ServerRequest extends FormRequest
                 $validator->errors()->add('network_model', __('This package does not allow the selected network model.'));
             }
 
-            if ($this->integer('ipv4_count') + $this->integer('ipv6_count') === 0) {
+            if ($this->custom() && $this->integer('ipv4_count') + $this->integer('ipv6_count') === 0) {
                 $validator->errors()->add('ipv4_count', __('A server needs at least one IP address.'));
             }
         }];
@@ -114,7 +118,7 @@ class ServerRequest extends FormRequest
             additionalIpv4: array_slice($this->ipv4Addresses(), 1),
             app: $this->filled('app') ? AppRecipe::query()->with('latestVersion')->where('slug', $this->string('app'))->firstOrFail() : null,
             appInputs: $this->filled('app') ? (array) $this->input('app_inputs', []) : [],
-            placementGroup: $this->input('placement') === 'group'
+            placementGroup: $this->custom() && $this->input('placement') === 'group'
                 ? PlacementGroup::query()->where('uuid', $this->string('placement_group'))->firstOrFail()
                 : null,
             node: $this->node(),
@@ -130,12 +134,17 @@ class ServerRequest extends FormRequest
         return array_values(array_map(fn ($address) => trim((string) $address), $this->array('ipv4_addresses')));
     }
 
+    private function custom(): bool
+    {
+        return $this->input('resource_mode') === 'custom';
+    }
+
     /**
      * The node chosen by the administrator, or null for automatic placement.
      */
     private function node(): ?Node
     {
-        if ($this->input('placement') !== 'node') {
+        if (! $this->custom() || $this->input('placement') !== 'node') {
             return null;
         }
 
@@ -148,19 +157,24 @@ class ServerRequest extends FormRequest
     }
 
     /**
-     * The chosen package, or null for a server without one.
+     * The chosen package, or null for a custom server.
      */
     private function package(): ?Package
     {
-        return $this->filled('package') ? Package::query()->where('uuid', $this->string('package'))->firstOrFail() : null;
+        return ! $this->custom() && $this->filled('package') ? Package::query()->where('uuid', $this->string('package'))->firstOrFail() : null;
     }
 
     /**
-     * The resources as entered: with a package, its values changed where the
-     * administrator changed them.
+     * The package's resources, or the ones entered for a custom server.
      */
     private function spec(): ServerSpec
     {
+        $package = $this->package();
+
+        if ($package !== null) {
+            return ServerSpec::fromPackage($package);
+        }
+
         return new ServerSpec(
             cpuCores: $this->integer('cpu_cores'),
             memoryMib: $this->integer('memory_mib'),

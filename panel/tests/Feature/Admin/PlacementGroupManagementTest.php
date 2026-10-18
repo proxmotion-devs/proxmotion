@@ -138,8 +138,8 @@ class PlacementGroupManagementTest extends AdminTestCase
 
         $this->post(route('admin.servers.store'), [
             'location' => $this->location->uuid,
+            'resource_mode' => 'custom',
             'cpu_cores' => 2, 'memory_mib' => 4096, 'disk_gib' => 40, 'ipv4_count' => 1, 'ipv6_count' => 0,
-            'package' => $this->package->uuid,
             'os_template' => $this->osTemplate->uuid,
             'network_model' => 'bridged',
             'hostname' => 'web1.example.com',

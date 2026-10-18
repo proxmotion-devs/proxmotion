@@ -7,18 +7,15 @@ import { formatMib } from '@/lib/format';
 import type { Option, PlacementNode } from '@/types/admin';
 
 /**
- * Where a new server goes: the best node of a placement group (docs/adr/0020)
- * or a single node (and optionally a storage) chosen by the administrator.
- * Groups and nodes the package does not allow are shown but cannot be
- * chosen; the panel checks the rest (capacity, bridge, template) when the
- * server is created.
+ * Where a custom server goes: the best node of a placement group
+ * (docs/adr/0020) or a single node (and optionally a storage) chosen by the
+ * administrator. The panel checks the rest (capacity, bridge, template) when
+ * the server is created. Package servers are placed automatically.
  */
 const props = defineProps<{
     nodes: PlacementNode[];
     groups: (Option & { location: string })[];
     location: string | null;
-    /** The placement groups the package allows; empty for any. */
-    packageGroups: string[];
     errors: Record<string, string>;
 }>();
 
@@ -34,72 +31,48 @@ const placements = computed(() => [
     { value: 'node' as const, label: trans('Single node') },
 ]);
 
-// Keep the first option that is allowed when the current one is not.
-const keepAllowed = (
+// Keep the chosen option while it is offered, else take the first one.
+const keepOffered = (
     model: { value: string | null },
-    options: { value: string; disabled: boolean }[],
+    options: { value: string }[],
 ) => {
-    const current = options.find((option) => option.value === model.value);
-
-    if (current === undefined || current.disabled) {
-        model.value = options.find((option) => !option.disabled)?.value ?? null;
+    if (!options.some((option) => option.value === model.value)) {
+        model.value = options[0]?.value ?? null;
     }
 };
-
-const groupAllowed = (uuid: string) =>
-    props.packageGroups.length === 0 || props.packageGroups.includes(uuid);
 
 const groupOptions = computed(() =>
     props.groups
         .filter((candidate) => candidate.location === props.location)
         .map((candidate) => ({
             value: candidate.value,
-            disabled: !groupAllowed(candidate.value),
-            label: groupAllowed(candidate.value)
-                ? candidate.label
-                : trans(':group — not allowed by this package', {
-                      group: candidate.label,
-                  }),
+            label: candidate.label,
         })),
 );
 
-watch(groupOptions, (options) => keepAllowed(group, options), {
+watch(groupOptions, (options) => keepOffered(group, options), {
     immediate: true,
 });
 
-// Without a usable group in the location, start with a single node.
-if (
-    placement.value === 'group' &&
-    !groupOptions.value.some((option) => !option.disabled)
-) {
+// Without a group in the location, start with a single node.
+if (placement.value === 'group' && groupOptions.value.length === 0) {
     placement.value = 'node';
 }
-
-const nodeAllowed = (candidate: PlacementNode) =>
-    props.packageGroups.length === 0 ||
-    candidate.placement_groups.some((uuid) =>
-        props.packageGroups.includes(uuid),
-    );
 
 const nodeOptions = computed(() =>
     props.nodes
         .filter((candidate) => candidate.location === props.location)
         .map((candidate) => ({
             value: candidate.value,
-            disabled: !nodeAllowed(candidate),
-            label: !nodeAllowed(candidate)
-                ? trans(':node — not allowed by this package', {
-                      node: candidate.label,
-                  })
-                : !candidate.online
-                  ? trans(':node — offline', { node: candidate.label })
-                  : candidate.maintenance
-                    ? trans(':node — maintenance', { node: candidate.label })
-                    : candidate.label,
+            label: !candidate.online
+                ? trans(':node — offline', { node: candidate.label })
+                : candidate.maintenance
+                  ? trans(':node — maintenance', { node: candidate.label })
+                  : candidate.label,
         })),
 );
 
-watch(nodeOptions, (options) => keepAllowed(node, options), {
+watch(nodeOptions, (options) => keepOffered(node, options), {
     immediate: true,
 });
 
@@ -154,7 +127,7 @@ watch(node, () => {
             id="placement_group"
             v-model="group"
             :options="groupOptions"
-            placeholder="No placement group in this location that this package may use"
+            placeholder="No placement group in this location"
         />
     </FormField>
 
@@ -164,7 +137,7 @@ watch(node, () => {
                 id="node"
                 v-model="node"
                 :options="nodeOptions"
-                placeholder="No node in this location that this package may use"
+                placeholder="No node in this location"
             />
         </FormField>
         <FormField
