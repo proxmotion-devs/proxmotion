@@ -19,6 +19,7 @@ return [
     'addon-extra-ipv6-count' => 'Ek IPv6 adresi',
     'addon-extra-port-speed-mbps' => 'Ek port hızı (Mbps)',
     'addon-extra-traffic-gb' => 'Ek aylık trafik (GB)',
+    'addon-paid-app' => 'Ücretli uygulama (uygulama id)',
 
     // Order answers
     'req-os-template' => 'İşletim sistemi',
@@ -31,6 +32,10 @@ return [
     'req-ssh-key-desc' => 'root için eklenir (ed25519, ECDSA veya en az 2048 bit RSA).',
     'req-root-password' => 'Root şifresi',
     'req-root-password-desc' => '12–128 karakter; aksi halde Proxmotion bir şifre oluşturur.',
+    'req-app' => 'Uygulama',
+    'req-app-desc' => 'Seçenek değerleri Proxmotion uygulama id’leri (veya none) olan seçim; sunucu açıldıktan sonra kurulur.',
+    'req-app-inputs' => 'Uygulama ayarları',
+    'req-app-inputs-desc' => 'Metin alanı: her satıra bir anahtar=değer (ör. port=1194); boş ayarlar uygulamanın varsayılanlarını kullanır.',
 
     // Product settings
     'setting_package' => 'Paket',
@@ -82,6 +87,16 @@ return [
     'app_retry' => 'Tekrar dene',
     'app_download' => 'İndir',
     'app_busy' => 'Bir uygulama kuruluyor. Bittiğinde başka bir uygulama kurulabilir.',
+    'app_buy_hint' => 'Bu uygulama ayrıca satılır: bu hizmetin eklentisi olarak satın alın, sonra buradan kurun.',
+    'app_licence_required' => 'Bu uygulama ayrıca satılan bir lisans gerektirir.',
+    'app_reinstall_title' => 'Uygulamayla yeniden kur',
+    'app_reinstall_warning' => 'Sunucudaki tüm veriler silinir. Seçilen uygulama, yeni sistem açıldıktan sonra varsayılan ayarlarıyla kurulur.',
+    'app_reinstall_os' => 'İşletim sistemi',
+    'app_reinstall_app' => 'Uygulama',
+    'app_reinstall_hint' => 'Burada yalnızca ayar gerektirmeyen uygulamalar listelenir; diğerleri sonradan kurulabilir.',
+    'app_reinstall_confirm' => 'Sunucudaki tüm verilerin silineceğini anlıyorum.',
+    'app_reinstall_submit' => 'Yeniden kur',
+    'reinstall_confirm_required' => 'Lütfen tüm verilerin silinebileceğini onaylayın.',
     'app_status_queued' => 'Bekliyor',
     'app_status_installing' => 'Kuruluyor',
     'app_status_installed' => 'Kuruldu',

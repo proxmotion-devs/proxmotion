@@ -68,6 +68,8 @@ Product requirements (questions on the order form) can be mapped to the module:
 | `hostname` | Text: the server's hostname (otherwise the service's, or `vps<service id>`) |
 | `ssh_key` | Text area: an SSH public key installed for root |
 | `root_password` | Password: 12 to 128 characters |
+| `app` | Selection whose option values are app ids from Proxmotion (and `none`): installed once the server has booted (see *Apps at order time*) |
+| `app_inputs` | Text area: the app's settings, one `key=value` per line (e.g. `port=1194`) |
 
 ### Add-ons
 
@@ -77,6 +79,29 @@ product's) value: `extra_cpu_cores`, `extra_memory_gib`, `extra_disk_gib`,
 They need a package or the matching product field; otherwise the order fails with a
 readable error. When an add-on changes, upgrade the service so Proxmotion gets the
 new values.
+
+### Apps at order time
+
+The `app` order answer orders an app with the server (Proxmotion docs/adr/0016 §5). Its
+ids are listed by `GET /api/v1/apps?mode=order` and in the Proxmotion admin panel. The
+app is installed through the guest agent once the server has booted; a failed install
+never fails the order and can be retried in the Apps tool. Proxmotion refuses the order
+readably when the app does not fit the OS, resources or network model. WISECP's order
+answers are fixed by the module, so the app's settings come from one answer,
+`app_inputs`, one `key=value` per line; empty values use the app's defaults and keys of
+other apps are left out. A paid app ordered this way is granted with the order.
+
+### Paid apps
+
+Apps marked paid in Proxmotion (Proxmotion docs/adr/0019) are installed later only when
+the server has the right to them. Sell one as an **add-on** with the module value
+`paid_app` set to the app id (several ids separated by spaces or commas). When the
+service is created, and on every upgrade (the way add-on changes reach the module), the
+module grants the server the paid apps of its add-ons and revokes the rights it granted
+for add-ons that are gone (installed copies stay; rights from the order or from
+Proxmotion administrators are left alone). Paid apps without the right are listed in the
+Apps tool with a note to buy them as an add-on, and apps with a separately sold licence
+(cPanel, Plesk) say so.
 
 ## Client area
 
@@ -107,6 +132,11 @@ script (asked to confirm). The latest runs show with their status, error and out
 new client's profile is downloaded from the run), fetched on demand like the install
 outputs and masked in the module log. One action runs at a time per app; the page shows
 its result once Proxmotion has read it (about a minute).
+
+WISECP's own **Reinstall** tool has no place for an app, so the Apps tool also offers
+**Reinstall with an app**: the OS, one of the apps that fit the server, that it may
+install and that need no setting without a default (installed with its defaults), and a
+confirmation. Proxmotion checks the app again against the chosen OS.
 
 ## Webhooks
 

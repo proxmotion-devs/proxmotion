@@ -217,6 +217,7 @@ final class ProvisioningTest extends ModuleTestCase
     {
         $this->serviceHas($this->server());
         $this->api->on('POST /servers/' . self::SERVER_ID . '/package', 202, $this->task('change_resources'));
+        $this->api->on('GET /servers/' . self::SERVER_ID . '/app-entitlements', 200, ['data' => []]);
 
         $this->assertTrue($this->module()->upgrade(['module_data' => [
             'package' => 'bigger-package',
@@ -227,6 +228,59 @@ final class ProvisioningTest extends ModuleTestCase
         $request = $this->api->last('POST /servers/' . self::SERVER_ID . '/package');
         $this->assertSame(['package' => 'bigger-package', 'resources' => ['disk_mib' => 102400], 'reboot' => true], $request['body']);
         $this->assertMatchesRegularExpression('/^wisecp-42-change-/', $request['headers']['Idempotency-Key']);
+    }
+
+    public function test_an_app_order_answer_orders_the_app_with_its_settings(): void
+    {
+        $this->serviceHas(null);
+        $this->api->on('GET /apps?mode=order&os_template=os-uuid', 200, ['data' => [
+            ['id' => 'openvpn', 'name' => 'OpenVPN', 'inputs' => [['key' => 'port'], ['key' => 'protocol']]],
+        ]]);
+        $this->api->on('POST /servers', 202, $this->task('create'));
+        $this->api->on('GET /servers/' . self::SERVER_ID, 200, ['data' => $this->server()]);
+        $this->api->on('GET /servers/' . self::SERVER_ID . '/password', 410, ['message' => 'Gone']);
+
+        $this->module([], ['app' => 'OpenVPN', 'app_inputs' => "port = 443\nprotocol=\ndomain=other.example.com\nnot a setting"])->create();
+
+        $body = $this->api->last('POST /servers')['body'];
+        $this->assertIsArray($body);
+        $this->assertSame('openvpn', $body['app']);
+        $this->assertSame(['port' => '443'], $body['app_inputs'], 'Empty values and keys of other apps are left out.');
+        $this->assertNotContains('GET /servers/' . self::SERVER_ID . '/app-entitlements', $this->api->sent(), 'No paid add-ons: nothing to grant.');
+    }
+
+    public function test_paid_app_add_ons_are_granted_with_the_order(): void
+    {
+        $this->serviceHas(null);
+        $this->api->on('POST /servers', 202, $this->task('create'));
+        $this->api->on('GET /servers/' . self::SERVER_ID, 200, ['data' => $this->server()]);
+        $this->api->on('GET /servers/' . self::SERVER_ID . '/password', 410, ['message' => 'Gone']);
+        $this->api->on('GET /servers/' . self::SERVER_ID . '/app-entitlements', 200, ['data' => []]);
+        $this->api->on('POST /servers/' . self::SERVER_ID . '/app-entitlements', 201, ['data' => ['active' => true]]);
+
+        $this->module([], [], ['paid_app' => 'cPanel, plesk cpanel'])->create();
+
+        $grants = array_values(array_filter($this->api->requests, static fn (array $request): bool => $request['method'] === 'POST' && str_ends_with($request['path'], '/app-entitlements')));
+        $this->assertSame([['app' => 'cpanel', 'reference' => 'wisecp-addon'], ['app' => 'plesk', 'reference' => 'wisecp-addon']], array_column($grants, 'body'));
+    }
+
+    public function test_an_upgrade_revokes_paid_apps_whose_add_on_is_gone(): void
+    {
+        $this->serviceHas($this->server());
+        $this->api->on('POST /servers/' . self::SERVER_ID . '/package', 202, $this->task('change_resources'));
+        $this->api->on('GET /servers/' . self::SERVER_ID . '/app-entitlements', 200, ['data' => [
+            ['app' => ['id' => 'cpanel'], 'source' => 'api', 'reference' => 'wisecp-addon', 'active' => true],
+            ['app' => ['id' => 'plesk'], 'source' => 'order', 'reference' => null, 'active' => true],
+            ['app' => ['id' => 'aapanel'], 'source' => 'api', 'reference' => 'wisecp-addon', 'active' => false],
+        ]]);
+        $this->api->on('DELETE /servers/' . self::SERVER_ID . '/app-entitlements/cpanel', 200, ['data' => ['active' => false]]);
+        $this->api->on('POST /servers/' . self::SERVER_ID . '/app-entitlements', 201, ['data' => ['active' => true]]);
+
+        $this->module([], [], ['paid_app' => 'plesk directadmin'])->upgrade(['module_data' => ['package' => self::PACKAGE_ID]]);
+
+        $this->assertContains('DELETE /servers/' . self::SERVER_ID . '/app-entitlements/cpanel', $this->api->sent());
+        $this->assertNotContains('DELETE /servers/' . self::SERVER_ID . '/app-entitlements/plesk', $this->api->sent(), 'Rights from the order stay.');
+        $this->assertSame(['app' => 'directadmin', 'reference' => 'wisecp-addon'], $this->api->last('POST /servers/' . self::SERVER_ID . '/app-entitlements')['body']);
     }
 
     public function test_change_password_sets_the_password_and_waits_for_it(): void

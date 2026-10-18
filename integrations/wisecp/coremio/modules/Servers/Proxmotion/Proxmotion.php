@@ -37,6 +37,9 @@ class Proxmotion extends ServerModule
     /** App installation statuses during which the installer still runs. */
     private const APP_BUSY = ['queued', 'installing', 'uninstalling'];
 
+    /** Reference of the paid app rights this module grants for add-ons (ADR 0019). */
+    private const ADDON_REFERENCE = 'wisecp-addon';
+
     private ApiClient $api;
 
     /** @var array<string, mixed>|null|false false: not looked up yet */
@@ -229,13 +232,22 @@ class Proxmotion extends ServerModule
     public function create(): array
     {
         $existing = $this->found();
+        $order = $this->order((array) ($this->options['creation_info'] ?? []));
 
         if ($existing !== null) {
+            $this->syncPaidApps((string) $existing['id'], $order, revoke: false);
+
             return $this->created((string) $existing['id'], null);
         }
 
-        $order = $this->order((array) ($this->options['creation_info'] ?? []));
         $payload = $order->payload($this->packageFor($order));
+        $app = $order->app();
+
+        if ($app !== null) {
+            // Installed once the server has booted (ADR 0016 §5); Proxmotion checks the app and its inputs.
+            $payload['app'] = $app;
+            $payload['app_inputs'] = (object) $order->appInputs($this->declaredInputs($app, $order->osTemplate()));
+        }
 
         if (isset($payload['root_password'])) {
             $this->api->addSecret((string) $payload['root_password']);
@@ -247,6 +259,8 @@ class Proxmotion extends ServerModule
         if ($serverId === '') {
             throw new Exception($this->text('no_server_returned'));
         }
+
+        $this->syncPaidApps($serverId, $order, revoke: false);
 
         // Without a usable password Proxmotion made one: keep it on the service.
         return $this->created($serverId, $payload['root_password'] ?? $this->api->fetchPassword($serverId));
@@ -302,8 +316,67 @@ class Proxmotion extends ServerModule
         $order = $this->order(is_array($new_product['module_data'] ?? null) ? $new_product['module_data'] : []);
 
         $this->api->changeResources((string) $server['id'], $order->changePayload($this->packageFor($order)), $this->idempotencyKey('change'));
+        // Add-ons changed with the upgrade: paid apps bought or cancelled (ADR 0019).
+        $this->syncPaidApps((string) $server['id'], $order);
 
         return true;
+    }
+
+    /**
+     * Paid apps bought as add-ons (add-on value "paid_app", ADR 0019): the
+     * server gets the right to each, and loses the rights this module granted
+     * for add-ons that are gone (installed copies stay). Rights from the
+     * order or from administrators are left alone.
+     *
+     * @param bool $revoke false for a new server, which has no add-on rights to revoke yet
+     */
+    private function syncPaidApps(string $serverId, ServerOrder $order, bool $revoke = true): void
+    {
+        $wanted = $order->paidApps();
+
+        if ($wanted === [] && ! $revoke) {
+            return;
+        }
+        $active = [];
+
+        foreach ($this->api->entitlements($serverId) as $entitlement) {
+            if (empty($entitlement['active'])) {
+                continue;
+            }
+
+            $app = (string) ($entitlement['app']['id'] ?? '');
+            $active[$app] = true;
+
+            if (($entitlement['reference'] ?? null) === self::ADDON_REFERENCE && ! in_array($app, $wanted, true)) {
+                $this->api->revokeEntitlement($serverId, $app);
+            }
+        }
+
+        foreach ($wanted as $app) {
+            if (! isset($active[$app])) {
+                $this->api->grantEntitlement($serverId, $app, self::ADDON_REFERENCE);
+            }
+        }
+    }
+
+    /**
+     * The input keys an app declares for an order with this OS template, or
+     * null when the catalog does not list it (Proxmotion then explains why).
+     *
+     * @return list<string>|null
+     */
+    private function declaredInputs(string $app, string $osTemplate): ?array
+    {
+        foreach ($this->api->orderApps($osTemplate === '' ? null : $osTemplate) as $listed) {
+            if (($listed['id'] ?? null) === $app) {
+                return array_values(array_map(
+                    static fn (array $input): string => (string) ($input['key'] ?? ''),
+                    array_filter(is_array($listed['inputs'] ?? null) ? $listed['inputs'] : [], 'is_array'),
+                ));
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -446,7 +519,7 @@ class Proxmotion extends ServerModule
             'stop-server' => $this->power($id, 'shutdown', 'stop'),
             'restart-server' => $this->power($id, 'reboot', 'restart'),
             'poweroff-server' => $this->power($id, 'stop', 'poweroff'),
-            'reinstall-os' => $this->reinstall($id, trim((string) ($data['os_template'] ?? ''))),
+            'reinstall-os' => $this->reinstall($id, trim((string) ($data['os_template'] ?? '')), null),
             'reverse-dns' => $this->rdns($id, trim((string) ($data['ip'] ?? '')), trim((string) ($data['hostname'] ?? ''))),
             'hostname-change' => $this->rename($id, strtolower(trim((string) ($data['hostname'] ?? '')))),
             // A signed, single-use link to Proxmotion's console, opened in a new tab.
@@ -454,6 +527,10 @@ class Proxmotion extends ServerModule
             'apps' => match ($action) {
                 'install' => $this->installApp($id, trim((string) ($data['app'] ?? '')), (string) ($data['secret_inputs'] ?? '')),
                 'retry' => $this->retryApp($id, trim((string) ($data['installation'] ?? ''))),
+                // Reinstall with an app (ADR 0016 §5): WISECP's own reinstall tool has no place for one.
+                'reinstall' => empty($data['confirm'])
+                    ? throw new Exception($this->text('reinstall_confirm_required'))
+                    : $this->reinstall($id, trim((string) ($data['os_template'] ?? '')), trim((string) ($data['app'] ?? ''))),
                 'download' => $this->appFile($id, trim((string) ($data['installation'] ?? '')), trim((string) ($data['output'] ?? '')), trim((string) ($data['run'] ?? ''))),
                 'uninstall' => $this->uninstallApp($id, trim((string) ($data['installation'] ?? ''))),
                 // The field is app_action: WISECP removes "action" from the data it passes on.
@@ -497,7 +574,7 @@ class Proxmotion extends ServerModule
     /**
      * @return array<string, mixed>
      */
-    private function reinstall(string $id, string $osTemplate): array
+    private function reinstall(string $id, string $osTemplate, ?string $app): array
     {
         $allowed = array_map(static fn (array $template): string => (string) $template['id'], $this->api->osTemplates());
 
@@ -505,7 +582,7 @@ class Proxmotion extends ServerModule
             throw new Exception($this->text('unknown_os_template'));
         }
 
-        $this->api->reinstall($id, $osTemplate, []);
+        $this->api->reinstall($id, $osTemplate, [], $app === null || $app === '' ? null : $app);
 
         return ['status' => 'successful', 'message' => $this->text('reinstall_started'), 'successToast' => true];
     }
@@ -559,7 +636,42 @@ class Proxmotion extends ServerModule
             'apps' => $busy ? [] : array_map(fn (array $app): array => $this->presentApp($app), $this->api->apps($id)),
             // Never a top-level "busy" key: WISECP then shows its "operation in progress" notice instead of the page.
             'installing' => $busy,
+            'reinstall' => $this->reinstallOptions($id),
         ];
+    }
+
+    /**
+     * The Apps tool's reinstall form (ADR 0016 §5): the OS templates, and the
+     * apps that fit the server, that it may install (paid ones need a right)
+     * and that need no input without a default, since the form only picks
+     * the app. Without the order catalog (an older panel) no apps are offered.
+     *
+     * @return array{templates: list<array{id: string, name: string}>, apps: list<array{id: string, name: string}>}
+     */
+    private function reinstallOptions(string $id): array
+    {
+        $templates = array_map(static fn (array $template): array => ['id' => (string) $template['id'], 'name' => (string) ($template['name'] ?? $template['id'])], $this->api->osTemplates());
+
+        try {
+            $listed = $this->api->orderApps(null, $id);
+        } catch (ApiException) {
+            $listed = [];
+        }
+
+        $apps = [];
+
+        foreach ($listed as $app) {
+            $needsInput = array_filter(
+                is_array($app['inputs'] ?? null) ? $app['inputs'] : [],
+                static fn (mixed $input): bool => is_array($input) && ! empty($input['required']) && in_array($input['default'] ?? null, [null, ''], true),
+            ) !== [];
+
+            if (($app['entitled'] ?? true) !== false && ! $needsInput) {
+                $apps[] = ['id' => (string) $app['id'], 'name' => (string) ($app['name'] ?? $app['id'])];
+            }
+        }
+
+        return ['templates' => $templates, 'apps' => $apps];
     }
 
     /**
@@ -702,6 +814,9 @@ class Proxmotion extends ServerModule
             'name' => (string) ($app['name'] ?? ''),
             'description' => $this->recipeText($app['description'] ?? null, ''),
             'inputs' => $this->presentInputs(is_array($app['inputs'] ?? null) ? $app['inputs'] : []),
+            // ADR 0019: a paid app the server has no right to yet is offered to buy (as an add-on) instead.
+            'buy' => ($app['entitled'] ?? null) === false,
+            'licence_required' => ($app['license'] ?? null) === 'external',
         ];
     }
 

@@ -5,7 +5,8 @@ declare(strict_types=1);
 /*
  * The client area's Apps tool (Proxmotion::tool_data('apps')): installed apps
  * with status, progress, outputs and retry, their actions, uninstall and
- * latest runs (ADR 0016), and a form per installable app.
+ * latest runs (ADR 0016), a form per installable app (paid apps without a
+ * right offered to buy, ADR 0019) and a reinstall with an app (ADR 0016 §5).
  * WISECP renders it with the variables of ServerModule::render_tool_page();
  * actions go through request_tool_action() of WISECP's service page.
  *
@@ -30,6 +31,10 @@ $installations = is_array($data['installations'] ?? null) ? $data['installations
 /** @var list<array<string, mixed>> $apps */
 $apps = is_array($data['apps'] ?? null) ? $data['apps'] : [];
 $busy = ! empty($data['installing']);
+/** @var list<array<string, mixed>> $reinstallTemplates */
+$reinstallTemplates = is_array($data['reinstall']['templates'] ?? null) ? $data['reinstall']['templates'] : [];
+/** @var list<array<string, mixed>> $reinstallApps */
+$reinstallApps = is_array($data['reinstall']['apps'] ?? null) ? $data['reinstall']['apps'] : [];
 $runBusy = array_filter($installations, static fn (array $installation): bool => ! empty($installation['run_busy'])) !== [];
 $inputTypes = ['password' => 'password', 'integer' => 'number', 'port' => 'number', 'email' => 'email'];
 
@@ -225,8 +230,18 @@ $inputsHtml = static function (array $inputs, string $prefix) use ($e, $inputTyp
                     /** @var list<array<string, mixed>> $inputs */
                     $inputs = is_array($app['inputs'] ?? null) ? $app['inputs'] : [];
                     ?>
+                    <?php if (! empty($app['buy'])): ?>
+                        <div class="border rounded p-3 mb-3">
+                            <p class="mb-1"><strong><?= $e($app['name'] ?? '') ?></strong> <span class="text-muted small"><?= $e($app['description'] ?? '') ?></span></p>
+                            <p class="text-muted small mb-0"><i class="bi bi-bag me-1"></i><?= $t('app_buy_hint') ?></p>
+                        </div>
+                        <?php continue; ?>
+                    <?php endif; ?>
                     <form class="border rounded p-3 mb-3" onsubmit="return pmxAppInstall(this, event)" data-app="<?= $e($appId) ?>" novalidate>
                         <p class="mb-2"><strong><?= $e($app['name'] ?? '') ?></strong> <span class="text-muted small"><?= $e($app['description'] ?? '') ?></span></p>
+                        <?php if (! empty($app['licence_required'])): ?>
+                            <p class="text-warning small mb-2"><?= $t('app_licence_required') ?></p>
+                        <?php endif; ?>
                         <?php foreach ($inputs as $input): ?>
                             <?php
                             $key = (string) ($input['key'] ?? '');
@@ -263,6 +278,39 @@ $inputsHtml = static function (array $inputs, string $prefix) use ($e, $inputTyp
         </div>
     <?php elseif ($installations === []): ?>
         <div class="alert alert-secondary small"><?= $t('apps_none') ?></div>
+    <?php endif; ?>
+
+    <?php if ($reinstallApps !== [] && $reinstallTemplates !== []): ?>
+        <div class="card border-0 shadow-sm mt-2">
+            <div class="card-header fw-semibold"><?= $t('app_reinstall_title') ?></div>
+            <div class="card-body">
+                <p class="text-danger small"><?= $t('app_reinstall_warning') ?></p>
+                <form onsubmit="return pmxAppReinstall(this, event)">
+                    <div class="mb-2">
+                        <label class="form-label small fw-semibold" for="pmx-reinstall-os"><?= $t('app_reinstall_os') ?></label>
+                        <select class="form-select form-select-sm" id="pmx-reinstall-os" name="os_template">
+                            <?php foreach ($reinstallTemplates as $template): ?>
+                                <option value="<?= $e($template['id'] ?? '') ?>"><?= $e($template['name'] ?? '') ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label small fw-semibold" for="pmx-reinstall-app"><?= $t('app_reinstall_app') ?></label>
+                        <select class="form-select form-select-sm" id="pmx-reinstall-app" name="app">
+                            <?php foreach ($reinstallApps as $app): ?>
+                                <option value="<?= $e($app['id'] ?? '') ?>"><?= $e($app['name'] ?? '') ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                        <div class="form-text"><?= $t('app_reinstall_hint') ?></div>
+                    </div>
+                    <div class="form-check mb-2">
+                        <input class="form-check-input" type="checkbox" id="pmx-reinstall-confirm" name="confirm" value="1" required>
+                        <label class="form-check-label small" for="pmx-reinstall-confirm"><?= $t('app_reinstall_confirm') ?></label>
+                    </div>
+                    <button type="submit" class="btn btn-danger btn-sm"><i class="bi bi-arrow-repeat me-1"></i><?= $t('app_reinstall_submit') ?></button>
+                </form>
+            </div>
+        </div>
     <?php endif; ?>
 <?php endif; ?>
 </div>
@@ -323,6 +371,27 @@ $inputsHtml = static function (array $inputs, string $prefix) use ($e, $inputTyp
         request_tool_action(TOOL, 'install', {
             app: form.getAttribute('data-app'),
             secret_inputs: pmxInputs(form),
+        }, {
+            button: form.querySelector('button[type="submit"]'),
+            successToast: true,
+            afterDone: function () { reload_module_content(TOOL); },
+        });
+
+        return false;
+    };
+
+    // Wipes the server: the checkbox confirms it, Proxmotion installs the app once the new system runs.
+    window.pmxAppReinstall = function (form, event) {
+        event.preventDefault();
+
+        if (!form.reportValidity()) {
+            return false;
+        }
+
+        request_tool_action(TOOL, 'reinstall', {
+            os_template: form.elements.os_template.value,
+            app: form.elements.app.value,
+            confirm: form.elements.confirm.checked ? '1' : '',
         }, {
             button: form.querySelector('button[type="submit"]'),
             successToast: true,

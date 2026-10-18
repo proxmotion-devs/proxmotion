@@ -165,14 +165,15 @@ final class ApiClient
 
     /**
      * @param list<string> $sshKeys
+     * @param string|null $app an app installed on the new system with its defaults (ADR 0016 §5 in the Proxmotion repository)
      * @return array<string, mixed> the queued task
      */
-    public function reinstall(string $id, string $osTemplate, array $sshKeys): array
+    public function reinstall(string $id, string $osTemplate, array $sshKeys, ?string $app = null): array
     {
         return $this->dataOf($this->request('POST', '/servers/' . rawurlencode($id) . '/reinstall', [
             'os_template' => $osTemplate,
             'ssh_keys' => $sshKeys,
-        ]));
+        ] + ($app === null ? [] : ['app' => $app])));
     }
 
     /**
@@ -238,6 +239,57 @@ final class ApiClient
     public function apps(string $serverId): array
     {
         return $this->listOf($this->request('GET', '/apps?' . http_build_query(['server' => $serverId])));
+    }
+
+    /**
+     * Apps that can come with a new system (ADR 0016 §5): for an order with
+     * this OS template, or for a reinstall of this server.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function orderApps(?string $osTemplate, ?string $serverId = null): array
+    {
+        $query = array_filter(['mode' => 'order', 'os_template' => $osTemplate, 'server' => $serverId], static fn (?string $value): bool => $value !== null);
+
+        return $this->listOf($this->request('GET', '/apps?' . http_build_query($query)));
+    }
+
+    /**
+     * The server's rights to paid apps (ADR 0019), active and revoked, newest first.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function entitlements(string $id): array
+    {
+        return $this->listOf($this->request('GET', '/servers/' . rawurlencode($id) . '/app-entitlements'));
+    }
+
+    /**
+     * Grant the right to install a paid app; granting again changes nothing.
+     *
+     * @return array<string, mixed> the entitlement
+     */
+    public function grantEntitlement(string $id, string $app, ?string $reference): array
+    {
+        return $this->dataOf($this->request('POST', '/servers/' . rawurlencode($id) . '/app-entitlements', ['app' => $app, 'reference' => $reference]));
+    }
+
+    /**
+     * Revoke the right to install a paid app; false when the server had none.
+     */
+    public function revokeEntitlement(string $id, string $app): bool
+    {
+        try {
+            $this->request('DELETE', '/servers/' . rawurlencode($id) . '/app-entitlements/' . rawurlencode($app));
+        } catch (ApiException $e) {
+            if ($e->status() === 404) {
+                return false;
+            }
+
+            throw $e;
+        }
+
+        return true;
     }
 
     /**
@@ -425,7 +477,7 @@ final class ApiClient
     private static function maskSecrets(array $data): array
     {
         foreach ($data as $key => $value) {
-            if (in_array($key, ['root_password', 'inputs', 'value', 'content_base64'], true) && $value !== null) {
+            if (in_array($key, ['root_password', 'inputs', 'app_inputs', 'value', 'content_base64'], true) && $value !== null) {
                 $data[$key] = '***';
             } elseif (is_array($value)) {
                 $data[$key] = self::maskSecrets($value);

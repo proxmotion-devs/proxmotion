@@ -54,6 +54,71 @@ final class AppsTest extends ModuleTestCase
         ], $overrides);
     }
 
+    /**
+     * What the reinstall form of the page asks for (ADR 0016 §5).
+     *
+     * @param list<array<string, mixed>> $apps the order catalog for the server
+     */
+    private function reinstallRoutes(array $apps = []): void
+    {
+        $this->api->on('GET /os-templates', 200, ['data' => [['id' => 'os-uuid', 'name' => 'Ubuntu 24.04', 'family' => 'ubuntu']]]);
+        $this->api->on('GET /apps?mode=order&server=' . self::SERVER_ID, 200, ['data' => $apps]);
+    }
+
+    public function test_the_reinstall_form_offers_apps_the_server_may_install_with_their_defaults(): void
+    {
+        $this->serviceHas($this->server());
+        $this->api->on('GET ' . self::SERVER . '/apps', 200, ['data' => []]);
+        $this->api->on('GET /apps?server=' . self::SERVER_ID, 200, ['data' => [self::wireguard() + ['billing' => 'free', 'entitled' => true]]]);
+        $this->reinstallRoutes([
+            self::wireguard() + ['billing' => 'free', 'entitled' => true],
+            ['id' => 'cpanel', 'name' => 'cPanel', 'inputs' => [], 'billing' => 'paid', 'entitled' => false],
+            ['id' => 'wordpress', 'name' => 'WordPress', 'inputs' => [['key' => 'domain', 'required' => true, 'default' => null]], 'billing' => 'free', 'entitled' => true],
+        ]);
+
+        $data = $this->module()->tool_data('apps', 'index');
+
+        $this->assertSame(['templates' => [['id' => 'os-uuid', 'name' => 'Ubuntu 24.04']], 'apps' => [['id' => 'wireguard', 'name' => 'WireGuard']]], $data['reinstall']);
+        $this->assertFalse($data['apps'][0]['buy']);
+    }
+
+    public function test_a_reinstall_with_an_app_needs_the_confirmation(): void
+    {
+        $this->serviceHas($this->server());
+        $this->api->on('GET /os-templates', 200, ['data' => [['id' => 'os-uuid', 'name' => 'Ubuntu 24.04']]]);
+        $this->api->on('POST ' . self::SERVER . '/reinstall', 202, $this->task('reinstall'));
+
+        try {
+            $this->module()->tool_action('apps', 'reinstall', ['os_template' => 'os-uuid', 'app' => 'docker']);
+            $this->fail('A reinstall without confirmation was started.');
+        } catch (\Exception $e) {
+            $this->assertSame('Please confirm that all data may be deleted.', $e->getMessage());
+        }
+
+        $this->assertSame('successful', $this->module()->tool_action('apps', 'reinstall', ['os_template' => 'os-uuid', 'app' => 'docker', 'confirm' => '1'])['status']);
+        $this->assertSame(['os_template' => 'os-uuid', 'ssh_keys' => [], 'app' => 'docker'], $this->api->last('POST ' . self::SERVER . '/reinstall')['body']);
+    }
+
+    public function test_the_page_offers_paid_apps_to_buy_and_the_reinstall_form(): void
+    {
+        $html = $this->page([
+            'installations' => [],
+            'apps' => [
+                ['id' => 'cpanel', 'name' => 'cPanel', 'description' => '', 'inputs' => [], 'buy' => true, 'licence_required' => true],
+                ['id' => 'plesk', 'name' => 'Plesk', 'description' => '', 'inputs' => [], 'buy' => false, 'licence_required' => true],
+            ],
+            'installing' => false,
+            'reinstall' => ['templates' => [['id' => 'os-uuid', 'name' => 'Ubuntu 24.04']], 'apps' => [['id' => 'docker', 'name' => 'Docker']]],
+        ]);
+
+        $this->assertStringNotContainsString('data-app="cpanel"', $html, 'No install form without the right.');
+        $this->assertStringContainsString('buy it as an add-on of this service', $html);
+        $this->assertStringContainsString('data-app="plesk"', $html);
+        $this->assertStringContainsString('This app needs a licence', $html);
+        $this->assertStringContainsString('onsubmit="return pmxAppReinstall(this, event)"', $html);
+        $this->assertStringContainsString('<option value="docker">Docker</option>', $html);
+    }
+
     private function turkish(TestProxmotion $module): TestProxmotion
     {
         $module->lang = include PROXMOTION_WISECP_MODULE . '/lang/tr.php';
@@ -90,6 +155,7 @@ final class AppsTest extends ModuleTestCase
         $this->api->on('GET ' . self::SERVER . '/apps/installation-uuid/runs', 200, ['data' => []]);
         $this->api->on('GET /apps?server=' . self::SERVER_ID, 200, ['data' => [self::wireguard()]]);
 
+        $this->reinstallRoutes();
         $data = $this->turkish($this->module())->tool_data('apps', 'index');
 
         $this->assertFalse($data['installing']);
@@ -110,6 +176,7 @@ final class AppsTest extends ModuleTestCase
         $this->api->on('GET ' . self::SERVER . '/apps', 200, ['data' => [self::installation(['status' => 'installing', 'progress' => 40, 'step' => 'Installing packages', 'outputs' => []])]]);
         $this->api->on('GET ' . self::SERVER . '/apps/installation-uuid/runs', 200, ['data' => []]);
 
+        $this->reinstallRoutes();
         $data = $this->module()->tool_data('apps', 'index');
 
         $this->assertTrue($data['installing']);
@@ -230,6 +297,7 @@ final class AppsTest extends ModuleTestCase
         $this->api->on('GET ' . self::SERVER . '/apps/installation-uuid/runs', 200, ['data' => [self::appRun(), self::appRun(['id' => 'other-uuid', 'kind' => 'uninstall', 'action' => null, 'status' => 'running', 'outputs' => []])]]);
         $this->api->on('GET /apps?server=' . self::SERVER_ID, 200, ['data' => []]);
 
+        $this->reinstallRoutes();
         $installation = $this->turkish($this->module())->tool_data('apps', 'index')['installations'][0];
 
         $this->assertTrue($installation['can_uninstall']);

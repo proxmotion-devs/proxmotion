@@ -19,6 +19,7 @@ return [
     'addon-extra-ipv6-count' => 'Extra IPv6 addresses',
     'addon-extra-port-speed-mbps' => 'Extra port speed (Mbps)',
     'addon-extra-traffic-gb' => 'Extra monthly traffic (GB)',
+    'addon-paid-app' => 'Paid app (app id)',
 
     // Order answers
     'req-os-template' => 'Operating system',
@@ -31,6 +32,10 @@ return [
     'req-ssh-key-desc' => 'Added for root (ed25519, ECDSA or RSA of at least 2048 bits).',
     'req-root-password' => 'Root password',
     'req-root-password-desc' => '12 to 128 characters; otherwise Proxmotion generates one.',
+    'req-app' => 'App',
+    'req-app-desc' => 'Selection whose option values are app ids from Proxmotion (or none); installed once the server has booted.',
+    'req-app-inputs' => 'App settings',
+    'req-app-inputs-desc' => 'Text area: one key=value per line (e.g. port=1194); empty settings use the app defaults.',
 
     // Product settings
     'setting_package' => 'Package',
@@ -82,6 +87,16 @@ return [
     'app_retry' => 'Try again',
     'app_download' => 'Download',
     'app_busy' => 'An app is being installed. Another one can be installed when it has finished.',
+    'app_buy_hint' => 'This app is sold separately: buy it as an add-on of this service, then install it here.',
+    'app_licence_required' => 'This app needs a licence, which is sold separately.',
+    'app_reinstall_title' => 'Reinstall with an app',
+    'app_reinstall_warning' => 'All data on the server is deleted. The chosen app is installed on the new system with its default settings once it has started.',
+    'app_reinstall_os' => 'Operating system',
+    'app_reinstall_app' => 'App',
+    'app_reinstall_hint' => 'Only apps that need no settings are listed here; others can be installed afterwards.',
+    'app_reinstall_confirm' => 'I understand that all data on the server will be deleted.',
+    'app_reinstall_submit' => 'Reinstall',
+    'reinstall_confirm_required' => 'Please confirm that all data may be deleted.',
     'app_status_queued' => 'Waiting',
     'app_status_installing' => 'Installing',
     'app_status_installed' => 'Installed',

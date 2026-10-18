@@ -8,7 +8,7 @@ namespace Proxmotion\Wisecp;
  * Turns a WISECP service into a POST /servers payload: the product's module
  * settings (package, location, OS template, network model, resources),
  * overridden by the customer's order answers (requirements) and increased by
- * add-ons (extra_* values). See README.md.
+ * add-ons (extra_* values), and the app chosen with the order. See README.md.
  */
 final class ServerOrder
 {
@@ -109,6 +109,67 @@ final class ServerOrder
         $payload['reboot'] = in_array($this->setting('reboot_after_upgrade'), ['1', 'on', 'yes', 'true'], true);
 
         return $payload;
+    }
+
+    /**
+     * The app chosen with the order (order answer "app", ADR 0016 §5 in the
+     * Proxmotion repository), or null: empty, "none" and "0" mean no app.
+     */
+    public function app(): ?string
+    {
+        $app = strtolower(trim((string) ($this->requirements['app'] ?? '')));
+
+        return in_array($app, ['', 'none', '0'], true) ? null : $app;
+    }
+
+    /**
+     * The app's inputs from the order answer "app_inputs", one "key=value" per
+     * line. Empty values are left out so the app's defaults apply; with the
+     * app's declared inputs, other keys are left out too.
+     *
+     * @param list<string>|null $declared the input keys of the chosen app, if known
+     * @return array<string, string>
+     */
+    public function appInputs(?array $declared): array
+    {
+        $inputs = [];
+
+        foreach (preg_split('/\R/', (string) ($this->requirements['app_inputs'] ?? '')) ?: [] as $line) {
+            $parts = explode('=', $line, 2);
+
+            if (count($parts) !== 2) {
+                continue;
+            }
+
+            [$key, $value] = [trim($parts[0]), trim($parts[1])];
+
+            if ($key !== '' && $value !== '' && ($declared === null || in_array($key, $declared, true))) {
+                $inputs[$key] = $value;
+            }
+        }
+
+        return $inputs;
+    }
+
+    /**
+     * Paid apps bought as add-ons (add-on value "paid_app", ADR 0019): app ids,
+     * several separated by commas or spaces.
+     *
+     * @return list<string>
+     */
+    public function paidApps(): array
+    {
+        $apps = preg_split('/[\s,]+/', strtolower((string) ($this->addons['paid_app'] ?? ''))) ?: [];
+
+        return array_values(array_unique(array_filter($apps, static fn (string $app): bool => preg_match('/^[a-z0-9][a-z0-9-]*$/', $app) === 1)));
+    }
+
+    /**
+     * The OS template of the order: the customer's answer or the product's.
+     */
+    public function osTemplate(): string
+    {
+        return $this->choice('os_template');
     }
 
     /**

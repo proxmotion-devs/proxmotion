@@ -55,6 +55,8 @@ return [
         'extra_ipv6_count' => ['label' => '{lang.addon-extra-ipv6-count}', 'type' => 'value'],
         'extra_port_speed_mbps' => ['label' => '{lang.addon-extra-port-speed-mbps}', 'type' => 'value'],
         'extra_traffic_gb' => ['label' => '{lang.addon-extra-traffic-gb}', 'type' => 'value'],
+        // A paid app bought as this add-on (README.md: Paid apps).
+        'paid_app' => ['label' => '{lang.addon-paid-app}', 'type' => 'value'],
     ],
     // Order answers that replace the product's settings (README.md: Order answers).
     'requirement-params' => [
@@ -63,5 +65,8 @@ return [
         'hostname' => ['label' => '{lang.req-hostname}', 'description' => '{lang.req-hostname-desc}'],
         'ssh_key' => ['label' => '{lang.req-ssh-key}', 'description' => '{lang.req-ssh-key-desc}'],
         'root_password' => ['label' => '{lang.req-root-password}', 'description' => '{lang.req-root-password-desc}'],
+        // An app installed once the server has booted, with its settings (README.md: Apps at order time).
+        'app' => ['label' => '{lang.req-app}', 'description' => '{lang.req-app-desc}'],
+        'app_inputs' => ['label' => '{lang.req-app-inputs}', 'description' => '{lang.req-app-inputs-desc}'],
     ],
 ];
