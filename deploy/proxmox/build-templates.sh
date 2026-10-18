@@ -45,10 +45,10 @@ require_node() {
     echo "Run as root on a Proxmox VE node." >&2
     exit 1
   fi
-  command -v qm >/dev/null && command -v pvesh >/dev/null || {
+  if ! command -v qm >/dev/null || ! command -v pvesh >/dev/null; then
     echo "qm/pvesh not found: this is not a Proxmox VE node." >&2
     exit 1
-  }
+  fi
 }
 
 # True when the template key is selected by ONLY (or ONLY is empty).

@@ -59,6 +59,10 @@ jobs:
       - name: Checks
         run: composer ci:check
 
+      # App Marketplace recipes against their JSON Schema (ADR 0015, 0016).
+      - name: Validate recipes
+        run: php artisan apps:validate
+
   console-proxy:
     name: Console proxy
     runs-on: ubuntu-latest

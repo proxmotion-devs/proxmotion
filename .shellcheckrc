@@ -1,0 +1,4 @@
+# Follow the files scripts source (e.g. a recipe's lib.sh), resolving the
+# `# shellcheck source=` hints relative to the script's own directory.
+external-sources=true
+source-path=SCRIPTDIR

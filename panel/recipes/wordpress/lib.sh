@@ -1,5 +1,7 @@
 #!/bin/bash
 # Shared by the WordPress scripts.
+# The paths are used by the scripts that source this file.
+# shellcheck disable=SC2034
 
 WP_ROOT=/var/www/wordpress
 WP_CLI=/usr/local/bin/wp
