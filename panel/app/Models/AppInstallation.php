@@ -27,6 +27,7 @@ use Illuminate\Support\Carbon;
  * @property int $app_recipe_version_id the version installed (docs/adr/0016 §2)
  * @property AppInstallationStatus $status
  * @property AppInstallMode $mode later on a running server, or with the ordered or reinstalled system
+ * @property bool $is_trial a trial of a draft on a test server (docs/adr/0018 §7), never shown to billing systems
  * @property array<string, string|int|bool> $inputs validated values
  * @property array<string, array{type: string, value: string, filename?: string|null}>|null $outputs by key; file contents base64-encoded
  * @property int $progress 0-100
@@ -60,6 +61,7 @@ class AppInstallation extends Model
         return [
             'status' => AppInstallationStatus::class,
             'mode' => AppInstallMode::class,
+            'is_trial' => 'boolean',
             'inputs' => 'encrypted:array',
             'outputs' => 'encrypted:array',
             'started_at' => 'datetime',

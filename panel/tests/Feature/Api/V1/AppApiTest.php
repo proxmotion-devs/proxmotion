@@ -3,6 +3,7 @@
 namespace Tests\Feature\Api\V1;
 
 use App\Domain\Apps\AppEntitlements;
+use App\Domain\Apps\AppInstallations;
 use App\Domain\Apps\InstallationPoller;
 use App\Domain\Apps\RecipeSynchronizer;
 use App\Domain\Apps\RunPoller;
@@ -185,6 +186,24 @@ class AppApiTest extends ApiTestCase
         ]);
 
         $this->api('GET', "/api/v1/servers/{$this->server->uuid}/apps")->assertOk()->assertJsonCount(1, 'data')->assertJsonPath('data.0.outputs.1.value', '203.0.113.2:51820');
+    }
+
+    public function test_trials_of_drafts_are_never_shown_or_sent_to_billing_systems()
+    {
+        // Test servers have no billing system; the API and webhooks leave trials out anyway (docs/adr/0018 §7).
+        WebhookEndpoint::factory()->for($this->billingSystem)->create();
+        $recipe = AppRecipe::factory()->create();
+        $trial = AppInstallation::factory()->for($this->server)->for($recipe, 'recipe')->create(['is_trial' => true, 'status' => AppInstallationStatus::Installing]);
+        $uri = "/api/v1/servers/{$this->server->uuid}/apps";
+
+        $this->api('GET', $uri)->assertOk()->assertJsonCount(0, 'data');
+        $this->api('GET', "{$uri}/{$trial->uuid}")->assertNotFound();
+        $this->api('POST', "{$uri}/{$trial->uuid}/retry")->assertNotFound();
+        $this->api('DELETE', "{$uri}/{$trial->uuid}")->assertNotFound();
+
+        app(AppInstallations::class)->installed($trial->load('server'), []);
+
+        $this->assertSame(0, WebhookDelivery::query()->count());
     }
 
     public function test_password_inputs_are_never_shown()

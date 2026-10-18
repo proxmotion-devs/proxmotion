@@ -328,6 +328,12 @@ const openRunLog = (app: AppInstallation, run: AppRun) => {
                                     class="ml-1 text-xs text-muted-foreground"
                                     >{{ app.version }}</span
                                 >
+                                <StatusBadge
+                                    v-if="app.is_trial"
+                                    class="ml-1"
+                                    tone="warning"
+                                    label="Trial"
+                                />
                                 <ul
                                     v-if="app.runs.length"
                                     class="mt-2 flex flex-col gap-1 text-xs text-muted-foreground"

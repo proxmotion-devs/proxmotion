@@ -102,19 +102,50 @@ final readonly class RecipeEditor
      *
      * @throws ValidationException for file paths or sizes the recipe format refuses
      */
-    public function saveDraft(AppRecipe $app, array $definition, array $files, User $admin, ?string $ipAddress): AppRecipeVersion
+    public function saveDraft(AppRecipe $app, array $definition, array $files, User $admin, ?string $ipAddress, string $action = 'app.draft_saved'): AppRecipeVersion
     {
         $files = $this->cleanFiles($files);
 
         $draft = DB::transaction(fn () => $this->storeDraft($app, $app->draft()?->version, $definition, $files));
 
-        AuditLog::record('app.draft_saved', $admin, $app, [
+        AuditLog::record($action, $admin, $app, [
             'app' => $app->slug,
             'version' => $draft->version,
             'diff' => $this->diff($app->latestVersion, $draft->definition, $draft->files),
         ], $ipAddress);
 
         return $draft;
+    }
+
+    /**
+     * A new custom app from an imported recipe (RecipeArchive): a draft
+     * 1.0.0 with its definition and files, under the recipe's slug and name
+     * unless others are given.
+     *
+     * @param  array<string, mixed>  $definition  recipe.yaml as a mapping
+     * @param  array<array-key, mixed>  $files
+     *
+     * @throws ValidationException for an unusable slug or name, or files the format refuses
+     */
+    public function import(array $definition, array $files, ?string $slug, ?string $name, User $admin, ?string $ipAddress): AppRecipe
+    {
+        $slug = $slug ?: (is_string($definition['slug'] ?? null) ? $definition['slug'] : '');
+        $name = $name ?: (is_string($definition['name'] ?? null) ? $definition['name'] : '');
+        $this->ensureFree($slug, $name);
+        $files = $this->cleanFiles($files);
+
+        $app = DB::transaction(function () use ($slug, $name, $definition, $files) {
+            $app = (new AppRecipe)->forceFill(['slug' => $slug, 'source' => AppRecipe::SOURCE_CUSTOM, 'name' => $name, 'category' => is_string($definition['category'] ?? null) ? $definition['category'] : 'web', 'is_active' => true]);
+            $app->save();
+            $this->storeDraft($app, '1.0.0', array_replace($definition, ['name' => $name]), $files);
+
+            return $app;
+        });
+
+        $draft = $app->draft();
+        AuditLog::record('app.imported', $admin, $app, ['app' => $slug, 'version' => $draft?->version, 'diff' => $draft === null ? '' : $this->diff(null, $draft->definition, $draft->files)], $ipAddress);
+
+        return $app;
     }
 
     /**
@@ -231,6 +262,7 @@ final readonly class RecipeEditor
 
     /**
      * Delete a custom app that was never installed, with all its versions.
+     * Trial installations that are gone (docs/adr/0018 §7) go with it.
      *
      * @throws RecipeEditRefused for a bundled app or one with installations
      */
@@ -238,11 +270,12 @@ final readonly class RecipeEditor
     {
         $this->ensureCustom($app);
 
-        if ($app->installations()->exists()) {
+        if ($app->inUse()) {
             throw new RecipeEditRefused('This app has installations; deactivate it instead.');
         }
 
         DB::transaction(function () use ($app) {
+            $app->installations()->delete();
             $app->forceFill(['latest_version_id' => null])->save();
             $app->versions()->delete();
             $app->delete();

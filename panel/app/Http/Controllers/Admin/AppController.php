@@ -7,6 +7,7 @@ namespace App\Http\Controllers\Admin;
 use App\Domain\Apps\AppInstallConflict;
 use App\Domain\Apps\AppInstaller;
 use App\Domain\Apps\AppRunner;
+use App\Domain\Apps\AppTrials;
 use App\Enums\AppInstallationStatus;
 use App\Enums\AppRecipeVersionStatus;
 use App\Enums\AppRunKind;
@@ -40,7 +41,7 @@ class AppController extends Controller
         return Inertia::render('admin/apps/Index', [
             'apps' => AppRecipe::query()
                 ->with(['latestVersion', 'versions' => fn ($query) => $query->where('status', AppRecipeVersionStatus::Draft)])
-                ->withCount(['installations as installed_count' => fn ($query) => $query->where('status', AppInstallationStatus::Installed)])
+                ->withCount(['installations as installed_count' => fn ($query) => $query->where('status', AppInstallationStatus::Installed)->where('is_trial', false)])
                 ->orderBy('name')
                 ->get()
                 ->map(function (AppRecipe $app) {
@@ -81,6 +82,42 @@ class AppController extends Controller
         AuditLog::record($appRecipe->is_active ? 'app.activated' : 'app.deactivated', $admin, $appRecipe, ['app' => $appRecipe->slug], $request->ip());
 
         $this->toast('success', $appRecipe->is_active ? 'App activated.' : 'App deactivated.');
+
+        return back();
+    }
+
+    /**
+     * Mark a server as a test server for trial runs of drafts (docs/adr/0018 §7), or not any more.
+     */
+    public function testServer(Request $request, Server $server, #[CurrentUser] User $admin, AppTrials $trials): RedirectResponse
+    {
+        $data = $request->validate(['is_test' => ['required', 'boolean']]);
+
+        try {
+            $trials->markTestServer($server, (bool) $data['is_test'], $admin, $request->ip());
+        } catch (ProvisioningException $e) {
+            throw ValidationException::withMessages(['is_test' => $e->translatedMessage()]);
+        }
+
+        $this->toast('success', $server->is_test ? 'Marked as a test server.' : 'No longer a test server.');
+
+        return back();
+    }
+
+    /**
+     * Reinstall a test server from its current template after trials, removing every app on it.
+     */
+    public function resetTestServer(Request $request, Server $server, #[CurrentUser] User $admin, AppTrials $trials): RedirectResponse
+    {
+        try {
+            $trials->resetTestServer($server, $admin, $request->ip());
+        } catch (ProvisioningException $e) {
+            $this->toast('error', $e->translatedMessage());
+
+            return back();
+        }
+
+        $this->toast('info', 'Reinstalling the server…');
 
         return back();
     }

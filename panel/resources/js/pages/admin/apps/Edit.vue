@@ -1,9 +1,12 @@
 <script setup lang="ts">
-import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3';
+import { Head, Link, router, useForm, usePage, usePoll } from '@inertiajs/vue3';
 import {
     ArrowLeft,
     Copy,
+    Download,
     FilePlus,
+    FileUp,
+    Play,
     Plus,
     RotateCcw,
     Save,
@@ -12,7 +15,7 @@ import {
 } from '@lucide/vue';
 import { dump, load } from 'js-yaml';
 import { trans } from 'laravel-vue-i18n';
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import ConfirmDelete from '@/components/admin/ConfirmDelete.vue';
 import FormDialog from '@/components/admin/FormDialog.vue';
 import FormField from '@/components/admin/FormField.vue';
@@ -22,6 +25,7 @@ import StatusBadge from '@/components/admin/StatusBadge.vue';
 import CodeEditor from '@/components/apps/CodeEditor.vue';
 import RecipeFieldsEditor from '@/components/apps/RecipeFieldsEditor.vue';
 import Heading from '@/components/Heading.vue';
+import AppInputFields from '@/components/servers/AppInputFields.vue';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
@@ -44,11 +48,34 @@ import {
     copy as copyRoute,
     destroy,
     diff as diffRoute,
+    exportMethod as exportRoute,
     index,
     publish as publishRoute,
     revert as revertRoute,
+    trial as trialRoute,
 } from '@/routes/admin/apps';
-import { discard, save } from '@/routes/admin/apps/draft';
+import {
+    discard,
+    importMethod as importDraftRoute,
+    save,
+} from '@/routes/admin/apps/draft';
+import { show as showServer } from '@/routes/admin/servers';
+import type { AppInput, AppInstallationStatus } from '@/types/admin';
+
+/** A trial installation of the app on a test server (docs/adr/0018 §7). */
+type Trial = {
+    uuid: string;
+    server: { uuid: string; hostname: string };
+    version: string;
+    status: AppInstallationStatus;
+    progress: number;
+    step: string | null;
+    error: string | null;
+    /** The draft has not changed since this trial. */
+    current: boolean;
+    created_at: string | null;
+    finished_at: string | null;
+};
 
 type Snapshot = {
     version: string;
@@ -93,6 +120,11 @@ const props = defineProps<{
     osGroups: Record<string, { families: string[]; os_release: string[] }>;
     families: string[];
     library: Record<string, string>;
+    trials: Trial[];
+    /** Active test servers, with the reason when the draft does not fit one. */
+    testServers: { uuid: string; hostname: string; problem: string | null }[];
+    /** Inputs of the saved draft; empty while it has errors. */
+    trialInputs: AppInput[];
 }>();
 
 defineOptions({
@@ -128,6 +160,7 @@ const tabs = [
     ['scripts', 'Scripts'],
     ['actions', 'Actions'],
     ['yaml', 'YAML'],
+    ['trials', 'Trial runs'],
     ['history', 'History'],
 ] as const;
 type Tab = (typeof tabs)[number][0];
@@ -377,6 +410,90 @@ const submitCopy = () =>
         onSuccess: () => (copyOpen.value = false),
     });
 
+// Trial runs of the saved draft on test servers (docs/adr/0018 §7).
+const trialStatusLabels: Record<AppInstallationStatus, string> = {
+    queued: 'Queued',
+    installing: 'Installing',
+    installed: 'Installed',
+    failed: 'Failed',
+    uninstalling: 'Uninstalling',
+    uninstall_failed: 'Uninstall failed',
+    upgrading: 'Upgrading',
+    upgrade_failed: 'Upgrade failed',
+    removed: 'Removed',
+};
+const trialStatusTone = (status: AppInstallationStatus) =>
+    status === 'installed'
+        ? 'success'
+        : ['failed', 'uninstall_failed', 'upgrade_failed'].includes(status)
+          ? 'danger'
+          : ['queued', 'installing', 'uninstalling', 'upgrading'].includes(
+                  status,
+              )
+            ? 'warning'
+            : 'neutral';
+
+// The saved draft was installed without errors by a trial.
+const draftTried = computed(() =>
+    props.trials.some((trial) => trial.current && trial.status === 'installed'),
+);
+
+const trialOpen = ref(false);
+const trialForm = useForm<{
+    server: string | null;
+    inputs: Record<string, string | number | boolean>;
+}>({ server: null, inputs: {} });
+
+const serverOptions = computed(() =>
+    props.testServers.map((server) => ({
+        value: server.uuid,
+        label: server.problem
+            ? `${server.hostname} (${server.problem})`
+            : server.hostname,
+        disabled: server.problem !== null,
+    })),
+);
+
+const openTrial = () => {
+    trialForm.clearErrors();
+    trialForm.server =
+        props.testServers.find((server) => server.problem === null)?.uuid ??
+        null;
+    trialForm.inputs = Object.fromEntries(
+        props.trialInputs
+            .filter((input) => input.default !== null)
+            .map((input) => [
+                input.key,
+                input.default as string | number | boolean,
+            ]),
+    );
+    trialOpen.value = true;
+};
+
+const submitTrial = () =>
+    trialForm.submit(trialRoute(props.app.slug), {
+        preserveScroll: true,
+        onSuccess: () => (trialOpen.value = false),
+    });
+
+// Follow running trials.
+const { start: startPolling, stop: stopPolling } = usePoll(
+    3000,
+    { only: ['trials'] },
+    { autoStart: false },
+);
+const trialsBusy = computed(() =>
+    props.trials.some((trial) =>
+        ['queued', 'installing', 'uninstalling', 'upgrading'].includes(
+            trial.status,
+        ),
+    ),
+);
+
+watch(trialsBusy, (value) => (value ? startPolling() : stopPolling()), {
+    immediate: true,
+});
+
 // History
 const versionOptions = computed(() =>
     props.versions.map((version) => ({
@@ -406,6 +523,37 @@ const loadDiff = async () => {
     diffText.value = response.ok
         ? ((await response.json()) as { diff: string }).diff
         : null;
+};
+
+// Zip of a version's recipe directory (docs/adr/0018 §5): 'draft' or a version number.
+const exportUrl = (version: string) =>
+    exportRoute.url(props.app.slug, { query: { version } });
+
+// Replace the draft with an uploaded recipe zip.
+const importInput = ref<HTMLInputElement | null>(null);
+
+const importDraft = (event: Event) => {
+    const input = event.target as HTMLInputElement;
+    const archive = input.files?.item(0) ?? null;
+    input.value = '';
+
+    if (
+        archive === null ||
+        !window.confirm(
+            trans(
+                'Replace the draft with the recipe in :file? The published version stays as it is.',
+                { file: archive.name },
+            ),
+        )
+    ) {
+        return;
+    }
+
+    router.post(
+        importDraftRoute(props.app.slug),
+        { archive },
+        { forceFormData: true, preserveScroll: true, onSuccess: reset },
+    );
 };
 
 const statusTone = {
@@ -498,6 +646,35 @@ const statusLabels = {
                     <Copy class="h-4 w-4" />
                     {{ $t('Copy') }}
                 </Button>
+                <Button
+                    v-if="draft || published"
+                    variant="outline"
+                    as-child
+                    data-test="export"
+                >
+                    <a :href="exportUrl(draft ? 'draft' : published!.version)">
+                        <Download class="h-4 w-4" />
+                        {{ $t('Export zip') }}
+                    </a>
+                </Button>
+                <template v-if="app.editable">
+                    <input
+                        ref="importInput"
+                        type="file"
+                        accept=".zip,application/zip"
+                        class="hidden"
+                        data-test="import-draft-file"
+                        @change="importDraft"
+                    />
+                    <Button
+                        variant="outline"
+                        data-test="import-draft"
+                        @click="importInput?.click()"
+                    >
+                        <FileUp class="h-4 w-4" />
+                        {{ $t('Import zip') }}
+                    </Button>
+                </template>
                 <Button
                     v-if="app.modified"
                     variant="outline"
@@ -626,7 +803,12 @@ const statusLabels = {
         </nav>
 
         <p
-            v-if="!formatTwo && tab !== 'yaml' && tab !== 'history'"
+            v-if="
+                !formatTwo &&
+                tab !== 'yaml' &&
+                tab !== 'trials' &&
+                tab !== 'history'
+            "
             class="text-sm text-muted-foreground"
         >
             {{ $t('This is a format 1 recipe; edit it in the YAML view.') }}
@@ -1199,6 +1381,144 @@ const statusLabels = {
             />
         </section>
 
+        <!-- Trial runs (docs/adr/0018 §7) -->
+        <section
+            v-else-if="tab === 'trials'"
+            class="grid gap-4"
+            data-test="trials"
+        >
+            <div class="flex flex-wrap items-start justify-between gap-3">
+                <p class="max-w-2xl text-sm text-muted-foreground">
+                    {{
+                        $t(
+                            'Install the draft as it was last saved on a test server. Billing systems never see trials; uninstall and actions of a trial use the copy it installed.',
+                        )
+                    }}
+                </p>
+                <div class="flex items-center gap-2">
+                    <StatusBadge
+                        v-if="draft"
+                        :tone="draftTried ? 'success' : 'neutral'"
+                        :label="
+                            draftTried
+                                ? 'Saved draft tried'
+                                : 'Saved draft not tried yet'
+                        "
+                        data-test="draft-tried"
+                    />
+                    <Button
+                        v-if="app.editable"
+                        :disabled="
+                            !draft ||
+                            draft.errors.length > 0 ||
+                            testServers.length === 0
+                        "
+                        data-test="try-draft"
+                        @click="openTrial"
+                    >
+                        <Play class="h-4 w-4" />
+                        {{ $t('Try on a test server') }}
+                    </Button>
+                </div>
+            </div>
+            <p
+                v-if="testServers.length === 0"
+                class="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm"
+            >
+                {{
+                    $t(
+                        'No active test server yet. Mark a server without a billing system as a test server on its Apps tab.',
+                    )
+                }}
+            </p>
+            <div class="overflow-x-auto rounded-xl border">
+                <table class="w-full text-sm">
+                    <thead class="bg-muted/50 text-left text-muted-foreground">
+                        <tr>
+                            <th class="px-4 py-3 font-medium">
+                                {{ $t('Server') }}
+                            </th>
+                            <th class="px-4 py-3 font-medium">
+                                {{ $t('Version') }}
+                            </th>
+                            <th class="px-4 py-3 font-medium">
+                                {{ $t('Status') }}
+                            </th>
+                            <th class="px-4 py-3 font-medium">
+                                {{ $t('Date') }}
+                            </th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr
+                            v-for="trial in trials"
+                            :key="trial.uuid"
+                            class="border-t align-top"
+                        >
+                            <td class="px-4 py-3">
+                                <Link
+                                    :href="showServer(trial.server.uuid)"
+                                    class="font-medium hover:underline"
+                                    >{{ trial.server.hostname }}</Link
+                                >
+                            </td>
+                            <td class="px-4 py-3 font-mono">
+                                {{ trial.version }}
+                                <span
+                                    v-if="trial.current"
+                                    class="ml-1 font-sans text-xs text-muted-foreground"
+                                    >({{ $t('saved draft') }})</span
+                                >
+                            </td>
+                            <td class="px-4 py-3">
+                                <StatusBadge
+                                    :tone="trialStatusTone(trial.status)"
+                                    :label="trialStatusLabels[trial.status]"
+                                />
+                                <p
+                                    v-if="
+                                        trial.step &&
+                                        trial.status !== 'installed'
+                                    "
+                                    class="mt-1 text-xs text-muted-foreground"
+                                >
+                                    {{ trial.step }} · {{ trial.progress }}%
+                                </p>
+                                <p
+                                    v-if="trial.error"
+                                    class="mt-1 text-xs break-words text-red-700 dark:text-red-400"
+                                >
+                                    {{ trial.error }}
+                                </p>
+                            </td>
+                            <td class="px-4 py-3 whitespace-nowrap">
+                                {{
+                                    formatDateTime(
+                                        trial.finished_at ?? trial.created_at,
+                                    )
+                                }}
+                            </td>
+                        </tr>
+                        <tr v-if="trials.length === 0" class="border-t">
+                            <td
+                                colspan="4"
+                                class="px-4 py-3 text-muted-foreground"
+                            >
+                                {{ $t('No trial runs yet.') }}
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            <p class="text-xs text-muted-foreground">
+                {{
+                    $t(
+                        'Logs, outputs, uninstall and actions of a trial are on the Apps tab of its server.',
+                    )
+                }}
+            </p>
+        </section>
+
         <!-- History -->
         <section v-else class="grid gap-4">
             <div class="overflow-x-auto rounded-xl border">
@@ -1217,6 +1537,7 @@ const statusLabels = {
                             <th class="px-4 py-3 font-medium">
                                 {{ $t('Date') }}
                             </th>
+                            <th class="px-4 py-3" />
                         </tr>
                     </thead>
                     <tbody>
@@ -1244,6 +1565,22 @@ const statusLabels = {
                                             version.created_at,
                                     )
                                 }}
+                            </td>
+                            <td class="px-4 py-3 text-right">
+                                <a
+                                    :href="
+                                        exportUrl(
+                                            version.status === 'draft'
+                                                ? 'draft'
+                                                : version.version,
+                                        )
+                                    "
+                                    class="inline-flex items-center gap-1 text-xs hover:underline"
+                                    :title="$t('Export zip')"
+                                >
+                                    <Download class="h-3.5 w-3.5" />
+                                    zip
+                                </a>
                             </td>
                         </tr>
                     </tbody>
@@ -1310,6 +1647,33 @@ const statusLabels = {
                 )
             }}
         </p>
+    </FormDialog>
+
+    <FormDialog
+        v-model:open="trialOpen"
+        title="Try the draft"
+        description="The draft as it was last saved is installed on the test server. Save your changes first."
+        submit-label="Try"
+        :processing="trialForm.processing"
+        @submit="submitTrial"
+    >
+        <FormField
+            label="Test server"
+            for="trial_server"
+            :error="trialForm.errors.server"
+        >
+            <NativeSelect
+                id="trial_server"
+                v-model="trialForm.server"
+                :options="serverOptions"
+            />
+        </FormField>
+        <AppInputFields
+            v-model="trialForm.inputs"
+            :inputs="trialInputs"
+            :errors="trialForm.errors"
+            id-prefix="trial"
+        />
     </FormDialog>
 
     <FormDialog

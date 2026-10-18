@@ -226,6 +226,8 @@ class ServerController extends Controller
                 'has_password' => $server->root_password !== null,
                 'busy' => $server->status->isBusy(),
                 'reboot_required' => $server->reboot_required,
+                // Drafts of apps may be tried on it (docs/adr/0018 §7).
+                'is_test' => $server->is_test,
                 'billing_system' => $server->billingSystem?->name,
                 'external_id' => $server->external_id,
                 'external_client_id' => $server->external_client_id,
@@ -284,6 +286,7 @@ class ServerController extends Controller
                         'uuid' => $installation->uuid,
                         'app' => $installation->recipe->name,
                         'version' => $installation->version->version,
+                        'is_trial' => $installation->is_trial,
                         'status' => $installation->status,
                         'progress' => $installation->progress,
                         'step' => $installation->step,

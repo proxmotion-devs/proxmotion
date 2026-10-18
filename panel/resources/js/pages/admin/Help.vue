@@ -348,7 +348,14 @@ const topics = [
                     <li>
                         {{
                             $t(
-                                'Publish, install it on a test server of your own from the server page and check the outputs. Deactivate the app while something is wrong.',
+                                'Try the draft before publishing: mark a server without a billing system as a test server on its Apps tab, then use Trial runs → Try on a test server and check the log and outputs there. Deactivate the app while something is wrong.',
+                            )
+                        }}
+                    </li>
+                    <li>
+                        {{
+                            $t(
+                                'A trial really changes the test server. Reset after trial on its Apps tab reinstalls it from its template, so the next trial starts clean.',
                             )
                         }}
                     </li>

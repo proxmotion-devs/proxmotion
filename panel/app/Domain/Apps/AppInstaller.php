@@ -13,6 +13,7 @@ use App\Enums\TaskType;
 use App\Models\ApiToken;
 use App\Models\AppInstallation;
 use App\Models\AppRecipe;
+use App\Models\AppRecipeVersion;
 use App\Models\AuditLog;
 use App\Models\OsTemplate;
 use App\Models\Server;
@@ -57,19 +58,67 @@ final readonly class AppInstaller
         }
 
         $values = $this->inputs->validate($app->recipe(), $inputs);
+        $installation = $this->queue($server, $app, $app->current(), $values, $actor, trial: false);
+
+        AuditLog::record('app.install_requested', $actor, $server, ['app' => $app->slug, 'installation' => $installation->uuid], $ipAddress);
+
+        return $installation;
+    }
+
+    /**
+     * Install a trial version (a frozen copy of a draft, AppTrials) on a test
+     * server (docs/adr/0018 §7). The installation is flagged as a trial.
+     *
+     * @param  array<array-key, mixed>  $inputs  as given by the administrator
+     *
+     * @throws ValidationException for invalid inputs
+     * @throws AppNotEligible
+     * @throws AppInstallConflict
+     * @throws TaskAlreadyRunning
+     * @throws ProvisioningException when the server is not an active test server
+     */
+    public function installTrial(Server $server, AppRecipeVersion $version, array $inputs, User $admin, ?string $ipAddress): AppInstallation
+    {
+        $this->ensureTestServer($server);
+        $this->ensureActive($server);
+        $app = $version->app;
+
+        $problem = $this->eligibility->forTrial($app, $version, $server);
+
+        if ($problem !== null) {
+            throw $problem;
+        }
+
+        $values = $this->inputs->validate($version->recipe(), $inputs);
+        $installation = $this->queue($server, $app, $version, $values, $admin, trial: true);
+
+        AuditLog::record('app.trial_requested', $admin, $server, ['app' => $app->slug, 'version' => $version->version, 'installation' => $installation->uuid], $ipAddress);
+
+        return $installation;
+    }
+
+    /**
+     * @param  array<string, string|int|bool>  $values
+     *
+     * @throws AppInstallConflict
+     * @throws TaskAlreadyRunning
+     */
+    private function queue(Server $server, AppRecipe $app, AppRecipeVersion $version, array $values, User|ApiToken $actor, bool $trial): AppInstallation
+    {
         $this->ensureNothingRunning($server);
 
         if ($server->appInstallations()->where('app_recipe_id', $app->id)->whereIn('status', [AppInstallationStatus::Installed, AppInstallationStatus::UninstallFailed])->exists()) {
             throw new AppInstallConflict('This app is already installed on the server.');
         }
 
-        $installation = DB::transaction(function () use ($server, $app, $values, $actor) {
+        return DB::transaction(function () use ($server, $app, $version, $values, $actor, $trial) {
             $installation = new AppInstallation;
             $installation->forceFill([
                 'server_id' => $server->id,
                 'app_recipe_id' => $app->id,
-                'app_recipe_version_id' => $app->current()->id,
+                'app_recipe_version_id' => $version->id,
                 'status' => AppInstallationStatus::Queued,
+                'is_trial' => $trial,
                 'inputs' => $values,
                 'user_id' => $actor instanceof User ? $actor->id : null,
                 'api_token_id' => $actor instanceof ApiToken ? $actor->id : null,
@@ -77,10 +126,6 @@ final readonly class AppInstaller
 
             return $this->start($installation, $actor);
         });
-
-        AuditLog::record('app.install_requested', $actor, $server, ['app' => $app->slug, 'installation' => $installation->uuid], $ipAddress);
-
-        return $installation;
     }
 
     /**
@@ -166,9 +211,15 @@ final readonly class AppInstaller
             throw new AppInstallConflict('Only a failed installation can be retried.');
         }
 
+        if ($installation->is_trial) {
+            $this->ensureTestServer($server);
+        }
+
         $this->ensureActive($server);
 
-        $problem = $this->eligibility->forServer($installation->recipe, $server, $installation->version, $installation->mode);
+        $problem = $installation->is_trial
+            ? $this->eligibility->forTrial($installation->recipe, $installation->version, $server)
+            : $this->eligibility->forServer($installation->recipe, $server, $installation->version, $installation->mode);
 
         if ($problem !== null) {
             throw $problem;
@@ -206,6 +257,13 @@ final readonly class AppInstaller
     {
         if ($server->status !== ServerStatus::Active) {
             throw new ProvisioningException('This action is not possible while the server is :status.', ['status' => $server->status->value]);
+        }
+    }
+
+    private function ensureTestServer(Server $server): void
+    {
+        if (! $server->is_test) {
+            throw new AppNotEligible('Drafts can only be tried on test servers.');
         }
     }
 

@@ -27,6 +27,7 @@ use Illuminate\Support\Carbon;
  * @property string|null $signed_by key id of the signature
  * @property AppRecipeVersionStatus $status
  * @property string $origin upstream (panel/recipes) or local (admin editor)
+ * @property int|null $trial_of_id the draft a trial version was frozen from (docs/adr/0018 §7)
  * @property int|null $reviewed_by
  * @property Carbon|null $reviewed_at
  * @property Carbon|null $created_at
@@ -63,6 +64,16 @@ class AppRecipeVersion extends Model
     public function app(): BelongsTo
     {
         return $this->belongsTo(AppRecipe::class, 'app_recipe_id');
+    }
+
+    /**
+     * The draft a trial version was frozen from; null once that draft was discarded.
+     *
+     * @return BelongsTo<AppRecipeVersion, $this>
+     */
+    public function trialOf(): BelongsTo
+    {
+        return $this->belongsTo(self::class, 'trial_of_id');
     }
 
     /**

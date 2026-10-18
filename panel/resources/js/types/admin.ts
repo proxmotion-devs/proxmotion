@@ -384,6 +384,8 @@ export type AppInstallation = {
     uuid: string;
     app: string;
     version: string;
+    /** A trial of a draft on a test server (docs/adr/0018 §7). */
+    is_trial: boolean;
     status: AppInstallationStatus;
     progress: number;
     step: string | null;

@@ -76,10 +76,15 @@ final class Webhooks
 
     /**
      * Tell the billing system that an app installation finished (docs/adr/0015):
-     * app.installed or app.failed, without the outputs.
+     * app.installed or app.failed, without the outputs. Trials of drafts
+     * (docs/adr/0018 §7) are never sent.
      */
     public function appFinished(AppInstallation $installation): void
     {
+        if ($installation->is_trial) {
+            return;
+        }
+
         $event = $installation->status === AppInstallationStatus::Installed ? WebhookEvent::AppInstalled : WebhookEvent::AppFailed;
 
         $this->appEvent($installation->server, $event, fn () => [
@@ -94,6 +99,10 @@ final class Webhooks
      */
     public function appRunFinished(AppRun $run): void
     {
+        if ($run->installation->is_trial) {
+            return;
+        }
+
         $succeeded = $run->status === AppRunStatus::Succeeded;
         $event = match ($run->kind) {
             AppRunKind::Uninstall => $succeeded ? WebhookEvent::AppUninstalled : WebhookEvent::AppUninstallFailed,
