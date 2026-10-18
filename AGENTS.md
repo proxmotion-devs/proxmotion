@@ -223,7 +223,7 @@ timeout_minutes: 15
 
 - `install.sh` and `actions/*.sh` must be **idempotent**, start with `set -euo pipefail`, and report step-by-step progress to `status.json` using the `_lib/` helpers.
 - **Inputs are never interpolated into scripts.** The panel validates them against their declared types (port, enum, slug, email, domain, password, url (HTTPS only)…) and writes them to the VPS as `inputs.json`; scripts read them with `jq`.
-- Eligibility is checked in the panel: if OS family/version, package resources or network model don't fit, the app is not listed to the customer or the billing API, and requests are rejected with `422`.
+- Eligibility is checked in the panel: if OS family/version, package resources or network model don't fit, the app is not listed to the customer or the billing API, and requests are rejected with `422`. The admin server page lists such apps greyed out with the first reason (`unavailableApps`), but never offers them.
 
 #### Recipe sources
 - **`bundled`:** versioned in the repo; CI validates the schema, runs shellcheck and an install test on a test VM; shipped with panel releases. `php artisan apps:sync` syncs them into the database. Administrators can edit a bundled app in place (ADR 0018 §2): their versions are numbered `<bundled>-local.N`, `apps:sync` then stores new bundled versions without publishing them (the editor offers to compare or go back), and *Back to bundled version* undoes the edit.

@@ -1548,5 +1548,6 @@
     "The archive has a file a recipe cannot have: :path (scripts end in .sh or .ps1).": "Arşivde bir tarifte olamayacak bir dosya var: :path (betikler .sh ya da .ps1 ile biter).",
     "The archive has no recipe.yaml.": "Arşivde recipe.yaml yok.",
     "The file :path is larger than :size KiB.": ":path dosyası :size KiB'tan büyük.",
-    "The file :path is not UTF-8 text.": ":path dosyası UTF-8 metin değil."
+    "The file :path is not UTF-8 text.": ":path dosyası UTF-8 metin değil.",
+    "Not available on this server (:count)": "Bu sunucuda kullanılamaz (:count)"
 }

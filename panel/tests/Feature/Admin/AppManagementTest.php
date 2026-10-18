@@ -74,6 +74,19 @@ class AppManagementTest extends AdminTestCase
                     && collect($options)->firstWhere('slug', 'openvpn')['inputs'][0]['key'] === 'port'));
     }
 
+    public function test_apps_that_do_not_fit_are_listed_with_the_reason_but_not_offered()
+    {
+        $this->server->forceFill(['cpu_cores' => 1])->save();
+        AppRecipe::query()->where('slug', 'aapanel')->update(['is_active' => false]);
+
+        $this->get(route('admin.servers.show', $this->server))
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('appOptions', fn ($options) => ! collect($options)->contains('slug', 'coolify'))
+                ->where('unavailableApps', fn ($apps) => collect($apps)->firstWhere('slug', 'coolify') === ['slug' => 'coolify', 'name' => 'Coolify', 'reason' => 'This app needs at least 2 vCPU cores.']
+                    && ! collect($apps)->contains('slug', 'aapanel')
+                    && ! collect($apps)->contains('slug', 'docker')));
+    }
+
     public function test_invalid_inputs_show_up_on_the_form()
     {
         $this->post(route('admin.servers.apps', $this->server), ['app' => 'openvpn', 'inputs' => ['protocol' => 'icmp']])

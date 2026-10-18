@@ -343,6 +343,12 @@ class ServerController extends Controller
                     'inputs' => array_map(fn (RecipeInput $input) => $input->toArray(), $app->recipe()->inputs),
                 ])
                 ->values(),
+            // Active apps that do not fit, with the first reason (only administrators see these;
+            // billing systems get the eligible apps only).
+            'unavailableApps' => fn () => AppRecipe::query()->with('latestVersion')->where('is_active', true)->orderBy('name')->get()
+                ->map(fn (AppRecipe $app) => ['slug' => $app->slug, 'name' => $app->name, 'reason' => $eligibility->forServer($app, $server)?->translatedMessage()])
+                ->filter(fn (array $app) => $app['reason'] !== null)
+                ->values(),
         ]);
     }
 

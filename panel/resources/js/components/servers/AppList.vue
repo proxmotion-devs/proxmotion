@@ -37,6 +37,7 @@ import type {
     AppRunStatus,
     AppText,
     RevealedAppOutputs,
+    UnavailableApp,
 } from '@/types/admin';
 import type { RouteDefinition } from '@/wayfinder';
 
@@ -48,6 +49,8 @@ import type { RouteDefinition } from '@/wayfinder';
 const props = defineProps<{
     apps: AppInstallation[];
     options: AppOption[];
+    /** Apps that do not fit the server, shown greyed out with the reason. */
+    unavailable?: UnavailableApp[];
     action: RouteDefinition<'post'>;
     disabled?: boolean;
     /** What Show details revealed for one of the apps. */
@@ -140,9 +143,18 @@ const selected = computed(() =>
     props.options.find((option) => option.slug === form.app),
 );
 
-const appOptions = computed(() =>
-    props.options.map((option) => ({ value: option.slug, label: option.name })),
-);
+// The apps that fit, then those that do not, disabled with their reason.
+const appOptions = computed(() => [
+    ...props.options.map((option) => ({
+        value: option.slug,
+        label: option.name,
+    })),
+    ...(props.unavailable ?? []).map((app) => ({
+        value: app.slug,
+        label: `${app.name}: ${app.reason}`,
+        disabled: true,
+    })),
+]);
 
 const resetInputs = () => {
     form.inputs = defaults(selected.value?.inputs ?? []);
@@ -301,6 +313,31 @@ const openRunLog = (app: AppInstallation, run: AppRun) => {
                 {{ $t('Install app') }}
             </Button>
         </div>
+
+        <details
+            v-if="unavailable?.length"
+            class="text-sm text-muted-foreground"
+            data-test="unavailable-apps"
+        >
+            <summary class="cursor-pointer select-none">
+                {{
+                    $t('Not available on this server (:count)', {
+                        count: String(unavailable.length),
+                    })
+                }}
+            </summary>
+            <ul class="mt-2 flex flex-col gap-1 pl-4">
+                <li
+                    v-for="app in unavailable"
+                    :key="app.slug"
+                    class="opacity-70"
+                >
+                    <span class="font-medium">{{ app.name }}</span
+                    >:
+                    {{ app.reason }}
+                </li>
+            </ul>
+        </details>
 
         <div v-if="apps.length" class="overflow-x-auto rounded-xl border">
             <table class="w-full text-sm">

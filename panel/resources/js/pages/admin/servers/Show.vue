@@ -59,6 +59,7 @@ import type {
     RevealedAppOutputs,
     ServerStatus,
     Task,
+    UnavailableApp,
 } from '@/types/admin';
 
 const props = defineProps<{
@@ -115,6 +116,8 @@ const props = defineProps<{
     agent?: boolean | null;
     apps: AppInstallation[];
     appOptions: AppOption[];
+    /** Active apps that do not fit the server, with the first reason. */
+    unavailableApps: UnavailableApp[];
     entitlements: AppEntitlement[];
     entitlementOptions: Option[];
 }>();
@@ -628,6 +631,7 @@ const resetAfterTrial = () => {
             <AppList
                 :apps="apps"
                 :options="appOptions"
+                :unavailable="unavailableApps"
                 :action="installApp(server.uuid)"
                 :disabled="!active || agent === false"
                 :revealed="revealedAppOutputs"
