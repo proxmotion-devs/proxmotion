@@ -1,5 +1,5 @@
 # Console WebSocket proxy (docs/adr/0002-console-websocket-proxy.md).
-FROM node:22-alpine
+FROM node:25-alpine
 
 WORKDIR /app
 ENV NODE_ENV=production
