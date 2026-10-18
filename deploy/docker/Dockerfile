@@ -1,6 +1,6 @@
 # Development image for the Proxmotion panel (PHP-FPM + Composer + Node).
 # Production images will be built separately (Phase 8).
-FROM php:8.3-fpm-bookworm
+FROM php:8.5-fpm-bookworm
 
 ARG UID=1000
 ARG GID=1000

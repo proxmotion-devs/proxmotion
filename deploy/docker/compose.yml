@@ -62,7 +62,7 @@ services:
       CONSOLE_PROXY_SECRET: ${CONSOLE_PROXY_SECRET:-local-dev-console-secret}
 
   nginx:
-    image: nginx:1.27-alpine
+    image: nginx:1.29-alpine
     ports:
       - "8000:80"
     volumes:
@@ -73,7 +73,7 @@ services:
       - console-proxy
 
   mariadb:
-    image: mariadb:11.4
+    image: mariadb:12.2
     environment:
       MARIADB_DATABASE: proxmotion
       MARIADB_USER: proxmotion
@@ -90,7 +90,7 @@ services:
       retries: 20
 
   redis:
-    image: redis:7-alpine
+    image: redis:8-alpine
     ports:
       - "6379:6379"
 
