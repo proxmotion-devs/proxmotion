@@ -13,6 +13,7 @@ use App\Models\Concerns\HasPublicUuid;
 use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Carbon;
 use LogicException;
 
@@ -81,6 +82,16 @@ class AppRun extends Model
     public function task(): BelongsTo
     {
         return $this->belongsTo(Task::class);
+    }
+
+    /**
+     * What the script printed (docs/adr/0021).
+     *
+     * @return HasOne<AppLog, $this>
+     */
+    public function log(): HasOne
+    {
+        return $this->hasOne(AppLog::class);
     }
 
     /**

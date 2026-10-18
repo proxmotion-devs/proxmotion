@@ -1489,5 +1489,16 @@
     "This server fits on none of the :total nodes it may go to.": "Bu sunucu gidebileceği :total node'un hiçbirine sığmıyor.",
     "Type & location": "Tür ve lokasyon",
     "No placement group in this location": "Bu lokasyonda yerleşim grubu yok",
-    "No node in this location": "Bu lokasyonda node yok"
+    "No node in this location": "Bu lokasyonda node yok",
+    ":size left out": ":size atlandı",
+    "Live": "Canlı",
+    "Download": "İndir",
+    "Loading…": "Yükleniyor…",
+    "Log": "Günlük",
+    "Watch": "İzle",
+    "Nothing has been printed yet.": "Henüz bir çıktı yok.",
+    ":app log": ":app günlüğü",
+    "Attempt :attempt, :time": "Deneme :attempt, :time",
+    "The log could not be loaded. Trying again…": "Günlük yüklenemedi. Yeniden deneniyor…",
+    "What the script printed inside the server. Passwords the app was given or reported are masked.": "Betiğin sunucu içinde yazdıkları. Uygulamaya verilen ya da uygulamanın bildirdiği parolalar gizlenir."
 }

@@ -38,7 +38,7 @@ pm_status() {
 pm_step() {
     printf '%d\n%s\n' "$1" "$2" >"$PROXMOTION_RUN_DIR/state"
     pm_status installing "$1" "$2"
-    echo "==> $2"
+    echo "==> [$(date -u +%H:%M:%S)] $2"
 }
 
 # pm_current progress|step: the last reported step.

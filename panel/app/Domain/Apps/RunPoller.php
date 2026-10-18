@@ -10,6 +10,7 @@ use App\Models\AppRun;
 use App\Proxmox\Exceptions\ProxmoxException;
 use App\Proxmox\ProxmoxClientFactory;
 use App\Proxmox\Resources\GuestAgentResource;
+use Illuminate\Support\Facades\Cache;
 
 /**
  * Follows a running uninstall or action (docs/adr/0016 §4) through its
@@ -23,9 +24,19 @@ final readonly class RunPoller
     public function __construct(
         private ProxmoxClientFactory $clients,
         private AppRuns $runs,
+        private AppLogs $logs,
     ) {}
 
+    /**
+     * One poll at a time per run: apps:poll and an administrator watching
+     * the log (docs/adr/0021) may ask at the same moment.
+     */
     public function poll(AppRun $run): void
+    {
+        Cache::lock('app-run-poll:'.$run->id, 120)->get(fn () => $this->pollNow($run->refresh()));
+    }
+
+    private function pollNow(AppRun $run): void
     {
         if ($run->status !== AppRunStatus::Running) {
             return;
@@ -45,6 +56,7 @@ final readonly class RunPoller
         }
 
         if ($status['state'] === 'failed') {
+            $this->logs->finish($run->log);
             $this->runs->failed($run, $status['message'] ?? 'The script failed.', $status['step']);
 
             return;
@@ -59,6 +71,7 @@ final readonly class RunPoller
                 return;
             }
 
+            $this->logs->finish($run->log, $outputs);
             $this->runs->succeeded($run, $outputs, $status['step']);
 
             if ($run->kind === AppRunKind::Uninstall) {
@@ -74,6 +87,7 @@ final readonly class RunPoller
             return;
         }
 
+        $run->log !== null && $this->logs->follow($run->log);
         $run->forceFill(['progress' => $status['progress'] ?? $run->progress, 'step' => $status['step'] ?? $run->step])->save();
     }
 
@@ -91,6 +105,7 @@ final readonly class RunPoller
 
     private function timedOut(AppRun $run): void
     {
+        $this->logs->finish($run->log);
         $this->runs->failed($run, __('The script did not finish within :minutes minutes.', ['minutes' => (string) $run->timeoutMinutes()]));
     }
 }

@@ -6,6 +6,7 @@ import {
     PackagePlus,
     Play,
     RotateCcw,
+    ScrollText,
     Trash2,
 } from '@lucide/vue';
 import { trans } from 'laravel-vue-i18n';
@@ -15,6 +16,7 @@ import FormField from '@/components/admin/FormField.vue';
 import NativeSelect from '@/components/admin/NativeSelect.vue';
 import StatusBadge from '@/components/admin/StatusBadge.vue';
 import AppInputFields from '@/components/servers/AppInputFields.vue';
+import AppLogDialog from '@/components/servers/AppLogDialog.vue';
 import AppOutputs from '@/components/servers/AppOutputs.vue';
 import { Button } from '@/components/ui/button';
 import { useDateTime } from '@/composables/useDateTime';
@@ -258,6 +260,33 @@ const runLabel = (run: AppRun) => {
 
     return run.kind === 'uninstall' ? trans('Uninstall') : text(run.action, '');
 };
+
+// Logs (docs/adr/0021)
+const logOpen = ref(false);
+const logHeading = ref('');
+const logOptions = ref<{ value: string; label: string }[]>([]);
+
+const openAppLog = (app: AppInstallation) => {
+    logHeading.value = trans(':app log', { app: app.app });
+    logOptions.value = app.logs.map((log) => ({
+        value: log.uuid,
+        label: trans('Attempt :attempt, :time', {
+            attempt: String(log.attempt ?? 1),
+            time: formatDateTime(log.created_at),
+        }),
+    }));
+    logOpen.value = true;
+};
+
+const openRunLog = (app: AppInstallation, run: AppRun) => {
+    if (run.log === null) {
+        return;
+    }
+
+    logHeading.value = `${app.app}: ${runLabel(run)}`;
+    logOptions.value = [{ value: run.log, label: runLabel(run) }];
+    logOpen.value = true;
+};
 </script>
 
 <template>
@@ -317,6 +346,15 @@ const runLabel = (run: AppRun) => {
                                         <span>{{
                                             formatDateTime(run.created_at)
                                         }}</span>
+                                        <button
+                                            v-if="run.log"
+                                            type="button"
+                                            class="underline underline-offset-2 hover:text-foreground"
+                                            data-test="app-run-log"
+                                            @click="openRunLog(app, run)"
+                                        >
+                                            {{ $t('Log') }}
+                                        </button>
                                         <span
                                             v-if="run.error"
                                             class="w-full break-words text-red-600 dark:text-red-400"
@@ -347,6 +385,20 @@ const runLabel = (run: AppRun) => {
                             </td>
                             <td class="px-4 py-3">
                                 <div class="flex flex-wrap justify-end gap-2">
+                                    <Button
+                                        v-if="app.logs.length"
+                                        variant="outline"
+                                        size="sm"
+                                        data-test="app-log"
+                                        @click="openAppLog(app)"
+                                    >
+                                        <ScrollText class="h-4 w-4" />
+                                        {{
+                                            app.status === 'installing'
+                                                ? $t('Watch')
+                                                : $t('Log')
+                                        }}
+                                    </Button>
                                     <Button
                                         v-if="app.has_outputs"
                                         variant="outline"
@@ -506,4 +558,10 @@ const runLabel = (run: AppRun) => {
     >
         <p class="text-sm font-medium">{{ removing?.app }}</p>
     </FormDialog>
+
+    <AppLogDialog
+        v-model:open="logOpen"
+        :heading="logHeading"
+        :logs="logOptions"
+    />
 </template>

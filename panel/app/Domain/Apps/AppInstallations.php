@@ -20,7 +20,10 @@ use Throwable;
  */
 final readonly class AppInstallations
 {
-    public function __construct(private Webhooks $webhooks) {}
+    public function __construct(
+        private Webhooks $webhooks,
+        private AppLogs $logs,
+    ) {}
 
     /**
      * @param  array<string, array{type: string, value: string, filename?: string|null}>  $outputs
@@ -72,6 +75,8 @@ final readonly class AppInstallations
             if ($installation->status->isBusy()) {
                 $this->failed($installation, $reason);
             }
+
+            $this->logs->closeAll($installation);
 
             if ($installation->status !== AppInstallationStatus::Removed) {
                 $installation->forceFill(['status' => AppInstallationStatus::Removed])->save();

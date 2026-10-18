@@ -354,7 +354,28 @@ export type AppRun = {
     status: AppRunStatus;
     step: string | null;
     error: string | null;
+    /** Its log (docs/adr/0021). */
+    log: string | null;
     created_at: string | null;
+};
+
+/** The log of one install attempt (docs/adr/0021), newest first. */
+export type AppLogSummary = {
+    uuid: string;
+    attempt: number | null;
+    created_at: string | null;
+};
+
+/** What the log endpoint answers. */
+export type AppLogChunk = {
+    text: string;
+    /** Whether text replaces what was shown instead of continuing it. */
+    reset: boolean;
+    cursor: number;
+    live: boolean;
+    status: string;
+    progress: number;
+    step: string | null;
 };
 
 export type AppAction = { key: string; label: AppText; inputs: AppInput[] };
@@ -374,6 +395,7 @@ export type AppInstallation = {
     /** The version it can be upgraded to and the inputs that version adds. */
     upgrade: { version: string; inputs: AppInput[] } | null;
     runs: AppRun[];
+    logs: AppLogSummary[];
     /** Whether the app or one of its actions reported something to show. */
     has_outputs: boolean;
 };

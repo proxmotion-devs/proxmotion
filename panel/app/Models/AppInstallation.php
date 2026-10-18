@@ -94,6 +94,16 @@ class AppInstallation extends Model
     }
 
     /**
+     * What the install attempts printed (docs/adr/0021); runs have their own.
+     *
+     * @return HasMany<AppLog, $this>
+     */
+    public function logs(): HasMany
+    {
+        return $this->hasMany(AppLog::class)->whereNull('app_run_id');
+    }
+
+    /**
      * @return BelongsTo<AppRecipeVersion, $this>
      */
     public function version(): BelongsTo

@@ -38,13 +38,13 @@ case "$script" in
         ;;
 esac
 
-pm_step 0 "Preparing"
+pm_step 0 "Preparing" >>"$log"
 
 # Right after the first boot (an app ordered with the server or a reinstall),
 # cloud-init may still be updating packages. The panel gives such installs
 # this much extra time (AppInstallation::BOOT_WAIT_MINUTES).
 pm_wait_for_boot 600 >>"$log" 2>&1
-pm_step 0 "Preparing"
+pm_step 0 "Preparing" >>"$log"
 
 if ! command -v jq >/dev/null 2>&1; then
     if command -v apt-get >/dev/null 2>&1; then
@@ -84,6 +84,7 @@ fi
 echo '{}' >outputs.json
 
 if bash "$PROXMOTION_APP_DIR/$script" >>"$log" 2>&1; then
+    echo "==> [$(date -u +%H:%M:%S)] $done_step" >>"$log"
     pm_status "$done_status" 100 "$done_step"
     exit 0
 else
@@ -96,5 +97,6 @@ else
     reason="exit code $code: $(grep -v '^[[:space:]]*$' "$log" | tail -n 1)"
 fi
 
+echo "==> [$(date -u +%H:%M:%S)] Failed: ${reason:0:500}" >>"$log"
 pm_status failed "$(pm_current progress)" "$(pm_current step)" "${reason:0:500}"
 exit "$code"

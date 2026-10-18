@@ -8,12 +8,14 @@ use App\Enums\AppInstallationStatus;
 use App\Models\AppInstallation;
 use App\Proxmox\Exceptions\ProxmoxException;
 use App\Proxmox\ProxmoxClientFactory;
+use Illuminate\Support\Facades\Cache;
 
 /**
  * Follows a running installer (docs/adr/0015) by reading its status.json
- * through the guest agent. When it reports "installed", the declared outputs
- * are read and stored encrypted; past the recipe's timeout the installation
- * fails, also when the agent stopped answering.
+ * through the guest agent, and copies what the installer printed (docs/adr/0021).
+ * When it reports "installed", the declared outputs are read and stored
+ * encrypted; past the recipe's timeout the installation fails, also when the
+ * agent stopped answering.
  */
 final readonly class InstallationPoller
 {
@@ -23,9 +25,19 @@ final readonly class InstallationPoller
     public function __construct(
         private ProxmoxClientFactory $clients,
         private AppInstallations $installations,
+        private AppLogs $logs,
     ) {}
 
+    /**
+     * One poll at a time per installation: apps:poll and an administrator
+     * watching the log (docs/adr/0021) may ask at the same moment.
+     */
     public function poll(AppInstallation $installation): void
+    {
+        Cache::lock('app-installation-poll:'.$installation->id, 120)->get(fn () => $this->pollNow($installation->refresh()));
+    }
+
+    private function pollNow(AppInstallation $installation): void
     {
         if ($installation->status !== AppInstallationStatus::Installing) {
             return;
@@ -46,6 +58,7 @@ final readonly class InstallationPoller
         }
 
         if ($status['state'] === 'failed') {
+            $this->logs->finish($this->logs->current($installation));
             $this->installations->failed($installation, $status['message'] ?? 'The installer failed.', $status['step']);
 
             return;
@@ -60,6 +73,7 @@ final readonly class InstallationPoller
                 return;
             }
 
+            $this->logs->finish($this->logs->current($installation), $outputs);
             $this->installations->installed($installation, $outputs, $status['step']);
 
             return;
@@ -71,11 +85,14 @@ final readonly class InstallationPoller
             return;
         }
 
+        $log = $this->logs->current($installation);
+        $log !== null && $this->logs->follow($log);
         $installation->forceFill(['progress' => $status['progress'] ?? $installation->progress, 'step' => $status['step'] ?? $installation->step])->save();
     }
 
     private function timedOut(AppInstallation $installation): void
     {
+        $this->logs->finish($this->logs->current($installation));
         $this->installations->failed($installation, __('The installation did not finish within :minutes minutes.', ['minutes' => (string) $installation->timeoutMinutes()]));
     }
 }

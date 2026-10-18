@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Provisioning\Pipelines;
 
+use App\Domain\Apps\AppLogs;
 use App\Domain\Apps\AppRuns;
 use App\Domain\Apps\GuestPackage;
 use App\Domain\Servers\GuestScriptFailed;
@@ -30,6 +31,7 @@ final readonly class AppRunPipeline
         private ProxmoxClientFactory $clients,
         private GuestPackage $package,
         private AppRuns $runs,
+        private AppLogs $logs,
     ) {}
 
     public function run(Task $task): void
@@ -102,6 +104,7 @@ final readonly class AppRunPipeline
             'task_id' => $task->id,
             'started_at' => now(),
         ])->save();
+        $this->logs->beginRun($run);
 
         $task->completeStep('app_start');
     }

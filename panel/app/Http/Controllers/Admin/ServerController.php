@@ -34,6 +34,7 @@ use App\Http\Requests\PrimaryAddressRequest;
 use App\Http\Requests\ReinstallRequest;
 use App\Models\AppEntitlement;
 use App\Models\AppInstallation;
+use App\Models\AppLog;
 use App\Models\AppRecipe;
 use App\Models\AppRun;
 use App\Models\BillingSystem;
@@ -259,7 +260,12 @@ class ServerController extends Controller
                 ->map(fn (ServerDrift $drift) => DriftController::present($drift)),
             'agent' => Inertia::defer(fn () => $server->status === ServerStatus::Active ? $agent->reachable($server) : null),
             'apps' => $server->appInstallations()
-                ->with(['recipe:id,slug,name,is_active,latest_version_id', 'recipe.latestVersion', 'version', 'runs' => fn ($query) => $query->with('targetVersion')->latest('id')->limit(50)])
+                ->with([
+                    'recipe:id,slug,name,is_active,latest_version_id', 'recipe.latestVersion', 'version',
+                    'runs' => fn ($query) => $query->with(['targetVersion', 'log:id,uuid,app_run_id'])->latest('id')->limit(50),
+                    // Without their content: the dialog fetches it (docs/adr/0021).
+                    'logs' => fn ($query) => $query->select(['id', 'uuid', 'app_installation_id', 'attempt', 'created_at'])->latest('id'),
+                ])
                 ->latest('id')
                 ->get()
                 ->map(function (AppInstallation $installation) use ($server, $upgrades) {
@@ -285,6 +291,11 @@ class ServerController extends Controller
                             ? array_map(fn (RecipeAction $action) => ['key' => $action->key, 'label' => $action->label, 'inputs' => array_map(fn (RecipeInput $input) => $input->toArray(), $action->inputs)], $recipe->actions)
                             : [],
                         'upgrade' => $upgrades->offer($installation),
+                        'logs' => $installation->logs->map(fn (AppLog $log) => [
+                            'uuid' => $log->uuid,
+                            'attempt' => $log->attempt,
+                            'created_at' => $log->created_at?->toIso8601String(),
+                        ])->values(),
                         'runs' => $installation->runs->take(5)->map(fn (AppRun $run) => [
                             'uuid' => $run->uuid,
                             'kind' => $run->kind,
@@ -293,6 +304,7 @@ class ServerController extends Controller
                             'status' => $run->status,
                             'step' => $run->step,
                             'error' => $run->error,
+                            'log' => $run->log?->uuid,
                             'created_at' => $run->created_at?->toIso8601String(),
                         ])->values(),
                     ];

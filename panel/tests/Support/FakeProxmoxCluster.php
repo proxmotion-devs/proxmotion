@@ -2,6 +2,7 @@
 
 namespace Tests\Support;
 
+use App\Domain\Apps\AppLogs;
 use GuzzleHttp\Promise\Create;
 use GuzzleHttp\Promise\PromiseInterface;
 use GuzzleHttp\Psr7\Response as Psr7Response;
@@ -68,6 +69,9 @@ class FakeProxmoxCluster
      * @var (callable(list<string>, string|null): array{int, string, string})|null
      */
     public $execHandler = null;
+
+    /** How often an app log was read (kept out of guestCommands). */
+    public int $guestLogReads = 0;
 
     /** How many exec-status polls report a command as still running. */
     public int $execPollsUntilExited = 0;
@@ -270,8 +274,18 @@ class FakeProxmoxCluster
             case 'exec':
                 $commandLine = array_values((array) $data['command']);
                 $input = isset($data['input-data']) ? (string) $data['input-data'] : null;
-                $this->guestCommands[] = ['vmid' => $vmid, 'command' => $commandLine, 'input' => $input];
-                [$exitCode, $out, $err] = $this->execHandler !== null ? ($this->execHandler)($commandLine, $input) : [0, '', ''];
+
+                // Reading an app log (AppLogs::READ_SCRIPT): a byte range of a guest file, base64-encoded.
+                if (($commandLine[2] ?? null) === AppLogs::READ_SCRIPT) {
+                    $this->guestLogReads++;
+                    $file = $this->guestFiles[$vmid][$commandLine[4]] ?? null;
+                    [$exitCode, $out, $err] = $file === null
+                        ? [1, '', 'dd: failed to open: No such file or directory']
+                        : [0, base64_encode(substr($file, (int) $commandLine[5], (int) $commandLine[6])), ''];
+                } else {
+                    $this->guestCommands[] = ['vmid' => $vmid, 'command' => $commandLine, 'input' => $input];
+                    [$exitCode, $out, $err] = $this->execHandler !== null ? ($this->execHandler)($commandLine, $input) : [0, '', ''];
+                }
                 $pid = 1000 + count($this->processes);
                 $this->processes[$pid] = ['exitcode' => $exitCode, 'out' => $out, 'err' => $err, 'polls' => 0];
 

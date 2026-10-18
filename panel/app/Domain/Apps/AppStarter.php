@@ -31,6 +31,7 @@ final readonly class AppStarter
         private ProxmoxClientFactory $clients,
         private GuestPackage $package,
         private AppInstallations $installations,
+        private AppLogs $logs,
     ) {}
 
     /**
@@ -121,6 +122,7 @@ final readonly class AppStarter
             'started_at' => now(),
             'finished_at' => null,
         ])->save();
+        $this->logs->beginAttempt($installation);
 
         $task->completeStep('app_start');
     }
