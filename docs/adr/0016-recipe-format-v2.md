@@ -1,6 +1,6 @@
 # 16. Recipe format v2: versions, lifecycle and operating systems
 
-- **Status:** Accepted (phases 1, 2 and 4 built 2026-10-17 and 2026-10-18)
+- **Status:** Accepted (phases 1 to 4 built 2026-10-17 and 2026-10-18)
 - **Date:** 2026-10-17
 - **Builds on:** ADR 0015 (App Marketplace). Distribution and trust: ADR 0017.
 
@@ -90,7 +90,7 @@ All run like the install of ADR 0015: a short `app_run` server task writes the p
 
 - Uninstall without an `uninstall` script is refused (`422`); recipes without one say so in the catalog.
 - Outputs of failed operations are never stored; secrets follow ADR 0015 (encrypted, `apps:secrets`).
-- Webhooks: `app.uninstalled`, `app.uninstall_failed`, `app.action_succeeded`, `app.action_failed` with the installation and the run, without outputs; `app.upgraded` comes with phase 3.
+- Webhooks: `app.uninstalled`, `app.uninstall_failed`, `app.upgraded`, `app.upgrade_failed`, `app.action_succeeded`, `app.action_failed` with the installation and the run, without outputs.
 - Billing modules (WHMCS, WISECP) get uninstall, upgrade (shown when the catalog has a newer version the installed one can upgrade from) and action forms built from the recipe's action inputs.
 
 ### 5. Order-time and reinstall installs (Phase 5b)
@@ -116,6 +116,18 @@ All run like the install of ADR 0015: a short `app_run` server task writes the p
 
 1. **v2 format and stored versions:** schema, loader (v1 compatible), `app_recipe_versions`, installation → version, OS requirements and eligibility, `apps:make`; bundled recipes to v2. *Built 2026-10-17:* `recipes/_schema/recipe-v2.schema.json`; `apps:sync` stores each version (published; ADR 0018 archives the previous one) and refuses a changed version that installations use (raise the version; an unused one is replaced in place); a retry keeps the installation's version; `os_templates.capabilities` (later replaced by OS families and groups, §3); `pm_pkg_install` in `_lib/proxmotion.sh`; the bundled recipes are format 2, version 1.1.0, and accept Ubuntu ≥ 22.04 and Debian ≥ 12 through apt. Windows recipes load but are not offered until the runner exists. The API's `App` gained `format` and `requires`. Uninstall, upgrade and action scripts are validated and stored but not run yet.
 2. **Uninstall and actions:** runner operations, API, webhooks, admin UI, WHMCS and WISECP; WireGuard/OpenVPN client actions. *Built 2026-10-17 in the panel:* `app_runs` (`AppRun`, `AppRunner`, `AppRunPipeline`, `RunPoller`), `app_run` task, uninstall statuses `uninstalling` and `uninstall_failed`, API (`DELETE /servers/{id}/apps/{installation}`, `POST .../actions/{key}`, `GET .../runs/{run}`), the four webhooks, admin buttons and dialogs; a finished uninstall deletes the installation's directory in the guest. WireGuard and OpenVPN 1.2.0: several clients (add, revoke, list), uninstall; Docker 1.2.0: uninstall (images and volumes kept). The WHMCS client area and the WISECP Apps tool show action forms, uninstall and the latest runs (`GET .../runs`) with downloads of run outputs. **Not done yet:** runs against a real Proxmox, WHMCS or WISECP.
-3. **Upgrade:** version ranges, API, billing modules.
+3. **Upgrade:** version ranges, API, billing modules. *Built 2026-10-18:* see "Upgrades" below; the bundled WireGuard, OpenVPN and Docker recipes are 1.3.0 with an `upgrade.sh` for 1.1.x and 1.2.x (newer packages, configuration and keys kept). **Not done yet:** runs against a real Proxmox, WHMCS or WISECP.
 4. **Order-time and reinstall installs (5b).** *Built 2026-10-18:* `app_installations.mode`, `AppStarter` (shared by `install_app` and the post-boot step), order eligibility (`AppEligibility::forOrder`), `ServerCreator`/`ServerReinstaller` with an app, admin create form and reinstall dialog (`OrderedAppOptions`), API fields and `mode=order`, WHMCS (`app` option, `app_<key>` fields, reinstall form) and WISECP (order answers, *Reinstall with an app* in the Apps tool); paid apps and entitlements with ADR 0019. **Not done yet:** runs against a real Proxmox, WHMCS or WISECP.
 5. **Windows runner** when the first Windows recipe is written.
+
+## Upgrades (phase 3, added 2026-10-18)
+
+How the upgrade row of §4 was built:
+
+- **Target:** the app's published version (`latest_version_id`), offered when it is newer than the installed one (`version_compare`), has an `upgrade` script whose `from` range contains the installed version, and still fits the server's template, resources and network model (`AppEligibility::forUpgrade`). Install modes and a paid app's entitlement are not checked again: the app is already installed. Older published versions are never upgrade targets; there is no choice of version.
+- **Ranges:** `from` is a list of comparators that must all hold (`VersionRange`). An administrator's edit (`1.2.1-local.2`, ADR 0018) is compared as the version it was made from (`1.2.1`). `apps:validate` refuses a range it cannot read; a range containing the recipe's own version is allowed (the editor bumps versions without touching it), since only older versions are upgraded.
+- **Inputs:** the upgrade keeps the installed values of inputs the new version still declares (checked against the new types) and asks for the inputs it adds (`upgrade.inputs` of the installation in the API; those with a default may be left out). Installed values cannot be changed by an upgrade.
+- **Run:** an `app_runs` row of kind `upgrade` with `target_version_id`; the installation becomes `upgrading`. The `app_run` task writes the **target** version's package with the merged inputs into the installation's directory and starts `run.sh upgrade.sh <run directory>`. Its timeout is the upgrade step's.
+- **Outcome:** on success the installation moves to the target version and the merged inputs, `installed`; outputs the script wrote (to the run directory, declared by the new version's `outputs`) replace those of the same key, others the new version still declares are kept, the rest dropped. The run keeps no outputs. On failure the installation is `upgrade_failed` with the error and keeps its version, inputs and outputs; it can be upgraded again or uninstalled, and actions wait until it is `installed` again. The guest directory may already hold the new version's scripts; every later run writes the installation's own version again.
+- A version an upgrade run points to counts as in use (`AppRecipeVersion::inUse()`), so `apps:sync` does not replace its content.
+- API: `POST /servers/{id}/apps/{installation}/upgrade` with `inputs` → `202` + the run (`422` when nothing is offered or inputs are invalid, `409` while another run or install is in progress); installations have `upgrade` (`{version, inputs}` or `null`), runs `target_version`. Admin: *Upgrade to <version>* on the server page. WHMCS: `UpgradeApp` in the client area; WISECP: the `upgrade` action of the Apps tool.
