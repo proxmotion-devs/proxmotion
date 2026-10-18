@@ -3,7 +3,7 @@
 #
 #   docker build --platform linux/amd64 -t proxmotion-images -f images.Dockerfile .
 #   docker run --rm --platform linux/amd64 -v "$PWD/proxmotion-images:/out" proxmotion-images
-FROM debian:12-slim
+FROM debian:13-slim
 
 # virt-customize needs a kernel for its helper VM; linux-image-amd64 provides it.
 RUN apt-get update \
