@@ -40,7 +40,7 @@ requires:                        # matched against the template's family (sectio
 resources: { min_cores: 1, min_memory_mib: 512, min_disk_mib: 5120 }
 network_models: [bridged, routed, nat]
 install_modes: [order, post]
-inputs: [...]                    # unchanged types (ADR 0015 §5)
+inputs: [...]                    # types of ADR 0015 §5, plus url (HTTPS only, added 2026-10-18)
 outputs: [...]
 firewall: [...]
 lifecycle:
