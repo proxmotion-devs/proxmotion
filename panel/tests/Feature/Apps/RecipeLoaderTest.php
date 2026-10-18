@@ -77,6 +77,24 @@ class RecipeLoaderTest extends TestCase
         $this->artisan('apps:validate')->assertSuccessful();
     }
 
+    public function test_inputs_labelled_optional_are_not_required()
+    {
+        // Without a default an input is required unless the recipe says required: false.
+        foreach ((new RecipeLoader)->all() as $slug => ['recipe' => $recipe]) {
+            $inputs = $recipe->inputs;
+
+            foreach ($recipe->actions as $action) {
+                $inputs = [...$inputs, ...$action->inputs];
+            }
+
+            foreach ($inputs as $input) {
+                if (str_contains(strtolower($input->label['en'] ?? ''), 'optional')) {
+                    $this->assertFalse($input->required, "{$slug}: {$input->key} is labelled optional but required.");
+                }
+            }
+        }
+    }
+
     public function test_the_schema_is_enforced()
     {
         $this->editRecipe('category: vpn', 'category: games');

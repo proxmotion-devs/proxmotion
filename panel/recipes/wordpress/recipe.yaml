@@ -1,7 +1,7 @@
 format: 2
 slug: wordpress
 name: WordPress
-version: 1.0.0
+version: 1.0.1
 category: web
 description:
     en: WordPress on nginx, PHP-FPM and MariaDB, optionally with a Let's Encrypt certificate for its domain.
@@ -39,6 +39,7 @@ inputs:
       label: { en: Language, tr: Dil }
     - key: domain
       type: domain
+      required: false
       label: { en: Domain (optional), tr: Alan adı (isteğe bağlı) }
     - key: letsencrypt
       type: boolean

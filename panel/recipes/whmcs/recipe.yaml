@@ -1,7 +1,7 @@
 format: 2
 slug: whmcs
 name: WHMCS
-version: 1.0.0
+version: 1.0.1
 category: web
 description:
     en: The WHMCS billing and automation platform on nginx, PHP-FPM with the ionCube Loader and MariaDB, installed from your own WHMCS download with your licence key.
@@ -47,6 +47,7 @@ inputs:
       label: { en: Administrator username, tr: Yönetici kullanıcı adı }
     - key: domain
       type: domain
+      required: false
       label: { en: Domain (optional), tr: Alan adı (isteğe bağlı) }
     - key: letsencrypt
       type: boolean
@@ -56,6 +57,7 @@ inputs:
           tr: Alan adı için Let's Encrypt sertifikası al (Let's Encrypt koşulları kabul edilir)
     - key: email
       type: email
+      required: false
       label:
           {
               en: Email for Let's Encrypt (optional),

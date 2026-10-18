@@ -4,6 +4,7 @@ namespace Tests\Feature\Apps;
 
 use App\Domain\Apps\InputValidator;
 use App\Domain\Apps\Recipe;
+use App\Domain\Apps\RecipeLoader;
 use Illuminate\Validation\ValidationException;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
@@ -97,5 +98,16 @@ class InputValidatorTest extends TestCase
         } catch (ValidationException $e) {
             $this->assertArrayHasKey('inputs.'.$key, $e->errors());
         }
+    }
+
+    public function test_optional_inputs_of_bundled_recipes_may_stay_empty()
+    {
+        // As the install form sends them: untouched fields are empty.
+        $recipe = (new RecipeLoader)->load('wordpress')['recipe'];
+
+        $values = (new InputValidator)->validateInputs($recipe->inputs, ['admin_email' => 'admin@example.com', 'domain' => '']);
+
+        $this->assertArrayNotHasKey('domain', $values);
+        $this->assertSame('admin@example.com', $values['admin_email']);
     }
 }
