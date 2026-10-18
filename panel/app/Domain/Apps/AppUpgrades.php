@@ -21,9 +21,14 @@ final readonly class AppUpgrades
 
     /**
      * The version to upgrade to, or null when there is none for this installation.
+     * A trial installation (docs/adr/0018 §7) is never upgraded: try the new draft instead.
      */
     public function target(AppInstallation $installation): ?AppRecipeVersion
     {
+        if ($installation->is_trial) {
+            return null;
+        }
+
         $target = $installation->recipe->latestVersion;
         $installed = $installation->version;
 

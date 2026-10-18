@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3';
-import { Pencil, Plus } from '@lucide/vue';
+import { FileUp, Pencil, Plus } from '@lucide/vue';
 import { ref } from 'vue';
 import FormDialog from '@/components/admin/FormDialog.vue';
 import FormField from '@/components/admin/FormField.vue';
@@ -9,7 +9,13 @@ import StatusBadge from '@/components/admin/StatusBadge.vue';
 import Heading from '@/components/Heading.vue';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { edit, index, store, update } from '@/routes/admin/apps';
+import {
+    edit,
+    importMethod as importRoute,
+    index,
+    store,
+    update,
+} from '@/routes/admin/apps';
 import type { AppText } from '@/types/admin';
 
 /**
@@ -54,6 +60,30 @@ const toggle = (slug: string, active: boolean) =>
 const createOpen = ref(false);
 const createForm = useForm({ slug: '', name: '' });
 
+// Import a recipe zip as a new custom app (docs/adr/0018 §5); the panel opens its editor.
+const importOpen = ref(false);
+const importForm = useForm<{
+    archive: File | null;
+    slug: string;
+    name: string;
+}>({ archive: null, slug: '', name: '' });
+
+const openImport = () => {
+    importForm.reset();
+    importForm.clearErrors();
+    importOpen.value = true;
+};
+
+const pickArchive = (event: Event) => {
+    importForm.archive =
+        (event.target as HTMLInputElement).files?.item(0) ?? null;
+};
+
+const submitImport = () =>
+    importForm.submit(importRoute(), {
+        onSuccess: () => (importOpen.value = false),
+    });
+
 const submitCreate = () =>
     createForm.submit(store(), {
         onSuccess: () => {
@@ -73,17 +103,27 @@ const submitCreate = () =>
                 title="Apps"
                 description="Apps customers can install on their servers through the billing system. Bundled apps come with the panel (php artisan apps:sync) and can be edited here; panel updates keep your changes. You can also write your own."
             />
-            <Button
-                data-test="new-app"
-                @click="
-                    createForm.reset();
-                    createForm.clearErrors();
-                    createOpen = true;
-                "
-            >
-                <Plus class="h-4 w-4" />
-                {{ $t('New app') }}
-            </Button>
+            <div class="flex flex-wrap gap-2">
+                <Button
+                    variant="outline"
+                    data-test="import-app"
+                    @click="openImport"
+                >
+                    <FileUp class="h-4 w-4" />
+                    {{ $t('Import app') }}
+                </Button>
+                <Button
+                    data-test="new-app"
+                    @click="
+                        createForm.reset();
+                        createForm.clearErrors();
+                        createOpen = true;
+                    "
+                >
+                    <Plus class="h-4 w-4" />
+                    {{ $t('New app') }}
+                </Button>
+            </div>
         </div>
 
         <GuideBox id="apps" title="How to add an app" topic="apps-own">
@@ -98,14 +138,14 @@ const submitCreate = () =>
                 <li>
                     {{
                         $t(
-                            'New app creates a draft from a working skeleton. Fill in the tabs, write install.sh and save the draft.',
+                            'New app creates a draft from a working skeleton (Import app takes a recipe zip instead). Fill in the tabs, write install.sh and save the draft.',
                         )
                     }}
                 </li>
                 <li>
                     {{
                         $t(
-                            'Publish it, then try it on a test server of your own. Deactivate it while something is wrong.',
+                            'Try the draft on a test server (Trial runs tab), then publish it. Deactivate it while something is wrong.',
                         )
                     }}
                 </li>
@@ -232,6 +272,50 @@ const submitCreate = () =>
         </FormField>
         <FormField label="Name" for="new_name" :error="createForm.errors.name">
             <Input id="new_name" v-model="createForm.name" />
+        </FormField>
+    </FormDialog>
+
+    <FormDialog
+        v-model:open="importOpen"
+        title="Import an app"
+        description="A zip of a recipe directory (recipe.yaml and its scripts), as exported from a panel. It becomes a new custom app as a draft."
+        submit-label="Import"
+        :processing="importForm.processing"
+        @submit="submitImport"
+    >
+        <FormField
+            label="Recipe zip"
+            for="import_archive"
+            :error="importForm.errors.archive"
+        >
+            <input
+                id="import_archive"
+                type="file"
+                accept=".zip,application/zip"
+                class="text-sm"
+                data-test="import-archive"
+                @change="pickArchive"
+            />
+        </FormField>
+        <FormField
+            label="Slug"
+            for="import_slug"
+            hint="Leave empty to use the recipe's own slug."
+            :error="importForm.errors.slug"
+        >
+            <Input
+                id="import_slug"
+                v-model="importForm.slug"
+                class="font-mono"
+            />
+        </FormField>
+        <FormField
+            label="Name"
+            for="import_name"
+            hint="Leave empty to use the recipe's own name."
+            :error="importForm.errors.name"
+        >
+            <Input id="import_name" v-model="importForm.name" />
         </FormField>
     </FormDialog>
 </template>

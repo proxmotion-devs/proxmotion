@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Models;
 
 use App\Domain\Apps\Recipe;
+use App\Enums\AppInstallationStatus;
 use App\Enums\AppRecipeVersionStatus;
 use Database\Factories\AppRecipeFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -140,5 +141,16 @@ class AppRecipe extends Model
     public function installations(): HasMany
     {
         return $this->hasMany(AppInstallation::class);
+    }
+
+    /**
+     * Installed on a server, or tried on a test server that still has it
+     * (docs/adr/0018 §7): the app cannot be deleted, only deactivated.
+     */
+    public function inUse(): bool
+    {
+        return $this->installations()
+            ->where(fn ($query) => $query->where('is_trial', false)->orWhere('status', '!=', AppInstallationStatus::Removed))
+            ->exists();
     }
 }

@@ -384,6 +384,8 @@ export type AppInstallation = {
     uuid: string;
     app: string;
     version: string;
+    /** A trial of a draft on a test server (docs/adr/0018 §7). */
+    is_trial: boolean;
     status: AppInstallationStatus;
     progress: number;
     step: string | null;
@@ -448,6 +450,9 @@ export type AppInput = {
 };
 
 export type AppOption = { slug: string; name: string; inputs: AppInput[] };
+
+/** An active app that does not fit a server, with why (shown to administrators only). */
+export type UnavailableApp = { slug: string; name: string; reason: string };
 
 // An app that can come with a new system, and the OS templates it fits (docs/adr/0016 §5).
 export type OrderedAppOption = AppOption & { os_templates: string[] };

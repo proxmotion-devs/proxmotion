@@ -226,6 +226,8 @@ class ServerController extends Controller
                 'has_password' => $server->root_password !== null,
                 'busy' => $server->status->isBusy(),
                 'reboot_required' => $server->reboot_required,
+                // Drafts of apps may be tried on it (docs/adr/0018 §7).
+                'is_test' => $server->is_test,
                 'billing_system' => $server->billingSystem?->name,
                 'external_id' => $server->external_id,
                 'external_client_id' => $server->external_client_id,
@@ -284,6 +286,7 @@ class ServerController extends Controller
                         'uuid' => $installation->uuid,
                         'app' => $installation->recipe->name,
                         'version' => $installation->version->version,
+                        'is_trial' => $installation->is_trial,
                         'status' => $installation->status,
                         'progress' => $installation->progress,
                         'step' => $installation->step,
@@ -339,6 +342,12 @@ class ServerController extends Controller
                     'name' => $app->name,
                     'inputs' => array_map(fn (RecipeInput $input) => $input->toArray(), $app->recipe()->inputs),
                 ])
+                ->values(),
+            // Active apps that do not fit, with the first reason (only administrators see these;
+            // billing systems get the eligible apps only).
+            'unavailableApps' => fn () => AppRecipe::query()->with('latestVersion')->where('is_active', true)->orderBy('name')->get()
+                ->map(fn (AppRecipe $app) => ['slug' => $app->slug, 'name' => $app->name, 'reason' => $eligibility->forServer($app, $server)?->translatedMessage()])
+                ->filter(fn (array $app) => $app['reason'] !== null)
                 ->values(),
         ]);
     }

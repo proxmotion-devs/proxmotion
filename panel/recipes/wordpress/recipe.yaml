@@ -1,7 +1,7 @@
 format: 2
 slug: wordpress
 name: WordPress
-version: 1.0.1
+version: 1.0.2
 category: web
 description:
     en: WordPress on nginx, PHP-FPM and MariaDB, optionally with a Let's Encrypt certificate for its domain.

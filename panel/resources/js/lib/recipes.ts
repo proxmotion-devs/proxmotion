@@ -97,8 +97,6 @@ export const OUTPUT_TYPES = ['text', 'url', 'file'];
 
 export const CATEGORIES = ['vpn', 'control-panel', 'container', 'web'];
 
-export const NETWORK_MODELS = ['bridged', 'routed', 'nat'];
-
 const CAPABILITY_GROUPS: Record<string, string> = {
     apt: 'debian',
     dnf: 'rhel',
@@ -117,18 +115,6 @@ export function osFromCapabilities(capabilities: string[]): string[] {
         .filter((group): group is string => group !== undefined);
 
     return [...new Set(groups)];
-}
-
-/**
- * The template families the names cover, groups expanded.
- */
-export function expandOs(
-    names: string[],
-    groups: Record<string, { families: string[] }>,
-): string[] {
-    return [
-        ...new Set(names.flatMap((name) => groups[name]?.families ?? [name])),
-    ];
 }
 
 /**

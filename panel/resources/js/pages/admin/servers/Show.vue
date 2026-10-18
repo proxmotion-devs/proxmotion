@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Head, Link, router, setLayoutProps, usePoll } from '@inertiajs/vue3';
 import { Eye, Monitor, Pause, Play, RotateCcw } from '@lucide/vue';
+import { trans } from 'laravel-vue-i18n';
 import { computed, ref, watch } from 'vue';
 import ConfirmDelete from '@/components/admin/ConfirmDelete.vue';
 import DriftList from '@/components/admin/DriftList.vue';
@@ -39,6 +40,8 @@ import {
     retry,
     show,
     suspend,
+    test as testServer,
+    trialReset,
     unsuspend,
 } from '@/routes/admin/servers';
 import { NETWORK_MODELS } from '@/types/admin';
@@ -56,6 +59,7 @@ import type {
     RevealedAppOutputs,
     ServerStatus,
     Task,
+    UnavailableApp,
 } from '@/types/admin';
 
 const props = defineProps<{
@@ -76,6 +80,8 @@ const props = defineProps<{
         busy: boolean;
         /** New CPU or memory wait for a restart. */
         reboot_required: boolean;
+        /** Drafts of apps may be tried on it (docs/adr/0018 §7). */
+        is_test: boolean;
         billing_system: string | null;
         external_id: string | null;
         external_client_id: string | null;
@@ -110,6 +116,8 @@ const props = defineProps<{
     agent?: boolean | null;
     apps: AppInstallation[];
     appOptions: AppOption[];
+    /** Active apps that do not fit the server, with the first reason. */
+    unavailableApps: UnavailableApp[];
     entitlements: AppEntitlement[];
     entitlementOptions: Option[];
 }>();
@@ -204,6 +212,33 @@ const runningTasks = computed(() =>
 );
 
 const active = computed(() => props.server.status === 'active');
+
+const toggleTestServer = () =>
+    router.visit(testServer(props.server.uuid), {
+        data: { is_test: !props.server.is_test },
+        preserveScroll: true,
+    });
+
+// Reinstall the test server from its template after trials (docs/adr/0018 §7).
+const resetAfterTrial = () => {
+    if (
+        window.confirm(
+            trans(
+                'Reinstall :hostname from :template? Its disks are wiped and every app on it is removed. IP addresses and SSH keys stay; the root password is new.',
+                {
+                    hostname: props.server.hostname,
+                    template: props.server.os_template ?? '—',
+                },
+            ),
+        )
+    ) {
+        router.post(
+            trialReset(props.server.uuid),
+            {},
+            { preserveScroll: true },
+        );
+    }
+};
 </script>
 
 <template>
@@ -223,6 +258,11 @@ const active = computed(() => props.server.status === 'active');
                         v-if="server.origin === 'adopted'"
                         tone="neutral"
                         label="Adopted"
+                    />
+                    <StatusBadge
+                        v-if="server.is_test"
+                        tone="warning"
+                        label="Test server"
                     />
                 </div>
             </div>
@@ -591,6 +631,7 @@ const active = computed(() => props.server.status === 'active');
             <AppList
                 :apps="apps"
                 :options="appOptions"
+                :unavailable="unavailableApps"
                 :action="installApp(server.uuid)"
                 :disabled="!active || agent === false"
                 :revealed="revealedAppOutputs"
@@ -607,6 +648,48 @@ const active = computed(() => props.server.status === 'active');
                     :action="grantEntitlement(server.uuid)"
                     :disabled="server.status === 'terminated'"
                 />
+            </section>
+
+            <!-- Trial runs of app drafts (docs/adr/0018 §7); never on a billing system's server. -->
+            <section
+                v-if="!server.billing_system && server.status !== 'terminated'"
+                class="flex flex-wrap items-center justify-between gap-3 rounded-xl border p-4"
+                data-test="test-server"
+            >
+                <div>
+                    <h3 class="font-medium">{{ $t('Test server') }}</h3>
+                    <p class="text-sm text-muted-foreground">
+                        {{
+                            $t(
+                                'Drafts of apps can be tried on test servers from the app editor. Only use a server nobody depends on. Reset after trial reinstalls it from its template, removing every app.',
+                            )
+                        }}
+                    </p>
+                </div>
+                <div class="flex flex-wrap gap-2">
+                    <Button
+                        v-if="server.is_test && active"
+                        variant="destructive"
+                        size="sm"
+                        :disabled="busy"
+                        data-test="trial-reset"
+                        @click="resetAfterTrial"
+                    >
+                        <RotateCcw class="h-4 w-4" />
+                        {{ $t('Reset after trial') }}
+                    </Button>
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        @click="toggleTestServer"
+                    >
+                        {{
+                            server.is_test
+                                ? $t('Stop using as a test server')
+                                : $t('Use as a test server')
+                        }}
+                    </Button>
+                </div>
             </section>
         </template>
 

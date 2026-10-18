@@ -40,6 +40,7 @@ use Illuminate\Support\Carbon;
  * @property string $hostname
  * @property ServerStatus $status
  * @property ServerOrigin $origin
+ * @property bool $is_test drafts of apps may be tried on it (docs/adr/0018 §7); never has a billing system
  * @property NetworkModel $network_model
  * @property int $cpu_cores
  * @property int $memory_mib
@@ -90,6 +91,7 @@ class Server extends Model
             'root_password' => 'encrypted',
             'root_password_unrevealed' => 'boolean',
             'reboot_required' => 'boolean',
+            'is_test' => 'boolean',
             'provisioned_at' => 'datetime',
             'terminated_at' => 'datetime',
         ];

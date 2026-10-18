@@ -21,6 +21,12 @@ enum AppRecipeVersionStatus: string
     /** Replaced by a newer published version; installations may still use it. */
     case Archived = 'archived';
 
+    /**
+     * A frozen copy of a draft that a trial run installed on a test server
+     * (docs/adr/0018 §7); never offered, left out of the history.
+     */
+    case Trial = 'trial';
+
     /** Fetched from a catalog, waiting for an administrator (docs/adr/0017). */
     case PendingReview = 'pending_review';
 

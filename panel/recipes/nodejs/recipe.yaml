@@ -1,0 +1,45 @@
+format: 2
+slug: nodejs
+name: Node.js
+version: 1.0.0
+category: web
+description:
+    en: A long-term support release of Node.js with npm from NodeSource's package repository, optionally with the PM2 process manager.
+    tr: NodeSource paket deposundan npm ile Node.js'in uzun süreli destek sürümü; isteğe bağlı olarak PM2 süreç yöneticisiyle.
+maintainers: [{ name: Proxmotion }]
+homepage: https://nodejs.org/
+requires:
+    platform: linux
+    os: [debian]
+    min_versions: { ubuntu: '22.04', debian: '12' }
+resources: { min_memory_mib: 512, min_disk_mib: 5120, min_cores: 1 }
+network_models: [bridged, routed, nat]
+install_modes: [order, post]
+billing: free
+license: none
+inputs:
+    - key: version
+      type: enum
+      options: ['24', '22']
+      default: '24'
+      label: { en: Node.js release line, tr: Node.js sürüm serisi }
+    - key: pm2
+      type: boolean
+      default: true
+      label:
+          en: PM2 process manager, started at boot
+          tr: Açılışta başlatılan PM2 süreç yöneticisi
+outputs:
+    - key: node_version
+      type: text
+      label: { en: Node.js version, tr: Node.js sürümü }
+    - key: npm_version
+      type: text
+      label: { en: npm version, tr: npm sürümü }
+    - key: notice
+      type: text
+      label: { en: Notice, tr: Not }
+includes: [lib.sh]
+lifecycle:
+    install: { script: install.sh, timeout_minutes: 15 }
+    uninstall: { script: uninstall.sh, timeout_minutes: 10 }

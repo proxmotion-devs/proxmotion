@@ -41,6 +41,16 @@ final readonly class AppEligibility
     }
 
     /**
+     * Why a trial version cannot be tried on the test server, or null
+     * (docs/adr/0018 §7): the same checks, but an inactive app may be tried
+     * (it is activated once it works) and a paid one needs no entitlement.
+     */
+    public function forTrial(AppRecipe $app, AppRecipeVersion $version, Server $server): ?AppNotEligible
+    {
+        return $this->check($app, $version, AppInstallMode::Post, $server->osTemplate, $server->cpu_cores, $server->memory_mib, $server->disk_mib, $server->network_model, requireActive: false);
+    }
+
+    /**
      * Why the app cannot come with a system built from this template and
      * these resources, or null: a new server, or a reinstall of $server.
      */
@@ -108,7 +118,7 @@ final readonly class AppEligibility
         return new AppNotEligible('This app does not support the package\'s network models.');
     }
 
-    private function check(AppRecipe $app, ?AppRecipeVersion $version, AppInstallMode $mode, ?OsTemplate $osTemplate, int $cores, int $memoryMib, int $diskMib, NetworkModel $networkModel): ?AppNotEligible
+    private function check(AppRecipe $app, ?AppRecipeVersion $version, AppInstallMode $mode, ?OsTemplate $osTemplate, int $cores, int $memoryMib, int $diskMib, NetworkModel $networkModel, bool $requireActive = true): ?AppNotEligible
     {
         $version ??= $app->latestVersion;
 
@@ -118,15 +128,15 @@ final readonly class AppEligibility
 
         $recipe = $version->recipe();
 
-        return $this->common($app, $recipe, $mode)
+        return $this->common($app, $recipe, $mode, $requireActive)
             ?? $this->os($recipe, $osTemplate)
             ?? $this->resources($recipe, $cores, $memoryMib, $diskMib)
             ?? ($recipe->supportsNetworkModel($networkModel) ? null : new AppNotEligible('This app does not support the server\'s network model.'));
     }
 
-    private function common(AppRecipe $app, Recipe $recipe, AppInstallMode $mode): ?AppNotEligible
+    private function common(AppRecipe $app, Recipe $recipe, AppInstallMode $mode, bool $requireActive = true): ?AppNotEligible
     {
-        if (! $app->is_active) {
+        if ($requireActive && ! $app->is_active) {
             return new AppNotEligible('This app is not available.');
         }
 

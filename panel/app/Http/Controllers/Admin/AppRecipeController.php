@@ -4,17 +4,27 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Admin;
 
+use App\Domain\Apps\AppInstallConflict;
+use App\Domain\Apps\AppTrials;
+use App\Domain\Apps\LiveAppPolls;
 use App\Domain\Apps\OsFamilies;
+use App\Domain\Apps\RecipeArchive;
 use App\Domain\Apps\RecipeEditor;
 use App\Domain\Apps\RecipeEditRefused;
+use App\Domain\Apps\RecipeInput;
 use App\Domain\Apps\RecipeInvalid;
 use App\Domain\Apps\RecipeLoader;
 use App\Enums\AppRecipeVersionStatus;
+use App\Enums\OsPlatform;
 use App\Http\Controllers\Controller;
-use App\Http\Requests\Admin\OsTemplateRequest;
 use App\Models\AppRecipe;
 use App\Models\AppRecipeVersion;
+use App\Models\AuditLog;
+use App\Models\OsTemplate;
+use App\Models\Server;
 use App\Models\User;
+use App\Provisioning\Exceptions\ProvisioningException;
+use App\Provisioning\Exceptions\TaskAlreadyRunning;
 use Illuminate\Container\Attributes\CurrentUser;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -23,6 +33,8 @@ use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
+use Symfony\Component\HttpFoundation\HeaderUtils;
+use Symfony\Component\HttpFoundation\Response as SymfonyResponse;
 use Symfony\Component\Yaml\Exception\ParseException;
 use Symfony\Component\Yaml\Yaml;
 
@@ -40,10 +52,16 @@ class AppRecipeController extends Controller
      * The editor: the draft (or the published version to start one from),
      * the versions and what the forms offer.
      */
-    public function edit(AppRecipe $appRecipe, RecipeLoader $loader): Response
+    public function edit(Request $request, AppRecipe $appRecipe, RecipeLoader $loader, AppTrials $trials, LiveAppPolls $live): Response
     {
+        // The page's refreshes while a trial runs ask its server, so progress shows live (docs/adr/0021).
+        if (in_array('trials', explode(',', (string) $request->header('X-Inertia-Partial-Data')), true)) {
+            $trials->pollRunning($appRecipe, $live);
+        }
+
         $appRecipe->load(['latestVersion', 'copiedFrom.app.latestVersion']);
         $draft = $appRecipe->draft();
+        $draftErrors = $draft === null ? [] : $this->editor->errors($draft);
         $published = $appRecipe->latestVersion;
         $origin = $appRecipe->copiedFrom;
         $newer = $origin?->app->latestVersion;
@@ -62,7 +80,7 @@ class AppRecipeController extends Controller
                 // A bundled release newer than the one the administrator's edit started from (docs/adr/0018 §2).
                 'bundled_version' => $upstream?->version,
                 'bundled_newer' => $appRecipe->isModified() && $upstream !== null && $base !== null && version_compare($upstream->version, $base, '>'),
-                'installed' => $appRecipe->installations()->exists(),
+                'installed' => $appRecipe->inUse(),
                 'copied_from' => $origin === null ? null : ['slug' => $origin->app->slug, 'name' => $origin->app->name, 'version' => $origin->version],
                 // The original got a newer version since the copy (docs/adr/0018 §2).
                 'upstream_version' => $newer !== null && version_compare($newer->version, $origin->version ?? '0', '>') ? $newer->version : null,
@@ -71,14 +89,19 @@ class AppRecipeController extends Controller
                 'version' => $draft->version,
                 'definition' => $draft->definition,
                 'files' => (object) $draft->files,
-                'errors' => $this->editor->errors($draft),
+                'errors' => $draftErrors,
             ],
             'published' => $published === null ? null : [
                 'version' => $published->version,
                 'definition' => $published->definition,
                 'files' => (object) $published->files,
             ],
-            'versions' => $appRecipe->versions()->with('reviewer:id,name')->orderByDesc('id')->get()->map(fn (AppRecipeVersion $version) => [
+            // Trial runs of the draft on test servers (docs/adr/0018 §7).
+            'trials' => $trials->forEditor($appRecipe, $draft),
+            'testServers' => $trials->testServers($appRecipe, $draft),
+            'trialInputs' => $draft === null || $draftErrors !== [] ? [] : array_map(fn (RecipeInput $input) => $input->toArray(), $draft->recipe()->inputs),
+            // Trial copies of drafts are listed with the trials, not here.
+            'versions' => $appRecipe->versions()->where('status', '!=', AppRecipeVersionStatus::Trial)->with('reviewer:id,name')->orderByDesc('id')->get()->map(fn (AppRecipeVersion $version) => [
                 'version' => $version->version,
                 'status' => $version->status->value,
                 'published_by' => $version->reviewer?->name,
@@ -87,8 +110,17 @@ class AppRecipeController extends Controller
             ]),
             // requires.os takes template families and groups of them (docs/adr/0016 §3).
             'osGroups' => OsFamilies::GROUPS,
-            'families' => OsTemplateRequest::FAMILIES,
             'library' => $loader->library(),
+            // The Linux family and version pairs of the active OS templates, for the
+            // requirements' OS picker (lowest version first).
+            'osTemplates' => OsTemplate::query()
+                ->where('is_active', true)
+                ->where('platform', OsPlatform::Linux)
+                ->get(['family', 'version'])
+                ->map(fn (OsTemplate $template) => ['family' => strtolower($template->family), 'version' => $template->version])
+                ->unique(fn (array $template) => $template['family'].' '.$template['version'])
+                ->sort(fn (array $a, array $b) => strcmp($a['family'], $b['family']) ?: version_compare($a['version'], $b['version']))
+                ->values(),
         ]);
     }
 
@@ -107,6 +139,64 @@ class AppRecipeController extends Controller
         abort_if($from === null || $to === null, 404);
 
         return response()->json(['diff' => $this->editor->diffBetween($from, $to)]);
+    }
+
+    /**
+     * Download a version (the published one by default, or the draft) as a
+     * zip of its recipe directory (docs/adr/0018 §5). Trial copies are not offered.
+     */
+    public function export(Request $request, AppRecipe $appRecipe, #[CurrentUser] User $admin, RecipeArchive $archive): SymfonyResponse
+    {
+        $data = $request->validate(['version' => ['nullable', 'string', 'max:40']]);
+        $version = match ($data['version'] ?? null) {
+            null => $appRecipe->latestVersion ?? $appRecipe->draft(),
+            'draft' => $appRecipe->draft(),
+            default => $appRecipe->versions()->where('version', $data['version'])->whereNotIn('status', [AppRecipeVersionStatus::Draft, AppRecipeVersionStatus::Trial])->first(),
+        };
+
+        abort_if($version === null, 404);
+        $version->setRelation('app', $appRecipe);
+
+        AuditLog::record('app.exported', $admin, $appRecipe, ['app' => $appRecipe->slug, 'version' => $version->version, 'draft' => $version->status === AppRecipeVersionStatus::Draft], $request->ip());
+
+        $filename = $appRecipe->slug.'-'.($version->status === AppRecipeVersionStatus::Draft ? 'draft' : $version->version).'.zip';
+
+        return response($archive->export($version), 200, [
+            'Content-Type' => 'application/zip',
+            'Content-Disposition' => HeaderUtils::makeDisposition(HeaderUtils::DISPOSITION_ATTACHMENT, $filename),
+        ]);
+    }
+
+    /**
+     * A new custom app from an uploaded recipe zip, as a draft.
+     */
+    public function import(Request $request, #[CurrentUser] User $admin, RecipeArchive $archive): RedirectResponse
+    {
+        $data = $request->validate([
+            'archive' => ['required', 'file', 'max:'.RecipeArchive::MAX_ZIP_KIB],
+            'slug' => ['nullable', 'string'],
+            'name' => ['nullable', 'string'],
+        ]);
+
+        ['definition' => $definition, 'files' => $files] = $archive->read($request->file('archive')->getRealPath());
+        $app = $this->editor->import($definition, $files, $data['slug'] ?? null, $data['name'] ?? null, $admin, $request->ip());
+        $this->toast('success', 'App imported as a draft.');
+
+        return to_route('admin.apps.edit', $app);
+    }
+
+    /**
+     * Replace the app's draft with an uploaded recipe zip (its slug stays).
+     */
+    public function importDraft(Request $request, AppRecipe $appRecipe, #[CurrentUser] User $admin, RecipeArchive $archive): RedirectResponse
+    {
+        $request->validate(['archive' => ['required', 'file', 'max:'.RecipeArchive::MAX_ZIP_KIB]]);
+
+        ['definition' => $definition, 'files' => $files] = $archive->read($request->file('archive')->getRealPath());
+        $this->refused(fn () => $this->editor->saveDraft($appRecipe, $definition, $files, $admin, $request->ip(), 'app.imported'));
+        $this->toast('success', 'Draft replaced by the imported recipe.');
+
+        return back();
     }
 
     public function store(Request $request, #[CurrentUser] User $admin): RedirectResponse
@@ -213,6 +303,33 @@ class AppRecipeController extends Controller
     {
         $version = $this->refused(fn () => $this->editor->revert($appRecipe, $admin, $request->ip()));
         $this->toast('success', 'Back to the bundled version :version.', ['version' => $version->version]);
+
+        return back();
+    }
+
+    /**
+     * Try the draft as it is saved now on a test server (docs/adr/0018 §7).
+     */
+    public function trial(Request $request, AppRecipe $appRecipe, #[CurrentUser] User $admin, AppTrials $trials): RedirectResponse
+    {
+        $data = $request->validate([
+            'server' => ['required', 'string', Rule::exists('servers', 'uuid')->where('is_test', true)],
+            'inputs' => ['nullable', 'array'],
+        ]);
+
+        $server = Server::query()->where('uuid', $data['server'])->firstOrFail();
+
+        try {
+            $this->refused(fn () => $trials->try($appRecipe, $server, $data['inputs'] ?? [], $admin, $request->ip()));
+        } catch (TaskAlreadyRunning|AppInstallConflict $e) {
+            $this->toast('error', $e->translatedMessage());
+
+            return back();
+        } catch (ProvisioningException $e) {
+            throw ValidationException::withMessages(['server' => $e->translatedMessage()]);
+        }
+
+        $this->toast('info', 'Trying the draft on :server…', ['server' => $server->hostname]);
 
         return back();
     }

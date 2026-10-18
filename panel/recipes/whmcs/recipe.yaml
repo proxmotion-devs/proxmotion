@@ -1,7 +1,7 @@
 format: 2
 slug: whmcs
 name: WHMCS
-version: 1.0.1
+version: 1.0.2
 category: web
 description:
     en: The WHMCS billing and automation platform on nginx, PHP-FPM with the ionCube Loader and MariaDB, installed from your own WHMCS download with your licence key.

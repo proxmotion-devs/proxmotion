@@ -74,7 +74,8 @@ class AppController extends ApiController
 
     public function installations(Request $request, Server $server): AnonymousResourceCollection
     {
-        $installations = $server->appInstallations()->with(['recipe.latestVersion', 'version', 'server.osTemplate', 'task'])->latest('id')->get();
+        // Trials of drafts (docs/adr/0018 §7) are the administrators' own.
+        $installations = $server->appInstallations()->where('is_trial', false)->with(['recipe.latestVersion', 'version', 'server.osTemplate', 'task'])->latest('id')->get();
         $outputs = $this->token($request)->hasScope(ApiScope::AppsSecrets);
 
         return AppInstallationResource::collection($installations->map(fn (AppInstallation $installation) => (new AppInstallationResource($installation))->withOutputs($outputs)));
@@ -202,11 +203,12 @@ class AppController extends ApiController
     }
 
     /**
-     * An installation of another server answers like an unknown one.
+     * An installation of another server, or a trial (docs/adr/0018 §7),
+     * answers like an unknown one.
      */
     private function ensureBelongs(Server $server, AppInstallation $installation): void
     {
-        if ($installation->server_id !== $server->id) {
+        if ($installation->server_id !== $server->id || $installation->is_trial) {
             throw (new ModelNotFoundException)->setModel(AppInstallation::class, [$installation->uuid]);
         }
     }

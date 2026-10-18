@@ -320,21 +320,21 @@ const topics = [
                     <li>
                         {{
                             $t(
-                                'General and Compatibility: description, category, the operating system families and versions, minimum resources and network models it needs.',
+                                'Details and Requirements: description and category, then the versions of your OS templates it runs on (ticked), the smallest server it needs in GB and its network models.',
                             )
                         }}
                     </li>
                     <li>
                         {{
                             $t(
-                                'Inputs and outputs: what the customer fills in (each with a type the panel checks) and what the script hands back, such as a URL or a password.',
+                                'Customer form: what the customer fills in (each with a type the panel checks) and what the script hands back, such as a URL or a password.',
                             )
                         }}
                     </li>
                     <li>
                         {{
                             $t(
-                                'Scripts: install.sh and uninstall.sh. Actions: optional extra scripts, such as adding a VPN client.',
+                                'Scripts & actions: install.sh and uninstall.sh, and optional extra scripts such as adding a VPN client. Edit as YAML shows the whole recipe as text.',
                             )
                         }}
                     </li>
@@ -348,7 +348,14 @@ const topics = [
                     <li>
                         {{
                             $t(
-                                'Publish, install it on a test server of your own from the server page and check the outputs. Deactivate the app while something is wrong.',
+                                'Try the draft before publishing: mark a server without a billing system as a test server on its Apps tab, then use Trial runs → Try on a test server and check the log and outputs there. Deactivate the app while something is wrong.',
+                            )
+                        }}
+                    </li>
+                    <li>
+                        {{
+                            $t(
+                                'A trial really changes the test server. Reset after trial on its Apps tab reinstalls it from its template, so the next trial starts clean.',
                             )
                         }}
                     </li>

@@ -80,13 +80,17 @@ Route::get('apps', [AppController::class, 'index'])->name('apps.index');
 Route::patch('apps/{appRecipe}', [AppController::class, 'update'])->name('apps.update');
 // Recipe editor (docs/adr/0018).
 Route::post('apps', [AppRecipeController::class, 'store'])->name('apps.store');
+Route::post('apps/import', [AppRecipeController::class, 'import'])->middleware('throttle:20,1')->name('apps.import');
 Route::get('apps/{appRecipe}/edit', [AppRecipeController::class, 'edit'])->name('apps.edit');
 Route::get('apps/{appRecipe}/diff', [AppRecipeController::class, 'diff'])->name('apps.diff');
+Route::get('apps/{appRecipe}/export', [AppRecipeController::class, 'export'])->middleware('throttle:30,1')->name('apps.export');
+Route::post('apps/{appRecipe}/draft/import', [AppRecipeController::class, 'importDraft'])->middleware('throttle:20,1')->name('apps.draft.import');
 Route::post('apps/{appRecipe}/copy', [AppRecipeController::class, 'copy'])->name('apps.copy');
 Route::put('apps/{appRecipe}/draft', [AppRecipeController::class, 'saveDraft'])->name('apps.draft.save');
 Route::delete('apps/{appRecipe}/draft', [AppRecipeController::class, 'discardDraft'])->name('apps.draft.discard');
 Route::post('apps/{appRecipe}/publish', [AppRecipeController::class, 'publish'])->name('apps.publish');
 Route::post('apps/{appRecipe}/revert', [AppRecipeController::class, 'revert'])->name('apps.revert');
+Route::post('apps/{appRecipe}/trial', [AppRecipeController::class, 'trial'])->middleware('throttle:10,1')->name('apps.trial');
 Route::delete('apps/{appRecipe}', [AppRecipeController::class, 'destroy'])->name('apps.destroy');
 Route::get('app-logs/{appLog}', [AppLogController::class, 'show'])->middleware('throttle:120,1')->name('app-logs.show');
 Route::post('app-installations/{appInstallation}/outputs', [AppController::class, 'outputs'])->middleware('throttle:20,1')->name('app-installations.outputs');
@@ -124,6 +128,8 @@ Route::post('servers/{server}/resources', [ServerController::class, 'changeResou
 Route::post('servers/{server}/primary-address', [ServerController::class, 'changePrimaryAddress'])->middleware('throttle:10,1')->name('servers.primary-address');
 Route::post('servers/{server}/hostname', [ServerController::class, 'changeHostname'])->middleware('throttle:10,1')->name('servers.hostname');
 Route::post('servers/{server}/reset-password', [ServerController::class, 'resetPassword'])->middleware('throttle:10,1')->name('servers.reset-password');
+Route::put('servers/{server}/test', [AppController::class, 'testServer'])->name('servers.test');
+Route::post('servers/{server}/trial-reset', [AppController::class, 'resetTestServer'])->middleware('throttle:10,1')->name('servers.trial-reset');
 Route::post('servers/{server}/apps', [AppController::class, 'install'])->middleware('throttle:10,1')->name('servers.apps');
 Route::post('servers/{server}/app-entitlements', [AppEntitlementController::class, 'store'])->middleware('throttle:20,1')->name('servers.app-entitlements');
 Route::delete('app-entitlements/{appEntitlement}', [AppEntitlementController::class, 'destroy'])->middleware('throttle:20,1')->name('app-entitlements.destroy');
