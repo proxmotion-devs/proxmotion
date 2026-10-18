@@ -55,6 +55,8 @@ class AppInstallationResource extends JsonResource
                 'external_id' => $this->server->external_id,
             ],
             'status' => $this->status->value,
+            // post: installed later; order: with the system the server was ordered or reinstalled with (docs/adr/0016 §5).
+            'mode' => $this->mode->value,
             'progress' => $this->progress,
             'step' => $this->step,
             'error' => $this->error,

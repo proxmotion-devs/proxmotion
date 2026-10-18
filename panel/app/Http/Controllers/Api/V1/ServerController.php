@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Api\V1;
 
+use App\Domain\Apps\AppNotEligible;
 use App\Domain\Servers\HostnameChanger;
 use App\Domain\Servers\ServerPower;
 use App\Domain\Servers\ServerReinstaller;
@@ -70,6 +71,8 @@ class ServerController extends ApiController
 
         try {
             $server = $creator->create($request->toNewServer($token->billingSystem), $token);
+        } catch (AppNotEligible $e) {
+            return $this->appNotEligible($e);
         } catch (ProvisioningException $e) {
             return response()->json(['message' => $e->translatedMessage()], 422);
         } catch (ProxmoxException) {
@@ -133,10 +136,20 @@ class ServerController extends ApiController
         }
 
         try {
-            return $this->accepted($reinstaller->request($server, $request->osTemplate(), $request->sshKeys(), $this->token($request), $request->ip()));
+            return $this->accepted($reinstaller->request($server, $request->osTemplate(), $request->sshKeys(), $this->token($request), $request->ip(), $request->app(), $request->appInputs()));
+        } catch (AppNotEligible $e) {
+            return $this->appNotEligible($e);
         } catch (ProvisioningException $e) {
             return $this->conflict($e->translatedMessage());
         }
+    }
+
+    /**
+     * The chosen app does not fit the new system: a validation error of "app".
+     */
+    private function appNotEligible(AppNotEligible $e): JsonResponse
+    {
+        return response()->json(['message' => $e->translatedMessage(), 'errors' => ['app' => [$e->translatedMessage()]]], 422);
     }
 
     /**

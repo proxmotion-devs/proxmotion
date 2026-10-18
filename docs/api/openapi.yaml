@@ -100,13 +100,15 @@ paths:
       description: |
         Scope: `catalog:read`. Active apps (docs/adr/0015). With `os_template` and/or `package`,
         only the apps that can be installed on a server with them; with `server` (one of the
-        token's billing system's servers), only those installable on it now. Paid apps are not
-        installable yet.
+        token's billing system's servers), only those installable on it now. With `mode=order`,
+        the apps that can come with a new server (`app` of `POST /servers`) or a reinstall instead
+        of those installed later (docs/adr/0016 §5). Paid apps are not installable yet.
       operationId: listApps
       parameters:
         - { name: os_template, in: query, required: false, schema: { type: string, format: uuid } }
         - { name: package, in: query, required: false, schema: { type: string, format: uuid } }
         - { name: server, in: query, required: false, schema: { type: string, format: uuid } }
+        - { name: mode, in: query, required: false, schema: { type: string, enum: [post, order], default: post }, description: '`post`: installed later on a running server; `order`: with a new or reinstalled system.' }
       responses:
         '200':
           description: Apps
@@ -317,6 +319,8 @@ paths:
               properties:
                 os_template: { type: string, format: uuid, description: An OS template available on the server's cluster }
                 ssh_keys: { $ref: '#/components/schemas/SshKeys' }
+                app: { $ref: '#/components/schemas/OrderedApp' }
+                app_inputs: { $ref: '#/components/schemas/OrderedAppInputs' }
       responses:
         '202': { $ref: '#/components/responses/TaskAccepted' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
@@ -998,6 +1002,19 @@ components:
         name: { type: string }
         family: { type: string, examples: [ubuntu] }
         version: { type: string, examples: ['24.04'] }
+    OrderedApp:
+      type: [string, 'null']
+      description: |
+        Optional app (its `id` from `GET /apps?mode=order`) installed through the guest agent once
+        the new system has booted (docs/adr/0016 §5). It must fit the OS template, resources and
+        network model (`422` with an error under `app` otherwise). The installation shows in
+        `GET /servers/{id}/apps` with `mode: order`; a failed install never fails the server and can
+        be retried. On a reinstall, the server's other apps are removed as always.
+      examples: [wireguard]
+    OrderedAppInputs:
+      type: [object, 'null']
+      description: Inputs of `app`, validated like those of `POST /servers/{id}/apps` (errors under `app_inputs.<key>`).
+      additionalProperties: true
     CreateServer:
       type: object
       required: [external_id, location, os_template, hostname]
@@ -1012,6 +1029,8 @@ components:
         primary_ipv4: { type: [string, 'null'], format: ipv4, description: 'A free address of the location''s pools to use as the primary IPv4 address (the other IPv4 addresses come from its pool). Empty: the next free one. `422` when it is not free.' }
         root_password: { type: [string, 'null'], minLength: 12, maxLength: 128, description: 'Empty: a random password.' }
         ssh_keys: { $ref: '#/components/schemas/SshKeys' }
+        app: { $ref: '#/components/schemas/OrderedApp' }
+        app_inputs: { $ref: '#/components/schemas/OrderedAppInputs' }
         resources:
           type: [object, 'null']
           description: Overrides of the package's resources; each is optional. Without a package, cpu_cores, memory_mib and disk_mib are required and ipv4_count defaults to 1.
@@ -1182,7 +1201,7 @@ components:
         outputs: { $ref: '#/components/schemas/App/properties/outputs' }
     AppInstallation:
       type: object
-      required: [id, app, server, status, progress, step, error, inputs, can_uninstall, actions, task_id, created_at, started_at, finished_at]
+      required: [id, app, server, status, mode, progress, step, error, inputs, can_uninstall, actions, task_id, created_at, started_at, finished_at]
       properties:
         id: { type: string, format: uuid }
         app:
@@ -1200,6 +1219,10 @@ components:
           type: string
           enum: [queued, installing, installed, failed, uninstalling, uninstall_failed, removed]
           description: '`removed`: uninstalled, or the server was reinstalled or terminated. `uninstall_failed`: the uninstall script failed; uninstalling can be tried again.'
+        mode:
+          type: string
+          enum: [post, order]
+          description: '`post`: installed later on a running server; `order`: chosen with a new server or a reinstall and started once its guest agent answered (docs/adr/0016 §5).'
         progress: { type: integer, minimum: 0, maximum: 100 }
         step: { type: [string, 'null'], description: 'What the installer is doing, as it reported it (English)' }
         error: { type: [string, 'null'] }

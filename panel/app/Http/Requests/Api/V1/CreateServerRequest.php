@@ -6,6 +6,7 @@ namespace App\Http\Requests\Api\V1;
 
 use App\Enums\NetworkModel;
 use App\Models\ApiToken;
+use App\Models\AppRecipe;
 use App\Models\BillingSystem;
 use App\Models\Location;
 use App\Models\OsTemplate;
@@ -62,6 +63,9 @@ class CreateServerRequest extends FormRequest
             'resources.ipv6_count' => ['nullable', 'integer', 'between:0,64'],
             'resources.port_speed_mbps' => ['nullable', 'integer', 'between:1,400000'],
             'resources.traffic_bytes' => ['nullable', 'integer', 'between:1,10000000000000000'],
+            // An app installed once the server has booted (docs/adr/0016 §5); eligibility and inputs are checked by the creator.
+            'app' => ['nullable', 'string', Rule::exists('app_recipes', 'slug')],
+            'app_inputs' => ['nullable', 'array'],
         ];
     }
 
@@ -104,6 +108,8 @@ class CreateServerRequest extends FormRequest
             externalClientId: $this->filled('external_client_id') ? $this->string('external_client_id')->trim()->toString() : null,
             billingSystem: $billingSystem,
             primaryIpv4: $this->filled('primary_ipv4') ? $this->string('primary_ipv4')->trim()->toString() : null,
+            app: $this->filled('app') ? AppRecipe::query()->with('latestVersion')->where('slug', $this->string('app'))->firstOrFail() : null,
+            appInputs: $this->filled('app') ? (array) $this->input('app_inputs', []) : [],
         );
     }
 

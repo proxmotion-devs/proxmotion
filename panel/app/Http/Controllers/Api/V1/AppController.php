@@ -9,6 +9,7 @@ use App\Domain\Apps\AppInstallConflict;
 use App\Domain\Apps\AppInstaller;
 use App\Domain\Apps\AppRunner;
 use App\Enums\ApiScope;
+use App\Enums\AppInstallMode;
 use App\Http\Requests\Api\V1\InstallAppRequest;
 use App\Http\Resources\Api\V1\AppInstallationResource;
 use App\Http\Resources\Api\V1\AppResource;
@@ -36,7 +37,9 @@ class AppController extends ApiController
 {
     /**
      * Active apps, optionally only those eligible for an OS template, a
-     * package or one of the billing system's servers.
+     * package or one of the billing system's servers. "mode=order" lists the
+     * apps that can come with a new or reinstalled system (docs/adr/0016 §5)
+     * instead of those installed later.
      */
     public function index(Request $request, AppEligibility $eligibility): AnonymousResourceCollection
     {
@@ -45,16 +48,18 @@ class AppController extends ApiController
             'os_template' => ['nullable', 'uuid', Rule::exists('os_templates', 'uuid')->where('is_active', true)],
             'package' => ['nullable', 'uuid', Rule::exists('packages', 'uuid')->where('is_active', true)],
             'server' => ['nullable', 'uuid', Rule::exists('servers', 'uuid')->where('billing_system_id', $token->billing_system_id)],
+            'mode' => ['nullable', Rule::enum(AppInstallMode::class)],
         ]);
 
         $osTemplate = $request->filled('os_template') ? OsTemplate::query()->where('uuid', $request->string('os_template'))->first() : null;
         $package = $request->filled('package') ? Package::query()->where('uuid', $request->string('package'))->first() : null;
         $server = $request->filled('server') ? Server::query()->with('osTemplate')->where('uuid', $request->string('server'))->first() : null;
+        $mode = $request->enum('mode', AppInstallMode::class) ?? AppInstallMode::Post;
 
         $apps = AppRecipe::query()->with('latestVersion')->where('is_active', true)->orderBy('name')->get()
             ->filter(fn (AppRecipe $app) => $server !== null
-                ? $eligibility->forServer($app, $server) === null
-                : $eligibility->forCatalog($app, $osTemplate, $package) === null)
+                ? $eligibility->forServer($app, $server, mode: $mode) === null
+                : $eligibility->forCatalog($app, $osTemplate, $package, $mode) === null)
             ->values();
 
         return AppResource::collection($apps);
