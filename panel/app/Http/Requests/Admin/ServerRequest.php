@@ -8,6 +8,7 @@ use App\Enums\NetworkModel;
 use App\Models\AppRecipe;
 use App\Models\BillingSystem;
 use App\Models\Location;
+use App\Models\Node;
 use App\Models\OsTemplate;
 use App\Models\Package;
 use App\Provisioning\NewServer;
@@ -47,6 +48,11 @@ class ServerRequest extends FormRequest
             'ipv6_count' => [Rule::requiredIf($custom), 'nullable', 'integer', 'between:0,64'],
             'port_speed_mbps' => ['nullable', 'integer', 'between:1,400000'],
             'traffic_gb' => ['nullable', 'integer', 'between:1,10000000'],
+            // "auto": the best node of the location; "node": the node (and optionally storage) chosen here.
+            'placement' => ['nullable', Rule::in(['auto', 'node'])],
+            'node' => ['nullable', 'required_if:placement,node', 'string', Rule::exists('nodes', 'uuid')],
+            // Empty: the storage of the node with the most room.
+            'storage' => ['nullable', 'string', 'max:191'],
             'os_template' => ['required', 'string', Rule::exists('os_templates', 'uuid')->where('is_active', true)],
             'network_model' => ['required', Rule::enum(NetworkModel::class)->except([NetworkModel::Nat])],
             'hostname' => ['required', 'string', 'max:253', new Hostname],
@@ -100,7 +106,21 @@ class ServerRequest extends FormRequest
             primaryIpv4: $this->filled('primary_ipv4') ? $this->string('primary_ipv4')->trim()->toString() : null,
             app: $this->filled('app') ? AppRecipe::query()->with('latestVersion')->where('slug', $this->string('app'))->firstOrFail() : null,
             appInputs: $this->filled('app') ? (array) $this->input('app_inputs', []) : [],
+            node: $this->node(),
+            storage: $this->node() !== null && $this->filled('storage') ? $this->string('storage')->toString() : null,
         );
+    }
+
+    /**
+     * The node chosen by the administrator, or null for automatic placement.
+     */
+    private function node(): ?Node
+    {
+        if ($this->input('placement') !== 'node') {
+            return null;
+        }
+
+        return Node::query()->where('uuid', $this->string('node'))->firstOrFail();
     }
 
     private function billingSystem(): ?BillingSystem

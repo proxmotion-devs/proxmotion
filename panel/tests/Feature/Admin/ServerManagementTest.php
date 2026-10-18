@@ -78,6 +78,38 @@ class ServerManagementTest extends AdminTestCase
                 ->has('tasks', 1));
     }
 
+    public function test_an_admin_can_choose_the_node_and_storage()
+    {
+        $pve2 = $this->addNode('pve2');
+        $pve2->storages()->forceCreate([
+            'name' => 'nvme', 'type' => 'zfspool', 'content' => ['images'], 'is_shared' => false,
+            'is_available' => true, 'use_for_servers' => false, 'total_bytes' => 100 * 1024 ** 3, 'used_bytes' => 0,
+        ]);
+        $this->osTemplate->proxmoxTemplates()->attach(ProxmoxTemplate::query()->forceCreate([
+            'cluster_id' => $this->cluster->id, 'node_id' => $pve2->id, 'vmid' => 9001, 'name' => 'ubuntu-2404-cloudinit',
+        ]));
+        Server::factory()->for($pve2)->create(['memory_mib' => 32768]);
+        $this->proxmox->addTemplate(9001, 'pve2');
+
+        $this->get(route('admin.servers.create'))
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('nodes.1.value', $pve2->uuid)
+                ->where('nodes.1.location', $this->location->uuid)
+                ->where('nodes.1.storages.1.name', 'nvme')
+                ->where('nodes.1.storages.1.free_mib', 100 * 1024));
+
+        $this->post(route('admin.servers.store'), $this->payload(['placement' => 'node', 'node' => $pve2->uuid, 'storage' => 'nvme']))
+            ->assertSessionHasNoErrors();
+
+        $server = Server::query()->where('hostname', 'web1.example.com')->sole();
+        $this->assertTrue($server->node->is($pve2));
+        $this->assertSame('nvme', $server->storage?->name);
+
+        $this->post(route('admin.servers.store'), $this->payload(['hostname' => 'web2.example.com', 'placement' => 'node', 'node' => $pve2->uuid, 'storage' => 'missing']))
+            ->assertSessionHasErrors('server');
+        $this->post(route('admin.servers.store'), $this->payload(['placement' => 'node']))->assertSessionHasErrors('node');
+    }
+
     public function test_a_server_can_be_created_with_custom_resources_and_no_package()
     {
         $this->post(route('admin.servers.store'), $this->payload([

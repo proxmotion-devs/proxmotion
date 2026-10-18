@@ -79,7 +79,7 @@ final readonly class ServerCreator
             $bridge = ($ipv4Pool ?? $ipv6Pool)->bridge ?? 'vmbr0';
 
             $clusterIds = $order->package?->clusters()->pluck('clusters.id')->map(fn ($id) => (int) $id)->all() ?? [];
-            $placement = $this->placer->place($order->location, $spec, $order->osTemplate, $bridge, array_values($clusterIds));
+            $placement = $this->placer->place($order->location, $spec, $order->osTemplate, $bridge, array_values($clusterIds), $order->node, $order->storage);
             $cluster = $placement->node->cluster;
             $vmid = $this->firstFreeVmid($cluster);
 

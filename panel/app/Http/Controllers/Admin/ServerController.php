@@ -21,6 +21,7 @@ use App\Domain\Servers\ServerReinstaller;
 use App\Enums\AppInstallationStatus;
 use App\Enums\AppRunKind;
 use App\Enums\AppRunStatus;
+use App\Enums\NodeStatus;
 use App\Enums\PowerAction;
 use App\Enums\ServerStatus;
 use App\Enums\TaskType;
@@ -37,14 +38,17 @@ use App\Models\AppRun;
 use App\Models\BillingSystem;
 use App\Models\IpAddress;
 use App\Models\Location;
+use App\Models\Node;
 use App\Models\OsTemplate;
 use App\Models\Package;
 use App\Models\Server;
 use App\Models\ServerDrift;
+use App\Models\Storage;
 use App\Models\Task;
 use App\Models\User;
 use App\Provisioning\Exceptions\ProvisioningException;
 use App\Provisioning\Exceptions\TaskAlreadyRunning;
+use App\Provisioning\Placement\NodePlacer;
 use App\Provisioning\PrimaryAddressChanger;
 use App\Provisioning\ResourceChanger;
 use App\Provisioning\ServerCreator;
@@ -93,7 +97,7 @@ class ServerController extends Controller
         ]);
     }
 
-    public function create(OrderedAppOptions $orderedApps): Response
+    public function create(OrderedAppOptions $orderedApps, NodePlacer $placer): Response
     {
         $osTemplates = OsTemplate::query()->where('is_active', true)->orderBy('sort_order')->orderBy('name')->get();
 
@@ -110,6 +114,29 @@ class ServerController extends Controller
             'osTemplates' => $osTemplates->map(fn (OsTemplate $template) => ['value' => $template->uuid, 'label' => $template->name]),
             // Apps that can come with the server (docs/adr/0016 §5).
             'apps' => fn () => $orderedApps->for($osTemplates),
+            // Nodes of active clusters with the storages that take VM disks, for choosing the placement by hand.
+            'nodes' => fn () => Node::query()
+                ->whereHas('cluster', fn ($query) => $query->where('is_active', true))
+                ->with(['cluster.location:id,uuid', 'storages' => fn ($query) => $query->where('is_available', true)->orderBy('name')])
+                ->orderBy('name')
+                ->get()
+                ->map(fn (Node $node) => [
+                    'value' => $node->uuid,
+                    'label' => "{$node->name} ({$node->cluster->name})",
+                    'location' => $node->cluster->location->uuid,
+                    'online' => $node->status === NodeStatus::Online,
+                    'maintenance' => $node->is_maintenance,
+                    'storages' => $node->storages
+                        ->filter(fn (Storage $storage) => $storage->supportsVmDisks() && $storage->total_bytes !== null)
+                        ->map(fn (Storage $storage) => [
+                            'name' => $storage->name,
+                            'type' => $storage->type,
+                            'shared' => $storage->is_shared,
+                            'use_for_servers' => $storage->use_for_servers,
+                            'free_mib' => max(0, (int) $placer->freeDiskMib($storage, $node)),
+                        ])
+                        ->values(),
+                ]),
         ]);
     }
 

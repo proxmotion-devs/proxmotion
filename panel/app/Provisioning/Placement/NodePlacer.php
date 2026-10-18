@@ -22,16 +22,26 @@ use Illuminate\Support\Collection;
  * cluster (one of the package's clusters, when it names any), has the OS
  * template, has the bridge the server's network uses, and still has room for
  * the server's CPU, memory and disk after over-commit.
+ *
+ * Administrators may also choose the node, and optionally its storage: the
+ * same checks apply to that node, except that a node in maintenance may be
+ * chosen (maintenance only keeps automatic placement away from it).
  */
 final class NodePlacer
 {
     /**
      * @param  list<int>  $clusterIds  the clusters the package allows; empty for any
+     * @param  Node|null  $node  a node chosen by an administrator; null to pick one
+     * @param  string|null  $storage  the name of a storage of the chosen node; null to pick one
      *
      * @throws ProvisioningException
      */
-    public function place(Location $location, ServerSpec $spec, OsTemplate $osTemplate, string $bridge, array $clusterIds = []): Placement
+    public function place(Location $location, ServerSpec $spec, OsTemplate $osTemplate, string $bridge, array $clusterIds = [], ?Node $node = null, ?string $storage = null): Placement
     {
+        if ($node !== null) {
+            return $this->placeOn($node, $storage, $location, $spec, $osTemplate, $bridge, $clusterIds);
+        }
+
         $templates = $osTemplate->proxmoxTemplates()
             ->whereHas('cluster', fn ($query) => $query->where('location_id', $location->id)->where('is_active', true)
                 ->when($clusterIds !== [], fn ($query) => $query->whereIn('id', $clusterIds)))
@@ -70,6 +80,87 @@ final class NodePlacer
         usort($candidates, fn (array $a, array $b) => $a['score'] <=> $b['score']);
 
         return $candidates[0]['placement'];
+    }
+
+    /**
+     * Places the server on the node an administrator chose, saying exactly
+     * why when it does not fit.
+     *
+     * @param  list<int>  $clusterIds
+     *
+     * @throws ProvisioningException
+     */
+    private function placeOn(Node $node, ?string $storageName, Location $location, ServerSpec $spec, OsTemplate $osTemplate, string $bridge, array $clusterIds): Placement
+    {
+        // Fresh from the database: capacity and status may have changed since the node was loaded.
+        $node = Node::query()->with(['cluster', 'storages', 'bridges'])->findOrFail($node->id);
+
+        if ($node->cluster->location_id !== $location->id || ! $node->cluster->is_active) {
+            throw new ProvisioningException('The chosen node is not in an active cluster of this location.');
+        }
+
+        if ($clusterIds !== [] && ! in_array($node->cluster_id, $clusterIds, true)) {
+            throw new ProvisioningException('This package may not use the cluster of the chosen node.');
+        }
+
+        $templates = $osTemplate->proxmoxTemplates()->where('proxmox_templates.cluster_id', $node->cluster_id)->get();
+
+        if ($templates->isEmpty()) {
+            throw new ProvisioningException('This OS template is not available on the cluster of the chosen node.');
+        }
+
+        if ($node->status !== NodeStatus::Online) {
+            throw new ProvisioningException('The chosen node is not online.');
+        }
+
+        if (! $this->hasBridge($node, $bridge)) {
+            throw new ProvisioningException('The chosen node does not have the bridge :bridge.', ['bridge' => $bridge]);
+        }
+
+        if (! $this->fits($node, $spec)) {
+            throw new ProvisioningException('The chosen node does not have enough free CPU, memory or server slots for this server.');
+        }
+
+        $storage = $storageName === null ? $this->pickStorage($node, $spec) : $this->chosenStorage($node, $storageName, $spec);
+
+        if ($storage === null) {
+            throw new ProvisioningException('No storage of the chosen node that is used for servers has room for this disk.');
+        }
+
+        return new Placement($node, $storage, $this->pickTemplate($templates, $node));
+    }
+
+    /**
+     * A storage chosen by name. Unlike automatic placement it need not be
+     * marked "use for servers", but it must take VM disks and have room.
+     *
+     * @throws ProvisioningException
+     */
+    private function chosenStorage(Node $node, string $name, ServerSpec $spec): Storage
+    {
+        $storage = $node->storages->firstWhere('name', $name);
+
+        if ($storage === null || ! $storage->is_available || ! $storage->supportsVmDisks()) {
+            throw new ProvisioningException('The storage :storage of the chosen node is not available for VM disks.', ['storage' => $name]);
+        }
+
+        if ($storage->total_bytes === null || $this->freeDiskMib($storage, $node) < $spec->diskMib) {
+            throw new ProvisioningException('The storage :storage does not have room for this disk.', ['storage' => $name]);
+        }
+
+        return $storage;
+    }
+
+    /**
+     * Over-committed capacity of a storage minus the disks booked on it.
+     */
+    public function freeDiskMib(Storage $storage, Node $node): float
+    {
+        if ($storage->total_bytes === null) {
+            return 0.0;
+        }
+
+        return intdiv($storage->total_bytes, 1024 ** 2) * (float) $node->disk_overcommit - $this->bookedDiskMib($storage, $node);
     }
 
     /**
@@ -145,8 +236,7 @@ final class NodePlacer
                 continue;
             }
 
-            $capacityMib = intdiv($storage->total_bytes, 1024 ** 2) * (float) $node->disk_overcommit;
-            $free = $capacityMib - $this->bookedDiskMib($storage, $node);
+            $free = $this->freeDiskMib($storage, $node);
 
             if ($free >= $spec->diskMib && $free > $bestFree) {
                 $best = $storage;

@@ -21,7 +21,7 @@ The first deployment is the maintainers' own hosting company, but the project is
 - **Four network models:** bridged public IP, routed/failover IP, NAT VPS, IPv6 (see 3.7)
 - IP pool management, automatic allocation, rDNS, MAC/IP anti-spoofing
 - Packages (plans): CPU, RAM, disk, traffic quota, port speed, IP count, backup quota, network model
-- Automatic placement: pick a node with enough free capacity
+- Automatic placement: pick a node with enough free capacity (admins may choose the node and storage themselves when creating a server)
 - Asynchronous job queue for create, suspend, unsuspend, terminate, change package
 - In-browser console via a panel-side WebSocket proxy
 - Traffic accounting; throttle or suspend on quota overrun
@@ -250,7 +250,7 @@ Providers run **standalone nodes and clusters side by side**, and both must be f
 - The connection unit is a **`Cluster`**. A standalone node is simply a `Cluster` with `type: standalone` and exactly one `Node`. All code paths treat both the same way.
 - For real clusters, store multiple API endpoints and fail over between them if one node is down.
 - `Storage.shared` decides behaviour: on **local storage** (LVM-thin, ZFS, dir) the template must exist on the target node (clone per node, or full clone + migrate); on **shared storage** (Ceph RBD, NFS, iSCSI) any node in the cluster can use it.
-- **Placement** chooses a node within the requested location (and within the package's clusters, when the package names any — e.g. to keep plans on one CPU generation), filtering by package fit, node state (`active`, not `maintenance`), storage availability and network-model support, then scores by free RAM/disk and configurable over-commit ratios. Strategies are pluggable (`least-used`, `fill-first`).
+- **Placement** chooses a node within the requested location (and within the package's clusters, when the package names any — e.g. to keep plans on one CPU generation), filtering by package fit, node state (`active`, not `maintenance`), storage availability and network-model support, then scores by free RAM/disk and configurable over-commit ratios. Strategies are pluggable (`least-used`, `fill-first`). On the admin create form an administrator can instead choose the node (also one in maintenance) and optionally its storage (any available storage that takes VM disks, also one not marked *Use for servers*); the other checks still apply and refusals say which one failed. The billing API always places automatically.
 - **Live migration** is only offered between nodes of the same cluster (later phase); moving across clusters is backup/restore based.
 - Nodes are synced periodically (`php artisan infra:sync`): storages, bridges, templates, capacity and running VMs (used for adoption and for drift reports, see ADR 0005; drift is shown to admins, never repaired automatically).
 
