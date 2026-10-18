@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Provisioning;
 
+use App\Domain\Apps\AppInstaller;
+use App\Domain\Apps\AppNotEligible;
 use App\Enums\IpVersion;
 use App\Enums\NetworkModel;
 use App\Enums\ServerOrigin;
@@ -18,6 +20,7 @@ use App\Provisioning\Placement\NodePlacer;
 use App\Proxmox\ProxmoxClientFactory;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 
 /**
  * Reserves everything a new server needs (node, storage, VMID, IPs) and queues
@@ -31,10 +34,13 @@ final readonly class ServerCreator
         private IpAllocator $ips,
         private ProxmoxClientFactory $clients,
         private TaskRunner $tasks,
+        private AppInstaller $apps,
     ) {}
 
     /**
      * @throws ProvisioningException
+     * @throws AppNotEligible when the app does not fit the server
+     * @throws ValidationException for invalid app inputs
      */
     public function create(NewServer $order, User|ApiToken|null $actor = null): Server
     {
@@ -52,7 +58,9 @@ final readonly class ServerCreator
             throw new ProvisioningException('A primary IPv4 address needs at least one IPv4 address.');
         }
 
-        $server = Cache::lock("provisioning:location:{$order->location->id}", 30)->block(15, function () use ($order, $spec) {
+        $appInputs = $order->app === null ? [] : $this->apps->validateOrdered($order->app, $order->appInputs, $order->osTemplate, $spec->cpuCores, $spec->memoryMib, $spec->diskMib, $order->networkModel);
+
+        $server = Cache::lock("provisioning:location:{$order->location->id}", 30)->block(15, function () use ($order, $spec, $appInputs, $actor) {
             // A chosen primary decides the pool; the other IPv4 addresses come from the same one.
             $primary = $order->primaryIpv4 === null ? null : $this->ips->freeAddress($order->location, $order->networkModel, IpVersion::V4, $order->primaryIpv4);
 
@@ -74,7 +82,7 @@ final readonly class ServerCreator
             $cluster = $placement->node->cluster;
             $vmid = $this->firstFreeVmid($cluster);
 
-            return DB::transaction(function () use ($order, $spec, $placement, $cluster, $vmid, $ipv4Pool, $ipv6Pool, $primary) {
+            return DB::transaction(function () use ($order, $spec, $placement, $cluster, $vmid, $ipv4Pool, $ipv6Pool, $primary, $appInputs, $actor) {
                 $server = $this->insertServer($order, $placement, $cluster, $vmid);
 
                 if ($primary !== null) {
@@ -82,6 +90,10 @@ final readonly class ServerCreator
                 }
 
                 $this->ips->assign($server, $ipv4Pool, $spec->ipv4Count - ($primary !== null ? 1 : 0), $ipv6Pool, $spec->ipv6Count);
+
+                if ($order->app !== null) {
+                    $this->apps->queueOrdered($server, $order->app, $appInputs, $actor, null);
+                }
 
                 return $server;
             });

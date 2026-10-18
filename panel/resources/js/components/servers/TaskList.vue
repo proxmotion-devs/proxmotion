@@ -98,6 +98,8 @@ const stepLabels: Record<string, string> = {
     guest_disk: 'Grow the file system in the server',
     guest_provisioned: "Run the template's script in the server",
     guest_hostname: 'Change the hostname in the server',
+    app_upload: 'Upload the app installer to the server',
+    app_start: 'Start the app installer',
 };
 const plannedSteps: Partial<Record<TaskType, string[]>> = {
     change_resources: ['configure', 'resize', 'addresses', 'apply'],

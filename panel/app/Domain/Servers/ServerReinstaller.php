@@ -4,8 +4,11 @@ declare(strict_types=1);
 
 namespace App\Domain\Servers;
 
+use App\Domain\Apps\AppInstaller;
+use App\Domain\Apps\AppNotEligible;
 use App\Enums\TaskType;
 use App\Models\ApiToken;
+use App\Models\AppRecipe;
 use App\Models\AuditLog;
 use App\Models\OsTemplate;
 use App\Models\Server;
@@ -17,6 +20,8 @@ use App\Support\Ssh\PublicKey;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
+use SensitiveParameter;
 
 /**
  * Reinstalling wipes the server's disks and builds it again from an OS
@@ -24,7 +29,10 @@ use Illuminate\Support\Str;
  */
 final readonly class ServerReinstaller
 {
-    public function __construct(private TaskRunner $tasks) {}
+    public function __construct(
+        private TaskRunner $tasks,
+        private AppInstaller $apps,
+    ) {}
 
     /**
      * Active OS templates the server can be rebuilt from: those with a Proxmox
@@ -44,15 +52,21 @@ final readonly class ServerReinstaller
 
     /**
      * Record the new system (OS, a fresh root password, the given SSH
-     * keys) and queue the reinstall. Nothing changes if another task runs.
+     * keys, optionally an app installed once it has booted) and queue the
+     * reinstall. Nothing changes if another task runs.
      *
      * @param  list<PublicKey>  $sshKeys
+     * @param  array<array-key, mixed>  $appInputs  the app's inputs, not validated yet
      *
      * @throws ProvisioningException when another task is still running for the server
+     * @throws AppNotEligible when the app does not fit the new system
+     * @throws ValidationException for invalid app inputs
      */
-    public function request(Server $server, OsTemplate $osTemplate, array $sshKeys, User|ApiToken $actor, ?string $ipAddress): Task
+    public function request(Server $server, OsTemplate $osTemplate, array $sshKeys, User|ApiToken $actor, ?string $ipAddress, ?AppRecipe $app = null, #[SensitiveParameter] array $appInputs = []): Task
     {
-        return DB::transaction(function () use ($server, $osTemplate, $sshKeys, $actor, $ipAddress) {
+        $appValues = $app === null ? [] : $this->apps->validateOrdered($app, $appInputs, $osTemplate, $server->cpu_cores, $server->memory_mib, $server->disk_mib, $server->network_model);
+
+        return DB::transaction(function () use ($server, $osTemplate, $sshKeys, $actor, $ipAddress, $app, $appValues) {
             $server->forceFill([
                 'os_template_id' => $osTemplate->id,
                 'root_password' => Str::password(20, symbols: false),
@@ -66,7 +80,13 @@ final readonly class ServerReinstaller
                 'hostname' => $server->hostname,
                 'os_template' => $osTemplate->name,
                 'ssh_keys' => array_map(fn (PublicKey $key) => $key->fingerprint(), $sshKeys),
-            ], $ipAddress);
+            ] + ($app === null ? [] : ['app' => $app->slug]), $ipAddress);
+
+            if ($app !== null) {
+                $this->apps->queueOrdered($server, $app, $appValues, $actor, $ipAddress);
+            } else {
+                $this->apps->dropOrdered($server);
+            }
 
             return $task;
         });

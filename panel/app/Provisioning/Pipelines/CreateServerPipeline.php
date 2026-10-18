@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Provisioning\Pipelines;
 
+use App\Domain\Apps\AppStarter;
 use App\Domain\Servers\GuestScripts;
 use App\Enums\ServerStatus;
 use App\Models\Server;
@@ -27,6 +28,7 @@ final readonly class CreateServerPipeline
         private ProxmoxClientFactory $clients,
         private NetworkConfig $network,
         private GuestScripts $guestScripts,
+        private AppStarter $apps,
     ) {}
 
     public function run(Task $task): void
@@ -40,6 +42,9 @@ final readonly class CreateServerPipeline
         $this->guestScripts->afterInstall($task, $server, waitForAgent: true);
 
         $server->forceFill(['status' => ServerStatus::Active, 'provisioned_at' => now()])->save();
+
+        // The app it was ordered with (ADR 0004): never fails the server.
+        $this->apps->startOrdered($task, $server, waitForAgent: true);
     }
 
     /**

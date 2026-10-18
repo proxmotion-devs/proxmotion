@@ -5,12 +5,15 @@ declare(strict_types=1);
 namespace App\Domain\Apps;
 
 use App\Enums\AppInstallationStatus;
+use App\Enums\AppInstallMode;
+use App\Enums\NetworkModel;
 use App\Enums\ServerStatus;
 use App\Enums\TaskType;
 use App\Models\ApiToken;
 use App\Models\AppInstallation;
 use App\Models\AppRecipe;
 use App\Models\AuditLog;
+use App\Models\OsTemplate;
 use App\Models\Server;
 use App\Models\User;
 use App\Provisioning\Exceptions\ProvisioningException;
@@ -79,6 +82,67 @@ final readonly class AppInstaller
     }
 
     /**
+     * Check an app chosen with a new system (a new server or a reinstall,
+     * docs/adr/0016 §5) before anything is reserved or changed.
+     *
+     * @param  array<array-key, mixed>  $inputs  as given by the billing system or administrator
+     * @return array<string, string|int|bool> the validated inputs
+     *
+     * @throws ValidationException for invalid inputs
+     * @throws AppNotEligible
+     */
+    public function validateOrdered(AppRecipe $app, array $inputs, OsTemplate $osTemplate, int $cores, int $memoryMib, int $diskMib, NetworkModel $networkModel): array
+    {
+        $problem = $this->eligibility->forOrder($app, $osTemplate, $cores, $memoryMib, $diskMib, $networkModel);
+
+        if ($problem !== null) {
+            throw $problem;
+        }
+
+        return $this->inputs->validate($app->recipe(), $inputs);
+    }
+
+    /**
+     * Record an app chosen with a new system. The create or reinstall
+     * pipeline starts it once the guest agent answers (docs/adr/0004).
+     * Call inside the transaction that queues that task.
+     *
+     * @param  array<string, string|int|bool>  $values  from validateOrdered()
+     */
+    public function queueOrdered(Server $server, AppRecipe $app, array $values, User|ApiToken|null $actor, ?string $ipAddress): AppInstallation
+    {
+        $this->dropOrdered($server);
+
+        $installation = new AppInstallation;
+        $installation->forceFill([
+            'server_id' => $server->id,
+            'app_recipe_id' => $app->id,
+            'app_recipe_version_id' => $app->current()->id,
+            'status' => AppInstallationStatus::Queued,
+            'mode' => AppInstallMode::Order,
+            'inputs' => $values,
+            'user_id' => $actor instanceof User ? $actor->id : null,
+            'api_token_id' => $actor instanceof ApiToken ? $actor->id : null,
+        ])->save();
+
+        AuditLog::record('app.install_requested', $actor, $server, ['app' => $app->slug, 'installation' => $installation->uuid, 'mode' => AppInstallMode::Order->value], $ipAddress);
+
+        return $installation;
+    }
+
+    /**
+     * Forget an app queued for a system that never booted (a failed
+     * creation) when the server gets another one.
+     */
+    public function dropOrdered(Server $server): void
+    {
+        $server->appInstallations()
+            ->where('mode', AppInstallMode::Order)
+            ->where('status', AppInstallationStatus::Queued)
+            ->update(['status' => AppInstallationStatus::Removed, 'finished_at' => now()]);
+    }
+
+    /**
      * Run a failed installation again with the same inputs and recipe version.
      *
      * @throws AppNotEligible
@@ -96,7 +160,7 @@ final readonly class AppInstaller
 
         $this->ensureActive($server);
 
-        $problem = $this->eligibility->forServer($installation->recipe, $server, $installation->version);
+        $problem = $this->eligibility->forServer($installation->recipe, $server, $installation->version, $installation->mode);
 
         if ($problem !== null) {
             throw $problem;

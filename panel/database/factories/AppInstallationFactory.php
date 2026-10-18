@@ -3,6 +3,7 @@
 namespace Database\Factories;
 
 use App\Enums\AppInstallationStatus;
+use App\Enums\AppInstallMode;
 use App\Models\AppInstallation;
 use App\Models\AppRecipe;
 use App\Models\Server;
@@ -24,6 +25,7 @@ class AppInstallationFactory extends Factory
             // The app's latest version, unless given.
             'app_recipe_version_id' => fn (array $attributes) => AppRecipe::query()->whereKey($attributes['app_recipe_id'])->value('latest_version_id'),
             'status' => AppInstallationStatus::Installed,
+            'mode' => AppInstallMode::Post,
             'inputs' => ['port' => 8443],
             'progress' => 100,
             'step' => 'Installed',

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Models;
 
 use App\Enums\AppInstallationStatus;
+use App\Enums\AppInstallMode;
 use App\Models\Concerns\HasPublicUuid;
 use Carbon\CarbonInterface;
 use Database\Factories\AppInstallationFactory;
@@ -25,6 +26,7 @@ use Illuminate\Support\Carbon;
  * @property int $app_recipe_id
  * @property int $app_recipe_version_id the version installed (docs/adr/0016 §2)
  * @property AppInstallationStatus $status
+ * @property AppInstallMode $mode later on a running server, or with the ordered or reinstalled system
  * @property array<string, string|int|bool> $inputs validated values
  * @property array<string, array{type: string, value: string, filename?: string|null}>|null $outputs by key; file contents base64-encoded
  * @property int $progress 0-100
@@ -57,6 +59,7 @@ class AppInstallation extends Model
     {
         return [
             'status' => AppInstallationStatus::class,
+            'mode' => AppInstallMode::class,
             'inputs' => 'encrypted:array',
             'outputs' => 'encrypted:array',
             'started_at' => 'datetime',

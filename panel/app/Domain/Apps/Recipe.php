@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Domain\Apps;
 
+use App\Enums\AppInstallMode;
 use App\Enums\NetworkModel;
 use App\Models\OsTemplate;
 
@@ -221,9 +222,9 @@ final readonly class Recipe
         return in_array($model->value, $this->networkModels, true);
     }
 
-    public function canInstallLater(): bool
+    public function allowsInstallMode(AppInstallMode $mode): bool
     {
-        return in_array('post', $this->installModes, true);
+        return in_array($mode->value, $this->installModes, true);
     }
 
     /**

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Provisioning\Pipelines;
 
 use App\Domain\Apps\AppInstallations;
+use App\Domain\Apps\AppStarter;
 use App\Domain\Servers\GuestScripts;
 use App\Enums\ServerStatus;
 use App\Models\Task;
@@ -31,13 +32,14 @@ final readonly class ReinstallServerPipeline
         private CreateServerPipeline $create,
         private GuestScripts $guestScripts,
         private AppInstallations $apps,
+        private AppStarter $appStarter,
     ) {}
 
     public function run(Task $task): void
     {
         $server = $task->server;
         $server->forceFill(['status' => ServerStatus::Reinstalling])->save();
-        $this->apps->serverWiped($server, 'The server was reinstalled.');
+        $this->apps->serverWiped($server, 'The server was reinstalled.', keepOrdered: true);
 
         $client = $this->clients->forCluster($server->cluster);
         $qemu = $client->qemu($server->node->name);
@@ -61,10 +63,13 @@ final readonly class ReinstallServerPipeline
         $this->create->build($task, $previousNet0);
         $this->waitForGuestAgent($task);
 
-        // Additional addresses and the template's script (ADR 0009, 0010); later also app installs (ADR 0004).
+        // Additional addresses and the template's script (ADR 0009, 0010).
         $this->guestScripts->afterInstall($task, $server, waitForAgent: false);
 
         $server->forceFill(['status' => ServerStatus::Active, 'root_password_unrevealed' => true])->save();
+
+        // The app chosen with the new system (ADR 0004): never fails the reinstall.
+        $this->appStarter->startOrdered($task, $server, waitForAgent: false);
     }
 
     /**

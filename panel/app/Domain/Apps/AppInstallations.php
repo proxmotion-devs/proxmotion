@@ -6,6 +6,7 @@ namespace App\Domain\Apps;
 
 use App\Domain\Webhooks\Webhooks;
 use App\Enums\AppInstallationStatus;
+use App\Enums\AppInstallMode;
 use App\Enums\AppRunStatus;
 use App\Models\AppInstallation;
 use App\Models\Server;
@@ -53,10 +54,16 @@ final readonly class AppInstallations
     /**
      * The server's system was replaced or deleted (reinstall, terminate): a
      * running installation fails, the others are gone with the old system.
+     *
+     * @param  bool  $keepOrdered  keep the app queued for the new system (a reinstall with an app)
      */
-    public function serverWiped(Server $server, string $reason): void
+    public function serverWiped(Server $server, string $reason, bool $keepOrdered = false): void
     {
         foreach ($server->appInstallations()->with('recipe')->get() as $installation) {
+            if ($keepOrdered && $installation->mode === AppInstallMode::Order && $installation->status === AppInstallationStatus::Queued) {
+                continue;
+            }
+
             // Uninstalls and actions end with the system they ran on (docs/adr/0016 §4).
             foreach ($installation->runs()->whereIn('status', [AppRunStatus::Queued, AppRunStatus::Running])->get() as $run) {
                 $run->forceFill(['status' => AppRunStatus::Failed, 'error' => Str::limit($reason, 997), 'finished_at' => now()])->save();
