@@ -35,7 +35,7 @@ class Proxmotion extends ServerModule
     private const SERVER_TOOLS = ['start-server', 'stop-server', 'restart-server', 'poweroff-server', 'reset-password', 'reinstall-os', 'vnc-console', 'hostname-change', 'reverse-dns', 'apps'];
 
     /** App installation statuses during which the installer still runs. */
-    private const APP_BUSY = ['queued', 'installing', 'uninstalling'];
+    private const APP_BUSY = ['queued', 'installing', 'uninstalling', 'upgrading'];
 
     /** Reference of the paid app rights this module grants for add-ons (ADR 0019). */
     private const ADDON_REFERENCE = 'wisecp-addon';
@@ -84,7 +84,7 @@ class Proxmotion extends ServerModule
             'icon' => 'bi bi-grid',
             'page' => 'apps',
             'type' => 'page-loader',
-            'capabilities' => ['list', 'install', 'retry', 'download', 'uninstall', 'action'],
+            'capabilities' => ['list', 'install', 'retry', 'download', 'uninstall', 'upgrade', 'action'],
         ]);
     }
 
@@ -533,6 +533,7 @@ class Proxmotion extends ServerModule
                     : $this->reinstall($id, trim((string) ($data['os_template'] ?? '')), trim((string) ($data['app'] ?? ''))),
                 'download' => $this->appFile($id, trim((string) ($data['installation'] ?? '')), trim((string) ($data['output'] ?? '')), trim((string) ($data['run'] ?? ''))),
                 'uninstall' => $this->uninstallApp($id, trim((string) ($data['installation'] ?? ''))),
+                'upgrade' => $this->upgradeApp($id, trim((string) ($data['installation'] ?? '')), (string) ($data['secret_inputs'] ?? '')),
                 // The field is app_action: WISECP removes "action" from the data it passes on.
                 'action' => $this->runAppAction($id, trim((string) ($data['installation'] ?? '')), trim((string) ($data['app_action'] ?? '')), (string) ($data['secret_inputs'] ?? '')),
                 default => throw new Exception('Unknown action: ' . $action),
@@ -705,6 +706,22 @@ class Proxmotion extends ServerModule
         $this->api->uninstallApp($id, $installation, $this->idempotencyKey('app-uninstall'));
 
         return ['status' => 'successful', 'message' => $this->text('app_uninstall_started'), 'successToast' => true];
+    }
+
+    /**
+     * Upgrade an app to its newer version with the inputs that version adds (ADR 0016).
+     *
+     * @return array<string, mixed>
+     */
+    private function upgradeApp(string $id, string $installation, string $inputsJson): array
+    {
+        if ($installation === '') {
+            throw new Exception($this->text('app_not_found'));
+        }
+
+        $this->api->upgradeApp($id, $installation, $this->decodeInputs($inputsJson), $this->idempotencyKey('app-upgrade'));
+
+        return ['status' => 'successful', 'message' => $this->text('app_upgrade_started'), 'successToast' => true];
     }
 
     /**
@@ -884,11 +901,13 @@ class Proxmotion extends ServerModule
             'status_label' => $this->text('app_status_' . $status),
             'busy' => in_array($status, self::APP_BUSY, true),
             'failed' => $status === 'failed',
+            'danger' => in_array($status, ['failed', 'uninstall_failed', 'upgrade_failed'], true),
             'progress' => (int) ($installation['progress'] ?? 0),
             'step' => is_string($installation['step'] ?? null) ? $installation['step'] : null,
             'error' => is_string($installation['error'] ?? null) ? $installation['error'] : null,
             'outputs' => $this->presentOutputs($installation),
             'can_uninstall' => ! empty($installation['can_uninstall']),
+            'upgrade' => $this->presentUpgrade($installation),
             'actions' => $actions,
             'runs' => $presentedRuns,
             'run_busy' => array_filter($presentedRuns, static fn (array $run): bool => $run['busy']) !== [],
@@ -896,7 +915,28 @@ class Proxmotion extends ServerModule
     }
 
     /**
-     * An uninstall or action run with its status and outputs.
+     * The newer version the installation can be upgraded to with the inputs it adds, or null.
+     *
+     * @param array<string, mixed> $installation
+     * @return array{version: string, label: string, inputs: list<array<string, mixed>>}|null
+     */
+    private function presentUpgrade(array $installation): ?array
+    {
+        $upgrade = is_array($installation['upgrade'] ?? null) ? $installation['upgrade'] : null;
+
+        if ($upgrade === null || ! isset($upgrade['version'])) {
+            return null;
+        }
+
+        return [
+            'version' => (string) $upgrade['version'],
+            'label' => $this->text('app_upgrade_to', ['version' => (string) $upgrade['version']]),
+            'inputs' => $this->presentInputs(is_array($upgrade['inputs'] ?? null) ? $upgrade['inputs'] : []),
+        ];
+    }
+
+    /**
+     * An uninstall, upgrade or action run with its status and outputs.
      *
      * @param array<string, mixed> $run
      * @param list<array{key: string, label: string, inputs: list<array<string, mixed>>}> $actions the installation's actions (for their labels)
@@ -906,6 +946,10 @@ class Proxmotion extends ServerModule
     {
         $status = (string) ($run['status'] ?? '');
         $label = $this->text('app_uninstall');
+
+        if (($run['kind'] ?? null) === 'upgrade') {
+            $label = $this->text('app_upgrade_to', ['version' => (string) ($run['target_version'] ?? '')]);
+        }
 
         if (($run['kind'] ?? null) === 'action') {
             $label = (string) ($run['action'] ?? '');

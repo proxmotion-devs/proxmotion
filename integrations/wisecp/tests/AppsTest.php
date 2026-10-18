@@ -133,7 +133,7 @@ final class AppsTest extends ModuleTestCase
         $this->assertNotNull($tool);
         $this->assertSame('Apps', $tool['label']);
         $this->assertSame('page-loader', $tool['type']);
-        $this->assertSame(['list', 'install', 'retry', 'download', 'uninstall', 'action'], $tool['capabilities']);
+        $this->assertSame(['list', 'install', 'retry', 'download', 'uninstall', 'upgrade', 'action'], $tool['capabilities']);
         $this->assertTrue($tool['supported']);
     }
 
@@ -324,6 +324,57 @@ final class AppsTest extends ModuleTestCase
 
         $this->expectExceptionMessage('Please choose an action.');
         $module->tool_action('apps', 'action', ['installation' => 'installation-uuid', 'app_action' => '../x']);
+    }
+
+    public function test_an_offered_upgrade_is_shown_and_sent_with_the_new_inputs(): void
+    {
+        $upgrade = ['version' => '1.4.0', 'inputs' => [['key' => 'dns', 'type' => 'domain', 'label' => ['en' => 'DNS server', 'tr' => 'DNS sunucusu'], 'required' => true, 'default' => null]]];
+        $this->serviceHas($this->server());
+        $this->api->on('GET ' . self::SERVER . '/apps', 200, ['data' => [
+            self::installation(['upgrade' => $upgrade]),
+            self::installation(['id' => 'failed-uuid', 'status' => 'upgrade_failed', 'error' => 'apt failed', 'upgrade' => null]),
+        ]]);
+        $this->api->on('GET ' . self::SERVER . '/apps/installation-uuid/runs', 200, ['data' => [self::appRun(['kind' => 'upgrade', 'action' => null, 'target_version' => '1.4.0', 'outputs' => []])]]);
+        $this->api->on('GET ' . self::SERVER . '/apps/failed-uuid/runs', 200, ['data' => []]);
+        $this->api->on('GET /apps?server=' . self::SERVER_ID, 200, ['data' => []]);
+        $this->api->on('POST ' . self::SERVER . '/apps/installation-uuid/upgrade', 202, ['data' => self::appRun(['kind' => 'upgrade', 'action' => null, 'status' => 'running', 'outputs' => []])]);
+
+        $this->reinstallRoutes();
+        $installations = $this->turkish($this->module())->tool_data('apps', 'index')['installations'];
+
+        $this->assertSame(['1.4.0', '1.4.0 sürümüne yükselt', 'DNS sunucusu'], [$installations[0]['upgrade']['version'], $installations[0]['upgrade']['label'], $installations[0]['upgrade']['inputs'][0]['label']]);
+        $this->assertSame('1.4.0 sürümüne yükselt', $installations[0]['runs'][0]['label']);
+        $this->assertNull($installations[1]['upgrade']);
+        $this->assertSame(['Yükseltme başarısız', true, false], [$installations[1]['status_label'], $installations[1]['danger'], $installations[1]['failed']]);
+
+        $module = $this->module();
+        $result = $module->tool_action('apps', 'upgrade', ['installation' => 'installation-uuid', 'secret_inputs' => '{"dns":" dns.example.com ","empty":""}']);
+        $this->assertSame('successful', $result['status']);
+        $this->assertSame(['inputs' => ['dns' => 'dns.example.com']], $this->api->body('POST ' . self::SERVER . '/apps/installation-uuid/upgrade'));
+        $this->assertMatchesRegularExpression('/^wisecp-42-app-upgrade-/', $this->api->last('POST ' . self::SERVER . '/apps/installation-uuid/upgrade')['headers']['Idempotency-Key']);
+        $this->assertStringNotContainsString('dns.example.com', (string) json_encode($module->logs), 'Upgrade inputs are masked in the module log.');
+
+        $html = $this->page([
+            'installations' => [[
+                'id' => 'installation-uuid',
+                'name' => 'WireGuard',
+                'status' => 'installed',
+                'status_label' => 'Installed',
+                'busy' => false,
+                'failed' => false,
+                'outputs' => [],
+                'can_uninstall' => false,
+                'actions' => [],
+                'upgrade' => ['version' => '1.4.0', 'label' => 'Upgrade to 1.4.0', 'inputs' => [['key' => 'dns', 'type' => 'domain', 'label' => 'DNS server', 'required' => true, 'default' => '']]],
+                'runs' => [],
+                'run_busy' => false,
+            ]],
+            'apps' => [],
+            'installing' => false,
+        ]);
+        $this->assertStringContainsString('onsubmit="return pmxAppUpgrade(this, event)"', $html);
+        $this->assertStringContainsString('Upgrade to 1.4.0', $html);
+        $this->assertStringContainsString('data-input="dns"', $html);
     }
 
     public function test_a_file_output_of_a_run_is_downloaded_and_never_logged(): void

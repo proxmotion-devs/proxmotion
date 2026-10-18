@@ -133,6 +133,12 @@ new client's profile is downloaded from the run), fetched on demand like the ins
 outputs and masked in the module log. One action runs at a time per app; the page shows
 its result once Proxmotion has read it (about a minute).
 
+When Proxmotion has a newer version of an installed app that can upgrade it, the app
+offers **Upgrade to <version>** (asked to confirm), with a field for each setting the
+new version adds. The app keeps its data and settings; if the upgrade fails, it keeps
+its current version and shows *Upgrade failed*, and it can be upgraded again or
+uninstalled.
+
 WISECP's own **Reinstall** tool has no place for an app, so the Apps tool also offers
 **Reinstall with an app**: the OS, one of the apps that fit the server, that it may
 install and that need no setting without a default (installed with its defaults), and a

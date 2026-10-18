@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 /*
  * The client area's Apps tool (Proxmotion::tool_data('apps')): installed apps
- * with status, progress, outputs and retry, their actions, uninstall and
+ * with status, progress, outputs and retry, their actions, upgrade, uninstall and
  * latest runs (ADR 0016), a form per installable app (paid apps without a
  * right offered to buy, ADR 0019) and a reinstall with an app (ADR 0016 §5).
  * WISECP renders it with the variables of ServerModule::render_tool_page();
@@ -139,7 +139,7 @@ $inputsHtml = static function (array $inputs, string $prefix) use ($e, $inputTyp
                     $status = (string) ($installation['status'] ?? '');
                     $badge = match (true) {
                         $status === 'installed' => 'bg-success',
-                        ! empty($installation['failed']) => 'bg-danger',
+                        ! empty($installation['danger']) => 'bg-danger',
                         ! empty($installation['busy']) => 'bg-warning text-dark',
                         default => 'bg-secondary',
                     };
@@ -175,11 +175,19 @@ $inputsHtml = static function (array $inputs, string $prefix) use ($e, $inputTyp
                         $appActions = is_array($installation['actions'] ?? null) ? $installation['actions'] : [];
                         /** @var list<array<string, mixed>> $runs */
                         $runs = is_array($installation['runs'] ?? null) ? $installation['runs'] : [];
+                        /** @var array<string, mixed>|null $upgrade */
+                        $upgrade = is_array($installation['upgrade'] ?? null) ? $installation['upgrade'] : null;
                         ?>
                         <?php if (! empty($installation['run_busy'])): ?>
                             <div class="alert alert-info small mt-2 mb-0"><i class="bi bi-hourglass-split me-1"></i><?= $t('app_run_busy') ?></div>
-                        <?php elseif ($appActions !== [] || ! empty($installation['can_uninstall'])): ?>
+                        <?php elseif ($appActions !== [] || ! empty($installation['can_uninstall']) || $upgrade !== null): ?>
                             <div class="d-flex flex-wrap gap-2 mt-2">
+                                <?php if ($upgrade !== null): ?>
+                                    <form class="border rounded p-2" onsubmit="return pmxAppUpgrade(this, event)" data-installation="<?= $e($installation['id'] ?? '') ?>" data-confirm="<?= $t('app_upgrade_confirm') ?>" novalidate>
+                                        <?= $inputsHtml(is_array($upgrade['inputs'] ?? null) ? $upgrade['inputs'] : [], 'pmx-upgrade-' . ($installation['id'] ?? '')) ?>
+                                        <button type="submit" class="btn btn-sm btn-primary"><i class="bi bi-arrow-up-circle me-1"></i><?= $e($upgrade['label'] ?? '') ?></button>
+                                    </form>
+                                <?php endif; ?>
                                 <?php foreach ($appActions as $appAction): ?>
                                     <form class="border rounded p-2" onsubmit="return pmxAppAction(this, event)" data-installation="<?= $e($installation['id'] ?? '') ?>" data-action="<?= $e($appAction['key'] ?? '') ?>" novalidate>
                                         <div class="small fw-semibold mb-1"><?= $e($appAction['label'] ?? '') ?></div>
@@ -339,6 +347,25 @@ $inputsHtml = static function (array $inputs, string $prefix) use ($e, $inputTyp
         request_tool_action(TOOL, 'action', {
             installation: form.getAttribute('data-installation'),
             app_action: form.getAttribute('data-action'),
+            secret_inputs: pmxInputs(form),
+        }, {
+            button: form.querySelector('button[type="submit"]'),
+            successToast: true,
+            afterDone: function () { reload_module_content(TOOL); },
+        });
+
+        return false;
+    };
+
+    window.pmxAppUpgrade = function (form, event) {
+        event.preventDefault();
+
+        if (!form.reportValidity() || !window.confirm(form.getAttribute('data-confirm'))) {
+            return false;
+        }
+
+        request_tool_action(TOOL, 'upgrade', {
+            installation: form.getAttribute('data-installation'),
             secret_inputs: pmxInputs(form),
         }, {
             button: form.querySelector('button[type="submit"]'),
