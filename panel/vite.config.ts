@@ -7,6 +7,13 @@ import i18n from 'laravel-vue-i18n/vite';
 import { bunny } from 'laravel-vite-plugin/fonts';
 import { defineConfig, lazyPlugins } from 'vite-plus';
 
+// Vitest starts a Vite dev server, which laravel-vite-plugin refuses to run
+// when `CI` is set. Tests still need the plugin (it provides the `@/` alias),
+// so skip only that check, and only under Vitest.
+if (process.env.VITEST) {
+    process.env.LARAVEL_BYPASS_ENV_CHECK = '1';
+}
+
 export default defineConfig({
     plugins: lazyPlugins(() => [
         laravel({
