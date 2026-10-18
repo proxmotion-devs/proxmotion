@@ -1,0 +1,37 @@
+format: 2
+slug: cpanel
+name: cPanel & WHM
+version: 1.0.0
+category: control-panel
+description:
+    en: The cPanel & WHM hosting control panel through cPanel's official installer. Needs a freshly installed server and a cPanel licence (a 15-day trial starts on its own).
+    tr: cPanel'in resmi kurucusuyla cPanel & WHM hosting kontrol paneli. Yeni kurulmuş bir sunucu ve cPanel lisansı gerektirir (15 günlük deneme kendiliğinden başlar).
+maintainers: [{ name: Proxmotion }]
+homepage: https://cpanel.net/
+requires:
+    platform: linux
+    os: [almalinux, rocky, ubuntu]
+    min_versions: { almalinux: '8', rocky: '8', ubuntu: '24.04' }
+    max_versions: { almalinux: '10', rocky: '9', ubuntu: '24.04' }
+resources: { min_memory_mib: 2048, min_disk_mib: 20480, min_cores: 1 }
+network_models: [bridged, routed]
+install_modes: [order, post]
+billing: free
+license: external
+outputs:
+    - key: whm_url
+      type: url
+      label: { en: WHM address, tr: WHM adresi }
+    - key: username
+      type: text
+      label: { en: Username, tr: Kullanıcı adı }
+    - key: notice
+      type: text
+      label: { en: Notice, tr: Not }
+firewall:
+    - { port: 2087, proto: tcp }
+    - { port: 2083, proto: tcp }
+    - { port: 80, proto: tcp }
+    - { port: 443, proto: tcp }
+lifecycle:
+    install: { script: install.sh, timeout_minutes: 120 }

@@ -1,0 +1,87 @@
+format: 2
+slug: whmcs
+name: WHMCS
+version: 1.0.0
+category: web
+description:
+    en: The WHMCS billing and automation platform on nginx, PHP-FPM with the ionCube Loader and MariaDB, installed from your own WHMCS download with your licence key.
+    tr: nginx, ionCube Loader'lı PHP-FPM ve MariaDB üzerinde WHMCS faturalama ve otomasyon platformu; kendi WHMCS indirmeniz ve lisans anahtarınızla kurulur.
+maintainers: [{ name: Proxmotion }]
+homepage: https://www.whmcs.com/
+requires:
+    platform: linux
+    os: [debian]
+    # WHMCS 9 needs PHP 8.2 or 8.3: Debian 12 and Ubuntu 24.04 ship them.
+    min_versions: { debian: '12', ubuntu: '24.04' }
+    max_versions: { debian: '12', ubuntu: '24.04' }
+resources: { min_memory_mib: 1024, min_disk_mib: 10240, min_cores: 1 }
+network_models: [bridged, routed]
+install_modes: [order, post]
+billing: free
+license: external
+inputs:
+    - key: download_url
+      type: url
+      required: true
+      label:
+          {
+              en: WHMCS download address (HTTPS link to the full release zip),
+              tr: WHMCS indirme adresi (tam sürüm zip dosyasının HTTPS bağlantısı),
+          }
+    - key: license_key
+      type: password
+      required: true
+      min: 8
+      max_length: 100
+      label: { en: WHMCS licence key, tr: WHMCS lisans anahtarı }
+    - key: accept_eula
+      type: boolean
+      default: false
+      label:
+          en: I accept the WHMCS End User Licence Agreement
+          tr: WHMCS Son Kullanıcı Lisans Sözleşmesi'ni kabul ediyorum
+    - key: admin_user
+      type: slug
+      default: whmcsadmin
+      max_length: 32
+      label: { en: Administrator username, tr: Yönetici kullanıcı adı }
+    - key: domain
+      type: domain
+      label: { en: Domain (optional), tr: Alan adı (isteğe bağlı) }
+    - key: letsencrypt
+      type: boolean
+      default: false
+      label:
+          en: Get a Let's Encrypt certificate for the domain (accepts the Let's Encrypt terms)
+          tr: Alan adı için Let's Encrypt sertifikası al (Let's Encrypt koşulları kabul edilir)
+    - key: email
+      type: email
+      label:
+          {
+              en: Email for Let's Encrypt (optional),
+              tr: Let's Encrypt için e-posta (isteğe bağlı),
+          }
+outputs:
+    - key: site_url
+      type: url
+      label: { en: Client area, tr: Müşteri alanı }
+    - key: admin_url
+      type: url
+      label: { en: Administration, tr: Yönetim paneli }
+    - key: username
+      type: text
+      label: { en: Username, tr: Kullanıcı adı }
+    - key: password
+      type: text
+      secret: true
+      label: { en: Password, tr: Parola }
+    - key: notice
+      type: text
+      label: { en: Notice, tr: Not }
+firewall:
+    - { port: 80, proto: tcp }
+    - { port: 443, proto: tcp }
+includes: [lib.sh]
+lifecycle:
+    install: { script: install.sh, timeout_minutes: 30 }
+    uninstall: { script: uninstall.sh, timeout_minutes: 5 }

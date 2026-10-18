@@ -69,7 +69,7 @@ class RecipeEditorTest extends AdminTestCase
         $this->post(route('admin.apps.store'), ['slug' => 'Bad_Slug', 'name' => 'Mine'])->assertSessionHasErrors('slug');
         $this->post(route('admin.apps.copy', $this->app('docker')), ['slug' => 'openvpn', 'name' => 'Mine'])->assertSessionHasErrors('slug');
 
-        $this->assertSame(5, AppRecipe::query()->count());
+        $this->assertSame(8, AppRecipe::query()->count());
     }
 
     public function test_a_copy_of_a_bundled_app_is_an_editable_draft_and_the_original_stays()
@@ -185,12 +185,12 @@ class RecipeEditorTest extends AdminTestCase
         $this->post(route('admin.apps.store'), ['slug' => 'uptime-kuma', 'name' => 'Uptime Kuma']);
 
         $this->get(route('admin.apps.index'))->assertInertia(fn ($page) => $page
-            ->has('apps', 6)
-            ->where('apps.3.slug', 'uptime-kuma')
-            ->where('apps.3.source', 'custom')
-            ->where('apps.3.published', false)
-            ->where('apps.3.draft_version', '1.0.0')
-            ->where('apps.3.version', null));
+            ->has('apps', 9)
+            ->where('apps.4.slug', 'uptime-kuma')
+            ->where('apps.4.source', 'custom')
+            ->where('apps.4.published', false)
+            ->where('apps.4.draft_version', '1.0.0')
+            ->where('apps.4.version', null));
     }
 
     public function test_the_editor_opens_bundled_apps_for_editing_and_custom_drafts_with_their_errors()

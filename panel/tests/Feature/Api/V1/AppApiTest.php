@@ -58,7 +58,7 @@ class AppApiTest extends ApiTestCase
 
     public function test_the_catalog_lists_active_apps_with_their_inputs()
     {
-        AppRecipe::query()->whereIn('slug', ['docker', 'fastpanel', 'wordpress'])->update(['is_active' => false]);
+        AppRecipe::query()->whereIn('slug', ['cpanel', 'docker', 'fastpanel', 'plesk', 'whmcs', 'wordpress'])->update(['is_active' => false]);
 
         $response = $this->api('GET', '/api/v1/apps')->assertOk();
 
@@ -98,7 +98,7 @@ class AppApiTest extends ApiTestCase
 
         $this->assertSame([], $this->api('GET', '/api/v1/apps?os_template='.$windows->uuid)->assertOk()->json('data'));
         $this->assertSame(['openvpn', 'wireguard'], array_column($this->api('GET', '/api/v1/apps?package='.$small->uuid)->json('data'), 'id'));
-        $this->assertSame(['docker', 'fastpanel', 'openvpn', 'wireguard', 'wordpress'], array_column($this->api('GET', '/api/v1/apps?os_template='.$this->osTemplate->uuid.'&server='.$this->server->uuid)->json('data'), 'id'));
+        $this->assertSame(['docker', 'fastpanel', 'openvpn', 'plesk', 'whmcs', 'wireguard', 'wordpress', 'cpanel'], array_column($this->api('GET', '/api/v1/apps?os_template='.$this->osTemplate->uuid.'&server='.$this->server->uuid)->json('data'), 'id'));
     }
 
     public function test_paid_apps_are_listed_and_say_whether_the_server_is_entitled()
