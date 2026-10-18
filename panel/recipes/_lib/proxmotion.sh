@@ -151,6 +151,14 @@ pm_apt_install() {
     DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=600 install -y -q --no-install-recommends "$@"
 }
 
+# pm_apt_upgrade PACKAGE...: upgrade installed packages only (an upgrade script,
+# docs/adr/0016 §4), keeping configuration files that were changed.
+pm_apt_upgrade() {
+    DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=600 \
+        -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold \
+        install -y -q --only-upgrade "$@"
+}
+
 # pm_pkg_install PACKAGE...: install with whichever of apt and dnf the system
 # has (recipes requiring "apt|dnf", docs/adr/0016); package names must exist
 # under the same name in both.

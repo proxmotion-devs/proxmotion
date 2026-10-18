@@ -5,7 +5,7 @@
 # which the panel reads through the guest agent.
 #
 #   run.sh                              install.sh in the app's directory → "installed"
-#   run.sh SCRIPT RUN_DIR               an uninstall or an action → "succeeded"
+#   run.sh SCRIPT RUN_DIR               an uninstall, upgrade or action → "succeeded"
 #
 # SCRIPT is relative to the app's directory; RUN_DIR holds the run's
 # inputs.json, status.json, outputs.json, outputs/ and log.

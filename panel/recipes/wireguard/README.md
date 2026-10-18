@@ -27,3 +27,9 @@ the admin panel):
 Peers are loaded with `wg syncconf`, so connected clients stay connected. Up to 253
 clients. Uninstalling stops the VPN and deletes its configuration and keys; the
 WireGuard packages stay installed.
+
+## Upgrade
+
+Installations of versions 1.1.x and 1.2.x can be upgraded: newer WireGuard packages,
+`wg0.conf` rebuilt from the clients, and a restart. Keys, clients and their
+configurations are kept.

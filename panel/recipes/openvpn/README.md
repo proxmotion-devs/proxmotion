@@ -27,3 +27,9 @@ the admin panel):
 
 A revoked name cannot be used again. Uninstalling stops the VPN and deletes its
 configuration, certificate authority and profiles; the OpenVPN packages stay installed.
+
+## Upgrade
+
+Installations of versions 1.1.x and 1.2.x can be upgraded: newer OpenVPN and Easy-RSA
+packages, a fresh revocation list and a restart. The certificate authority, the server
+configuration and the clients' profiles are kept.

@@ -73,7 +73,7 @@ class RecipeLoaderTest extends TestCase
         $recipes = (new RecipeLoader)->all();
 
         $this->assertSame(['docker', 'fastpanel', 'openvpn', 'wireguard', 'wordpress'], array_keys($recipes));
-        $this->assertSame(['install.sh', 'uninstall.sh', 'actions/add-client.sh', 'actions/revoke-client.sh', 'actions/list-clients.sh', 'lib.sh'], array_keys($recipes['wireguard']['files']));
+        $this->assertSame(['install.sh', 'uninstall.sh', 'upgrade.sh', 'actions/add-client.sh', 'actions/revoke-client.sh', 'actions/list-clients.sh', 'lib.sh'], array_keys($recipes['wireguard']['files']));
         $this->artisan('apps:validate')->assertSuccessful();
     }
 
@@ -114,7 +114,7 @@ class RecipeLoaderTest extends TestCase
 
     public function test_apps_validate_reports_invalid_recipes()
     {
-        $this->editRecipe('version: 1.2.1', 'version: one');
+        $this->editRecipe('version: 1.3.0', 'version: one');
         $this->app->instance(RecipeLoader::class, $this->loader());
 
         $this->artisan('apps:validate')->assertFailed();
@@ -135,11 +135,11 @@ class RecipeLoaderTest extends TestCase
         $this->assertSame(['created' => [], 'updated' => [], 'held' => [], 'deactivated' => [], 'skipped' => []], $sync(), 'Nothing changed.');
 
         $recipe->forceFill(['is_active' => false])->save();
-        $this->editRecipe('version: 1.2.1', 'version: 1.3.0');
+        $this->editRecipe('version: 1.3.0', 'version: 1.4.0');
         $this->assertSame(['created' => [], 'updated' => ['openvpn'], 'held' => [], 'deactivated' => [], 'skipped' => []], $sync());
         $recipe->refresh();
-        $this->assertSame('1.3.0', $recipe->current()->version);
-        $this->assertSame(['1.2.1', '1.3.0'], $recipe->versions()->orderBy('id')->pluck('version')->all(), 'Earlier versions are kept.');
+        $this->assertSame('1.4.0', $recipe->current()->version);
+        $this->assertSame(['1.3.0', '1.4.0'], $recipe->versions()->orderBy('id')->pluck('version')->all(), 'Earlier versions are kept.');
         $this->assertFalse($recipe->is_active, 'The administrator deactivated it.');
 
         $recipe->forceFill(['is_active' => true])->save();
@@ -161,7 +161,7 @@ class RecipeLoaderTest extends TestCase
             app(RecipeSynchronizer::class)->sync();
             $this->fail('The changed version was accepted.');
         } catch (RecipeInvalid $e) {
-            $this->assertSame(['Version 1.2.1 changed but is used by installations: raise the version.'], $e->errors);
+            $this->assertSame(['Version 1.3.0 changed but is used by installations: raise the version.'], $e->errors);
         }
 
         $this->assertStringNotContainsString('changed', $recipe->current()->refresh()->files['install.sh']);
@@ -216,12 +216,13 @@ class RecipeLoaderTest extends TestCase
 
     public function test_lifecycle_scripts_must_exist_and_fit_the_platform()
     {
-        $this->editRecipe('uninstall: { script: uninstall.sh, timeout_minutes: 5 }', "uninstall: { script: scripts/uninstall.ps1, timeout_minutes: 5 }\n    upgrade: { script: upgrade.sh, timeout_minutes: 5, from: '>=1.0.0 <1.1.0' }");
+        $this->editRecipe('uninstall: { script: uninstall.sh,', 'uninstall: { script: scripts/uninstall.ps1,');
+        $this->editRecipe('upgrade: { script: upgrade.sh,', 'upgrade: { script: upgrade-v2.sh,');
 
         $errors = $this->errors();
 
         $this->assertContains('scripts/uninstall.ps1: Linux recipes use .sh scripts.', $errors);
-        $this->assertContains('upgrade.sh is missing.', $errors);
+        $this->assertContains('upgrade-v2.sh is missing.', $errors);
     }
 
     public function test_scripts_cannot_leave_the_recipe_directory()
