@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\V1\AppController;
+use App\Http\Controllers\Api\V1\AppEntitlementController;
 use App\Http\Controllers\Api\V1\CatalogController;
 use App\Http\Controllers\Api\V1\ServerConsoleController;
 use App\Http\Controllers\Api\V1\ServerController;
@@ -29,6 +30,7 @@ Route::middleware('api.scope:servers:read')->group(function (): void {
     Route::get('servers/{server}/apps/{installation}', [AppController::class, 'show'])->name('servers.apps.show');
     Route::get('servers/{server}/apps/{installation}/runs', [AppController::class, 'runs'])->name('servers.apps.runs.index');
     Route::get('servers/{server}/apps/{installation}/runs/{run}', [AppController::class, 'run'])->name('servers.apps.runs.show');
+    Route::get('servers/{server}/app-entitlements', [AppEntitlementController::class, 'index'])->name('servers.app-entitlements.index');
 });
 
 Route::middleware(['api.scope:servers:write', 'api.idempotent'])->group(function (): void {
@@ -47,6 +49,8 @@ Route::middleware(['api.scope:servers:write', 'api.idempotent'])->group(function
     Route::post('servers/{server}/apps/{installation}/retry', [AppController::class, 'retry'])->name('servers.apps.retry');
     Route::delete('servers/{server}/apps/{installation}', [AppController::class, 'uninstall'])->name('servers.apps.uninstall');
     Route::post('servers/{server}/apps/{installation}/actions/{action}', [AppController::class, 'action'])->where('action', '[a-z][a-z0-9_]{0,39}')->name('servers.apps.action');
+    Route::post('servers/{server}/app-entitlements', [AppEntitlementController::class, 'store'])->name('servers.app-entitlements.store');
+    Route::delete('servers/{server}/app-entitlements/{app}', [AppEntitlementController::class, 'destroy'])->where('app', '[a-z0-9][a-z0-9-]{0,49}')->name('servers.app-entitlements.destroy');
 });
 
 Route::middleware('api.scope:servers:secrets')->group(function (): void {

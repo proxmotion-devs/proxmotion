@@ -843,6 +843,94 @@ paths:
         '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/ValidationError' }
 
+  /servers/{server}/app-entitlements:
+    parameters:
+      - $ref: '#/components/parameters/Server'
+    get:
+      tags: [Apps]
+      summary: Rights to paid apps on a server
+      description: 'Scope: `servers:read`. Active and revoked entitlements (docs/adr/0019), at most 50, newest first.'
+      operationId: listServerAppEntitlements
+      responses:
+        '200':
+          description: The entitlements
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: { type: array, items: { $ref: '#/components/schemas/AppEntitlement' } }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    post:
+      tags: [Apps]
+      summary: Grant the right to install a paid app
+      description: |
+        Scope: `servers:write`. Call it when the customer has bought a paid app for the service,
+        e.g. when its addon is activated (docs/adr/0019). Idempotent: when the server already has an
+        active entitlement to the app, that one is returned with `200` (its `reference` unchanged).
+        Ordering a server with a paid app grants one automatically. Free apps answer `422`.
+      operationId: grantServerAppEntitlement
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [app]
+              properties:
+                app: { type: string, description: The app's `id` from `GET /apps`, examples: [cpanel] }
+                reference: { type: [string, 'null'], maxLength: 191, description: 'Your own id for it, e.g. the addon id; shown to administrators.' }
+      responses:
+        '200':
+          description: The server already had an active entitlement
+          content:
+            application/json:
+              schema: { type: object, required: [data], properties: { data: { $ref: '#/components/schemas/AppEntitlement' } } }
+        '201':
+          description: Granted
+          content:
+            application/json:
+              schema: { type: object, required: [data], properties: { data: { $ref: '#/components/schemas/AppEntitlement' } } }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /servers/{server}/app-entitlements/{app}:
+    parameters:
+      - $ref: '#/components/parameters/Server'
+      - name: app
+        in: path
+        required: true
+        description: The app's `id`.
+        schema: { type: string }
+    delete:
+      tags: [Apps]
+      summary: Revoke the right to install a paid app
+      description: |
+        Scope: `servers:write`. Call it when the customer's purchase ends, e.g. the addon is cancelled
+        or terminated. Only stops new installs, retries and reinstalls with the app: an installed app
+        stays, and its uninstall and actions keep working. `404` when the server has no active
+        entitlement to the app (already revoked counts as done).
+      operationId: revokeServerAppEntitlement
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '200':
+          description: Revoked
+          content:
+            application/json:
+              schema: { type: object, required: [data], properties: { data: { $ref: '#/components/schemas/AppEntitlement' } } }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
   /tasks/{task}:
     parameters:
       - name: task
@@ -1251,6 +1339,26 @@ components:
         created_at: { type: [string, 'null'], format: date-time }
         started_at: { type: [string, 'null'], format: date-time }
         finished_at: { type: [string, 'null'], format: date-time }
+    AppEntitlement:
+      type: object
+      required: [id, app, server, source, reference, active, created_at, revoked_at]
+      properties:
+        id: { type: string, format: uuid }
+        app:
+          type: object
+          properties:
+            id: { type: string }
+            name: { type: string }
+        server:
+          type: object
+          properties:
+            id: { type: string, format: uuid }
+            external_id: { type: [string, 'null'] }
+        source: { type: string, enum: [order, api, admin], description: '`order`: the server was ordered with the app; `api`: granted through this API; `admin`: by an administrator.' }
+        reference: { type: [string, 'null'] }
+        active: { type: boolean, description: '`false` once revoked.' }
+        created_at: { type: string, format: date-time }
+        revoked_at: { type: [string, 'null'], format: date-time }
     AppRun:
       type: object
       description: An uninstall or an action of an installed app (docs/adr/0016).

@@ -395,3 +395,16 @@ export type AppOption = { slug: string; name: string; inputs: AppInput[] };
 
 // An app that can come with a new system, and the OS templates it fits (docs/adr/0016 §5).
 export type OrderedAppOption = AppOption & { os_templates: string[] };
+
+export type AppEntitlementSource = 'order' | 'api' | 'admin';
+
+/** The right to install a paid app on a server (docs/adr/0019). */
+export type AppEntitlement = {
+    uuid: string;
+    app: string;
+    source: AppEntitlementSource;
+    reference: string | null;
+    active: boolean;
+    created_at: string | null;
+    revoked_at: string | null;
+};

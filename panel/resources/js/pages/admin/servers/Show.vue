@@ -7,6 +7,7 @@ import DriftList from '@/components/admin/DriftList.vue';
 import ServerStatusBadge from '@/components/admin/ServerStatusBadge.vue';
 import StatusBadge from '@/components/admin/StatusBadge.vue';
 import Heading from '@/components/Heading.vue';
+import AppEntitlementList from '@/components/servers/AppEntitlementList.vue';
 import AppList from '@/components/servers/AppList.vue';
 import PowerControls from '@/components/servers/PowerControls.vue';
 import HostnameDialog from '@/components/servers/HostnameDialog.vue';
@@ -22,6 +23,7 @@ import { formatMib, formatTraffic } from '@/lib/format';
 import { show as showCluster } from '@/routes/admin/clusters';
 import { show as showPool } from '@/routes/admin/ip-pools';
 import {
+    appEntitlements as grantEntitlement,
     apps as installApp,
     console as openConsole,
     destroy,
@@ -41,9 +43,11 @@ import {
 } from '@/routes/admin/servers';
 import { NETWORK_MODELS } from '@/types/admin';
 import type {
+    AppEntitlement,
     AppInstallation,
     AppOption,
     NetworkModel,
+    Option,
     OsPlatform,
     PowerAction,
     Drift,
@@ -103,6 +107,8 @@ const props = defineProps<{
     agent?: boolean | null;
     apps: AppInstallation[];
     appOptions: AppOption[];
+    entitlements: AppEntitlement[];
+    entitlementOptions: Option[];
 }>();
 
 setLayoutProps({
@@ -442,6 +448,19 @@ const modelLabel =
                 :options="appOptions"
                 :action="installApp(server.uuid)"
                 :disabled="server.status !== 'active' || agent === false"
+            />
+        </section>
+
+        <section
+            v-if="entitlements.length || entitlementOptions.length"
+            class="flex flex-col gap-4"
+        >
+            <Heading variant="small" title="Paid apps" />
+            <AppEntitlementList
+                :entitlements="entitlements"
+                :options="entitlementOptions"
+                :action="grantEntitlement(server.uuid)"
+                :disabled="server.status === 'terminated'"
             />
         </section>
 

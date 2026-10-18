@@ -6,6 +6,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Domain\Apps\AppEligibility;
 use App\Domain\Apps\AppNotEligible;
+use App\Domain\Apps\AppNotEntitled;
 use App\Domain\Apps\OrderedAppOptions;
 use App\Domain\Apps\RecipeAction;
 use App\Domain\Apps\RecipeInput;
@@ -26,6 +27,7 @@ use App\Http\Requests\Admin\ServerRequest;
 use App\Http\Requests\HostnameRequest;
 use App\Http\Requests\PrimaryAddressRequest;
 use App\Http\Requests\ReinstallRequest;
+use App\Models\AppEntitlement;
 use App\Models\AppInstallation;
 use App\Models\AppRecipe;
 use App\Models\AppRun;
@@ -217,6 +219,21 @@ class ServerController extends Controller
                         ])->values(),
                     ];
                 }),
+            // Rights to paid apps (docs/adr/0019), and the paid apps that fit the server and could be granted.
+            'entitlements' => $server->appEntitlements()->with('recipe:id,slug,name')->latest('id')->limit(20)->get()
+                ->map(fn (AppEntitlement $entitlement) => [
+                    'uuid' => $entitlement->uuid,
+                    'app' => $entitlement->recipe->name,
+                    'source' => $entitlement->source,
+                    'reference' => $entitlement->reference,
+                    'active' => $entitlement->revoked_at === null,
+                    'created_at' => $entitlement->created_at?->toIso8601String(),
+                    'revoked_at' => $entitlement->revoked_at?->toIso8601String(),
+                ]),
+            'entitlementOptions' => fn () => AppRecipe::query()->with('latestVersion')->where('is_active', true)->orderBy('name')->get()
+                ->filter(fn (AppRecipe $app) => $eligibility->forServer($app, $server) instanceof AppNotEntitled)
+                ->map(fn (AppRecipe $app) => ['value' => $app->slug, 'label' => $app->name])
+                ->values(),
             'appOptions' => fn () => AppRecipe::query()->with('latestVersion')->where('is_active', true)->orderBy('name')->get()
                 ->filter(fn (AppRecipe $app) => $eligibility->forServer($app, $server) === null)
                 ->map(fn (AppRecipe $app) => [

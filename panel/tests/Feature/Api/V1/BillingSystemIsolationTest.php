@@ -47,6 +47,9 @@ class BillingSystemIsolationTest extends ApiTestCase
             'console link' => ['POST', '/console'],
             'list installed apps' => ['GET', '/apps'],
             'install an app' => ['POST', '/apps'],
+            'list app entitlements' => ['GET', '/app-entitlements'],
+            'grant an app' => ['POST', '/app-entitlements'],
+            'revoke an app' => ['DELETE', '/app-entitlements/openvpn'],
         ];
     }
 

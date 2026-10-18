@@ -3,6 +3,7 @@
 use App\Http\Controllers\Admin\AdoptionController;
 use App\Http\Controllers\Admin\ApiTokenController;
 use App\Http\Controllers\Admin\AppController;
+use App\Http\Controllers\Admin\AppEntitlementController;
 use App\Http\Controllers\Admin\AppRecipeController;
 use App\Http\Controllers\Admin\BillingSystemController;
 use App\Http\Controllers\Admin\ClusterController;
@@ -115,4 +116,6 @@ Route::post('servers/{server}/primary-address', [ServerController::class, 'chang
 Route::post('servers/{server}/hostname', [ServerController::class, 'changeHostname'])->middleware('throttle:10,1')->name('servers.hostname');
 Route::post('servers/{server}/reset-password', [ServerController::class, 'resetPassword'])->middleware('throttle:10,1')->name('servers.reset-password');
 Route::post('servers/{server}/apps', [AppController::class, 'install'])->middleware('throttle:10,1')->name('servers.apps');
+Route::post('servers/{server}/app-entitlements', [AppEntitlementController::class, 'store'])->middleware('throttle:20,1')->name('servers.app-entitlements');
+Route::delete('app-entitlements/{appEntitlement}', [AppEntitlementController::class, 'destroy'])->middleware('throttle:20,1')->name('app-entitlements.destroy');
 Route::get('servers/{server}/console', ConsoleController::class)->middleware('throttle:20,1')->name('servers.console');

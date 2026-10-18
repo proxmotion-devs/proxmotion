@@ -1177,5 +1177,18 @@
     "Your edit of a bundled app is numbered after its bundled version (e.g. 1.2.1-local.1). Panel updates keep it; a newer bundled version is offered here to compare.": "Paketle gelen bir uygulamadaki düzenlemeniz, paket sürümünden sonra numaralanır (ör. 1.2.1-local.1). Panel güncellemeleri onu korur; daha yeni bir paket sürümü karşılaştırmak için burada gösterilir.",
     "Only an edited bundled app can go back to its bundled recipe.": "Yalnızca düzenlenmiş, paketle gelen bir uygulama paket tarifine dönebilir.",
     "This app has no bundled version to go back to.": "Bu uygulamanın dönülecek bir paket sürümü yok.",
-    "Bundled apps cannot be deleted; deactivate the app instead.": "Paketle gelen uygulamalar silinemez; bunun yerine uygulamayı devre dışı bırakın."
+    "Bundled apps cannot be deleted; deactivate the app instead.": "Paketle gelen uygulamalar silinemez; bunun yerine uygulamayı devre dışı bırakın.",
+    "Paid apps": "Ücretli uygulamalar",
+    "Grant paid app": "Ücretli uygulama hakkı ver",
+    "Granted by": "Hakkı veren",
+    "Reference": "Referans",
+    "Ordered with the server": "Sunucuyla birlikte sipariş edildi",
+    "Administrator": "Yönetici",
+    "Grant": "Hak ver",
+    "Revoke the right to this app?": "Bu uygulamanın hakkı geri alınsın mı?",
+    "The app can then be installed on this server, also from the billing system. Usually the billing system grants it when the customer buys the app.": "Uygulama bundan sonra bu sunucuya, faturalama sisteminden de kurulabilir. Genellikle hakkı müşteri uygulamayı satın aldığında faturalama sistemi verir.",
+    "Optional. E.g. the order or addon number in the billing system.": "İsteğe bağlı. Örneğin faturalama sistemindeki sipariş veya eklenti numarası.",
+    "The app can no longer be installed on this server. A copy that is already installed stays and keeps working.": "Uygulama artık bu sunucuya kurulamaz. Zaten kurulu olan kopya kalır ve çalışmaya devam eder.",
+    "The app can now be installed on this server.": "Uygulama artık bu sunucuya kurulabilir.",
+    "The right to the app was revoked. An installed copy stays on the server.": "Uygulamanın hakkı geri alındı. Kurulu bir kopya sunucuda kalır."
 }

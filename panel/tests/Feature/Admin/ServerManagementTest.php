@@ -3,6 +3,7 @@
 namespace Tests\Feature\Admin;
 
 use App\Domain\Apps\RecipeSynchronizer;
+use App\Enums\AppEntitlementSource;
 use App\Enums\AppInstallationStatus;
 use App\Enums\AppInstallMode;
 use App\Enums\ServerOrigin;
@@ -261,6 +262,40 @@ class ServerManagementTest extends AdminTestCase
         $this->post(route('admin.servers.store'), $this->payload(['app' => 'no-such-app']))->assertSessionHasErrors('app');
 
         $this->assertSame(0, Server::query()->count());
+    }
+
+    public function test_admins_can_grant_and_revoke_paid_apps()
+    {
+        app(RecipeSynchronizer::class)->sync();
+        $openvpn = AppRecipe::query()->with('latestVersion')->where('slug', 'openvpn')->firstOrFail();
+        $version = $openvpn->latestVersion;
+        $this->assertNotNull($version);
+        $version->forceFill(['definition' => ['billing' => 'paid'] + $version->definition])->save();
+        $this->post(route('admin.servers.store'), $this->payload());
+        $server = Server::query()->sole();
+
+        $this->get(route('admin.servers.show', $server))->assertInertia(fn (Assert $page) => $page
+            ->where('entitlementOptions', [['value' => 'openvpn', 'label' => 'OpenVPN']])
+            ->has('entitlements', 0)
+            ->where('appOptions', fn ($apps) => ! collect($apps)->contains('slug', 'openvpn')));
+
+        $this->post(route('admin.servers.app-entitlements', $server), ['app' => 'openvpn', 'reference' => 'INV-7'])->assertSessionHasNoErrors();
+        $this->post(route('admin.servers.app-entitlements', $server), ['app' => 'wireguard'])->assertSessionHasErrors('app');
+
+        $entitlement = $server->appEntitlements()->sole();
+        $this->assertSame(AppEntitlementSource::Admin, $entitlement->source);
+        $this->assertSame($this->admin->id, $entitlement->user_id);
+
+        $this->get(route('admin.servers.show', $server))->assertInertia(fn (Assert $page) => $page
+            ->where('entitlementOptions', [])
+            ->where('entitlements.0.reference', 'INV-7')
+            ->where('entitlements.0.active', true)
+            ->where('appOptions', fn ($apps) => collect($apps)->contains('slug', 'openvpn')));
+
+        $this->delete(route('admin.app-entitlements.destroy', $entitlement))->assertRedirect();
+
+        $this->assertNotNull($entitlement->refresh()->revoked_at);
+        $this->assertSame(1, AuditLog::query()->where('action', 'app.entitlement_revoked')->count());
     }
 
     public function test_provisioning_problems_are_shown_on_the_form()
