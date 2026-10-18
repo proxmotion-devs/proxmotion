@@ -2,6 +2,7 @@
 import { router, useForm, usePage } from '@inertiajs/vue3';
 import {
     CircleArrowUp,
+    Eye,
     PackagePlus,
     Play,
     RotateCcw,
@@ -14,10 +15,12 @@ import FormField from '@/components/admin/FormField.vue';
 import NativeSelect from '@/components/admin/NativeSelect.vue';
 import StatusBadge from '@/components/admin/StatusBadge.vue';
 import AppInputFields from '@/components/servers/AppInputFields.vue';
+import AppOutputs from '@/components/servers/AppOutputs.vue';
 import { Button } from '@/components/ui/button';
 import { useDateTime } from '@/composables/useDateTime';
 import {
     action as actionRoute,
+    outputs as outputsRoute,
     retry,
     uninstall,
     upgrade as upgradeRoute,
@@ -31,6 +34,7 @@ import type {
     AppRun,
     AppRunStatus,
     AppText,
+    RevealedAppOutputs,
 } from '@/types/admin';
 import type { RouteDefinition } from '@/wayfinder';
 
@@ -44,7 +48,12 @@ const props = defineProps<{
     options: AppOption[];
     action: RouteDefinition<'post'>;
     disabled?: boolean;
+    /** What Show details revealed for one of the apps. */
+    revealed?: RevealedAppOutputs | null;
 }>();
+
+const showOutputs = (app: AppInstallation) =>
+    router.visit(outputsRoute(app.uuid), { preserveScroll: true });
 
 const page = usePage<{ locale: string }>();
 const { formatDateTime } = useDateTime();
@@ -282,115 +291,136 @@ const runLabel = (run: AppRun) => {
                     </tr>
                 </thead>
                 <tbody>
-                    <tr
-                        v-for="app in apps"
-                        :key="app.uuid"
-                        class="border-t align-top"
-                    >
-                        <td class="px-4 py-3">
-                            <span class="font-medium">{{ app.app }}</span>
-                            <span class="ml-1 text-xs text-muted-foreground">{{
-                                app.version
-                            }}</span>
-                            <ul
-                                v-if="app.runs.length"
-                                class="mt-2 flex flex-col gap-1 text-xs text-muted-foreground"
-                                data-test="app-runs"
-                            >
-                                <li
-                                    v-for="run in app.runs"
-                                    :key="run.uuid"
-                                    class="flex flex-wrap items-center gap-2"
+                    <template v-for="app in apps" :key="app.uuid">
+                        <tr class="border-t align-top">
+                            <td class="px-4 py-3">
+                                <span class="font-medium">{{ app.app }}</span>
+                                <span
+                                    class="ml-1 text-xs text-muted-foreground"
+                                    >{{ app.version }}</span
                                 >
-                                    <span>{{ runLabel(run) }}</span>
-                                    <StatusBadge
-                                        :tone="runStatusTone[run.status]"
-                                        :label="runStatusLabels[run.status]"
-                                    />
-                                    <span>{{
-                                        formatDateTime(run.created_at)
-                                    }}</span>
-                                    <span
-                                        v-if="run.error"
-                                        class="w-full break-words text-red-600 dark:text-red-400"
-                                        >{{ run.error }}</span
+                                <ul
+                                    v-if="app.runs.length"
+                                    class="mt-2 flex flex-col gap-1 text-xs text-muted-foreground"
+                                    data-test="app-runs"
+                                >
+                                    <li
+                                        v-for="run in app.runs"
+                                        :key="run.uuid"
+                                        class="flex flex-wrap items-center gap-2"
                                     >
-                                </li>
-                            </ul>
-                        </td>
-                        <td class="px-4 py-3">
-                            <StatusBadge
-                                :tone="statusTone[app.status]"
-                                :label="statusLabels[app.status]"
-                            />
-                        </td>
-                        <td class="px-4 py-3">
-                            <span v-if="app.status === 'installing'"
-                                >{{ app.progress }}% · </span
-                            >{{ app.step ?? '' }}
-                            <p
-                                v-if="app.error"
-                                class="mt-1 text-xs break-words text-red-600 dark:text-red-400"
-                            >
-                                {{ app.error }}
-                            </p>
-                        </td>
-                        <td class="px-4 py-3 whitespace-nowrap">
-                            {{ formatDateTime(app.created_at) }}
-                        </td>
-                        <td class="px-4 py-3">
-                            <div class="flex flex-wrap justify-end gap-2">
-                                <Button
-                                    v-for="appAction in app.actions"
-                                    :key="appAction.key"
-                                    variant="outline"
-                                    size="sm"
-                                    :disabled="disabled || runBusy(app)"
-                                    @click="openAction(app, appAction)"
+                                        <span>{{ runLabel(run) }}</span>
+                                        <StatusBadge
+                                            :tone="runStatusTone[run.status]"
+                                            :label="runStatusLabels[run.status]"
+                                        />
+                                        <span>{{
+                                            formatDateTime(run.created_at)
+                                        }}</span>
+                                        <span
+                                            v-if="run.error"
+                                            class="w-full break-words text-red-600 dark:text-red-400"
+                                            >{{ run.error }}</span
+                                        >
+                                    </li>
+                                </ul>
+                            </td>
+                            <td class="px-4 py-3">
+                                <StatusBadge
+                                    :tone="statusTone[app.status]"
+                                    :label="statusLabels[app.status]"
+                                />
+                            </td>
+                            <td class="px-4 py-3">
+                                <span v-if="app.status === 'installing'"
+                                    >{{ app.progress }}% · </span
+                                >{{ app.step ?? '' }}
+                                <p
+                                    v-if="app.error"
+                                    class="mt-1 text-xs break-words text-red-600 dark:text-red-400"
                                 >
-                                    <Play class="h-4 w-4" />
-                                    {{ text(appAction.label, appAction.key) }}
-                                </Button>
-                                <Button
-                                    v-if="app.upgrade"
-                                    variant="outline"
-                                    size="sm"
-                                    :disabled="disabled || busy"
-                                    data-test="app-upgrade"
-                                    @click="openUpgrade(app)"
-                                >
-                                    <CircleArrowUp class="h-4 w-4" />
-                                    {{
-                                        $t('Upgrade to :version', {
-                                            version: app.upgrade.version,
-                                        })
-                                    }}
-                                </Button>
-                                <Button
-                                    v-if="app.status === 'failed'"
-                                    variant="outline"
-                                    size="sm"
-                                    :disabled="disabled || busy"
-                                    @click="retryInstallation(app)"
-                                >
-                                    <RotateCcw class="h-4 w-4" />
-                                    {{ $t('Retry') }}
-                                </Button>
-                                <Button
-                                    v-if="app.can_uninstall"
-                                    variant="outline"
-                                    size="sm"
-                                    class="text-destructive hover:bg-destructive/10 hover:text-destructive"
-                                    :disabled="disabled || busy"
-                                    data-test="app-uninstall"
-                                    @click="openUninstall(app)"
-                                >
-                                    <Trash2 class="h-4 w-4" />
-                                    {{ $t('Uninstall') }}
-                                </Button>
-                            </div>
-                        </td>
-                    </tr>
+                                    {{ app.error }}
+                                </p>
+                            </td>
+                            <td class="px-4 py-3 whitespace-nowrap">
+                                {{ formatDateTime(app.created_at) }}
+                            </td>
+                            <td class="px-4 py-3">
+                                <div class="flex flex-wrap justify-end gap-2">
+                                    <Button
+                                        v-if="app.has_outputs"
+                                        variant="outline"
+                                        size="sm"
+                                        data-test="app-show-outputs"
+                                        @click="showOutputs(app)"
+                                    >
+                                        <Eye class="h-4 w-4" />
+                                        {{ $t('Show details') }}
+                                    </Button>
+                                    <Button
+                                        v-for="appAction in app.actions"
+                                        :key="appAction.key"
+                                        variant="outline"
+                                        size="sm"
+                                        :disabled="disabled || runBusy(app)"
+                                        @click="openAction(app, appAction)"
+                                    >
+                                        <Play class="h-4 w-4" />
+                                        {{
+                                            text(appAction.label, appAction.key)
+                                        }}
+                                    </Button>
+                                    <Button
+                                        v-if="app.upgrade"
+                                        variant="outline"
+                                        size="sm"
+                                        :disabled="disabled || busy"
+                                        data-test="app-upgrade"
+                                        @click="openUpgrade(app)"
+                                    >
+                                        <CircleArrowUp class="h-4 w-4" />
+                                        {{
+                                            $t('Upgrade to :version', {
+                                                version: app.upgrade.version,
+                                            })
+                                        }}
+                                    </Button>
+                                    <Button
+                                        v-if="app.status === 'failed'"
+                                        variant="outline"
+                                        size="sm"
+                                        :disabled="disabled || busy"
+                                        @click="retryInstallation(app)"
+                                    >
+                                        <RotateCcw class="h-4 w-4" />
+                                        {{ $t('Retry') }}
+                                    </Button>
+                                    <Button
+                                        v-if="app.can_uninstall"
+                                        variant="outline"
+                                        size="sm"
+                                        class="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                                        :disabled="disabled || busy"
+                                        data-test="app-uninstall"
+                                        @click="openUninstall(app)"
+                                    >
+                                        <Trash2 class="h-4 w-4" />
+                                        {{ $t('Uninstall') }}
+                                    </Button>
+                                </div>
+                            </td>
+                        </tr>
+                        <tr
+                            v-if="
+                                revealed && revealed.installation === app.uuid
+                            "
+                            class="bg-muted/30"
+                        >
+                            <td colspan="5" class="px-4 py-3">
+                                <AppOutputs :revealed="revealed" />
+                            </td>
+                        </tr>
+                    </template>
                 </tbody>
             </table>
         </div>

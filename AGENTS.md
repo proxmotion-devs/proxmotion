@@ -185,7 +185,7 @@ Phase 5a (install later through the API, the admin panel and the WHMCS client ar
 | **Reinstall** | An app is selected while reinstalling the OS | Same as at order time |
 
 - **Status tracking is identical for both paths:** the script writes progress to `/var/lib/proxmotion/apps/<installation_uuid>/status.json` inside the VPS; the panel reads it periodically via Guest Agent `file-read`. **No phone-home** HTTP from the VPS to the panel — no panel token is ever placed on the VPS and the VPS needs no network path to the panel.
-- **Outputs** (panel URL, username/password, `.ovpn`/`.conf` files) are written by the script to `outputs.json` and `outputs/`; the panel reads them, stores them **encrypted**, and hands them to the billing module through the API (`apps:secrets` scope) for display/download.
+- **Outputs** (panel URL, username/password, `.ovpn`/`.conf` files) are written by the script to `outputs.json` and `outputs/`; the panel reads them, stores them **encrypted**, and hands them to the billing module through the API (`apps:secrets` scope) for display/download. Administrators see them on the server page with *Show details* (audited as `app.outputs_revealed`).
 - If the VPS does not answer the Guest Agent (agent removed, VPS stopped), the "install later" button is disabled with the reason shown.
 - Every panel template must ship `qemu-guest-agent`, with `agent: 1` set on the VM.
 

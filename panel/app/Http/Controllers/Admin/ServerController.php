@@ -19,6 +19,8 @@ use App\Domain\Servers\ServerPasswords;
 use App\Domain\Servers\ServerPower;
 use App\Domain\Servers\ServerReinstaller;
 use App\Enums\AppInstallationStatus;
+use App\Enums\AppRunKind;
+use App\Enums\AppRunStatus;
 use App\Enums\PowerAction;
 use App\Enums\ServerStatus;
 use App\Enums\TaskType;
@@ -180,6 +182,8 @@ class ServerController extends Controller
                 'can_fail' => $failer->canAbandon($task),
             ]),
             'revealedPassword' => session('revealed_password'),
+            // Outputs of one installed app, after Show details (AppController::outputs()).
+            'revealedAppOutputs' => session('revealed_app_outputs'),
             // Asked from Proxmox after the page has loaded, so a slow cluster does not block it.
             'power' => Inertia::defer(fn () => $server->status === ServerStatus::Active ? $this->power->state($server) : null),
             'reinstallOptions' => fn () => ReinstallOptions::for($server),
@@ -205,7 +209,10 @@ class ServerController extends Controller
                         'error' => $installation->error,
                         'created_at' => $installation->created_at?->toIso8601String(),
                         'finished_at' => $installation->finished_at?->toIso8601String(),
-                        // docs/adr/0016 §4: uninstall and actions, and the latest runs (outputs stay with the billing system).
+                        // What the app reported (panel address, passwords, client files), revealed with Show details.
+                        'has_outputs' => (in_array($installation->status, [AppInstallationStatus::Installed, AppInstallationStatus::UpgradeFailed], true) && ($installation->outputs ?? []) !== [])
+                            || $installation->runs->contains(fn (AppRun $run) => $run->kind === AppRunKind::Action && $run->status === AppRunStatus::Succeeded && ($run->outputs ?? []) !== []),
+                        // docs/adr/0016 §4: uninstall and actions, and the latest runs.
                         'can_uninstall' => $recipe->canUninstall() && $installation->status->canUninstall(),
                         'actions' => $installation->status === AppInstallationStatus::Installed
                             ? array_map(fn (RecipeAction $action) => ['key' => $action->key, 'label' => $action->label, 'inputs' => array_map(fn (RecipeInput $input) => $input->toArray(), $action->inputs)], $recipe->actions)

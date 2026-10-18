@@ -22,6 +22,7 @@ use App\Provisioning\TaskRunner;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
+use Inertia\Testing\AssertableInertia as Assert;
 use Tests\Concerns\BuildsInfrastructure;
 use Tests\Support\FakeProxmoxCluster;
 use Tests\TestCase;
@@ -156,6 +157,39 @@ class AppInstallTest extends TestCase
         $raw = (string) DB::table('app_installations')->where('id', $installation->id)->value('outputs');
         $this->assertStringNotContainsString('PrivateKey', $raw);
         $this->assertStringNotContainsString(base64_encode("[Interface]\nPrivateKey = secret\n"), $raw);
+    }
+
+    public function test_administrators_see_the_outputs_on_the_server_page_once_asked_and_audited()
+    {
+        $installation = $this->install();
+        $this->guestWrites($installation, 'status.json', ['status' => 'installed', 'progress' => 100, 'step' => 'Installed']);
+        $this->guestWrites($installation, 'outputs.json', ['endpoint' => '203.0.113.2:51820']);
+        $this->guestWrites($installation, 'outputs/client.conf', "[Interface]\nPrivateKey = secret\n");
+        $this->poll($installation);
+        $admin = User::factory()->withTwoFactor()->create();
+
+        $this->actingAs($admin)->get(route('admin.servers.show', $this->server))
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('apps.0.has_outputs', true)
+                ->where('revealedAppOutputs', null));
+        $this->assertSame(0, AuditLog::query()->where('action', 'app.outputs_revealed')->count());
+
+        $this->actingAs($admin)
+            ->from(route('admin.servers.show', $this->server))
+            ->post(route('admin.app-installations.outputs', $installation))
+            ->assertRedirect(route('admin.servers.show', $this->server));
+
+        $this->actingAs($admin)->get(route('admin.servers.show', $this->server))
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('revealedAppOutputs.installation', $installation->uuid)
+                ->where('revealedAppOutputs.outputs.1.key', 'endpoint')
+                ->where('revealedAppOutputs.outputs.1.value', '203.0.113.2:51820')
+                ->where('revealedAppOutputs.outputs.0.filename', 'client.conf')
+                ->where('revealedAppOutputs.outputs.0.content_base64', base64_encode("[Interface]\nPrivateKey = secret\n")));
+
+        $log = AuditLog::query()->where('action', 'app.outputs_revealed')->sole();
+        $this->assertTrue($log->user?->is($admin) ?? false);
+        $this->assertStringNotContainsString('PrivateKey', (string) json_encode($log->properties));
     }
 
     public function test_a_failed_installer_fails_the_installation_with_its_message()

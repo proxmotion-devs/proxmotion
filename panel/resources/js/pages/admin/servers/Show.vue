@@ -53,6 +53,7 @@ import type {
     Drift,
     ReinstallOptions,
     ResourceOptions,
+    RevealedAppOutputs,
     ServerStatus,
     Task,
 } from '@/types/admin';
@@ -98,6 +99,7 @@ const props = defineProps<{
     };
     tasks: Task[];
     revealedPassword: string | null;
+    revealedAppOutputs: RevealedAppOutputs | null;
     reinstallOptions: ReinstallOptions;
     resourceOptions: ResourceOptions;
     drifts: Drift[];
@@ -448,6 +450,7 @@ const modelLabel =
                 :options="appOptions"
                 :action="installApp(server.uuid)"
                 :disabled="server.status !== 'active' || agent === false"
+                :revealed="revealedAppOutputs"
             />
         </section>
 

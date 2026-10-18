@@ -9,9 +9,13 @@ use App\Domain\Apps\AppInstaller;
 use App\Domain\Apps\AppRunner;
 use App\Enums\AppInstallationStatus;
 use App\Enums\AppRecipeVersionStatus;
+use App\Enums\AppRunKind;
+use App\Enums\AppRunStatus;
 use App\Http\Controllers\Controller;
+use App\Http\Resources\Api\V1\AppInstallationResource;
 use App\Models\AppInstallation;
 use App\Models\AppRecipe;
+use App\Models\AppRun;
 use App\Models\AuditLog;
 use App\Models\Server;
 use App\Models\User;
@@ -160,6 +164,38 @@ class AppController extends Controller
         $this->toast('info', 'The action is running…');
 
         return back();
+    }
+
+    /**
+     * Show what an installed app reported (panel address, passwords, VPN
+     * client files): its own outputs and those of its latest actions. Shown
+     * once on the server page, like the root password, and audited.
+     */
+    public function outputs(Request $request, AppInstallation $appInstallation, #[CurrentUser] User $admin): RedirectResponse
+    {
+        $appInstallation->load(['version', 'runs' => fn ($query) => $query->latest('id')->limit(5)]);
+        $recipe = $appInstallation->version->recipe();
+        $installed = in_array($appInstallation->status, [AppInstallationStatus::Installed, AppInstallationStatus::UpgradeFailed], true);
+
+        $runs = $appInstallation->runs
+            ->filter(fn (AppRun $run) => $run->kind === AppRunKind::Action && $run->status === AppRunStatus::Succeeded)
+            ->map(fn (AppRun $run) => [
+                'uuid' => $run->uuid,
+                'action' => $recipe->action((string) $run->action)->label ?? ['en' => (string) $run->action],
+                'created_at' => $run->created_at?->toIso8601String(),
+                'outputs' => AppInstallationResource::outputsOf($run->declaredOutputs(), $run->outputs ?? []),
+            ])
+            ->filter(fn (array $run) => $run['outputs'] !== [])
+            ->values()
+            ->all();
+
+        AuditLog::record('app.outputs_revealed', $admin, $appInstallation, ['app' => $appInstallation->recipe->slug, 'server' => $appInstallation->server->hostname], $request->ip());
+
+        return back()->with('revealed_app_outputs', [
+            'installation' => $appInstallation->uuid,
+            'outputs' => $installed ? AppInstallationResource::outputsOf($recipe->outputs, $appInstallation->outputs ?? []) : [],
+            'runs' => $runs,
+        ]);
     }
 
     public function retry(Request $request, AppInstallation $appInstallation, #[CurrentUser] User $admin, AppInstaller $installer): RedirectResponse

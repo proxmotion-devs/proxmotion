@@ -374,6 +374,31 @@ export type AppInstallation = {
     /** The version it can be upgraded to and the inputs that version adds. */
     upgrade: { version: string; inputs: AppInput[] } | null;
     runs: AppRun[];
+    /** Whether the app or one of its actions reported something to show. */
+    has_outputs: boolean;
+};
+
+/** One value an app reported (docs/adr/0015): text, or a file base64-encoded. */
+export type AppOutput = {
+    key: string;
+    type: string;
+    label: AppText | null;
+    secret: boolean;
+    value: string | null;
+    filename: string | null;
+    content_base64: string | null;
+};
+
+/** What Show details revealed for one installation. */
+export type RevealedAppOutputs = {
+    installation: string;
+    outputs: AppOutput[];
+    runs: {
+        uuid: string;
+        action: AppText;
+        created_at: string | null;
+        outputs: AppOutput[];
+    }[];
 };
 
 export type AppText = { en: string; tr?: string };
