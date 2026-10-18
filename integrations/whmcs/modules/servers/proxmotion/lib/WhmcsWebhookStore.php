@@ -22,22 +22,7 @@ class WhmcsWebhookStore implements WebhookStore
         $servers = [];
 
         foreach (Capsule::table('tblservers')->where('type', 'proxmotion')->where('disabled', 0)->get() as $row) {
-            $password = '';
-
-            if ((string) $row->password !== '') {
-                $decrypted = localAPI('DecryptPassword', ['password2' => (string) $row->password]);
-                $password = isset($decrypted['password']) ? (string) $decrypted['password'] : '';
-            }
-
-            $servers[] = [
-                'serverid' => (int) $row->id,
-                'serverhostname' => (string) $row->hostname,
-                'serverip' => (string) $row->ipaddress,
-                'serversecure' => (bool) $row->secure,
-                'serverport' => (string) $row->port,
-                'serverpassword' => $password,
-                'serveraccesshash' => (string) $row->accesshash,
-            ];
+            $servers[] = WhmcsServiceStore::serverParams($row);
         }
 
         return $servers;

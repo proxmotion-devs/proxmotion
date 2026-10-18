@@ -34,7 +34,7 @@ function proxmotion_MetaData()
 }
 
 /**
- * Product module settings: configoption1 to configoption4. The lists are
+ * Product module settings: configoption1 to configoption6. The lists are
  * loaded from Proxmotion with the product's server.
  *
  * @return array<string, array<string, mixed>>
@@ -73,6 +73,12 @@ function proxmotion_ConfigOptions()
         'Restart after upgrades' => [
             'Type' => 'yesno',
             'Description' => 'Restart the server right away when an upgrade or downgrade changes CPU or memory; otherwise they take effect at its next restart',
+            'SimpleMode' => true,
+        ],
+        'Paid app addons' => [
+            'Type' => 'textarea',
+            'Rows' => 3,
+            'Description' => 'Product addons that sell a paid app: one "addon id=app id" per line, e.g. 12=cpanel. Activating the addon lets the server install the app; cancelling it stops new installs.',
             'SimpleMode' => true,
         ],
     ];

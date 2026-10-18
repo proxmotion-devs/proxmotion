@@ -35,6 +35,38 @@ class ProvisioningTest extends ModuleTestCase
         $this->assertSame([], $this->localApiCalls(), 'The WHMCS password was used: nothing to store.');
     }
 
+    public function test_the_app_option_and_app_fields_order_an_app_with_the_server()
+    {
+        $this->serviceHas(null);
+        $this->api->on('GET /apps?mode=order&os_template=os-uuid', 200, ['data' => [
+            ['id' => 'openvpn', 'name' => 'OpenVPN', 'inputs' => [['key' => 'port'], ['key' => 'protocol']]],
+        ]]);
+        $this->api->on('POST /servers', 202, $this->task('create'));
+
+        $this->module([
+            'configoptions' => ['app' => 'openvpn'],
+            'customfields' => ['ssh_key' => '', 'app_port' => ' 443 ', 'app_protocol' => '', 'app_domain' => 'other.example.com'],
+        ])->create();
+
+        $body = $this->api->last('POST /servers')['body'];
+        $this->assertSame('openvpn', $body['app']);
+        $this->assertSame(['port' => '443'], $body['app_inputs'], 'Empty fields and fields of other apps are left out.');
+        $this->assertStringNotContainsString('443', (string) json_encode($GLOBALS['whmcs_calls']['logModuleCall']), 'App inputs are masked in the log.');
+    }
+
+    public function test_no_app_sends_nothing_and_unknown_apps_keep_their_fields()
+    {
+        $this->serviceHas(null);
+        $this->api->on('POST /servers', 202, $this->task('create'));
+
+        $this->module(['configoptions' => ['app' => 'none'], 'customfields' => ['app_port' => '443']])->create();
+        $this->assertArrayNotHasKey('app', $this->api->last('POST /servers')['body']);
+
+        $this->api->on('GET /apps?mode=order&os_template=os-uuid', 200, ['data' => []]);
+        $this->module(['configoptions' => ['app' => 'retired'], 'customfields' => ['app_port' => '443']])->create();
+        $this->assertSame(['port' => '443'], $this->api->last('POST /servers')['body']['app_inputs'], 'Proxmotion explains why the app cannot be ordered.');
+    }
+
     public function test_configurable_options_and_the_ssh_key_field_override_the_product()
     {
         $this->serviceHas(null);

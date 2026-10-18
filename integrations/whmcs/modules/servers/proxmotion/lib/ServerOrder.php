@@ -5,7 +5,8 @@ namespace Proxmotion\Whmcs;
 /**
  * Turns a WHMCS service into a POST /servers payload: the product's module
  * settings (package, location, OS template, network model), overridden by
- * configurable options and the "ssh_key" custom field (see README.md).
+ * configurable options and the "ssh_key" custom field, and the app chosen
+ * with the order ("app" option, "app_<key>" custom fields; see README.md).
  */
 class ServerOrder
 {
@@ -50,7 +51,7 @@ class ServerOrder
             'external_client_id' => isset($this->params['userid']) ? (string) $this->params['userid'] : null,
             'package' => $this->packageId(),
             'location' => $this->choice('location', $this->setting(2)),
-            'os_template' => $this->choice('os_template', $this->setting(3)),
+            'os_template' => $this->osTemplate(),
             'hostname' => $this->hostname(),
         ];
 
@@ -80,6 +81,76 @@ class ServerOrder
         }
 
         return $payload;
+    }
+
+    /**
+     * The app chosen with the order (configurable option "app", docs/adr/0016 §5),
+     * or null: empty, "none" and "0" mean no app.
+     */
+    public function app(): ?string
+    {
+        $app = strtolower($this->choice('app', ''));
+
+        return $app === '' || $app === 'none' || $app === '0' ? null : $app;
+    }
+
+    /**
+     * The app's inputs from custom fields named "app_<key>". Empty fields are
+     * left out so the app's defaults apply; with the app's declared inputs,
+     * fields of other apps are left out too.
+     *
+     * @param list<string>|null $declared the input keys of the chosen app, if known
+     * @return array<string, string>
+     */
+    public function appInputs(?array $declared): array
+    {
+        $fields = isset($this->params['customfields']) && is_array($this->params['customfields']) ? $this->params['customfields'] : [];
+        $inputs = [];
+
+        foreach ($fields as $name => $value) {
+            $name = (string) $name;
+
+            if (strpos($name, 'app_') !== 0 || !is_scalar($value) || trim((string) $value) === '') {
+                continue;
+            }
+
+            $key = substr($name, 4);
+
+            if ($declared === null || in_array($key, $declared, true)) {
+                $inputs[$key] = trim((string) $value);
+            }
+        }
+
+        return $inputs;
+    }
+
+    /**
+     * The OS template of the order: the "os_template" option or the module setting.
+     */
+    public function osTemplate(): string
+    {
+        return $this->choice('os_template', $this->setting(3));
+    }
+
+    /**
+     * Paid apps sold as product addons (docs/adr/0019), from module setting 6:
+     * one "<addon id>=<app id>" per line (commas work too).
+     *
+     * @return array<int, string> app ids by WHMCS addon id
+     */
+    public function paidAppAddons(): array
+    {
+        $addons = [];
+
+        foreach (preg_split('/[\r\n,]+/', $this->setting(6)) ?: [] as $line) {
+            $parts = array_map('trim', explode('=', $line, 2));
+
+            if (count($parts) === 2 && ctype_digit($parts[0]) && preg_match('/^[a-z0-9][a-z0-9-]*$/', $parts[1]) === 1) {
+                $addons[(int) $parts[0]] = $parts[1];
+            }
+        }
+
+        return $addons;
     }
 
     /**

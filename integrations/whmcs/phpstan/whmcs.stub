@@ -20,3 +20,14 @@ function localAPI(string $command, array $values = [], string $adminUser = ''): 
 {
     return [];
 }
+
+function logActivity(string $message, int $userId = 0): void
+{
+}
+
+/**
+ * @param callable(array<string, mixed>): mixed $function
+ */
+function add_hook(string $hookPoint, int $priority, callable $function): void
+{
+}

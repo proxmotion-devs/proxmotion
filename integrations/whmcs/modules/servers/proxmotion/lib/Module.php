@@ -119,6 +119,13 @@ class Module
 
         $order = new ServerOrder($this->params);
         $payload = $order->payload($this->packageFor($order));
+        $app = $order->app();
+
+        if ($app !== null) {
+            // Installed once the server has booted (docs/adr/0016 §5); Proxmotion checks the app and its inputs.
+            $payload['app'] = $app;
+            $payload['app_inputs'] = (object) $order->appInputs($this->declaredInputs($app, $order->osTemplate()));
+        }
 
         if (isset($payload['root_password'])) {
             $this->client->addSecret((string) $payload['root_password']);
@@ -267,7 +274,32 @@ class Module
     }
 
     /**
-     * @param array<string, mixed> $input os_template, ssh_key, confirm (from the form)
+     * The input keys an app declares for an order with this OS template, or
+     * null when the catalog does not list it (Proxmotion then explains why).
+     *
+     * @return list<string>|null
+     */
+    private function declaredInputs(string $app, string $osTemplate): ?array
+    {
+        foreach ($this->client->orderApps($osTemplate === '' ? null : $osTemplate) as $listed) {
+            if (isset($listed['id']) && $listed['id'] === $app) {
+                $keys = [];
+
+                foreach (isset($listed['inputs']) && is_array($listed['inputs']) ? $listed['inputs'] : [] as $input) {
+                    if (is_array($input) && isset($input['key'])) {
+                        $keys[] = (string) $input['key'];
+                    }
+                }
+
+                return $keys;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @param array<string, mixed> $input os_template, ssh_key, app (optional, installed with its defaults), confirm (from the form)
      */
     public function reinstall(array $input): string
     {
@@ -278,8 +310,9 @@ class Module
         $server = $this->requireActiveServer();
         $sshKey = isset($input['ssh_key']) ? trim((string) $input['ssh_key']) : '';
         $osTemplate = isset($input['os_template']) ? (string) $input['os_template'] : '';
+        $app = isset($input['app']) ? trim((string) $input['app']) : '';
 
-        $this->client->reinstall((string) $server['id'], $osTemplate, $sshKey === '' ? [] : [$sshKey]);
+        $this->client->reinstall((string) $server['id'], $osTemplate, $sshKey === '' ? [] : [$sshKey], $app === '' ? null : $app);
 
         return 'success';
     }
@@ -447,6 +480,8 @@ class Module
             'error' => null,
             'osTemplates' => [],
             'apps' => [],
+            'reinstallApps' => [],
+            'addonsUrl' => $this->addonsUrl(),
             'installations' => [],
             'appsBusy' => false,
         ];
@@ -474,6 +509,7 @@ class Module
                     }
 
                     $vars['apps'] = array_map([$this, 'presentApp'], $this->client->apps((string) $server['id']));
+                    $vars['reinstallApps'] = $vars['osTemplates'] === [] ? [] : $this->reinstallApps((string) $server['id']);
                     $vars['appsBusy'] = count(array_filter($vars['installations'], function (array $installation) {
                         return $installation['busy'];
                     })) > 0;
@@ -519,6 +555,49 @@ class Module
             'Server status' => htmlspecialchars((string) $server['status'] . (isset($server['power_state']) ? ' (' . $server['power_state'] . ')' : '')),
             'IP addresses' => $addresses === [] ? '—' : implode('<br>', $addresses),
         ];
+    }
+
+    /**
+     * A product addon of this service was activated: when module setting 6
+     * maps it to a paid app, the server may install that app (docs/adr/0019).
+     *
+     * @return string|null the app, or null when the addon is not a paid app
+     */
+    public function grantAddon(int $addonId, int $serviceAddonId): ?string
+    {
+        $addons = (new ServerOrder($this->params))->paidAppAddons();
+
+        if (!isset($addons[$addonId])) {
+            return null;
+        }
+
+        $this->client->grantEntitlement((string) $this->requireServer()['id'], $addons[$addonId], 'whmcs-addon-' . $serviceAddonId);
+
+        return $addons[$addonId];
+    }
+
+    /**
+     * A product addon of this service was cancelled or terminated: the paid
+     * app can no longer be installed (an installed copy stays).
+     *
+     * @return string|null the app, or null when the addon is not a paid app
+     */
+    public function revokeAddon(int $addonId): ?string
+    {
+        $addons = (new ServerOrder($this->params))->paidAppAddons();
+
+        if (!isset($addons[$addonId])) {
+            return null;
+        }
+
+        $server = $this->server();
+
+        // Without a server (terminated) there is nothing left to revoke.
+        if ($server !== null) {
+            $this->client->revokeEntitlement((string) $server['id'], $addons[$addonId]);
+        }
+
+        return $addons[$addonId];
     }
 
     /**
@@ -647,7 +726,54 @@ class Module
             'name' => (string) $app['name'],
             'description' => $this->text(isset($app['description']) ? $app['description'] : null, ''),
             'inputs' => $this->presentInputs(isset($app['inputs']) && is_array($app['inputs']) ? $app['inputs'] : []),
+            // docs/adr/0019: a paid app the server has no right to yet is offered to buy instead.
+            'paid' => isset($app['billing']) && $app['billing'] === 'paid',
+            'buy' => isset($app['entitled']) && $app['entitled'] === false,
+            'licence_required' => isset($app['license']) && $app['license'] === 'external',
         ];
+    }
+
+    /**
+     * Apps the reinstall form offers (docs/adr/0016 §5): those that fit the
+     * server, that it may install (paid ones need an entitlement) and that
+     * need no input without a default, since the form only picks the app.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function reinstallApps(string $serverId): array
+    {
+        $apps = [];
+
+        try {
+            $listed = $this->client->orderApps(null, $serverId);
+        } catch (ApiException $e) {
+            // Reinstalling still works without an app (e.g. a panel before mode=order).
+            return [];
+        }
+
+        foreach ($listed as $app) {
+            if (isset($app['entitled']) && $app['entitled'] === false) {
+                continue;
+            }
+
+            foreach (isset($app['inputs']) && is_array($app['inputs']) ? $app['inputs'] : [] as $input) {
+                if (is_array($input) && !empty($input['required']) && (!isset($input['default']) || $input['default'] === '')) {
+                    continue 2;
+                }
+            }
+
+            $apps[] = ['id' => (string) $app['id'], 'name' => (string) $app['name']];
+        }
+
+        return $apps;
+    }
+
+    /**
+     * Where the customer buys addons of this service (paid apps, docs/adr/0019).
+     */
+    private function addonsUrl(): string
+    {
+        return 'cart.php?gid=addons&pid=' . rawurlencode((string) $this->params['serviceid']);
     }
 
     /**

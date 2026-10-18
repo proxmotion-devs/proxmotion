@@ -47,6 +47,7 @@ service. A password reset in the client area stores the new password there as we
 | OS template | The operating system, unless the `os_template` configurable option is chosen |
 | Network model | Bridged or routed; default: the first model the package allows (bridged without a package) |
 | Restart after upgrades | Restart the server right away when an upgrade or downgrade changes CPU or memory |
+| Paid app addons | Product addons that sell a paid app, one `<addon id>=<app id>` per line (see *Paid apps* below) |
 
 The lists are loaded from Proxmotion with the product's server.
 
@@ -60,6 +61,7 @@ Configurable options are matched by their **option name** (the part before `|`, 
 | `os_template` | Dropdown | Sub-option names `<OS template id>\|<name shown>`, e.g. `0199…\|Ubuntu 24.04` |
 | `location` | Dropdown | Sub-option names `<location id>\|<name shown>` |
 | `network_model` | Dropdown | `bridged\|Bridged`, `routed\|Routed` |
+| `app` | Dropdown | An app installed once the server has booted: sub-option names `<app id>\|<name shown>`, e.g. `wireguard\|WireGuard`, and `none\|No app` (see *Apps at order time*) |
 | `cpu_cores` | Quantity / dropdown | Number of vCPUs (replaces the package's value) |
 | `memory_mib`, `memory_gib` | Quantity / dropdown | Memory (replaces the package's value) |
 | `disk_mib`, `disk_gib` | Quantity / dropdown | Disk size |
@@ -86,6 +88,20 @@ addresses always come from Proxmotion's IP pools of the location.
 
 Add a product custom field named `ssh_key|SSH public key` (text area, show on order
 form). Its value is installed for root.
+
+### Apps at order time
+
+The `app` configurable option orders an app with the server (Proxmotion docs/adr/0016
+§5). Its ids are listed by `GET /api/v1/apps?mode=order` (with `os_template` for the
+apps that fit an OS) and in the Proxmotion admin panel. The app is installed through the
+guest agent once the server has booted; a failed install never fails the order and can be
+retried from the client area. Proxmotion refuses the order with a readable error when the
+app does not fit the OS template, resources or network model.
+
+App settings come from product custom fields named `app_<input key>` (e.g. `app_port|VPN
+port`, show on order form). Empty fields use the app's defaults, and fields of other apps
+are left out, so one product can offer several apps. A paid app ordered this way is
+granted with the order.
 
 ## Client area
 
@@ -116,6 +132,23 @@ script (asked to confirm). The latest runs show with their status, error and out
 new client's profile is downloaded from the run), fetched on demand like the install
 outputs and masked in the module log. One action runs at a time per app; the page shows
 its result once Proxmotion has read it (about a minute).
+
+The **reinstall** form can bring an app with the new system: it lists the apps that fit
+the server, that it may install and that need no setting without a default (they are
+installed with their defaults). Proxmotion checks the app again against the chosen OS.
+
+### Paid apps
+
+Apps marked paid in Proxmotion (Proxmotion docs/adr/0019) are installed later only when
+the server has the right to them. Sell one as a **product addon** and map it in the module
+setting *Paid app addons*, one `<addon id>=<app id>` per line (e.g. `12=cpanel`). When
+WHMCS activates the addon (`AddonActivation` hook in `hooks.php`), the module grants the
+app to the service's server; when the addon is cancelled or terminated (`AddonCancelled`,
+`AddonTerminated`), the right is revoked: new installs stop, an installed copy stays.
+Each grant and revoke is written to the activity log, also when it fails. Paid apps
+without the right show a **Buy** button that opens the service's addons in the cart, and
+apps with a separately sold licence (cPanel, Plesk) say so. Ordering a server with a paid
+app through the `app` option grants it as well.
 
 ## Webhooks
 

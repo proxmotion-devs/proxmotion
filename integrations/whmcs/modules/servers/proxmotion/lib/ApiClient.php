@@ -161,14 +161,21 @@ class ApiClient
 
     /**
      * @param list<string> $sshKeys
+     * @param string|null $app an app installed on the new system (docs/adr/0016 §5), with its defaults
      * @return array<string, mixed> the queued task
      */
-    public function reinstall(string $id, string $osTemplate, array $sshKeys): array
+    public function reinstall(string $id, string $osTemplate, array $sshKeys, ?string $app = null): array
     {
-        return $this->dataOf($this->request('POST', '/servers/' . rawurlencode($id) . '/reinstall', [
+        $body = [
             'os_template' => $osTemplate,
             'ssh_keys' => $sshKeys,
-        ]));
+        ];
+
+        if ($app !== null) {
+            $body['app'] = $app;
+        }
+
+        return $this->dataOf($this->request('POST', '/servers/' . rawurlencode($id) . '/reinstall', $body));
     }
 
     /**
@@ -234,6 +241,55 @@ class ApiClient
     public function apps(string $serverId): array
     {
         return $this->listOf($this->request('GET', '/apps?' . http_build_query(['server' => $serverId])));
+    }
+
+    /**
+     * Apps that can come with a new system (docs/adr/0016 §5): for an order
+     * with this OS template, or for a reinstall of this server.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function orderApps(?string $osTemplate, ?string $serverId = null): array
+    {
+        $query = ['mode' => 'order'];
+
+        if ($osTemplate !== null) {
+            $query['os_template'] = $osTemplate;
+        }
+
+        if ($serverId !== null) {
+            $query['server'] = $serverId;
+        }
+
+        return $this->listOf($this->request('GET', '/apps?' . http_build_query($query)));
+    }
+
+    /**
+     * Grant the right to install a paid app (docs/adr/0019); granting again changes nothing.
+     *
+     * @return array<string, mixed> the entitlement
+     */
+    public function grantEntitlement(string $id, string $app, ?string $reference): array
+    {
+        return $this->dataOf($this->request('POST', '/servers/' . rawurlencode($id) . '/app-entitlements', ['app' => $app, 'reference' => $reference]));
+    }
+
+    /**
+     * Revoke the right to install a paid app; false when the server had none.
+     */
+    public function revokeEntitlement(string $id, string $app): bool
+    {
+        try {
+            $this->request('DELETE', '/servers/' . rawurlencode($id) . '/app-entitlements/' . rawurlencode($app));
+        } catch (ApiException $e) {
+            if ($e->status() === 404) {
+                return false;
+            }
+
+            throw $e;
+        }
+
+        return true;
     }
 
     /**
@@ -419,7 +475,7 @@ class ApiClient
     private static function maskSecrets(array $data): array
     {
         foreach ($data as $key => $value) {
-            if (in_array($key, ['root_password', 'inputs', 'value', 'content_base64'], true) && $value !== null) {
+            if (in_array($key, ['root_password', 'inputs', 'app_inputs', 'value', 'content_base64'], true) && $value !== null) {
                 $data[$key] = '***';
             } elseif (is_array($value)) {
                 $data[$key] = self::maskSecrets($value);

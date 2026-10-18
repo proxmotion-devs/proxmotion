@@ -19,6 +19,7 @@ class ClientAreaTest extends ModuleTestCase
         $this->api->on('GET /os-templates', 200, ['data' => [['id' => 'os-uuid', 'name' => 'Ubuntu 24.04', 'family' => 'ubuntu', 'version' => '24.04']]]);
         $this->api->on('GET /servers/' . self::SERVER_ID . '/apps', 200, ['data' => []]);
         $this->api->on('GET /apps?server=' . self::SERVER_ID, 200, ['data' => [self::wireguard()]]);
+        $this->api->on('GET /apps?mode=order&server=' . self::SERVER_ID, 200, ['data' => [self::wireguard()]]);
     }
 
     /**
@@ -322,6 +323,59 @@ class ClientAreaTest extends ModuleTestCase
         $this->assertSame(['os_template' => 'os-uuid', 'ssh_keys' => ['ssh-ed25519 AAAA user@example.com']], $this->api->last('POST /servers/' . self::SERVER_ID . '/reinstall')['body']);
     }
 
+    public function test_a_reinstall_can_bring_an_app()
+    {
+        $this->serviceHas($this->server());
+        $this->api->on('POST /servers/' . self::SERVER_ID . '/reinstall', 202, $this->task('reinstall'));
+
+        $this->module()->reinstall(['os_template' => 'os-uuid', 'app' => ' docker ', 'confirm' => '1']);
+
+        $this->assertSame(['os_template' => 'os-uuid', 'ssh_keys' => [], 'app' => 'docker'], $this->api->last('POST /servers/' . self::SERVER_ID . '/reinstall')['body']);
+    }
+
+    public function test_the_reinstall_form_offers_apps_the_server_may_install_with_their_defaults()
+    {
+        $this->showsServer();
+        $this->api = new FakeTransport();
+        $this->serviceHas($this->server());
+        $this->api->on('GET /servers/' . self::SERVER_ID, 200, ['data' => $this->server()]);
+        $this->api->on('GET /os-templates', 200, ['data' => [['id' => 'os-uuid', 'name' => 'Ubuntu 24.04']]]);
+        $this->api->on('GET /servers/' . self::SERVER_ID . '/apps', 200, ['data' => []]);
+        $this->api->on('GET /apps?server=' . self::SERVER_ID, 200, ['data' => []]);
+        $required = ['key' => 'domain', 'type' => 'domain', 'label' => null, 'required' => true, 'default' => null];
+        $this->api->on('GET /apps?mode=order&server=' . self::SERVER_ID, 200, ['data' => [
+            self::wireguard() + ['billing' => 'free', 'entitled' => true],
+            ['id' => 'cpanel', 'name' => 'cPanel', 'inputs' => [], 'billing' => 'paid', 'entitled' => false],
+            ['id' => 'wordpress', 'name' => 'WordPress', 'inputs' => [$required], 'billing' => 'free', 'entitled' => true],
+        ]]);
+
+        $vars = $this->module()->clientArea()['templateVariables']['pmx'];
+
+        $this->assertSame([['id' => 'wireguard', 'name' => 'WireGuard']], $vars['reinstallApps']);
+    }
+
+    public function test_paid_apps_without_a_right_are_offered_to_buy()
+    {
+        $this->showsServer();
+        $this->api = new FakeTransport();
+        $this->serviceHas($this->server());
+        $this->api->on('GET /servers/' . self::SERVER_ID, 200, ['data' => $this->server()]);
+        $this->api->on('GET /os-templates', 200, ['data' => []]);
+        $this->api->on('GET /servers/' . self::SERVER_ID . '/apps', 200, ['data' => []]);
+        $this->api->on('GET /apps?server=' . self::SERVER_ID, 200, ['data' => [
+            ['id' => 'cpanel', 'name' => 'cPanel', 'inputs' => [], 'billing' => 'paid', 'license' => 'external', 'entitled' => false],
+            ['id' => 'plesk', 'name' => 'Plesk', 'inputs' => [], 'billing' => 'paid', 'license' => 'external', 'entitled' => true],
+        ]]);
+
+        $vars = $this->module()->clientArea()['templateVariables']['pmx'];
+
+        $this->assertTrue($vars['apps'][0]['buy']);
+        $this->assertFalse($vars['apps'][1]['buy']);
+        $this->assertTrue($vars['apps'][1]['licence_required']);
+        $this->assertSame([], $vars['reinstallApps'], 'No reinstall form without templates.');
+        $this->assertSame('cart.php?gid=addons&pid=42', $vars['addonsUrl']);
+    }
+
     public function test_reverse_dns_is_set_and_removed()
     {
         $this->serviceHas($this->server());
@@ -368,7 +422,7 @@ class ClientAreaTest extends ModuleTestCase
             $this->assertTrue(function_exists('proxmotion_' . $function), "proxmotion_{$function} is listed but missing.");
         }
 
-        $this->assertSame(['Package', 'Location', 'OS template', 'Network model', 'Restart after upgrades'], array_keys(proxmotion_ConfigOptions()));
+        $this->assertSame(['Package', 'Location', 'OS template', 'Network model', 'Restart after upgrades', 'Paid app addons'], array_keys(proxmotion_ConfigOptions()));
         $this->assertTrue(is_file(__DIR__ . '/../modules/servers/proxmotion/templates/overview.tpl'));
     }
 }

@@ -123,6 +123,18 @@
                         <label for="pmx-ssh-key">{$pmx.lang.reinstall_ssh_key|escape}</label>
                         <textarea id="pmx-ssh-key" name="ssh_key" rows="2" class="form-control" placeholder="ssh-ed25519 AAAA…"></textarea>
                     </div>
+                    {if $pmx.reinstallApps}
+                        <div class="form-group">
+                            <label for="pmx-reinstall-app">{$pmx.lang.reinstall_app|escape}</label>
+                            <select id="pmx-reinstall-app" name="app" class="form-control">
+                                <option value="">{$pmx.lang.reinstall_no_app|escape}</option>
+                                {foreach from=$pmx.reinstallApps item=app}
+                                    <option value="{$app.id|escape}">{$app.name|escape}</option>
+                                {/foreach}
+                            </select>
+                            <p class="help-block">{$pmx.lang.reinstall_app_hint|escape}</p>
+                        </div>
+                    {/if}
                     <div class="checkbox">
                         <label><input type="checkbox" name="confirm" value="1" required> {$pmx.lang.reinstall_confirm|escape}</label>
                     </div>
@@ -242,7 +254,17 @@
                 <h5>{$pmx.lang.app_install|escape}</h5>
                 <p class="text-muted">{$pmx.lang.app_install_hint|escape}</p>
                 {foreach from=$pmx.apps item=app}
+                    {if $app.buy}
+                        <div class="well well-sm">
+                            <p><strong>{$app.name|escape}</strong> <span class="text-muted">{$app.description|escape}</span></p>
+                            <p class="text-muted">{$pmx.lang.app_buy_hint|escape}</p>
+                            <a href="{$pmx.addonsUrl|escape}" class="btn btn-default btn-sm">{$pmx.lang.app_buy|escape}</a>
+                        </div>
+                    {else}
                     <form method="post" action="{$pmxAction}InstallApp" class="well well-sm">
+                        {if $app.licence_required}
+                            <p class="text-warning">{$pmx.lang.app_licence_required|escape}</p>
+                        {/if}
                         <input type="hidden" name="token" value="{$token}">
                         <input type="hidden" name="app" value="{$app.id|escape}">
                         <p><strong>{$app.name|escape}</strong> <span class="text-muted">{$app.description|escape}</span></p>
@@ -269,6 +291,7 @@
                         {/foreach}
                         <button type="submit" class="btn btn-primary btn-sm">{$pmx.lang.app_install_submit|escape}</button>
                     </form>
+                    {/if}
                 {/foreach}
             {/if}
         {/if}
