@@ -7,6 +7,7 @@ namespace App\Models;
 use App\Enums\NetworkModel;
 use App\Enums\ServerOrigin;
 use App\Enums\ServerStatus;
+use App\Enums\TaskStatus;
 use App\Models\Concerns\HasPublicUuid;
 use Database\Factories\ServerFactory;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
@@ -199,6 +200,17 @@ class Server extends Model
     public function appEntitlements(): HasMany
     {
         return $this->hasMany(AppEntitlement::class);
+    }
+
+    /**
+     * Left in a status only a task should hold (creating, reinstalling,
+     * deleting) with no task queued or running: its task ended without
+     * updating the server. Treated like an error, so it can be retried.
+     */
+    public function isStranded(): bool
+    {
+        return in_array($this->status, [ServerStatus::Pending, ServerStatus::Provisioning, ServerStatus::Reinstalling, ServerStatus::Terminating], true)
+            && ! $this->tasks()->whereIn('status', [TaskStatus::Queued, TaskStatus::Running])->exists();
     }
 
     /**

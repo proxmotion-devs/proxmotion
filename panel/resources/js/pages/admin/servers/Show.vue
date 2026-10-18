@@ -63,6 +63,7 @@ const props = defineProps<{
         uuid: string;
         hostname: string;
         status: ServerStatus;
+        can_retry: boolean;
         origin: 'provisioned' | 'adopted';
         vmid: number;
         network_model: NetworkModel;
@@ -243,7 +244,7 @@ const active = computed(() => props.server.status === 'active');
                     </a>
                 </Button>
                 <Button
-                    v-if="server.status === 'error'"
+                    v-if="server.can_retry"
                     size="sm"
                     @click="post(retry(server.uuid))"
                 >

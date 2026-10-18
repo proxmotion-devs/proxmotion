@@ -213,6 +213,8 @@ class ServerController extends Controller
                 'uuid' => $server->uuid,
                 'hostname' => $server->hostname,
                 'status' => $server->status,
+                // In error, or stuck in a busy status after its task ended (Server::isStranded()).
+                'can_retry' => $server->status === ServerStatus::Error || $server->isStranded(),
                 'origin' => $server->origin,
                 'vmid' => $server->vmid,
                 'network_model' => $server->network_model,
@@ -384,7 +386,9 @@ class ServerController extends Controller
             default => TaskType::Create,
         };
 
-        return $this->startTask($server, $type, $admin, [ServerStatus::Error], 'Retrying…');
+        $allowedFrom = $server->isStranded() ? [$server->status] : [ServerStatus::Error];
+
+        return $this->startTask($server, $type, $admin, $allowedFrom, 'Retrying…');
     }
 
     public function destroy(Server $server, #[CurrentUser] User $admin): RedirectResponse

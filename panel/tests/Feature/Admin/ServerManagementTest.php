@@ -741,6 +741,27 @@ class ServerManagementTest extends AdminTestCase
         $this->assertSame(ServerStatus::Terminated, $server->refresh()->status);
     }
 
+    public function test_a_server_left_busy_by_a_failed_task_can_be_retried()
+    {
+        $server = Server::factory()->for($this->node)->status(ServerStatus::Terminating)->create(['vmid' => 4242]);
+        $task = new Task;
+        $task->forceFill(['server_id' => $server->id, 'type' => TaskType::Terminate, 'status' => TaskStatus::Running, 'started_at' => now(), 'steps' => []])->save();
+
+        // Still running: nothing to retry.
+        $this->get(route('admin.servers.show', $server))->assertInertia(fn (Assert $page) => $page->where('server.can_retry', false));
+        $this->post(route('admin.servers.retry', $server));
+        $this->assertSame(1, $server->tasks()->count());
+
+        // The task ended without updating the server.
+        $task->forceFill(['status' => TaskStatus::Failed])->save();
+
+        $this->get(route('admin.servers.show', $server))->assertInertia(fn (Assert $page) => $page->where('server.can_retry', true));
+        $this->post(route('admin.servers.retry', $server));
+
+        $this->assertSame(TaskType::Terminate, Task::query()->latest('id')->firstOrFail()->type);
+        $this->assertSame(ServerStatus::Terminated, $server->refresh()->status);
+    }
+
     public function test_cluster_resource_pool_is_validated()
     {
         $this->put(route('admin.clusters.update', Cluster::query()->sole()), [
