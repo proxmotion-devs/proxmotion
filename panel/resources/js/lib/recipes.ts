@@ -90,6 +90,7 @@ export const INPUT_TYPES = [
     'slug',
     'email',
     'domain',
+    'url',
 ];
 
 export const OUTPUT_TYPES = ['text', 'url', 'file'];

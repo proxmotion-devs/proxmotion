@@ -387,7 +387,8 @@ export type AppInput = {
         | 'enum'
         | 'slug'
         | 'email'
-        | 'domain';
+        | 'domain'
+        | 'url';
     label: AppText | null;
     required: boolean;
     default: string | number | boolean | null;

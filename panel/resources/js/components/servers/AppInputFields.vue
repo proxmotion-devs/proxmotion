@@ -39,6 +39,7 @@ const inputType = (input: AppInput) =>
         integer: 'number',
         port: 'number',
         email: 'email',
+        url: 'url',
     })[input.type as string] ?? 'text';
 </script>
 

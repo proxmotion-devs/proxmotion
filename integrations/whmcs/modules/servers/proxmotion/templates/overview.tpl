@@ -200,7 +200,7 @@
                                                                 </select>
                                                             {else}
                                                                 <input id="pmx-action-{$installation.id|escape}-{$appAction.key|escape}-{$input.key|escape}" name="inputs[{$input.key|escape}]" class="form-control" value="{$input.default|escape}" autocomplete="off"
-                                                                    type="{if $input.type == 'password'}password{elseif $input.type == 'integer' || $input.type == 'port'}number{elseif $input.type == 'email'}email{else}text{/if}"
+                                                                    type="{if $input.type == 'password'}password{elseif $input.type == 'integer' || $input.type == 'port'}number{elseif $input.type == 'email'}email{elseif $input.type == 'url'}url{else}text{/if}"
                                                                     {if $input.min !== null} min="{$input.min|escape}"{/if}{if $input.max !== null} max="{$input.max|escape}"{/if}{if $input.required} required{/if}>
                                                             {/if}
                                                         {/if}
@@ -228,7 +228,7 @@
                                                                 </select>
                                                             {else}
                                                                 <input id="pmx-upgrade-{$installation.id|escape}-{$input.key|escape}" name="inputs[{$input.key|escape}]" class="form-control" value="{$input.default|escape}" autocomplete="off"
-                                                                    type="{if $input.type == 'password'}password{elseif $input.type == 'integer' || $input.type == 'port'}number{elseif $input.type == 'email'}email{else}text{/if}"
+                                                                    type="{if $input.type == 'password'}password{elseif $input.type == 'integer' || $input.type == 'port'}number{elseif $input.type == 'email'}email{elseif $input.type == 'url'}url{else}text{/if}"
                                                                     {if $input.min !== null} min="{$input.min|escape}"{/if}{if $input.max !== null} max="{$input.max|escape}"{/if}{if $input.required} required{/if}>
                                                             {/if}
                                                         {/if}
@@ -311,7 +311,7 @@
                                         </select>
                                     {else}
                                         <input id="pmx-app-{$app.id|escape}-{$input.key|escape}" name="inputs[{$input.key|escape}]" class="form-control" value="{$input.default|escape}" autocomplete="off"
-                                            type="{if $input.type == 'password'}password{elseif $input.type == 'integer' || $input.type == 'port'}number{elseif $input.type == 'email'}email{else}text{/if}"
+                                            type="{if $input.type == 'password'}password{elseif $input.type == 'integer' || $input.type == 'port'}number{elseif $input.type == 'email'}email{elseif $input.type == 'url'}url{else}text{/if}"
                                             {if $input.min !== null} min="{$input.min|escape}"{/if}{if $input.max !== null} max="{$input.max|escape}"{/if}{if $input.required} required{/if}>
                                     {/if}
                                 {/if}

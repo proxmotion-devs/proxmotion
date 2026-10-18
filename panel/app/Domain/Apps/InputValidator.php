@@ -112,6 +112,8 @@ final class InputValidator
             'slug' => ['string', 'max:'.($input->maxLength ?? 64), 'regex:/^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/'],
             'email' => ['string', 'max:254', 'email:rfc'],
             'domain' => ['string', 'max:253', new Hostname],
+            // An address the server downloads from: HTTPS only.
+            'url' => ['string', 'max:2000', 'url:https', self::NO_CONTROL_CHARACTERS],
             default => ['string', 'max:'.($input->maxLength ?? 255), self::NO_CONTROL_CHARACTERS],
         };
     }

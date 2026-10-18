@@ -1299,7 +1299,7 @@ components:
             required: [key, type, label, required, default]
             properties:
               key: { type: string }
-              type: { type: string, enum: [string, password, integer, port, boolean, enum, slug, email, domain] }
+              type: { type: string, enum: [string, password, integer, port, boolean, enum, slug, email, domain, url], description: "`url`: an HTTPS address the server downloads from." }
               label: { oneOf: [{ $ref: '#/components/schemas/Text' }, { type: 'null' }] }
               required: { type: boolean }
               default: { type: [string, integer, boolean, 'null'] }

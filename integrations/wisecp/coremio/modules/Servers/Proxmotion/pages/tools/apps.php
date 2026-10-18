@@ -36,7 +36,7 @@ $reinstallTemplates = is_array($data['reinstall']['templates'] ?? null) ? $data[
 /** @var list<array<string, mixed>> $reinstallApps */
 $reinstallApps = is_array($data['reinstall']['apps'] ?? null) ? $data['reinstall']['apps'] : [];
 $runBusy = array_filter($installations, static fn (array $installation): bool => ! empty($installation['run_busy'])) !== [];
-$inputTypes = ['password' => 'password', 'integer' => 'number', 'port' => 'number', 'email' => 'email'];
+$inputTypes = ['password' => 'password', 'integer' => 'number', 'port' => 'number', 'email' => 'email', 'url' => 'url'];
 
 /**
  * Outputs of an installation or of a run ($run non-empty): texts shown, files downloaded on demand.

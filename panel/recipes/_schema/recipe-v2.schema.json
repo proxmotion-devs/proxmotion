@@ -261,7 +261,8 @@
                         "enum",
                         "slug",
                         "email",
-                        "domain"
+                        "domain",
+                        "url"
                     ]
                 },
                 "label": { "$ref": "#/$defs/text" },

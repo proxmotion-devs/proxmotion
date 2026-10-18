@@ -10,7 +10,7 @@ namespace App\Domain\Apps;
  */
 final readonly class RecipeInput
 {
-    public const TYPES = ['string', 'password', 'integer', 'port', 'boolean', 'enum', 'slug', 'email', 'domain'];
+    public const TYPES = ['string', 'password', 'integer', 'port', 'boolean', 'enum', 'slug', 'email', 'domain', 'url'];
 
     /**
      * @param  array{en: string, tr?: string}|null  $label

@@ -38,6 +38,7 @@ class InputValidatorTest extends TestCase
                 ['key' => 'password', 'type' => 'password', 'required' => false],
                 ['key' => 'title', 'type' => 'string', 'max_length' => 20, 'required' => false],
                 ['key' => 'tls', 'type' => 'boolean', 'default' => true],
+                ['key' => 'download', 'type' => 'url', 'required' => false],
             ],
             'timeout_minutes' => 5,
         ]);
@@ -55,8 +56,8 @@ class InputValidatorTest extends TestCase
     public function test_valid_inputs_are_cast_and_defaults_filled_in()
     {
         $this->assertSame(
-            ['port' => 9000, 'workers' => 4, 'mode' => 'safe', 'name' => 'office-vpn', 'domain' => 'vpn.example.com', 'tls' => false],
-            $this->validate(['port' => '9000', 'workers' => 4, 'name' => 'office-vpn', 'domain' => 'vpn.example.com', 'tls' => false]),
+            ['port' => 9000, 'workers' => 4, 'mode' => 'safe', 'name' => 'office-vpn', 'domain' => 'vpn.example.com', 'tls' => false, 'download' => 'https://downloads.example.com/app.zip?token=abc'],
+            $this->validate(['port' => '9000', 'workers' => 4, 'name' => 'office-vpn', 'domain' => 'vpn.example.com', 'tls' => false, 'download' => 'https://downloads.example.com/app.zip?token=abc']),
         );
     }
 
@@ -77,6 +78,8 @@ class InputValidatorTest extends TestCase
             'string with a line break' => [['name' => 'a', 'title' => "two\nlines"], 'title'],
             'string too long' => [['name' => 'a', 'title' => str_repeat('x', 21)], 'title'],
             'not a boolean' => [['name' => 'a', 'tls' => 'maybe'], 'tls'],
+            'plain HTTP address' => [['name' => 'a', 'download' => 'http://downloads.example.com/app.zip'], 'download'],
+            'not an address' => [['name' => 'a', 'download' => 'file:///etc/passwd'], 'download'],
             'array instead of a value' => [['name' => ['a']], 'name'],
             'undeclared input' => [['name' => 'a', 'script' => 'curl x | sh'], 'script'],
         ];
