@@ -79,13 +79,16 @@ A template is matched as its **matching distribution and version**: `compatible_
 
 ### 5. The admin form
 
-The form has one *Operating system* select grouped by family, plus *Other…*. After it come:
+The form has one *Operating system* select: every release of the catalog (managed by administrators since ADR 0025), grouped by family ("Ubuntu 24.04 LTS", "Pardus 23", "Windows Server 2022", "Arch Linux" for `rolling`), plus *Other…*. Nothing else is asked about the system:
 
-- *Version*, with an example for the chosen distribution.
-- The family, shown and not editable. It can only be picked for *Other…*, which also asks for the os-release `ID`.
-- *Compatible with* and *its version*, shown only when the distribution needs or allows them.
+- The family follows from the distribution.
+- A derivative's compatible distribution and version follow from the catalog: each of its releases maps to a release of its base (Pardus 23 → Debian 12, Linux Mint 22 → Ubuntu 24.04), and RHEL and Oracle Linux take AlmaLinux of the same version. The server sets them on save and ignores what the form sends; a derivative version no listed release covers is refused.
+- A release also covers its point releases: a saved template with version 9.6 shows as AlmaLinux 9 and keeps 9.6 until another release is picked. A saved version no release covers (Ubuntu 25.10) is listed as an extra option.
+- *Other…* asks only for the os-release `ID` and `VERSION_ID`. Its family is `other` (no family-wide apps) unless a check against a server (§8) found one from `ID_LIKE`.
 
-The name is suggested from the distribution and version until the administrator types one. The guess for templates found on Proxmox fills in the same fields. The list shows the system as "Pardus 23.4 · Debian family · apps as Debian 12".
+(Until 2026-10-19 the form also asked for the version, the family of an unknown distribution and the compatible distribution and version; that was too much for administrators.)
+
+The name is suggested from the release until the administrator types one. The guess for templates found on Proxmox picks the same release. The list shows the system as "Pardus 23.4 · Debian family · apps as Debian 12".
 
 ### 6. API v1 stays compatible
 

@@ -17,7 +17,7 @@ const catalog: Distribution[] = [
         family: 'debian',
         base: null,
         same_version: false,
-        example: '13',
+        releases: [],
     },
     {
         id: 'ubuntu',
@@ -25,7 +25,7 @@ const catalog: Distribution[] = [
         family: 'debian',
         base: null,
         same_version: false,
-        example: '24.04',
+        releases: [],
     },
 ];
 

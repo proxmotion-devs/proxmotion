@@ -1,7 +1,7 @@
 /**
- * The OS template form's catalog of distributions (docs/adr/0024): what a
- * template is (its os-release ID and version), its family, and the
- * distribution apps are matched as when it has its own version numbers.
+ * The OS template form's catalog of distributions (docs/adr/0024, 0025):
+ * the systems and releases administrators manage and pick from; the family
+ * and the system apps are matched as follow from it on the server.
  */
 
 /** A distribution the panel knows (Distributions::forForm()). */
@@ -13,7 +13,17 @@ export type Distribution = {
     base: string | null;
     /** Its versions are the base's (RHEL 9 = AlmaLinux 9). */
     same_version: boolean;
-    example: string;
+    /**
+     * Releases the form lists, newest first ("rolling" for a rolling
+     * distribution); those of a derivative name the release of its base.
+     */
+    releases: Release[];
+};
+
+export type Release = {
+    id: number;
+    version: string;
+    base_version: string | null;
 };
 
 export type Family = { value: string; label: string; custom: boolean };
@@ -28,42 +38,69 @@ export function find(
     return distributions.find((distribution) => distribution.id === id);
 }
 
-/** The select's options, grouped by family, with "Other…" last. */
-export function distributionOptions(
+/** A value of the form's one select: a release of a distribution ("ubuntu@24.04"). */
+export function releaseValue(distribution: string, version: string): string {
+    return `${distribution}@${version}`;
+}
+
+/**
+ * The listed release a version belongs to: "23" for Pardus 23.4, "rolling"
+ * for any version of a rolling distribution; undefined when none covers it.
+ */
+export function releaseOf(
+    distribution: Distribution | undefined,
+    version: string,
+): string | undefined {
+    return distribution?.releases
+        .map((release) => release.version)
+        .find(
+            (release) =>
+                release === 'rolling' ||
+                version === release ||
+                version.startsWith(`${release}.`),
+        );
+}
+
+/**
+ * The select's options: every listed release grouped by family, the
+ * template's own version when no listed release covers it, "Other…" last.
+ */
+export function releaseOptions(
     distributions: Distribution[],
     families: Family[],
     translate: (key: string) => string,
+    current: { distribution: string; version: string },
 ): { value: string; label: string; group?: string }[] {
     const familyLabel = (value: string) =>
         translate(
             families.find((family) => family.value === value)?.label ?? value,
         );
+    const options: { value: string; label: string; group?: string }[] = [];
 
-    return [
-        ...distributions.map((distribution) => ({
-            value: distribution.id,
-            label: distribution.name,
-            group: familyLabel(distribution.family),
-        })),
-        { value: OTHER, label: translate('Other…') },
-    ];
-}
+    for (const distribution of distributions) {
+        const group = familyLabel(distribution.family);
+        const versions = distribution.releases.map(
+            (release) => release.version,
+        );
 
-/**
- * The distributions a template can be compatible with: known, not built on
- * another one, of the same family (none for Windows and "other").
- */
-export function compatibleOptions(
-    distributions: Distribution[],
-    family: string,
-): Distribution[] {
-    return distributions.filter(
-        (distribution) =>
-            distribution.base === null &&
-            distribution.family === family &&
-            family !== 'windows' &&
-            family !== 'other',
-    );
+        if (
+            distribution.id === current.distribution &&
+            current.version !== '' &&
+            releaseOf(distribution, current.version) === undefined
+        ) {
+            versions.push(current.version);
+        }
+
+        for (const version of versions) {
+            options.push({
+                value: releaseValue(distribution.id, version),
+                label: suggestedName(distribution, distribution.id, version),
+                group,
+            });
+        }
+    }
+
+    return [...options, { value: OTHER, label: translate('Other…') }];
 }
 
 /** "Ubuntu 24.04 LTS", "Pardus 23.4": the name suggested until one is typed. */
@@ -81,7 +118,9 @@ export function suggestedName(
         /^\d\d\.04$/.test(version) &&
         Number.parseInt(version, 10) % 2 === 0;
 
-    return `${name} ${version}${lts ? ' LTS' : ''}`.trim();
+    const shown = version === 'rolling' ? '' : version;
+
+    return `${name} ${shown}${lts ? ' LTS' : ''}`.trim();
 }
 
 /**
@@ -101,7 +140,7 @@ export function systemParts(
     const name = (id: string) => find(distributions, id)?.name ?? id;
 
     return {
-        system: `${name(template.distribution)} ${template.version}`.trim(),
+        system: `${name(template.distribution)} ${template.version === 'rolling' ? '' : template.version}`.trim(),
         family: template.family,
         matchedAs: template.compatible_with
             ? `${name(template.compatible_with)} ${template.compatible_version ?? ''}`.trim()

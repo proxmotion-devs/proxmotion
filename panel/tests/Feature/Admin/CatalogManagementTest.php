@@ -45,7 +45,9 @@ class CatalogManagementTest extends AdminTestCase
                 ->where('templates.0.proxmox_template_ids', [$template->id])
                 ->where('templates.0.family', 'debian')
                 ->where('proxmoxTemplates.0.vmid', 9000)
-                ->where('distributions.1', ['id' => 'ubuntu', 'name' => 'Ubuntu', 'family' => 'debian', 'base' => null, 'same_version' => false, 'example' => '24.04']));
+                ->where('distributions.1.id', 'ubuntu')
+                ->where('distributions.1.family', 'debian')
+                ->where('distributions.1.releases.1.version', '24.04'));
 
         $this->put(route('admin.os-templates.update', $os), [
             'name' => 'Ubuntu 24.04 LTS',
@@ -105,7 +107,7 @@ class CatalogManagementTest extends AdminTestCase
                 ->has('proxmoxTemplates', 3));
     }
 
-    public function test_an_unknown_distribution_needs_one_of_the_families()
+    public function test_an_unknown_distribution_is_of_the_family_other_unless_one_is_given()
     {
         $post = fn (array $attributes) => $this->post(route('admin.os-templates.store'), $attributes + [
             'name' => 'Zorin OS 17',
@@ -114,17 +116,21 @@ class CatalogManagementTest extends AdminTestCase
             'is_active' => true,
         ]);
 
-        $post([])->assertSessionHasErrors('family');
         $post(['family' => 'beos'])->assertSessionHasErrors('family');
         $post(['family' => 'windows'])->assertSessionHasErrors('family');
-        $post(['distribution' => 'my distro', 'family' => 'debian'])->assertSessionHasErrors('distribution');
+        $post(['distribution' => 'my distro'])->assertSessionHasErrors('distribution');
         $this->assertSame(0, OsTemplate::query()->count());
 
+        $post([])->assertSessionHasNoErrors();
+        $this->assertSame(OsFamily::Other, OsTemplate::query()->sole()->family);
+        OsTemplate::query()->delete();
+
+        // A check against a server may have found its family.
         $post(['family' => 'debian'])->assertSessionHasNoErrors();
         $this->assertSame(['zorin', OsFamily::Debian, null], [OsTemplate::query()->sole()->distribution, OsTemplate::query()->sole()->family, OsTemplate::query()->sole()->compatible_with]);
     }
 
-    public function test_a_distribution_with_its_own_versions_names_the_one_it_is_compatible_with()
+    public function test_a_known_derivative_is_matched_as_its_base_from_the_catalog()
     {
         $post = fn (array $attributes) => $this->post(route('admin.os-templates.store'), $attributes + [
             'name' => 'Pardus 23.4',
@@ -133,13 +139,11 @@ class CatalogManagementTest extends AdminTestCase
             'is_active' => true,
         ]);
 
-        $post([])->assertSessionHasErrors('compatible_with');
-        $post(['compatible_with' => 'debian'])->assertSessionHasErrors('compatible_version');
-        $post(['compatible_with' => 'almalinux', 'compatible_version' => '9'])->assertSessionHasErrors('compatible_with');
-        $post(['compatible_with' => 'linuxmint', 'compatible_version' => '22'])->assertSessionHasErrors('compatible_with');
+        $post(['version' => '19'])->assertSessionHasErrors('version');
         $this->assertSame(0, OsTemplate::query()->count());
 
-        $post(['compatible_with' => 'debian', 'compatible_version' => '12'])->assertSessionHasNoErrors();
+        // What the form sends about the base is ignored: the catalog decides.
+        $post(['compatible_with' => 'almalinux', 'compatible_version' => '9'])->assertSessionHasNoErrors();
         $os = OsTemplate::query()->sole();
         $this->assertSame(['pardus', '23.4', OsFamily::Debian, 'debian', '12'], [$os->distribution, $os->version, $os->family, $os->compatible_with, $os->compatible_version]);
 
@@ -156,16 +160,16 @@ class CatalogManagementTest extends AdminTestCase
             'compatible_with' => 'ubuntu',
             'compatible_version' => '24.04',
             'is_active' => true,
-        ])->assertSessionHasErrors('compatible_with');
+        ])->assertSessionHasNoErrors();
+        $this->assertNull($os->refresh()->compatible_with);
     }
 
-    public function test_rhel_takes_the_almalinux_version_unless_one_is_given()
+    public function test_rhel_takes_the_almalinux_version()
     {
         $this->post(route('admin.os-templates.store'), [
             'name' => 'RHEL 9.6',
             'distribution' => 'rhel',
             'version' => '9.6',
-            'compatible_with' => 'almalinux',
             'is_active' => true,
         ])->assertSessionHasNoErrors();
 

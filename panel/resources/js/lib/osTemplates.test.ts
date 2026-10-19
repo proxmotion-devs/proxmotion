@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vite-plus/test';
 import {
     OTHER,
-    compatibleOptions,
-    distributionOptions,
+    releaseOf,
+    releaseOptions,
+    releaseValue,
     suggestedName,
     systemParts,
 } from '@/lib/osTemplates';
@@ -15,7 +16,10 @@ const distributions: Distribution[] = [
         family: 'debian',
         base: null,
         same_version: false,
-        example: '13',
+        releases: [
+            { id: 1, version: '13', base_version: null },
+            { id: 2, version: '12', base_version: null },
+        ],
     },
     {
         id: 'ubuntu',
@@ -23,7 +27,7 @@ const distributions: Distribution[] = [
         family: 'debian',
         base: null,
         same_version: false,
-        example: '24.04',
+        releases: [{ id: 3, version: '24.04', base_version: null }],
     },
     {
         id: 'pardus',
@@ -31,7 +35,7 @@ const distributions: Distribution[] = [
         family: 'debian',
         base: 'debian',
         same_version: false,
-        example: '23.4',
+        releases: [{ id: 4, version: '23', base_version: '12' }],
     },
     {
         id: 'almalinux',
@@ -39,7 +43,7 @@ const distributions: Distribution[] = [
         family: 'rhel',
         base: null,
         same_version: false,
-        example: '9.6',
+        releases: [{ id: 5, version: '9', base_version: null }],
     },
     {
         id: 'windows',
@@ -47,7 +51,7 @@ const distributions: Distribution[] = [
         family: 'windows',
         base: null,
         same_version: false,
-        example: '2022',
+        releases: [{ id: 6, version: '2022', base_version: null }],
     },
 ];
 
@@ -58,31 +62,33 @@ const families: Family[] = [
 ];
 
 describe('osTemplates', () => {
-    it('groups the distributions by family and ends with Other', () => {
-        const options = distributionOptions(
-            distributions,
-            families,
-            (key) => key,
-        );
+    it('lists the releases grouped by family and ends with Other', () => {
+        const options = releaseOptions(distributions, families, (key) => key, {
+            distribution: 'ubuntu',
+            version: '25.10',
+        });
 
         expect(options[0]).toEqual({
-            value: 'debian',
-            label: 'Debian',
+            value: 'debian@13',
+            label: 'Debian 13',
             group: 'Debian family',
         });
-        expect(options[3].group).toBe('RHEL family');
+        // A version no listed release covers stays selectable.
+        expect(options.map((option) => option.value)).toContain('ubuntu@25.10');
+        expect(options.find((o) => o.value === 'windows@2022')?.label).toBe(
+            'Windows Server 2022',
+        );
         expect(options[options.length - 1]).toEqual({
             value: OTHER,
             label: 'Other…',
         });
     });
 
-    it('offers only base systems of the same family as compatible', () => {
-        expect(
-            compatibleOptions(distributions, 'debian').map((entry) => entry.id),
-        ).toEqual(['debian', 'ubuntu']);
-        expect(compatibleOptions(distributions, 'windows')).toEqual([]);
-        expect(compatibleOptions(distributions, 'other')).toEqual([]);
+    it('finds the release a point release belongs to', () => {
+        expect(releaseOf(distributions[3], '9.6')).toBe('9');
+        expect(releaseOf(distributions[2], '23.4')).toBe('23');
+        expect(releaseOf(distributions[0], '11')).toBeUndefined();
+        expect(releaseValue('pardus', '23')).toBe('pardus@23');
     });
 
     it('suggests a name from the system and version', () => {

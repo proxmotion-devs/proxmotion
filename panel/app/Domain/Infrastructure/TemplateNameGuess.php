@@ -11,9 +11,8 @@ namespace App\Domain\Infrastructure;
  * guess before saving; nothing is stored without them.
  *
  * Distributions built on another one (docs/adr/0024) get that one as
- * compatible distribution. Its version is only guessed where it is the
- * same number (RHEL and Oracle Linux 9 are AlmaLinux 9); otherwise the
- * administrator enters it.
+ * compatible distribution, with the version the catalog matches it as
+ * (RHEL 9 is AlmaLinux 9, Pardus 23 is Debian 12).
  */
 final class TemplateNameGuess
 {
@@ -55,7 +54,11 @@ final class TemplateNameGuess
         $raw = trim((string) $templateName);
         $lower = strtolower($raw);
 
-        foreach (self::FRAGMENTS as $fragment => $distribution) {
+        // Distributions administrators added (docs/adr/0025) by their os-release ID, longest first.
+        $added = array_diff(array_column(Distributions::forForm(), 'id'), self::FRAGMENTS);
+        usort($added, fn (string $a, string $b) => strlen($b) <=> strlen($a));
+
+        foreach ([...self::FRAGMENTS, ...array_combine($added, $added)] as $fragment => $distribution) {
             $position = strpos($lower, $fragment);
 
             if ($position === false) {
@@ -70,11 +73,11 @@ final class TemplateNameGuess
                 'distribution' => $distribution,
                 'version' => $version,
                 'compatible_with' => $base,
-                'compatible_version' => $base !== null && Distributions::sameVersion($distribution) && $version !== '' ? $version : null,
+                'compatible_version' => $version === '' ? null : Distributions::baseVersion($distribution, $version),
             ];
         }
 
-        // Unknown: the administrator gives the os-release ID and the family.
+        // Unknown: the administrator gives the os-release ID and version.
         return ['name' => $raw, 'distribution' => '', 'version' => self::version('', $lower), 'compatible_with' => null, 'compatible_version' => null];
     }
 

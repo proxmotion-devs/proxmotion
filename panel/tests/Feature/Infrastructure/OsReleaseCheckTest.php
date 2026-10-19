@@ -82,14 +82,14 @@ class OsReleaseCheckTest extends TestCase
         $this->check()->assertOk()->assertJsonPath('differences', []);
     }
 
-    public function test_a_distribution_with_its_own_versions_needs_the_one_it_is_compatible_with()
+    public function test_a_distribution_with_its_own_versions_is_matched_as_its_base()
     {
         $this->osTemplate->forceFill(['distribution' => 'debian', 'version' => '12'])->save();
         $this->osRelease("ID=pardus\nID_LIKE=debian\nVERSION_ID=\"23.4\"\n", '/usr/lib/os-release');
 
         $this->check()
             ->assertOk()
-            ->assertJsonPath('suggestion', ['distribution' => 'pardus', 'version' => '23.4', 'family' => 'debian', 'compatible_with' => 'debian', 'compatible_version' => null])
+            ->assertJsonPath('suggestion', ['distribution' => 'pardus', 'version' => '23.4', 'family' => 'debian', 'compatible_with' => 'debian', 'compatible_version' => '12'])
             ->assertJsonPath('differences.0', ['field' => 'distribution', 'template' => 'debian', 'server' => 'pardus'])
             ->assertJsonPath('differences.2', ['field' => 'compatible_with', 'template' => null, 'server' => 'debian']);
     }

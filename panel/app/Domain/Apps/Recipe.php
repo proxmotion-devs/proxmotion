@@ -298,7 +298,7 @@ final readonly class Recipe
 
     /**
      * Whether `requires.os` covers a distribution: any OS, the distribution
-     * itself, or its family in the catalog.
+     * itself, or its family (Distributions::recipeFamily()).
      */
     public function coversDistribution(string $distribution): bool
     {
@@ -306,10 +306,19 @@ final readonly class Recipe
             return true;
         }
 
-        $family = Distributions::family($distribution);
+        if (in_array($distribution, $this->distributions ?? [], true)) {
+            return true;
+        }
 
-        return in_array($distribution, $this->distributions ?? [], true)
-            || ($family !== null && in_array($family->value, $this->families ?? [], true));
+        $families = $this->families ?? [];
+
+        if ($families === []) {
+            return false;
+        }
+
+        $family = Distributions::recipeFamily($distribution);
+
+        return $family !== null && in_array($family->value, $families, true);
     }
 
     /**

@@ -81,11 +81,7 @@ final readonly class OsReleaseCheck
 
         if ($base !== null) {
             $compatibleWith = $base;
-            $compatibleVersion = match (true) {
-                $template->compatible_with === $base && $template->compatible_version !== null => $template->compatible_version,
-                Distributions::sameVersion($distribution) => $version,
-                default => null,
-            };
+            $compatibleVersion = Distributions::baseVersion($distribution, $version);
         } elseif (! Distributions::known($distribution) && $template->compatible_with !== null && Distributions::family($template->compatible_with) === $family) {
             [$compatibleWith, $compatibleVersion] = [$template->compatible_with, $template->compatible_version];
         } else {

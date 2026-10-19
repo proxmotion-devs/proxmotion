@@ -9,6 +9,7 @@ use App\Http\Controllers\Admin\AppRecipeController;
 use App\Http\Controllers\Admin\BillingSystemController;
 use App\Http\Controllers\Admin\ClusterController;
 use App\Http\Controllers\Admin\DashboardController;
+use App\Http\Controllers\Admin\DistributionController;
 use App\Http\Controllers\Admin\DnsProviderController;
 use App\Http\Controllers\Admin\DriftController;
 use App\Http\Controllers\Admin\GuestScriptController;
@@ -64,6 +65,13 @@ Route::post('ip-pools/{ipPool}/addresses/bulk', [IpAddressController::class, 'bu
 Route::post('ip-pools/{ipPool}/addresses/keep-only', [IpAddressController::class, 'keepOnly'])->name('ip-addresses.keep-only');
 Route::patch('ip-addresses/{ipAddress}', [IpAddressController::class, 'update'])->name('ip-addresses.update');
 Route::delete('ip-addresses/{ipAddress}', [IpAddressController::class, 'destroy'])->name('ip-addresses.destroy');
+
+// The operating systems OS templates are picked from (docs/adr/0025), keyed by os-release ID.
+Route::post('distributions', [DistributionController::class, 'store'])->name('distributions.store');
+Route::put('distributions/{distribution:slug}', [DistributionController::class, 'update'])->name('distributions.update');
+Route::delete('distributions/{distribution:slug}', [DistributionController::class, 'destroy'])->name('distributions.destroy');
+Route::post('distributions/{distribution:slug}/releases', [DistributionController::class, 'storeRelease'])->name('distributions.releases.store');
+Route::delete('distributions/{distribution:slug}/releases/{release}', [DistributionController::class, 'destroyRelease'])->scopeBindings()->name('distributions.releases.destroy');
 
 Route::resource('os-templates', OsTemplateController::class)->only(['index', 'store', 'update', 'destroy'])
     ->parameters(['os-templates' => 'osTemplate']);

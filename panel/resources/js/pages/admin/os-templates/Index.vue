@@ -5,6 +5,7 @@ import { trans } from 'laravel-vue-i18n';
 import { computed, ref, watch } from 'vue';
 import ConfirmDelete from '@/components/admin/ConfirmDelete.vue';
 import OsReleaseCheckDialog from '@/components/admin/OsReleaseCheckDialog.vue';
+import OsSystems from '@/components/admin/OsSystems.vue';
 import FormDialog from '@/components/admin/FormDialog.vue';
 import FormField from '@/components/admin/FormField.vue';
 import GuideBox from '@/components/admin/GuideBox.vue';
@@ -17,9 +18,10 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
     OTHER,
-    compatibleOptions,
-    distributionOptions,
     find,
+    releaseOf,
+    releaseOptions,
+    releaseValue,
     suggestedName,
     systemParts,
 } from '@/lib/osTemplates';
@@ -59,16 +61,6 @@ const props = defineProps<{
     distributions: Distribution[];
     families: Family[];
 }>();
-
-const osOptions = computed(() =>
-    distributionOptions(props.distributions, props.families, trans),
-);
-
-const customFamilyOptions = computed(() =>
-    props.families
-        .filter((family) => family.custom)
-        .map((family) => ({ value: family.value, label: trans(family.label) })),
-);
 
 const familyLabel = (value: string) =>
     props.families.find((family) => family.value === value)?.label ?? value;
@@ -117,40 +109,50 @@ const form = useForm({
 });
 
 const known = computed(() => find(props.distributions, form.distribution));
-const family = computed(() => known.value?.family ?? form.family);
-/** The system a known derivative is built on (pardus → Debian); null otherwise. */
-const base = computed(() => find(props.distributions, known.value?.base));
-const compatibleChoices = computed(() =>
-    compatibleOptions(props.distributions, family.value),
+
+// One select: a release of a known system (its family and the system apps
+// are matched as follow from the catalog on the server), or "Other…" with
+// its ID and version typed below.
+const osOptions = computed(() =>
+    releaseOptions(props.distributions, props.families, trans, form),
 );
-/**
- * What the form asks about the system apps are matched as: nothing for a
- * base system, nothing either for RHEL and Oracle Linux (AlmaLinux of the
- * same version), only the base's version for Pardus, Mint and Kali, and an
- * optional system and version for a distribution the panel does not know.
- */
-const compatibleMode = computed<'none' | 'same' | 'version' | 'choose'>(() => {
-    if (known.value) {
-        if (!known.value.base) {
-            return 'none';
+
+const choice = computed<string | null>({
+    get: () =>
+        known.value
+            ? releaseValue(
+                  form.distribution,
+                  releaseOf(known.value, form.version) ?? form.version,
+              )
+            : OTHER,
+    set: (value) => {
+        if (value === null || value === OTHER) {
+            Object.assign(form, { distribution: '', version: '' });
+
+            return;
         }
 
-        return known.value.same_version ? 'same' : 'version';
-    }
+        const [distribution, release] = value.split('@');
+        // A point release (9.6) stays while its release (9) is picked.
+        const keep =
+            distribution === form.distribution &&
+            releaseOf(known.value, form.version) === release;
 
-    return compatibleChoices.value.length > 0 ? 'choose' : 'none';
-});
-
-/** The select: a known distribution, or "Other…" with its ID typed below. */
-const choice = computed<string | null>({
-    get: () => (known.value ? form.distribution : OTHER),
-    set: (value) => {
-        const picked = find(props.distributions, value);
-        form.distribution = picked ? picked.id : '';
-        form.compatible_with = picked?.base ?? '';
-        form.compatible_version = '';
+        Object.assign(form, {
+            distribution,
+            version: keep ? form.version : release,
+            family: 'other',
+            compatible_with: '',
+            compatible_version: '',
+        });
     },
 });
+
+/** A known system without a version gets its first listed release. */
+const withRelease = (distribution: string, version: string) =>
+    version === ''
+        ? (find(props.distributions, distribution)?.releases[0]?.version ?? '')
+        : version;
 
 const suggestion = () =>
     suggestedName(known.value, form.distribution, form.version);
@@ -177,12 +179,16 @@ const openForm = (
 ) => {
     editing.value = template;
     form.clearErrors();
+    const distribution = template
+        ? template.distribution
+        : (found?.guess.distribution ?? 'ubuntu');
     form.defaults({
         name: template?.name ?? found?.guess.name ?? '',
-        distribution: template
-            ? template.distribution
-            : (found?.guess.distribution ?? 'ubuntu'),
-        version: template?.version ?? found?.guess.version ?? '',
+        distribution,
+        version: withRelease(
+            distribution,
+            template?.version ?? found?.guess.version ?? '',
+        ),
         family: template?.family ?? 'other',
         compatible_with:
             (template
@@ -256,20 +262,6 @@ const applyCheck = (template: OsTemplate, values: OsTemplateValues) => {
 };
 
 const submit = () => {
-    form.transform((data) => ({
-        ...data,
-        family: known.value ? '' : data.family,
-        ...{
-            none: { compatible_with: '', compatible_version: '' },
-            same: {
-                compatible_with: known.value?.base ?? '',
-                compatible_version: data.version,
-            },
-            version: { compatible_with: known.value?.base ?? '' },
-            choose:
-                data.compatible_with === '' ? { compatible_version: '' } : {},
-        }[compatibleMode.value],
-    }));
     form.submit(editing.value ? update(editing.value.uuid) : store(), {
         preserveScroll: true,
         onSuccess: () => (dialogOpen.value = false),
@@ -336,7 +328,7 @@ const submit = () => {
                 <li>
                     {{
                         $t(
-                            'Check the operating system and version: apps use them to decide whether they fit a server. A system built on another one with its own version numbers, such as Pardus 23 on Debian 12, also names the system it is compatible with.',
+                            'Pick the operating system from the list: apps use it to decide whether they fit a server.',
                         )
                     }}
                 </li>
@@ -350,6 +342,8 @@ const submit = () => {
             </ol>
         </GuideBox>
 
+        <OsSystems :distributions="distributions" :families="families" />
+
         <section
             v-if="found.length"
             class="flex flex-col gap-3 rounded-xl border border-dashed p-4"
@@ -360,7 +354,7 @@ const submit = () => {
                 <p class="text-sm text-muted-foreground">
                     {{
                         $t(
-                            'VM templates that are not offered yet. Add one to check the suggested name and version, then save.',
+                            'VM templates that are not offered yet. Add one to check the suggested name and system, then save.',
                         )
                     }}
                 </p>
@@ -520,39 +514,24 @@ const submit = () => {
         :processing="form.processing"
         @submit="submit"
     >
-        <div class="grid gap-4 sm:grid-cols-2">
-            <FormField
-                label="Operating system"
-                for="os"
-                :error="choice === OTHER ? undefined : form.errors.distribution"
-                :hint="known ? familyLabel(family) : undefined"
-            >
-                <NativeSelect
-                    id="os"
-                    v-model="choice"
-                    :options="osOptions"
-                    data-test="os-choice"
-                />
-            </FormField>
-            <FormField
-                label="Version"
-                for="version"
-                :error="form.errors.version"
-                :hint="
-                    family === 'windows'
-                        ? undefined
-                        : 'As VERSION_ID in /etc/os-release.'
-                "
-            >
-                <Input
-                    id="version"
-                    v-model="form.version"
-                    required
-                    :placeholder="known?.example ?? '1.0'"
-                />
-            </FormField>
-        </div>
-        <div v-if="!known" class="grid gap-4 sm:grid-cols-2">
+        <FormField
+            label="Operating system"
+            for="os"
+            :error="known ? form.errors.version : undefined"
+            hint="Apps use it to decide whether they fit a server."
+        >
+            <NativeSelect
+                id="os"
+                v-model="choice"
+                :options="osOptions"
+                data-test="os-choice"
+            />
+        </FormField>
+        <div
+            v-if="!known"
+            class="grid gap-4 sm:grid-cols-2"
+            data-test="other-os"
+        >
             <FormField
                 label="Distribution"
                 for="distribution"
@@ -568,119 +547,21 @@ const submit = () => {
                 />
             </FormField>
             <FormField
-                label="Family"
-                for="family"
-                :error="form.errors.family"
-                hint="The family it belongs to, as ID_LIKE says. Choose Other when it fits none: no apps are offered then."
-            >
-                <NativeSelect
-                    id="family"
-                    v-model="form.family"
-                    :options="customFamilyOptions"
-                />
-            </FormField>
-        </div>
-        <p
-            v-if="compatibleMode === 'same' && known && base"
-            class="text-sm text-muted-foreground"
-            data-test="compatible-same"
-        >
-            {{
-                $t(
-                    ':name has the versions of :base: apps are offered as on :base :version.',
-                    {
-                        name: known.name,
-                        base: base.name,
-                        version: form.version || '…',
-                    },
-                )
-            }}
-        </p>
-        <div
-            v-else-if="compatibleMode === 'version' && known && base"
-            class="grid gap-2 rounded-lg border p-3"
-            data-test="compatible-version"
-        >
-            <Label for="compatible_version">
-                {{
-                    $t('Which :base version is :name built on?', {
-                        base: base.name,
-                        name: known.name,
-                    })
-                }}
-            </Label>
-            <Input
-                id="compatible_version"
-                v-model="form.compatible_version"
-                required
-                class="sm:max-w-40"
-                :placeholder="base.example"
-            />
-            <p class="text-xs text-muted-foreground">
-                {{
-                    $t(
-                        ':name has its own version numbers, so apps are matched as the :base it is built on (Pardus 23 is Debian 12).',
-                        { name: known.name, base: base.name },
-                    )
-                }}
-            </p>
-            <p
-                v-if="
-                    form.errors.compatible_version ||
-                    form.errors.compatible_with
-                "
-                class="text-sm text-red-600 dark:text-red-500"
-            >
-                {{
-                    form.errors.compatible_version ||
-                    form.errors.compatible_with
-                }}
-            </p>
-        </div>
-        <div
-            v-else-if="compatibleMode === 'choose'"
-            class="grid gap-4 rounded-lg border p-3 sm:grid-cols-2"
-            data-test="compatible"
-        >
-            <p class="text-xs text-muted-foreground sm:col-span-2">
-                {{
-                    $t(
-                        'Optional: the system it is built on, if its versions differ from it. Without one, only apps that name this distribution are offered.',
-                    )
-                }}
-            </p>
-            <FormField
-                label="Compatible with"
-                for="compatible_with"
-                :error="form.errors.compatible_with"
-            >
-                <NativeSelect
-                    id="compatible_with"
-                    v-model="form.compatible_with"
-                    :options="[
-                        { value: '', label: $t('None') },
-                        ...compatibleChoices.map((option) => ({
-                            value: option.id,
-                            label: option.name,
-                        })),
-                    ]"
-                />
-            </FormField>
-            <FormField
-                label="Its version"
-                for="compatible_version"
-                :error="form.errors.compatible_version"
+                label="Version"
+                for="version"
+                :error="form.errors.version"
+                hint="As VERSION_ID in /etc/os-release."
             >
                 <Input
-                    id="compatible_version"
-                    v-model="form.compatible_version"
-                    :required="form.compatible_with !== ''"
-                    :disabled="form.compatible_with === ''"
-                    :placeholder="
-                        find(distributions, form.compatible_with)?.example ?? ''
-                    "
+                    id="version"
+                    v-model="form.version"
+                    required
+                    placeholder="1.0"
                 />
             </FormField>
+            <p class="text-xs text-muted-foreground sm:col-span-2">
+                {{ $t('Apps are offered only for the systems in the list.') }}
+            </p>
         </div>
         <FormField label="Name" for="name" :error="form.errors.name">
             <Input

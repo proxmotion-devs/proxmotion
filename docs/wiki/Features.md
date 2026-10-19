@@ -257,11 +257,11 @@ Requirements of every template: **cloud-init** and the **QEMU guest agent** inst
 - [ISO templates](../guides/iso-templates.md) — building a Linux template by hand from an ISO.
 - [Windows templates](../guides/windows-templates.md).
 
-Each template has ([ADR 0024](../adr/0024-os-families-and-distributions.md)):
+Administrators pick one entry such as "Ubuntu 24.04 LTS" or "Pardus 23" from a list (or *Other…* with the os-release ID and version); the rest is filled in. The list is theirs: the *Operating systems* section of the page adds or removes systems and their versions ([ADR 0025](../adr/0025-managed-distributions.md)). Each template has ([ADR 0024](../adr/0024-os-families-and-distributions.md)):
 
 - **distribution** — its `/etc/os-release` `ID` (`ubuntu`, `debian`, `almalinux`, `ol`, `pardus`, …) — and its own **version**;
-- **family** — `debian`, `rhel`, `suse`, `arch`, `windows` or `other`, and with it the **platform** (Linux / Windows). Both follow from the built-in distribution catalog; only an unknown distribution picks a family by hand;
-- **compatible with** / **compatible version** for derivatives with their own version numbers ([ADR 0022](../adr/0022-derivative-distributions.md)): e.g. Pardus 23.4 is matched as Debian 12; RHEL and Oracle Linux are matched as AlmaLinux of the same version.
+- **family** — `debian`, `rhel`, `suse`, `arch`, `windows` or `other`, and with it the **platform** (Linux / Windows). Both follow from the built-in distribution catalog; an unknown distribution is `other`;
+- **compatible with** / **compatible version** for derivatives with their own version numbers ([ADR 0022](../adr/0022-derivative-distributions.md)): e.g. Pardus 23.4 is matched as Debian 12; RHEL and Oracle Linux are matched as AlmaLinux of the same version. Set from the catalog, never asked.
 
 Apps are matched against the family and against the distribution and version the template is matched as.
 

@@ -22,7 +22,7 @@ const entry = (
     family,
     base,
     same_version: false,
-    example: '1',
+    releases: [],
 });
 
 const catalog: Distribution[] = [

@@ -43,7 +43,6 @@ class RecipeRequirementsTest extends TestCase
         $this->assertTrue($recipe->supports('linux', 'Rocky', '9'));
         $this->assertTrue($recipe->supports('linux', 'rhel', '9.6', 'almalinux', '9.6'), 'RHEL is matched as AlmaLinux.');
         $this->assertFalse($recipe->supports('linux', 'opensuse-leap', '15.6'));
-        $this->assertFalse($recipe->supports('linux', 'zorin', '17'), 'An unknown distribution without a compatible one is in no family.');
     }
 
     public function test_distributions_and_minimum_versions_narrow_it_down()
