@@ -1,117 +1,131 @@
 <script setup lang="ts">
-import { yaml } from '@codemirror/lang-yaml';
-import { StreamLanguage } from '@codemirror/language';
-import { powerShell } from '@codemirror/legacy-modes/mode/powershell';
-import { shell } from '@codemirror/legacy-modes/mode/shell';
-import { Compartment, EditorState } from '@codemirror/state';
-import { EditorView } from '@codemirror/view';
-import { basicSetup } from 'codemirror';
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue';
 
 /**
- * A code editor for recipe.yaml and recipe scripts (docs/adr/0018 §5),
- * CodeMirror 6 with YAML, shell or PowerShell highlighting.
+ * A code editor for recipe.yaml, recipe scripts (docs/adr/0018 §5) and the
+ * guest scripts of OS templates: Monaco Editor with YAML, shell or
+ * PowerShell highlighting. Monaco is loaded when the first editor mounts.
  */
 const props = withDefaults(
     defineProps<{
         language?: 'yaml' | 'shell' | 'powershell';
         readonly?: boolean;
         minHeight?: string;
+        ariaLabel?: string;
+        placeholder?: string;
     }>(),
     { language: 'shell', readonly: false, minHeight: '18rem' },
 );
 
 const value = defineModel<string>({ required: true });
 
+type Monaco = typeof import('@/lib/monaco').monaco;
+
 const host = ref<HTMLDivElement | null>(null);
-let view: EditorView | null = null;
-const languageSlot = new Compartment();
-const readonlySlot = new Compartment();
+const loading = ref(true);
+// Grows with the text, from minHeight up to 80% of the window.
+const contentHeight = ref(0);
+let monaco: Monaco | null = null;
+let editor: ReturnType<Monaco['editor']['create']> | null = null;
+let themeObserver: MutationObserver | null = null;
+let destroyed = false;
 
-const languageFor = (language: typeof props.language) =>
-    language === 'yaml'
-        ? yaml()
-        : StreamLanguage.define(language === 'powershell' ? powerShell : shell);
+const themeName = () =>
+    document.documentElement.classList.contains('dark') ? 'vs-dark' : 'vs';
 
-const theme = EditorView.theme({
-    '&': {
-        fontSize: '13px',
-        backgroundColor: 'transparent',
-        color: 'inherit',
-    },
-    '.cm-scroller': {
-        fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
-        minHeight: props.minHeight,
-    },
-    '.cm-gutters': {
-        backgroundColor: 'transparent',
-        color: 'var(--muted-foreground)',
-        borderRight: '1px solid var(--border)',
-    },
-    '.cm-activeLine, .cm-activeLineGutter': {
-        backgroundColor: 'color-mix(in oklab, var(--muted) 60%, transparent)',
-    },
-    '&.cm-focused': { outline: 'none' },
-});
+onMounted(async () => {
+    ({ monaco } = await import('@/lib/monaco'));
 
-onMounted(() => {
-    if (host.value === null) {
+    if (destroyed || host.value === null) {
         return;
     }
 
-    view = new EditorView({
-        parent: host.value,
-        state: EditorState.create({
-            doc: value.value,
-            extensions: [
-                basicSetup,
-                theme,
-                languageSlot.of(languageFor(props.language)),
-                readonlySlot.of(EditorState.readOnly.of(props.readonly)),
-                EditorView.updateListener.of((update) => {
-                    if (update.docChanged) {
-                        value.value = update.state.doc.toString();
-                    }
-                }),
-            ],
-        }),
+    editor = monaco.editor.create(host.value, {
+        value: value.value,
+        language: props.language,
+        readOnly: props.readonly,
+        theme: themeName(),
+        ariaLabel: props.ariaLabel,
+        placeholder: props.placeholder,
+        automaticLayout: true,
+        minimap: { enabled: false },
+        scrollBeyondLastLine: false,
+        fontSize: 13,
+        fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
+        tabSize: 4,
+        renderWhitespace: 'boundary',
+        fixedOverflowWidgets: true,
+    });
+    loading.value = false;
+
+    editor.onDidChangeModelContent(() => {
+        const text = editor?.getValue() ?? '';
+
+        if (text !== value.value) {
+            value.value = text;
+        }
+    });
+
+    contentHeight.value = editor.getContentHeight();
+    editor.onDidContentSizeChange((event) => {
+        contentHeight.value = event.contentHeight;
+    });
+
+    // The appearance switch toggles the `dark` class on <html>.
+    themeObserver = new MutationObserver(() =>
+        monaco?.editor.setTheme(themeName()),
+    );
+    themeObserver.observe(document.documentElement, {
+        attributes: true,
+        attributeFilter: ['class'],
     });
 });
 
 // Outside changes (another file, a reload) replace the document.
 watch(value, (text) => {
-    if (view !== null && text !== view.state.doc.toString()) {
-        view.dispatch({
-            changes: { from: 0, to: view.state.doc.length, insert: text },
-        });
+    if (editor !== null && text !== editor.getValue()) {
+        editor.setValue(text);
     }
 });
 
 watch(
     () => props.language,
-    (language) =>
-        view?.dispatch({
-            effects: languageSlot.reconfigure(languageFor(language)),
-        }),
+    (language) => {
+        const model = editor?.getModel();
+
+        if (monaco !== null && model) {
+            monaco.editor.setModelLanguage(model, language);
+        }
+    },
 );
 
 watch(
     () => props.readonly,
-    (readonly) =>
-        view?.dispatch({
-            effects: readonlySlot.reconfigure(
-                EditorState.readOnly.of(readonly),
-            ),
-        }),
+    (readonly) => editor?.updateOptions({ readOnly: readonly }),
 );
 
-onBeforeUnmount(() => view?.destroy());
+onBeforeUnmount(() => {
+    destroyed = true;
+    themeObserver?.disconnect();
+    editor?.getModel()?.dispose();
+    editor?.dispose();
+});
 </script>
 
 <template>
     <div
-        ref="host"
-        class="overflow-hidden rounded-lg border bg-background"
+        class="relative overflow-hidden rounded-lg border bg-background"
+        :style="{
+            height: `max(${minHeight}, min(${contentHeight}px, 80vh))`,
+        }"
         data-test="code-editor"
-    />
+    >
+        <div ref="host" class="h-full w-full" />
+        <p
+            v-if="loading"
+            class="absolute inset-0 grid place-items-center text-sm text-muted-foreground"
+        >
+            {{ $t('Loading editor…') }}
+        </p>
+    </div>
 </template>

@@ -4,6 +4,7 @@ import { Play, RotateCcw, Save } from '@lucide/vue';
 import { reactive } from 'vue';
 import NativeSelect from '@/components/admin/NativeSelect.vue';
 import StatusBadge from '@/components/admin/StatusBadge.vue';
+import CodeEditor from '@/components/apps/CodeEditor.vue';
 import Heading from '@/components/Heading.vue';
 import { Button } from '@/components/ui/button';
 import { destroy, run, update } from '@/routes/admin/os-templates/scripts';
@@ -140,11 +141,11 @@ const bytes = (text: string) => new TextEncoder().encode(text).length;
                 </div>
             </div>
 
-            <textarea
+            <CodeEditor
                 v-model="forms[slot.event].script"
-                rows="14"
-                spellcheck="false"
-                class="w-full rounded-md border border-input bg-transparent px-3 py-2 font-mono text-xs shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 dark:bg-input/30"
+                :language="
+                    template.platform === 'windows' ? 'powershell' : 'shell'
+                "
                 :aria-label="$t(eventTitles[slot.event])"
                 :placeholder="
                     template.platform === 'windows'
