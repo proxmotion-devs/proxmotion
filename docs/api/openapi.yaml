@@ -1127,14 +1127,15 @@ components:
         country_code: { type: [string, 'null'] }
     OsTemplate:
       type: object
-      required: [id, name, family, version, distribution, distribution_version]
+      required: [id, name, family, version, distribution, distribution_version, os_family]
       properties:
         id: { type: string, format: uuid }
         name: { type: string }
-        family: { type: string, examples: [ubuntu], description: 'The system apps are matched against; for a derivative, the system it is based on (docs/adr/0022).' }
-        version: { type: string, examples: ['24.04'], description: 'Version of that system (for Pardus 23 on Debian 12: 12).' }
-        distribution: { type: [string, 'null'], examples: [pardus], description: 'A derivative''s own os-release ID; null for the systems named by family.' }
-        distribution_version: { type: [string, 'null'], examples: ['23.4'], description: 'The derivative''s own version.' }
+        family: { type: string, deprecated: true, examples: [ubuntu], description: 'The distribution apps are matched as, with the names v1 always used (`archlinux`, `opensuse`; `other` for a distribution the panel does not know and that names no compatible one). For Pardus 23.4 compatible with Debian 12: `debian` (docs/adr/0024 §6). Use `distribution` and `os_family`.' }
+        version: { type: string, deprecated: true, examples: ['24.04'], description: 'The version apps are matched as (for Pardus 23.4 compatible with Debian 12: 12).' }
+        distribution: { type: string, examples: [ubuntu, pardus], description: 'What the template is: the ID of its /etc/os-release.' }
+        distribution_version: { type: string, examples: ['24.04', '23.4'], description: 'Its own version (VERSION_ID).' }
+        os_family: { type: string, enum: [debian, rhel, suse, arch, windows, other], description: 'Its family, like ID_LIKE in /etc/os-release.' }
     OrderedApp:
       type: [string, 'null']
       description: |
@@ -1269,7 +1270,7 @@ components:
         format: { type: integer, enum: [1, 2], description: 'Recipe format (docs/adr/0016).' }
         os:
           type: array
-          description: 'Format 1: the exact OS versions. Format 2: the template families `requires.os` covers (groups expanded) with `versions` empty (any version the requirements accept); use `requires`.'
+          description: 'Format 1: the exact OS versions. Format 2: the distributions `requires` covers by name (families written out as the distributions the panel knows, v1 names such as `archlinux`) with `versions` empty (any version the requirements accept); use `requires`.'
           items:
             type: object
             properties:
@@ -1277,12 +1278,14 @@ components:
               versions: { type: array, items: { type: string }, examples: [['22.04', '24.04']] }
         requires:
           type: object
-          description: 'Which OS templates fit (docs/adr/0016 §3). The catalog filtered by `os_template` or `server` already applies it.'
+          description: 'Which OS templates fit (docs/adr/0024 §4). A template is matched as the distribution and version it is compatible with, or else as itself. The catalog filtered by `os_template` or `server` already applies it.'
           properties:
             platform: { type: string, enum: [linux, windows] }
-            os: { type: [array, 'null'], items: { type: string }, description: 'Template families (ubuntu, rocky, …) or groups like ID_LIKE in /etc/os-release: debian (Debian, Ubuntu), rhel (RHEL, AlmaLinux, Rocky, CentOS, Fedora), suse, arch. null: any OS of the platform.', examples: [['debian', 'rhel']] }
-            min_versions: { type: object, additionalProperties: { type: string }, examples: [{ ubuntu: '22.04' }] }
-            max_versions: { type: object, additionalProperties: { type: string }, description: 'Highest supported version per family; a template version is compared by as many parts as given (`12` covers `12.7`).', examples: [{ debian: '12' }] }
+            os: { type: [array, 'null'], deprecated: true, items: { type: string }, description: '`os_families` and `distributions` in one list. null: any OS of the platform.', examples: [['debian', 'almalinux']] }
+            os_families: { type: [array, 'null'], items: { type: string, enum: [debian, rhel, suse, arch, windows] }, description: 'Families (like ID_LIKE in /etc/os-release): every distribution of the family the panel knows. null together with `distributions`: any OS of the platform.', examples: [['debian']] }
+            distributions: { type: [array, 'null'], items: { type: string }, description: 'Single distributions (os-release IDs).', examples: [['almalinux', 'rocky']] }
+            min_versions: { type: object, additionalProperties: { type: string }, description: 'Lowest supported version per distribution.', examples: [{ ubuntu: '22.04' }] }
+            max_versions: { type: object, additionalProperties: { type: string }, description: 'Highest supported version per distribution; a template version is compared by as many parts as given (`12` covers `12.7`).', examples: [{ debian: '12' }] }
         requirements:
           type: object
           properties:

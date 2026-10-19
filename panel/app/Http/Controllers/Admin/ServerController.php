@@ -108,9 +108,10 @@ class ServerController extends Controller
         ]);
     }
 
-    public function create(OrderedAppOptions $orderedApps, NodePlacer $placer, IpAllocator $ips): Response
+    public function create(Request $request, OrderedAppOptions $orderedApps, NodePlacer $placer, IpAllocator $ips): Response
     {
-        $osTemplates = OsTemplate::query()->where('is_active', true)->orderBy('sort_order')->orderBy('name')->get();
+        // Inactive templates last: administrators may try one on a server before offering it (docs/adr/0024 §8).
+        $osTemplates = OsTemplate::query()->orderByDesc('is_active')->orderBy('sort_order')->orderBy('name')->get();
 
         return Inertia::render('admin/servers/Create', [
             'billingSystems' => BillingSystem::options(),
@@ -149,7 +150,14 @@ class ServerController extends Controller
                     // "<node uuid>/<storage name>" of the storages it lists; empty: those marked "use for servers".
                     'storages' => $group->storages->map(fn (Storage $storage) => "{$storage->node->uuid}/{$storage->name}")->values(),
                 ]),
-            'osTemplates' => $osTemplates->map(fn (OsTemplate $template) => ['value' => $template->uuid, 'label' => $template->name]),
+            'osTemplates' => $osTemplates->map(fn (OsTemplate $template) => [
+                'value' => $template->uuid,
+                'label' => $template->is_active ? $template->name : $template->name.' ('.__('inactive').')',
+                // An inactive one makes a test server without a billing system (docs/adr/0024 §8).
+                'active' => $template->is_active,
+            ]),
+            // ?os_template= from an OS template's check (no running server yet).
+            'selectedOsTemplate' => $osTemplates->firstWhere('uuid', $request->query('os_template'))?->uuid,
             // Apps that can come with the server (docs/adr/0016 §5).
             'apps' => fn () => $orderedApps->for($osTemplates),
             // Nodes of active clusters with the storages that take VM disks, for choosing the placement by hand.
@@ -201,7 +209,7 @@ class ServerController extends Controller
 
     public function show(Request $request, Server $server, GuestAgentProbe $agent, AppEligibility $eligibility, AppUpgrades $upgrades, TaskFailer $failer, LiveAppPolls $live): Response
     {
-        $server->load(['node:id,uuid,name', 'cluster:id,uuid,name', 'location:id,name', 'package:id,name', 'billingSystem:id,name', 'osTemplate:id,name,family,version,platform', 'storage:id,name', 'ipAddresses.pool:id,uuid,name,version']);
+        $server->load(['node:id,uuid,name', 'cluster:id,uuid,name', 'location:id,name', 'package:id,name', 'billingSystem:id,name', 'osTemplate:id,name,distribution,version,family,compatible_with,compatible_version,platform', 'storage:id,name', 'ipAddresses.pool:id,uuid,name,version']);
 
         // The page's refreshes while an app script runs ask the guest, so step and progress show live (docs/adr/0021).
         if (in_array('apps', explode(',', (string) $request->header('X-Inertia-Partial-Data')), true)) {

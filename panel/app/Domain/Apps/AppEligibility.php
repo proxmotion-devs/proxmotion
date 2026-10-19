@@ -16,8 +16,8 @@ use App\Models\Server;
  * Whether an app may be installed (docs/adr/0015, 0016 §3, §5): active with
  * an approved version, the install mode among the recipe's (later on a
  * running server, or with the system a server is ordered or reinstalled
- * with), a template whose platform, family (or family group) and version
- * fit the recipe, enough resources and a supported network model.
+ * with), a template whose platform, distribution (or family) and version
+ * fit the recipe (docs/adr/0024), enough resources and a supported network model.
  * Ineligible apps are not listed and cannot be installed.
  *
  * Paid apps (docs/adr/0019) also need an active entitlement on the server,

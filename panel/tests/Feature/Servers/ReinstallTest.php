@@ -10,6 +10,7 @@ use App\Enums\TaskStatus;
 use App\Enums\TaskType;
 use App\Models\AppRecipe;
 use App\Models\AuditLog;
+use App\Models\BillingSystem;
 use App\Models\OsTemplate;
 use App\Models\ProxmoxTemplate;
 use App\Models\Server;
@@ -195,6 +196,36 @@ class ReinstallTest extends TestCase
         $this->actingAs($this->admin)
             ->get(route('admin.servers.show', $this->server))
             ->assertInertia(fn (Assert $page) => $page->has('reinstallOptions.osTemplates', 2));
+    }
+
+    public function test_an_inactive_template_is_tried_only_on_a_server_without_a_billing_system()
+    {
+        // docs/adr/0024 §8: the server becomes a test server; customers never get the template.
+        $this->debian->forceFill(['is_active' => false])->save();
+
+        $this->actingAs($this->admin)
+            ->get(route('admin.servers.show', $this->server))
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('reinstallOptions.osTemplates.1.value', $this->debian->uuid)
+                ->where('reinstallOptions.osTemplates.1.label', 'Debian 12 (inactive, makes it a test server)'));
+
+        $this->reinstall()->assertSessionHasNoErrors();
+        $this->assertTrue($this->server->refresh()->is_test);
+        $this->assertSame($this->debian->id, $this->server->os_template_id);
+        $this->assertTrue(AuditLog::query()->where('action', 'server.reinstall')->sole()->properties['test_server'] ?? false);
+    }
+
+    public function test_a_server_of_a_billing_system_is_offered_active_templates_only()
+    {
+        $this->debian->forceFill(['is_active' => false])->save();
+        $this->server->forceFill(['billing_system_id' => BillingSystem::factory()->create()->id])->save();
+
+        $this->actingAs($this->admin)
+            ->get(route('admin.servers.show', $this->server))
+            ->assertInertia(fn (Assert $page) => $page->has('reinstallOptions.osTemplates', 1));
+
+        $this->reinstall()->assertSessionHasErrors('os_template');
+        $this->assertFalse($this->server->refresh()->is_test);
     }
 
     public function test_an_app_can_come_with_the_new_system()

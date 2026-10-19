@@ -3,6 +3,7 @@
 namespace Tests\Feature\Admin;
 
 use App\Enums\NetworkModel;
+use App\Enums\OsFamily;
 use App\Enums\OsPlatform;
 use App\Models\Cluster;
 use App\Models\Node;
@@ -28,12 +29,13 @@ class CatalogManagementTest extends AdminTestCase
 
         $this->post(route('admin.os-templates.store'), [
             'name' => 'Ubuntu 24.04',
-            'family' => 'ubuntu',
+            'distribution' => 'ubuntu',
             'version' => '24.04',
             'is_active' => true,
             'sort_order' => 1,
             'proxmox_template_ids' => [$template->id],
-        ])->assertSessionHasNoErrors();
+        ])->assertSessionHasNoErrors()
+            ->assertSessionHas('inertia.flash_data.toast.message', 'OS template created. Create a server from it, then use Check against a server to confirm the system.');
 
         $os = OsTemplate::query()->sole();
         $this->assertSame([$template->id], $os->proxmoxTemplates()->pluck('proxmox_templates.id')->all());
@@ -41,11 +43,13 @@ class CatalogManagementTest extends AdminTestCase
         $this->get(route('admin.os-templates.index'))
             ->assertInertia(fn (Assert $page) => $page
                 ->where('templates.0.proxmox_template_ids', [$template->id])
-                ->where('proxmoxTemplates.0.vmid', 9000));
+                ->where('templates.0.family', 'debian')
+                ->where('proxmoxTemplates.0.vmid', 9000)
+                ->where('distributions.1', ['id' => 'ubuntu', 'name' => 'Ubuntu', 'family' => 'debian', 'base' => null, 'same_version' => false, 'example' => '24.04']));
 
         $this->put(route('admin.os-templates.update', $os), [
             'name' => 'Ubuntu 24.04 LTS',
-            'family' => 'ubuntu',
+            'distribution' => 'ubuntu',
             'version' => '24.04',
             'is_active' => false,
             'sort_order' => 1,
@@ -56,27 +60,28 @@ class CatalogManagementTest extends AdminTestCase
         $this->assertFalse($os->refresh()->is_active);
     }
 
-    public function test_the_platform_follows_the_family()
+    public function test_the_family_and_platform_follow_a_known_distribution()
     {
         $this->post(route('admin.os-templates.store'), [
             'name' => 'Windows Server 2022',
-            'family' => 'windows',
+            'distribution' => 'windows',
             'version' => '2022',
+            'family' => 'debian',
             'is_active' => true,
         ])->assertSessionHasNoErrors();
 
         $os = OsTemplate::query()->sole();
-        $this->assertSame(OsPlatform::Windows, $os->platform);
+        $this->assertSame([OsFamily::Windows, OsPlatform::Windows], [$os->family, $os->platform]);
 
         $this->put(route('admin.os-templates.update', $os), [
-            'name' => 'Debian 12',
-            'family' => 'debian',
-            'version' => '12',
+            'name' => 'Rocky Linux 9',
+            'distribution' => 'Rocky',
+            'version' => '9',
             'is_active' => true,
             'platform' => 'windows',
         ])->assertSessionHasNoErrors();
 
-        $this->assertSame(OsPlatform::Linux, $os->refresh()->platform);
+        $this->assertSame(['rocky', OsFamily::Rhel, OsPlatform::Linux], [$os->refresh()->distribution, $os->family, $os->platform]);
     }
 
     public function test_templates_not_offered_yet_are_suggested_once_per_name()
@@ -95,67 +100,77 @@ class CatalogManagementTest extends AdminTestCase
                 ->has('found', 1)
                 ->where('found.0.name', 'ubuntu-2404-cloud')
                 ->where('found.0.proxmox_template_ids', $ubuntu)
-                ->where('found.0.guess', ['name' => 'Ubuntu 24.04 LTS', 'family' => 'ubuntu', 'version' => '24.04', 'distribution' => null, 'distribution_version' => null])
+                ->where('found.0.guess', ['name' => 'Ubuntu 24.04 LTS', 'distribution' => 'ubuntu', 'version' => '24.04', 'compatible_with' => null, 'compatible_version' => null])
                 ->has('found.0.places', 2)
                 ->has('proxmoxTemplates', 3));
     }
 
-    public function test_os_template_family_is_validated()
+    public function test_an_unknown_distribution_needs_one_of_the_families()
     {
-        $this->post(route('admin.os-templates.store'), [
-            'name' => 'X',
-            'family' => 'beos',
-            'version' => '1',
+        $post = fn (array $attributes) => $this->post(route('admin.os-templates.store'), $attributes + [
+            'name' => 'Zorin OS 17',
+            'distribution' => 'zorin',
+            'version' => '17',
             'is_active' => true,
-            'sort_order' => 0,
-        ])->assertSessionHasErrors('family');
+        ]);
+
+        $post([])->assertSessionHasErrors('family');
+        $post(['family' => 'beos'])->assertSessionHasErrors('family');
+        $post(['family' => 'windows'])->assertSessionHasErrors('family');
+        $post(['distribution' => 'my distro', 'family' => 'debian'])->assertSessionHasErrors('distribution');
+        $this->assertSame(0, OsTemplate::query()->count());
+
+        $post(['family' => 'debian'])->assertSessionHasNoErrors();
+        $this->assertSame(['zorin', OsFamily::Debian, null], [OsTemplate::query()->sole()->distribution, OsTemplate::query()->sole()->family, OsTemplate::query()->sole()->compatible_with]);
     }
 
-    public function test_a_derivative_names_its_distribution_and_its_base()
+    public function test_a_distribution_with_its_own_versions_names_the_one_it_is_compatible_with()
+    {
+        $post = fn (array $attributes) => $this->post(route('admin.os-templates.store'), $attributes + [
+            'name' => 'Pardus 23.4',
+            'distribution' => ' Pardus ',
+            'version' => '23.4',
+            'is_active' => true,
+        ]);
+
+        $post([])->assertSessionHasErrors('compatible_with');
+        $post(['compatible_with' => 'debian'])->assertSessionHasErrors('compatible_version');
+        $post(['compatible_with' => 'almalinux', 'compatible_version' => '9'])->assertSessionHasErrors('compatible_with');
+        $post(['compatible_with' => 'linuxmint', 'compatible_version' => '22'])->assertSessionHasErrors('compatible_with');
+        $this->assertSame(0, OsTemplate::query()->count());
+
+        $post(['compatible_with' => 'debian', 'compatible_version' => '12'])->assertSessionHasNoErrors();
+        $os = OsTemplate::query()->sole();
+        $this->assertSame(['pardus', '23.4', OsFamily::Debian, 'debian', '12'], [$os->distribution, $os->version, $os->family, $os->compatible_with, $os->compatible_version]);
+
+        $this->get(route('admin.os-templates.index'))
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('templates.0.compatible_with', 'debian')
+                ->where('templates.0.compatible_version', '12'));
+
+        // A base system is matched as itself.
+        $this->put(route('admin.os-templates.update', $os), [
+            'name' => 'Debian 12',
+            'distribution' => 'debian',
+            'version' => '12',
+            'compatible_with' => 'ubuntu',
+            'compatible_version' => '24.04',
+            'is_active' => true,
+        ])->assertSessionHasErrors('compatible_with');
+    }
+
+    public function test_rhel_takes_the_almalinux_version_unless_one_is_given()
     {
         $this->post(route('admin.os-templates.store'), [
-            'name' => 'Pardus 23',
-            'family' => 'debian',
-            'version' => '12',
-            'distribution' => ' Pardus ',
-            'distribution_version' => '23.4',
+            'name' => 'RHEL 9.6',
+            'distribution' => 'rhel',
+            'version' => '9.6',
+            'compatible_with' => 'almalinux',
             'is_active' => true,
         ])->assertSessionHasNoErrors();
 
         $os = OsTemplate::query()->sole();
-        $this->assertSame(['debian', '12', 'pardus', '23.4'], [$os->family, $os->version, $os->distribution, $os->distribution_version]);
-
-        $this->get(route('admin.os-templates.index'))
-            ->assertInertia(fn (Assert $page) => $page
-                ->where('templates.0.distribution', 'pardus')
-                ->where('templates.0.distribution_version', '23.4'));
-
-        // Without a distribution the template is its base system and has no own version.
-        $this->put(route('admin.os-templates.update', $os), [
-            'name' => 'Debian 12',
-            'family' => 'debian',
-            'version' => '12',
-            'distribution' => '',
-            'distribution_version' => '23.4',
-            'is_active' => true,
-        ])->assertSessionHasNoErrors();
-
-        $this->assertSame([null, null], [$os->refresh()->distribution, $os->distribution_version]);
-    }
-
-    public function test_a_distribution_is_an_os_release_id_and_not_a_known_family()
-    {
-        $post = fn (array $attributes) => $this->post(route('admin.os-templates.store'), $attributes + [
-            'name' => 'X',
-            'family' => 'debian',
-            'version' => '12',
-            'is_active' => true,
-        ]);
-
-        $post(['distribution' => 'my distro'])->assertSessionHasErrors('distribution');
-        $post(['distribution' => 'ubuntu'])->assertSessionHasErrors('distribution');
-        $post(['distribution' => 'pardus', 'family' => 'windows', 'version' => '2022'])->assertSessionHasErrors('distribution');
-        $this->assertSame(0, OsTemplate::query()->count());
+        $this->assertSame([OsFamily::Rhel, 'almalinux', '9.6'], [$os->family, $os->compatible_with, $os->compatible_version]);
     }
 
     public function test_packages_store_friendly_units_as_mib_and_bytes()

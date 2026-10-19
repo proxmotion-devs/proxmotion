@@ -2,14 +2,32 @@ import { mount } from '@vue/test-utils';
 import { describe, expect, it } from 'vite-plus/test';
 import OsPicker from '@/components/apps/OsPicker.vue';
 import type { Requires } from '@/lib/osPicker';
+import type { Distribution } from '@/lib/osTemplates';
 
 const templates = [
-    { family: 'debian', version: '12' },
-    { family: 'debian', version: '13' },
-    { family: 'ubuntu', version: '24.04' },
+    { distribution: 'debian', version: '12' },
+    { distribution: 'debian', version: '13' },
+    { distribution: 'ubuntu', version: '24.04' },
 ];
 
-const groups = { debian: { families: ['debian', 'ubuntu'] } };
+const catalog: Distribution[] = [
+    {
+        id: 'debian',
+        name: 'Debian',
+        family: 'debian',
+        base: null,
+        same_version: false,
+        example: '13',
+    },
+    {
+        id: 'ubuntu',
+        name: 'Ubuntu',
+        family: 'debian',
+        base: null,
+        same_version: false,
+        example: '24.04',
+    },
+];
 
 const mountPicker = (requires: Requires) =>
     mount(OsPicker, {
@@ -17,16 +35,16 @@ const mountPicker = (requires: Requires) =>
             modelValue: requires,
             'onUpdate:modelValue': () => {},
             templates,
-            groups,
+            catalog,
         },
         global: { mocks: { $t: (key: string) => key } },
     });
 
 describe('OsPicker', () => {
-    it('shows the ticked versions of each family', () => {
+    it('shows the ticked versions of each distribution', () => {
         const wrapper = mountPicker({
             platform: 'linux',
-            os: ['debian'],
+            os: { families: ['debian'] },
             min_versions: { debian: '13', ubuntu: '24.04' },
         });
 
@@ -45,18 +63,22 @@ describe('OsPicker', () => {
                 .get('[data-test="os-ubuntu-24.04"]')
                 .attributes('aria-pressed'),
         ).toBe('true');
+        expect(wrapper.text()).toContain('Debian');
         expect(wrapper.find('[data-test="any-os"]').exists()).toBe(false);
     });
 
-    it('writes plain families when a version is clicked', async () => {
-        const wrapper = mountPicker({ platform: 'linux', os: ['ubuntu'] });
+    it('writes distributions when a version is clicked', async () => {
+        const wrapper = mountPicker({
+            platform: 'linux',
+            os: { distributions: ['ubuntu'] },
+        });
 
         await wrapper.get('[data-test="os-debian-12"]').trigger('click');
 
         const [[requires]] = wrapper.emitted('update:modelValue') as [
             [Requires],
         ];
-        expect(requires.os).toEqual(['debian', 'ubuntu']);
+        expect(requires.os).toEqual({ distributions: ['debian', 'ubuntu'] });
         expect(requires.min_versions).toEqual({ debian: '12' });
     });
 

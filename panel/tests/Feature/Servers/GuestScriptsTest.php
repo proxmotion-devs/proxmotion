@@ -155,7 +155,7 @@ class GuestScriptsTest extends TestCase
 
     public function test_windows_templates_run_powershell_with_json_inputs()
     {
-        $this->osTemplate->forceFill(['platform' => 'windows'])->save();
+        $this->osTemplate->forceFill(['distribution' => 'windows'])->save();
 
         $this->grow(ipv4: 2);
         $files = $this->proxmox->guestFiles[$this->server->vmid];
@@ -173,7 +173,7 @@ class GuestScriptsTest extends TestCase
 
     public function test_a_script_runs_again_when_the_guest_restarts_while_it_runs()
     {
-        $this->osTemplate->forceFill(['platform' => 'windows'])->save();
+        $this->osTemplate->forceFill(['distribution' => 'windows'])->save();
         $vmid = $this->server->vmid;
         $script = ['powershell.exe', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', 'C:\\ProgramData\\Proxmotion\\addresses.ps1'];
         $runs = 0;
@@ -264,7 +264,7 @@ class GuestScriptsTest extends TestCase
 
     public function test_windows_passwords_are_set_for_the_administrator()
     {
-        $this->osTemplate->forceFill(['platform' => 'windows'])->save();
+        $this->osTemplate->forceFill(['distribution' => 'windows'])->save();
 
         app(TaskRunner::class)->start($this->server, TaskType::ResetPassword, $this->admin, secret: 'chosen-password-123');
 

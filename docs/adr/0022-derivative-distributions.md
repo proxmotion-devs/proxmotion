@@ -1,6 +1,6 @@
 # 22. Derivative distributions on OS templates
 
-- **Status:** Accepted
+- **Status:** Superseded by ADR 0024 (OS families and distributions)
 - **Date:** 2026-10-19
 - **Amends:** ADR 0016 §3 (operating systems: families and groups).
 

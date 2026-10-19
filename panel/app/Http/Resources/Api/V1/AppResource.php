@@ -4,10 +4,12 @@ declare(strict_types=1);
 
 namespace App\Http\Resources\Api\V1;
 
-use App\Domain\Apps\OsFamilies;
+use App\Domain\Apps\Recipe;
 use App\Domain\Apps\RecipeAction;
 use App\Domain\Apps\RecipeInput;
 use App\Domain\Apps\RecipeOutput;
+use App\Domain\Infrastructure\Distributions;
+use App\Enums\OsFamily;
 use App\Models\AppRecipe;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -44,11 +46,14 @@ class AppResource extends JsonResource
             'category' => $recipe->category,
             'description' => $recipe->description,
             'format' => $recipe->format,
-            // Format 2 recipes name families or groups (requires.os); `os` then lists the template families they cover, with any version.
-            'os' => $recipe->format === 1 ? $recipe->os : array_map(fn (string $family) => ['family' => $family, 'versions' => []], OsFamilies::expand($recipe->families ?? [])),
+            // Format 2 recipes name families and distributions (docs/adr/0024); `os` then lists the distributions they cover by name, with any version.
+            'os' => $recipe->format === 1 ? $recipe->os : array_map(fn (string $distribution) => ['family' => Distributions::apiName($distribution), 'versions' => []], self::coveredDistributions($recipe)),
             'requires' => [
                 'platform' => $recipe->platform,
-                'os' => $recipe->families,
+                // Deprecated: families and distributions in one list, as before.
+                'os' => $recipe->families === null && $recipe->distributions === null ? null : [...($recipe->families ?? []), ...($recipe->distributions ?? [])],
+                'os_families' => $recipe->families,
+                'distributions' => $recipe->distributions,
                 'min_versions' => (object) $recipe->minVersions,
                 'max_versions' => (object) $recipe->maxVersions,
             ],
@@ -68,5 +73,21 @@ class AppResource extends JsonResource
             'actions' => array_map(fn (RecipeAction $action) => $action->toArray(), $recipe->actions),
             'entitled' => $this->when($this->entitled !== null, fn () => $this->entitled),
         ];
+    }
+
+    /**
+     * The known base distributions of the recipe's families, then its own distributions.
+     *
+     * @return list<string>
+     */
+    private static function coveredDistributions(Recipe $recipe): array
+    {
+        $distributions = [];
+
+        foreach ($recipe->families ?? [] as $family) {
+            $distributions = [...$distributions, ...Distributions::ofFamily(OsFamily::from($family))];
+        }
+
+        return array_values(array_unique([...$distributions, ...($recipe->distributions ?? [])]));
     }
 }

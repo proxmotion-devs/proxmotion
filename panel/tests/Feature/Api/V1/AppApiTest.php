@@ -77,8 +77,8 @@ class AppApiTest extends ApiTestCase
         $definition = $version->definition;
         $definition['requires']['max_versions'] = ['debian' => '12'];
         $version->forceFill(['definition' => $definition])->save();
-        $trixie = OsTemplate::factory()->create(['family' => 'debian', 'version' => '13']);
-        $bookworm = OsTemplate::factory()->create(['family' => 'debian', 'version' => '12']);
+        $trixie = OsTemplate::factory()->create(['distribution' => 'debian', 'version' => '13']);
+        $bookworm = OsTemplate::factory()->create(['distribution' => 'debian', 'version' => '12']);
         $ids = fn (OsTemplate $template): array => array_column($this->api('GET', '/api/v1/apps?os_template='.$template->uuid)->json('data'), 'id');
 
         $this->assertNotContains('wireguard', $ids($trixie));
@@ -87,7 +87,7 @@ class AppApiTest extends ApiTestCase
 
         $response = $this->api('GET', '/api/v1/apps')->assertOk();
         $apps = array_column($response->json('data'), 'requires', 'id');
-        $this->assertSame(['platform' => 'linux', 'os' => ['debian'], 'min_versions' => ['ubuntu' => '22.04', 'debian' => '12'], 'max_versions' => ['debian' => '12']], $apps['wireguard']);
+        $this->assertSame(['platform' => 'linux', 'os' => ['debian'], 'os_families' => ['debian'], 'distributions' => [], 'min_versions' => ['ubuntu' => '22.04', 'debian' => '12'], 'max_versions' => ['debian' => '12']], $apps['wireguard']);
         $this->assertSame([], $apps['openvpn']['max_versions']);
         $this->assertStringContainsString('"max_versions":{}', $response->getContent() ?: '', 'An empty map is an object.');
     }
@@ -138,7 +138,7 @@ class AppApiTest extends ApiTestCase
     {
         $this->api('POST', "/api/v1/servers/{$this->server->uuid}/apps", ['app' => 'openvpn', 'inputs' => ['port' => 443, 'protocol' => 'tcp']])
             ->assertAccepted()
-            ->assertJsonPath('data.app', ['id' => 'openvpn', 'name' => 'OpenVPN', 'version' => '1.3.0'])
+            ->assertJsonPath('data.app', ['id' => 'openvpn', 'name' => 'OpenVPN', 'version' => '1.3.1'])
             ->assertJsonPath('data.server.external_id', 'whmcs-1001')
             ->assertJsonPath('data.status', 'installing')
             ->assertJsonPath('data.inputs', ['port' => 443, 'protocol' => 'tcp'])
@@ -329,7 +329,7 @@ class AppApiTest extends ApiTestCase
         $this->publishVersion('wireguard', '1.4.0', changes: ['inputs' => $inputs]);
 
         $this->api('GET', $uri)
-            ->assertJsonPath('data.app.version', '1.3.0')
+            ->assertJsonPath('data.app.version', '1.3.1')
             ->assertJsonPath('data.upgrade.version', '1.4.0')
             ->assertJsonPath('data.upgrade.inputs.0.key', 'dns')
             ->assertJsonCount(1, 'data.upgrade.inputs');

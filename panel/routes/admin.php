@@ -67,6 +67,7 @@ Route::delete('ip-addresses/{ipAddress}', [IpAddressController::class, 'destroy'
 
 Route::resource('os-templates', OsTemplateController::class)->only(['index', 'store', 'update', 'destroy'])
     ->parameters(['os-templates' => 'osTemplate']);
+Route::get('os-templates/{osTemplate}/os-release', [OsTemplateController::class, 'osRelease'])->middleware('throttle:20,1')->name('os-templates.os-release');
 Route::get('os-templates/{osTemplate}/scripts', [GuestScriptController::class, 'index'])->name('os-templates.scripts');
 Route::put('os-templates/{osTemplate}/scripts/{event}', [GuestScriptController::class, 'update'])->name('os-templates.scripts.update');
 Route::delete('os-templates/{osTemplate}/scripts/{event}', [GuestScriptController::class, 'destroy'])->name('os-templates.scripts.destroy');

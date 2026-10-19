@@ -1,7 +1,7 @@
 format: 2
 slug: portainer
 name: Docker + Portainer
-version: 1.0.0
+version: 1.0.1
 category: container
 description:
     en: Docker Engine with Portainer Community Edition, a web interface to manage containers, images, volumes and Compose stacks.
@@ -10,7 +10,7 @@ maintainers: [{ name: Proxmotion }]
 homepage: https://www.portainer.io/
 requires:
     platform: linux
-    os: [debian]
+    os: { families: [debian] }
     min_versions: { ubuntu: '22.04', debian: '12' }
 resources: { min_memory_mib: 1024, min_disk_mib: 10240, min_cores: 1 }
 network_models: [bridged, routed]

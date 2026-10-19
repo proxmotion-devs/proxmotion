@@ -59,15 +59,15 @@ final readonly class GuestPackage
     }
 
     /**
-     * The os-release IDs run.sh accepts; empty: any. The panel matched a
-     * derivative through its base (docs/adr/0022), so its own ID is accepted
-     * too, for one whose ID_LIKE does not name the base.
+     * The os-release IDs run.sh accepts; empty: any. The panel may have
+     * matched the template as a compatible distribution (docs/adr/0024), so
+     * its own ID is accepted too, for one whose ID_LIKE does not name it.
      *
      * @return list<string>
      */
     private static function osReleaseIds(Server $server, AppRecipeVersion $version): array
     {
-        $ids = OsFamilies::osReleaseIds($version->recipe()->families);
+        $ids = $version->recipe()->osReleaseIds();
         $distribution = $server->osTemplate?->distribution;
 
         if ($ids !== [] && $distribution !== null && ! in_array($distribution, $ids, true)) {

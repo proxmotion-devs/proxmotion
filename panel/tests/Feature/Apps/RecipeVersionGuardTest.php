@@ -67,9 +67,9 @@ class RecipeVersionGuardTest extends TestCase
     {
         File::append($this->head.'/docker/install.sh', "# a comment\n");
 
-        $this->assertSame(['docker: changed but its version is 1.3.0 (was 1.3.0); raise the version in recipe.yaml.'], $this->problems());
+        $this->assertSame(['docker: changed but its version is 1.3.1 (was 1.3.1); raise the version in recipe.yaml.'], $this->problems());
         $this->artisan('apps:check-versions', ['--base-path' => $this->base, '--path' => $this->head])
-            ->expectsOutputToContain('docker: changed but its version is 1.3.0')
+            ->expectsOutputToContain('docker: changed but its version is 1.3.1')
             ->assertFailed();
     }
 
@@ -85,11 +85,11 @@ class RecipeVersionGuardTest extends TestCase
     {
         File::append($this->head.'/docker/install.sh', "# a comment\n");
 
-        $this->setVersion('docker', '1.3.1');
+        $this->setVersion('docker', '1.3.2');
         $this->assertSame([], $this->problems());
 
         $this->setVersion('docker', '1.2.9');
-        $this->assertSame(['docker: changed but its version is 1.2.9 (was 1.3.0); raise the version in recipe.yaml.'], $this->problems());
+        $this->assertSame(['docker: changed but its version is 1.2.9 (was 1.3.1); raise the version in recipe.yaml.'], $this->problems());
     }
 
     public function test_readmes_new_and_removed_recipes_do_not_count()

@@ -97,8 +97,8 @@ class AppUpgradeTest extends TestCase
 
         $this->assertNull($target(), 'Nothing newer yet.');
 
-        $this->publishVersion('wireguard', '1.4.0', from: '>=1.0.0 <1.3.0');
-        $this->assertNull($target(), 'The range leaves out 1.3.0.');
+        $this->publishVersion('wireguard', '1.4.0', from: '>=1.0.0 <1.3.1');
+        $this->assertNull($target(), 'The range leaves out 1.3.1.');
 
         $this->publishVersion('wireguard', '1.4.1', from: null);
         $this->assertNull($target(), 'No upgrade script.');
@@ -135,7 +135,7 @@ class AppUpgradeTest extends TestCase
         $this->assertSame(['/bin/bash', $app.'/run.sh', 'upgrade.sh', $run->guestDirectory()], array_slice(collect($this->proxmox->guestCommands)->last()['command'], 4));
 
         $log = AuditLog::query()->where('action', 'app.upgrade_requested')->sole();
-        $this->assertSame(['from' => '1.3.0', 'to' => '1.4.0'], array_intersect_key($log->properties ?? [], ['from' => 1, 'to' => 1]));
+        $this->assertSame(['from' => '1.3.1', 'to' => '1.4.0'], array_intersect_key($log->properties ?? [], ['from' => 1, 'to' => 1]));
     }
 
     public function test_a_finished_upgrade_moves_the_installation_to_the_new_version_and_merges_its_outputs()

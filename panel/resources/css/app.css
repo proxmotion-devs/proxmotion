@@ -127,6 +127,8 @@
 }
 
 .dark {
+    /* Native controls (select popups, scrollbars, date pickers) follow the dark theme. */
+    color-scheme: dark;
     --background: hsl(0 0% 3.9%);
     --foreground: hsl(0 0% 98%);
     --card: hsl(0 0% 3.9%);
@@ -168,5 +170,93 @@
     }
     body {
         @apply bg-background text-foreground;
+    }
+}
+
+/*
+ * NativeSelect (components/admin/NativeSelect.vue). Every browser gets a list
+ * in the theme's colours with muted group labels; browsers with customizable
+ * selects (appearance: base-select) also get the hover, selected and scrollbar
+ * styling of the panel's own menus.
+ */
+@layer components {
+    .native-select option {
+        @apply bg-popover text-popover-foreground;
+    }
+
+    .native-select optgroup {
+        @apply bg-popover text-xs font-semibold tracking-wider text-foreground/70 uppercase;
+    }
+
+    .native-select optgroup option {
+        @apply text-sm font-normal tracking-normal text-popover-foreground normal-case;
+    }
+
+    @supports (appearance: base-select) {
+        .native-select,
+        .native-select::picker(select) {
+            appearance: base-select;
+        }
+
+        .native-select {
+            @apply flex items-center justify-between gap-2;
+        }
+
+        .native-select::picker-icon {
+            @apply text-muted-foreground transition-transform duration-150;
+        }
+
+        .native-select:open::picker-icon {
+            rotate: 180deg;
+        }
+
+        .native-select::picker(select) {
+            @apply mt-1 max-h-80 overflow-y-auto rounded-md border border-border bg-popover p-1 text-popover-foreground shadow-md;
+            scrollbar-width: thin;
+            scrollbar-color: color-mix(
+                    in oklab,
+                    var(--muted-foreground) 40%,
+                    transparent
+                )
+                transparent;
+        }
+
+        /* The group label sits in the optgroup's padding; its options undo it and are indented instead. */
+        .native-select optgroup {
+            @apply bg-transparent px-3 pt-3 pb-1 text-[11px] text-foreground/70;
+        }
+
+        .native-select optgroup:first-of-type {
+            @apply pt-1.5;
+        }
+
+        .native-select optgroup:not(:first-of-type) {
+            @apply mt-1 border-t border-border;
+        }
+
+        .native-select option {
+            @apply flex cursor-default items-center gap-2 rounded-sm bg-transparent px-3 py-1.5 outline-none;
+        }
+
+        .native-select optgroup option {
+            @apply -mx-3 mt-0.5 pl-6;
+        }
+
+        .native-select option:hover,
+        .native-select option:focus-visible {
+            @apply bg-accent/60 text-accent-foreground;
+        }
+
+        .native-select option:checked {
+            @apply bg-accent font-medium text-accent-foreground;
+        }
+
+        .native-select option:disabled {
+            @apply pointer-events-none opacity-50;
+        }
+
+        .native-select option::checkmark {
+            @apply order-1 ml-auto text-blue-600 dark:text-blue-400;
+        }
     }
 }

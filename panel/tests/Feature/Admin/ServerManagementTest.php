@@ -24,6 +24,7 @@ use App\Models\ProxmoxTemplate;
 use App\Models\Server;
 use App\Models\Task;
 use App\Models\User;
+use App\Provisioning\ServerCreator;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\Concerns\BuildsInfrastructure;
 use Tests\Support\FakeProxmoxCluster;
@@ -102,6 +103,41 @@ class ServerManagementTest extends AdminTestCase
                 ->where('server.status', 'active')
                 ->where('server.addresses.0.address', '203.0.113.2')
                 ->has('tasks', 1));
+    }
+
+    public function test_an_inactive_template_can_be_tried_on_a_server_before_customers_see_it()
+    {
+        // docs/adr/0024 §8: the OS template check links here with the template preselected.
+        $this->osTemplate->forceFill(['is_active' => false, 'name' => 'Pardus 23.4'])->save();
+        $active = OsTemplate::factory()->create(['name' => 'Debian 13', 'distribution' => 'debian', 'version' => '13']);
+
+        $this->get(route('admin.servers.create', ['os_template' => $this->osTemplate->uuid]))
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('osTemplates.0', ['value' => $active->uuid, 'label' => 'Debian 13', 'active' => true])
+                ->where('osTemplates.1', ['value' => $this->osTemplate->uuid, 'label' => 'Pardus 23.4 (inactive)', 'active' => false])
+                ->where('selectedOsTemplate', $this->osTemplate->uuid));
+
+        $this->get(route('admin.servers.create', ['os_template' => 'not-a-template']))
+            ->assertInertia(fn (Assert $page) => $page->where('selectedOsTemplate', null));
+
+        // Never for a customer: not with a billing system.
+        $whmcs = BillingSystem::factory()->create();
+        $this->post(route('admin.servers.store'), $this->payload(['billing_system' => $whmcs->uuid]))
+            ->assertSessionHasErrors(['os_template' => 'An inactive OS template can only be used for a server without a billing system: it becomes a test server.']);
+        $this->assertSame(0, Server::query()->count());
+
+        $this->post(route('admin.servers.store'), $this->payload())->assertSessionHasNoErrors();
+        $server = Server::query()->sole();
+        $this->assertSame($this->osTemplate->id, $server->os_template_id);
+        $this->assertTrue($server->is_test, 'A server of an inactive template is a test server.');
+    }
+
+    public function test_the_creator_refuses_an_inactive_template_for_a_billing_system()
+    {
+        $this->osTemplate->forceFill(['is_active' => false])->save();
+
+        $this->expectExceptionMessage(ServerCreator::INACTIVE_TEMPLATE);
+        app(ServerCreator::class)->create($this->order(['billingSystem' => BillingSystem::factory()->create()]));
     }
 
     public function test_an_admin_can_choose_the_node_and_storage()

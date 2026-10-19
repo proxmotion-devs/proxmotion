@@ -3,80 +3,72 @@ import { computed } from 'vue';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
     allowsNewer,
-    expandedFamilies,
-    familiesOf,
+    anyOs,
+    coveredDistributions,
+    distributionsOf,
     selected,
     setNewer,
     toggle,
 } from '@/lib/osPicker';
-import type { OsGroups, Requires, TemplateVersion } from '@/lib/osPicker';
+import type { Requires, TemplateVersion } from '@/lib/osPicker';
+import { find } from '@/lib/osTemplates';
+import type { Distribution } from '@/lib/osTemplates';
 
 /**
  * The operating systems an app runs on, ticked from the panel's own OS
- * templates (docs/adr/0018 §5): one row per family, one chip per version.
- * lib/osPicker writes the families and lowest and highest versions.
+ * templates (docs/adr/0018 §5): one row per distribution, one chip per
+ * version. lib/osPicker writes the distributions and lowest and highest
+ * versions (docs/adr/0024 §4).
  */
 const props = defineProps<{
     templates: TemplateVersion[];
-    groups: OsGroups;
+    catalog: Distribution[];
     readonly?: boolean;
 }>();
 
 const requires = defineModel<Requires>({ required: true });
 
-const NAMES: Record<string, string> = {
-    debian: 'Debian',
-    ubuntu: 'Ubuntu',
-    almalinux: 'AlmaLinux',
-    rocky: 'Rocky Linux',
-    centos: 'CentOS',
-    fedora: 'Fedora',
-    opensuse: 'openSUSE',
-    archlinux: 'Arch Linux',
-};
+const name = (distribution: string) =>
+    find(props.catalog, distribution)?.name ?? distribution;
 
-const name = (family: string) => NAMES[family] ?? family;
+const distributions = computed(() => distributionsOf(props.templates));
 
-const families = computed(() => familiesOf(props.templates));
+const ticked = (distribution: string) =>
+    selected(requires.value, distribution, props.templates, props.catalog);
 
-const ticked = (family: string) =>
-    selected(requires.value, family, props.templates, props.groups);
-
-// Families the recipe allows that have no template here: kept as they are.
+// Distributions the recipe allows that have no template here: kept as they are.
 const others = computed(() =>
-    expandedFamilies(requires.value, props.groups).filter(
-        (family) =>
-            !(family in families.value) &&
-            requires.value.max_versions?.[family] !== '0',
+    coveredDistributions(requires.value, props.catalog).filter(
+        (distribution) => !(distribution in distributions.value),
     ),
 );
 
-const range = (family: string) => {
-    const min = requires.value.min_versions?.[family];
-    const max = requires.value.max_versions?.[family];
+const range = (distribution: string) => {
+    const min = requires.value.min_versions?.[distribution];
+    const max = requires.value.max_versions?.[distribution];
 
     return [min ? `≥ ${min}` : '', max ? `≤ ${max}` : '']
         .filter(Boolean)
         .join(' ');
 };
 
-const flip = (family: string, version: string) => {
+const flip = (distribution: string, version: string) => {
     requires.value = toggle(
         requires.value,
-        family,
+        distribution,
         version,
         props.templates,
-        props.groups,
+        props.catalog,
     );
 };
 
-const newer = (family: string, value: boolean | 'indeterminate') => {
+const newer = (distribution: string, value: boolean | 'indeterminate') => {
     requires.value = setNewer(
         requires.value,
-        family,
+        distribution,
         value === true,
         props.templates,
-        props.groups,
+        props.catalog,
     );
 };
 </script>
@@ -84,7 +76,7 @@ const newer = (family: string, value: boolean | 'indeterminate') => {
 <template>
     <div class="grid gap-3" data-test="os-picker">
         <p
-            v-if="Object.keys(families).length === 0"
+            v-if="Object.keys(distributions).length === 0"
             class="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm"
         >
             {{
@@ -94,7 +86,7 @@ const newer = (family: string, value: boolean | 'indeterminate') => {
             }}
         </p>
         <p
-            v-else-if="(requires.os ?? []).length === 0"
+            v-else-if="anyOs(requires)"
             class="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm"
             data-test="any-os"
         >
@@ -106,7 +98,7 @@ const newer = (family: string, value: boolean | 'indeterminate') => {
         </p>
 
         <div
-            v-for="(versions, family) in families"
+            v-for="(versions, family) in distributions"
             :key="family"
             class="flex flex-wrap items-center gap-2"
         >

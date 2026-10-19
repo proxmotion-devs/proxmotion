@@ -1,30 +1,22 @@
+import type { Distribution } from '@/lib/osTemplates';
 import type { RecipeDefinition } from '@/lib/recipes';
 
 /**
  * The OS picker of the app editor's requirements (docs/adr/0018 §5): the
  * administrator ticks the versions of their own OS templates and the recipe
- * gets plain family names with the lowest and highest version
- * (docs/adr/0016 §3). What is ticked is read back with the same rules as
+ * gets the distributions with their lowest and highest version
+ * (docs/adr/0024 §4). What is ticked is read back with the same rules as
  * Recipe::supports(), so it is exactly what the panel offers the app on.
  *
- * Recipes write groups like /etc/os-release ID_LIKE, and "debian" is both a
- * family and the group of Debian and Ubuntu. Debian without Ubuntu is
- * therefore written as `os: [debian]` with `max_versions: { ubuntu: '0' }`,
- * which no Ubuntu template meets.
+ * A recipe may name whole families (`os.families`). Families only cover the
+ * catalog's base distributions (a derivative is matched as its base), so a
+ * change writes them out as those distributions without changing what fits.
  */
 
 export type Requires = RecipeDefinition['requires'];
 
-/** One family and version of the panel's active Linux OS templates. */
-export type TemplateVersion = { family: string; version: string };
-
-export type OsGroups = Record<string, { families: string[] }>;
-
-/** The family that is also the name of a group covering another family. */
-const SHARED_NAME = 'debian';
-const SHARED_WITH = 'ubuntu';
-/** A highest version no template has: keeps a family out of its group. */
-const EXCLUDED = '0';
+/** One distribution and version the panel's active Linux OS templates are matched as. */
+export type TemplateVersion = { distribution: string; version: string };
 
 function numbers(version: string): number[] {
     return version.split('.').map((part) => Number.parseInt(part, 10) || 0);
@@ -51,30 +43,50 @@ function cut(version: string, limit: string): string {
     return version.split('.').slice(0, limit.split('.').length).join('.');
 }
 
-function covers(os: string[], family: string, groups: OsGroups): boolean {
+/** Whether the recipe names no operating system (any of the platform). */
+export function anyOs(requires: Requires): boolean {
     return (
-        os.length === 0 ||
-        os.some(
-            (name) =>
-                name === family ||
-                (groups[name]?.families ?? []).includes(family),
-        )
+        (requires.os?.families ?? []).length === 0 &&
+        (requires.os?.distributions ?? []).length === 0
     );
 }
 
-/** Whether the recipe runs on this template family and version (Recipe::supports()). */
+/** The distributions `os` covers by name: its families written out, then its own. */
+export function coveredDistributions(
+    requires: Requires,
+    catalog: Distribution[],
+): string[] {
+    const families = requires.os?.families ?? [];
+
+    return [
+        ...new Set([
+            ...catalog
+                .filter(
+                    (entry) =>
+                        entry.base === null && families.includes(entry.family),
+                )
+                .map((entry) => entry.id),
+            ...(requires.os?.distributions ?? []),
+        ]),
+    ];
+}
+
+/** Whether the recipe runs on this distribution and version (Recipe::supports()). */
 export function supports(
     requires: Requires,
-    family: string,
+    distribution: string,
     version: string,
-    groups: OsGroups,
+    catalog: Distribution[],
 ): boolean {
-    if (!covers(requires.os ?? [], family, groups)) {
+    if (
+        !anyOs(requires) &&
+        !coveredDistributions(requires, catalog).includes(distribution)
+    ) {
         return false;
     }
 
-    const minimum = requires.min_versions?.[family];
-    const maximum = requires.max_versions?.[family];
+    const minimum = requires.min_versions?.[distribution];
+    const maximum = requires.max_versions?.[distribution];
 
     return (
         (minimum === undefined ||
@@ -86,121 +98,95 @@ export function supports(
     );
 }
 
-/** The template versions by family, lowest first. */
-export function familiesOf(
+/** The template versions by distribution, lowest first. */
+export function distributionsOf(
     templates: TemplateVersion[],
 ): Record<string, string[]> {
-    const families: Record<string, string[]> = {};
+    const distributions: Record<string, string[]> = {};
 
-    for (const { family, version } of templates) {
-        (families[family] ??= []).push(version);
+    for (const { distribution, version } of templates) {
+        (distributions[distribution] ??= []).push(version);
     }
 
-    for (const versions of Object.values(families)) {
+    for (const versions of Object.values(distributions)) {
         versions.sort(compareVersions);
     }
 
-    return families;
+    return distributions;
 }
 
-/** The ticked versions of a family, lowest first. */
+/** The ticked versions of a distribution, lowest first. */
 export function selected(
     requires: Requires,
-    family: string,
+    distribution: string,
     templates: TemplateVersion[],
-    groups: OsGroups,
+    catalog: Distribution[],
 ): string[] {
-    return (familiesOf(templates)[family] ?? []).filter((version) =>
-        supports(requires, family, version, groups),
+    return (distributionsOf(templates)[distribution] ?? []).filter((version) =>
+        supports(requires, distribution, version, catalog),
     );
 }
 
-/** The families the recipe names, groups written out (none: any OS). */
-export function expandedFamilies(
-    requires: Requires,
-    groups: OsGroups,
-): string[] {
-    return [
-        ...new Set(
-            (requires.os ?? []).flatMap(
-                (name) => groups[name]?.families ?? [name],
-            ),
-        ),
-    ];
-}
-
-/** Whether newer versions of the family (templates added later) are allowed too. */
-export function allowsNewer(requires: Requires, family: string): boolean {
-    const maximum = requires.max_versions?.[family];
+/** Whether newer versions of the distribution (templates added later) are allowed too. */
+export function allowsNewer(requires: Requires, distribution: string): boolean {
+    const maximum = requires.max_versions?.[distribution];
 
     return maximum === undefined || maximum === '';
 }
 
 /**
- * The requirements with one family's range replaced: from `min` to `max`
- * (null: no highest version), or without the family when `min` is null.
- * Groups are written out as families; families without a template in this
- * panel keep their range.
+ * The requirements with one distribution's range replaced: from `min` to
+ * `max` (null: no highest version), or without the distribution when `min`
+ * is null. Families are written out as distributions; distributions without
+ * a template in this panel keep their range.
  */
 export function setRange(
     requires: Requires,
-    family: string,
+    distribution: string,
     min: string | null,
     max: string | null,
     templates: TemplateVersion[],
-    groups: OsGroups,
+    catalog: Distribution[],
 ): Requires {
-    const os = requires.os ?? [];
-    const known = Object.keys(familiesOf(templates));
-    // Any OS (no list) becomes every family the panel has templates of.
-    const families = new Set(
-        os.length === 0
-            ? known
-            : os.flatMap((name) => groups[name]?.families ?? [name]),
+    // Any OS (no list) becomes every distribution the panel has templates of.
+    const distributions = new Set(
+        anyOs(requires)
+            ? Object.keys(distributionsOf(templates))
+            : coveredDistributions(requires, catalog),
     );
     const minVersions = { ...requires.min_versions };
     const maxVersions = { ...requires.max_versions };
 
-    // The marker that kept Ubuntu out is rebuilt below when still needed.
-    if (maxVersions[SHARED_WITH] === EXCLUDED) {
-        delete maxVersions[SHARED_WITH];
-        families.delete(SHARED_WITH);
-    }
-
     if (min === null) {
-        families.delete(family);
-        delete minVersions[family];
-        delete maxVersions[family];
+        distributions.delete(distribution);
+        delete minVersions[distribution];
+        delete maxVersions[distribution];
     } else {
-        families.add(family);
-        minVersions[family] = min;
+        distributions.add(distribution);
+        minVersions[distribution] = min;
 
         if (max === null) {
-            delete maxVersions[family];
+            delete maxVersions[distribution];
         } else {
-            maxVersions[family] = max;
+            maxVersions[distribution] = max;
         }
     }
 
-    for (const name of Object.keys(minVersions)) {
-        if (!families.has(name)) {
-            delete minVersions[name];
+    for (const limits of [minVersions, maxVersions]) {
+        for (const name of Object.keys(limits)) {
+            if (!distributions.has(name)) {
+                delete limits[name];
+            }
         }
     }
 
-    for (const name of Object.keys(maxVersions)) {
-        if (!families.has(name)) {
-            delete maxVersions[name];
-        }
-    }
-
-    if (families.has(SHARED_NAME) && !families.has(SHARED_WITH)) {
-        maxVersions[SHARED_WITH] = EXCLUDED;
-    }
+    const { os: _os, ...rest } = requires;
 
     return {
-        ...requires,
-        os: [...families].sort(),
+        ...rest,
+        ...(distributions.size
+            ? { os: { distributions: [...distributions].sort() } }
+            : {}),
         min_versions: minVersions,
         max_versions: maxVersions,
     };
@@ -208,29 +194,29 @@ export function setRange(
 
 /**
  * Tick or untick one version. A version outside the range widens it (a
- * family's first version allows newer ones too); the lowest ticked version
- * raises the range; any other ticked version ends the range below it.
+ * distribution's first version allows newer ones too); the lowest ticked
+ * version raises the range; any other ticked version ends the range below it.
  */
 export function toggle(
     requires: Requires,
-    family: string,
+    distribution: string,
     version: string,
     templates: TemplateVersion[],
-    groups: OsGroups,
+    catalog: Distribution[],
 ): Requires {
-    const ticked = selected(requires, family, templates, groups);
-    const open = ticked.length === 0 || allowsNewer(requires, family);
+    const ticked = selected(requires, distribution, templates, catalog);
+    const open = ticked.length === 0 || allowsNewer(requires, distribution);
 
     if (!ticked.includes(version)) {
         const range = [...ticked, version].sort(compareVersions);
 
         return setRange(
             requires,
-            family,
+            distribution,
             range[0],
             open ? null : range[range.length - 1],
             templates,
-            groups,
+            catalog,
         );
     }
 
@@ -238,36 +224,36 @@ export function toggle(
         const rest = ticked.slice(1);
 
         return rest.length === 0
-            ? setRange(requires, family, null, null, templates, groups)
+            ? setRange(requires, distribution, null, null, templates, catalog)
             : setRange(
                   requires,
-                  family,
+                  distribution,
                   rest[0],
                   open ? null : rest[rest.length - 1],
                   templates,
-                  groups,
+                  catalog,
               );
     }
 
     return setRange(
         requires,
-        family,
+        distribution,
         ticked[0],
         ticked[ticked.indexOf(version) - 1],
         templates,
-        groups,
+        catalog,
     );
 }
 
-/** Allow newer versions of a family (no highest version), or stop at the highest ticked one. */
+/** Allow newer versions of a distribution (no highest version), or stop at the highest ticked one. */
 export function setNewer(
     requires: Requires,
-    family: string,
+    distribution: string,
     newer: boolean,
     templates: TemplateVersion[],
-    groups: OsGroups,
+    catalog: Distribution[],
 ): Requires {
-    const ticked = selected(requires, family, templates, groups);
+    const ticked = selected(requires, distribution, templates, catalog);
 
     if (ticked.length === 0) {
         return requires;
@@ -275,10 +261,10 @@ export function setNewer(
 
     return setRange(
         requires,
-        family,
+        distribution,
         ticked[0],
         newer ? null : ticked[ticked.length - 1],
         templates,
-        groups,
+        catalog,
     );
 }

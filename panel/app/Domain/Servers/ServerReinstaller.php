@@ -15,6 +15,7 @@ use App\Models\Server;
 use App\Models\Task;
 use App\Models\User;
 use App\Provisioning\Exceptions\ProvisioningException;
+use App\Provisioning\ServerCreator;
 use App\Provisioning\TaskRunner;
 use App\Support\Ssh\PublicKey;
 use Illuminate\Database\Eloquent\Collection;
@@ -35,16 +36,19 @@ final readonly class ServerReinstaller
     ) {}
 
     /**
-     * Active OS templates the server can be rebuilt from: those with a Proxmox
-     * template on the server's cluster.
+     * OS templates the server can be rebuilt from: those with a Proxmox
+     * template on the server's cluster. A server of a billing system gets
+     * active ones only; one without may also try an inactive template and
+     * then becomes a test server (docs/adr/0024 §8). Inactive ones are last.
      *
      * @return Collection<int, OsTemplate>
      */
     public function eligibleTemplates(Server $server): Collection
     {
         return OsTemplate::query()
-            ->where('is_active', true)
+            ->when($server->billing_system_id !== null, fn ($query) => $query->where('is_active', true))
             ->whereHas('proxmoxTemplates', fn ($query) => $query->where('cluster_id', $server->cluster_id))
+            ->orderByDesc('is_active')
             ->orderBy('sort_order')
             ->orderBy('name')
             ->get();
@@ -66,12 +70,18 @@ final readonly class ServerReinstaller
     {
         $appValues = $app === null ? [] : $this->apps->validateOrdered($app, $appInputs, $osTemplate, $server->cpu_cores, $server->memory_mib, $server->disk_mib, $server->network_model, $server);
 
+        if (! $osTemplate->is_active && $server->billing_system_id !== null) {
+            throw new ProvisioningException(ServerCreator::INACTIVE_TEMPLATE);
+        }
+
         return DB::transaction(function () use ($server, $osTemplate, $sshKeys, $actor, $ipAddress, $app, $appValues) {
             $server->forceFill([
                 'os_template_id' => $osTemplate->id,
                 'root_password' => Str::password(20, symbols: false),
                 'root_password_unrevealed' => true,
                 'ssh_keys' => PublicKey::implode($sshKeys),
+                // Trying an inactive template makes it a test server, as when one is created from it.
+                'is_test' => $server->is_test || ! $osTemplate->is_active,
             ])->save();
 
             $task = $this->tasks->start($server, TaskType::Reinstall, $actor);
@@ -80,7 +90,7 @@ final readonly class ServerReinstaller
                 'hostname' => $server->hostname,
                 'os_template' => $osTemplate->name,
                 'ssh_keys' => array_map(fn (PublicKey $key) => $key->fingerprint(), $sshKeys),
-            ] + ($app === null ? [] : ['app' => $app->slug]), $ipAddress);
+            ] + ($app === null ? [] : ['app' => $app->slug]) + ($osTemplate->is_active ? [] : ['test_server' => true]), $ipAddress);
 
             if ($app !== null) {
                 $this->apps->queueOrdered($server, $app, $appValues, $actor, $ipAddress);

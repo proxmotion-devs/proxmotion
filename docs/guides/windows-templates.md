@@ -9,8 +9,8 @@ Sysprep) is described in [iso-templates.md](iso-templates.md#windows-server).
 
 ## What the panel does for Windows
 
-Choose the **`windows`** family for the OS template in *Admin → OS templates*: the platform
-follows the family (every other family is Linux). The platform decides:
+Choose the operating system **Windows** for the OS template in *Admin → OS templates*: its family
+and platform are `windows` (every other operating system is Linux). The platform decides:
 
 | Operation | How it works on Windows |
 |---|---|

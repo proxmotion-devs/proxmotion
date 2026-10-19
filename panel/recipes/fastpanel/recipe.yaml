@@ -1,7 +1,7 @@
 format: 2
 slug: fastpanel
 name: FASTPANEL
-version: 1.0.4
+version: 1.0.5
 category: control-panel
 description:
     en: The FASTPANEL hosting control panel with its web, database, FTP and mail services. Needs a freshly installed server.
@@ -10,7 +10,7 @@ maintainers: [{ name: Proxmotion }]
 homepage: https://fastpanel.direct/
 requires:
     platform: linux
-    os: [debian]
+    os: { families: [debian] }
     min_versions: { ubuntu: '22.04', debian: '12' }
     max_versions: { ubuntu: '24.04', debian: '12' }
 resources: { min_memory_mib: 2048, min_disk_mib: 20480, min_cores: 1 }

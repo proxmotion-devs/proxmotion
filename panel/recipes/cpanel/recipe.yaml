@@ -1,7 +1,7 @@
 format: 2
 slug: cpanel
 name: cPanel & WHM
-version: 1.0.0
+version: 1.0.1
 category: control-panel
 description:
     en: The cPanel & WHM hosting control panel through cPanel's official installer. Needs a freshly installed server and a cPanel licence (a 15-day trial starts on its own).
@@ -10,7 +10,7 @@ maintainers: [{ name: Proxmotion }]
 homepage: https://cpanel.net/
 requires:
     platform: linux
-    os: [almalinux, rocky, ubuntu]
+    os: { distributions: [almalinux, rocky, ubuntu] }
     min_versions: { almalinux: '8', rocky: '8', ubuntu: '24.04' }
     max_versions: { almalinux: '10', rocky: '9', ubuntu: '24.04' }
 resources: { min_memory_mib: 2048, min_disk_mib: 20480, min_cores: 1 }

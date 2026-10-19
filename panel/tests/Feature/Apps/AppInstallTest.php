@@ -291,7 +291,7 @@ class AppInstallTest extends TestCase
         $this->assertStringNotContainsString('newer', $this->proxmox->guestFiles[$this->server->vmid][$this->directory($installation).'/install.sh']);
     }
 
-    public function test_apps_follow_the_family_of_the_servers_template()
+    public function test_apps_follow_the_distribution_of_the_servers_template()
     {
         $wireguard = AppRecipe::query()->where('slug', 'wireguard')->firstOrFail();
         $eligibility = app(AppEligibility::class);
@@ -300,13 +300,13 @@ class AppInstallTest extends TestCase
             $this->server->unsetRelation('osTemplate');
         };
 
-        $useTemplate(['name' => 'Rocky 9', 'family' => 'rocky', 'version' => '9']);
-        $this->assertSame('This app does not support the operating system.', $eligibility->forServer($wireguard, $this->server)?->translatedMessage(), 'Rocky is not in the debian group.');
+        $useTemplate(['name' => 'Rocky 9', 'distribution' => 'rocky', 'version' => '9']);
+        $this->assertSame('This app does not support the operating system.', $eligibility->forServer($wireguard, $this->server)?->translatedMessage(), 'Rocky is not in the Debian family.');
 
-        $useTemplate(['name' => 'Debian 13', 'family' => 'debian', 'version' => '13']);
+        $useTemplate(['name' => 'Debian 13', 'distribution' => 'debian', 'version' => '13']);
         $this->assertNull($eligibility->forServer($wireguard, $this->server), 'Newer than min_versions, not named by version.');
 
-        $useTemplate(['name' => 'Debian 11', 'family' => 'debian', 'version' => '11']);
+        $useTemplate(['name' => 'Debian 11', 'distribution' => 'debian', 'version' => '11']);
         $this->assertNotNull($eligibility->forServer($wireguard, $this->server), 'Older than min_versions.');
     }
 
@@ -325,17 +325,17 @@ class AppInstallTest extends TestCase
             $this->server->unsetRelation('osTemplate');
         };
 
-        $useTemplate(['name' => 'Debian 13', 'family' => 'debian', 'version' => '13']);
+        $useTemplate(['name' => 'Debian 13', 'distribution' => 'debian', 'version' => '13']);
         $this->assertSame('This app does not support the operating system.', $eligibility->forServer($wireguard, $this->server)?->translatedMessage());
         $this->assertNotNull($eligibility->forCatalog($wireguard, $this->server->osTemplate, null));
 
-        $useTemplate(['name' => 'Debian 12', 'family' => 'debian', 'version' => '12']);
+        $useTemplate(['name' => 'Debian 12', 'distribution' => 'debian', 'version' => '12']);
         $this->assertNull($eligibility->forServer($wireguard, $this->server));
 
-        $useTemplate(['name' => 'Debian 12.7', 'family' => 'debian', 'version' => '12.7']);
+        $useTemplate(['name' => 'Debian 12.7', 'distribution' => 'debian', 'version' => '12.7']);
         $this->assertNull($eligibility->forServer($wireguard, $this->server), 'A maximum of 12 covers its point releases.');
 
-        $useTemplate(['name' => 'Ubuntu 24.04', 'family' => 'ubuntu', 'version' => '24.04']);
+        $useTemplate(['name' => 'Ubuntu 24.04', 'distribution' => 'ubuntu', 'version' => '24.04']);
         $this->assertNull($eligibility->forServer($wireguard, $this->server));
     }
 
@@ -348,7 +348,7 @@ class AppInstallTest extends TestCase
         $this->assertSame(['debian', 'ubuntu'], $server['os_release']);
     }
 
-    public function test_derivatives_are_matched_through_the_system_they_are_based_on()
+    public function test_a_distribution_is_matched_as_the_one_it_is_compatible_with()
     {
         $wireguard = AppRecipe::query()->where('slug', 'wireguard')->firstOrFail();
         $version = $wireguard->latestVersion;
@@ -363,20 +363,20 @@ class AppInstallTest extends TestCase
             $this->server->unsetRelation('osTemplate');
         };
 
-        // Pardus 23 is matched as Debian 12, not by its own version.
-        $useTemplate(['name' => 'Pardus 23', 'family' => 'debian', 'version' => '12', 'distribution' => 'pardus', 'distribution_version' => '23.4']);
+        // Pardus 23.4 is matched as Debian 12, not by its own version (docs/adr/0024).
+        $useTemplate(['name' => 'Pardus 23', 'distribution' => 'pardus', 'version' => '23.4', 'compatible_with' => 'debian', 'compatible_version' => '12']);
         $this->assertNull($eligibility->forServer($wireguard, $this->server));
 
-        $useTemplate(['name' => 'Pardus 25', 'family' => 'debian', 'version' => '13', 'distribution' => 'pardus', 'distribution_version' => '25.0']);
-        $this->assertNotNull($eligibility->forServer($wireguard, $this->server), 'Its base is newer than max_versions.');
+        $useTemplate(['name' => 'Pardus 25', 'distribution' => 'pardus', 'version' => '25.0', 'compatible_with' => 'debian', 'compatible_version' => '13']);
+        $this->assertNotNull($eligibility->forServer($wireguard, $this->server), 'The Debian it is compatible with is newer than max_versions.');
 
-        $useTemplate(['name' => 'Unknown', 'family' => 'other', 'version' => '1', 'distribution' => 'mydistro', 'distribution_version' => '1']);
-        $this->assertNotNull($eligibility->forServer($wireguard, $this->server), 'No apps without a known base.');
+        $useTemplate(['name' => 'Unknown', 'distribution' => 'mydistro', 'family' => 'debian', 'version' => '1']);
+        $this->assertNotNull($eligibility->forServer($wireguard, $this->server), 'A family covers only the distributions the panel knows.');
     }
 
-    public function test_the_runner_also_accepts_a_derivatives_own_id()
+    public function test_the_runner_also_accepts_the_templates_own_distribution()
     {
-        $this->server->osTemplate->forceFill(['family' => 'debian', 'version' => '12', 'distribution' => 'pardus', 'distribution_version' => '23.4'])->save();
+        $this->server->osTemplate->forceFill(['distribution' => 'pardus', 'version' => '23.4', 'compatible_with' => 'debian', 'compatible_version' => '12'])->save();
 
         $installation = $this->install();
         $server = json_decode($this->proxmox->guestFiles[$this->server->vmid][$this->directory($installation).'/server.json'], true);

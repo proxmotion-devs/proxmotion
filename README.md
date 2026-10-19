@@ -18,7 +18,7 @@ Proxmotion lets hosting providers connect their Proxmox nodes and clusters, and 
 - Snapshots, backups, traffic accounting and quotas, audit log, 2FA
 - English and Turkish UI
 
-See [AGENTS.md](AGENTS.md) for the full architecture and [the roadmap](AGENTS.md#10-roadmap).
+See the [feature overview](docs/wiki/Features.md) for what Proxmotion can do today, and [AGENTS.md](AGENTS.md) for the full architecture and [the roadmap](AGENTS.md#10-roadmap).
 
 ## Tech stack
 

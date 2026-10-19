@@ -11,15 +11,16 @@ use Illuminate\Database\Eloquent\Factories\Factory;
 class OsTemplateFactory extends Factory
 {
     /**
+     * The family and platform follow from the distribution (docs/adr/0024).
+     *
      * @return array<string, mixed>
      */
     public function definition(): array
     {
         return [
             'name' => 'Ubuntu 24.04',
-            'family' => 'ubuntu',
+            'distribution' => 'ubuntu',
             'version' => '24.04',
-            'platform' => 'linux',
             'is_active' => true,
             'sort_order' => 0,
         ];
@@ -27,6 +28,6 @@ class OsTemplateFactory extends Factory
 
     public function windows(): static
     {
-        return $this->state(['name' => 'Windows Server 2022', 'family' => 'windows', 'version' => '2022', 'platform' => 'windows']);
+        return $this->state(['name' => 'Windows Server 2022', 'distribution' => 'windows', 'version' => '2022']);
     }
 }

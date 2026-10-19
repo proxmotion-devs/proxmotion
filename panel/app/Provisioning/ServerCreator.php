@@ -32,6 +32,8 @@ use Illuminate\Validation\ValidationException;
  */
 final readonly class ServerCreator
 {
+    public const string INACTIVE_TEMPLATE = 'An inactive OS template can only be used for a server without a billing system: it becomes a test server.';
+
     public function __construct(
         private NodePlacer $placer,
         private IpAllocator $ips,
@@ -49,6 +51,11 @@ final readonly class ServerCreator
     {
         if ($order->networkModel === NetworkModel::Nat) {
             throw ProvisioningException::unsupportedNetworkModel();
+        }
+
+        // An inactive template is not offered to customers yet: administrators try it on a test server (docs/adr/0024 §8).
+        if (! $order->osTemplate->is_active && $order->billingSystem !== null) {
+            throw new ProvisioningException(self::INACTIVE_TEMPLATE);
         }
 
         $spec = $order->spec;
@@ -209,6 +216,8 @@ final readonly class ServerCreator
             'billing_system_id' => $order->billingSystem?->id,
             'external_id' => $order->externalId,
             'external_client_id' => $order->externalClientId,
+            // A server of an inactive template is a test server (docs/adr/0024 §8).
+            'is_test' => ! $order->osTemplate->is_active,
         ])->save();
 
         return $server;

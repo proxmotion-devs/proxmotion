@@ -68,6 +68,8 @@ actions:
 
 ### 3. Operating systems: families and groups
 
+*Amended 2026-10-19 by ADR 0024:* templates name their own `distribution` (os-release `ID`), `version` and a family derived from a built-in catalog (`debian`, `rhel`, `suse`, `arch`, `windows`, `other`); a derivative names the distribution it is `compatible_with`. Recipes write `os: { families: [...], distributions: [...] }`; the list form below is still read. The groups below are now the families of that catalog.
+
 *Amended 2026-10-19 by ADR 0022:* for a derivative (Pardus, Linux Mint, Oracle Linux), the template's family and version name the system it is based on, and its own os-release `ID` and version are stored as `distribution` / `distribution_version`; `server.json` accepts that `ID` too.
 
 *Revised 2026-10-17.* The first version had templates list capabilities (`systemd`, `apt`, `dnf`, `bash`, …) that recipes asked for. That asked administrators for something the template's family already says, and a wrong tick made an app fail inside the server. Recipes now name operating systems the way Linux distributions describe themselves in `/etc/os-release` (`ID`, and `ID_LIKE` for the distribution they derive from):

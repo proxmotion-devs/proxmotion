@@ -218,7 +218,7 @@ On a cluster with **local** storage, create the template on every node that shou
 
 ## Windows Server
 
-Choose the family **windows** for the OS template in the panel. How the panel handles Windows
+Choose the operating system **Windows** for the OS template in the panel. How the panel handles Windows
 servers, and a Cloudbase-Init configuration that avoids an extra restart on the first boot, are in
 [windows-templates.md](windows-templates.md).
 

@@ -14,6 +14,7 @@ use App\Models\OsTemplate;
 use App\Models\Package;
 use App\Models\PlacementGroup;
 use App\Provisioning\NewServer;
+use App\Provisioning\ServerCreator;
 use App\Provisioning\ServerSpec;
 use App\Rules\Hostname;
 use App\Rules\SshPublicKeys;
@@ -60,7 +61,8 @@ class ServerRequest extends FormRequest
             'node' => ['nullable', 'required_if:placement,node', 'string', Rule::exists('nodes', 'uuid')],
             // Empty: the storage of the node with the most room.
             'storage' => ['nullable', 'string', 'max:191'],
-            'os_template' => ['required', 'string', Rule::exists('os_templates', 'uuid')->where('is_active', true)],
+            // Inactive templates too: administrators try a template on a server before offering it (docs/adr/0024 §8).
+            'os_template' => ['required', 'string', Rule::exists('os_templates', 'uuid')],
             'network_model' => ['required', Rule::enum(NetworkModel::class)->except([NetworkModel::Nat])],
             'hostname' => ['required', 'string', 'max:253', new Hostname],
             // Empty: the first pool of the location with room for the server's addresses.
@@ -95,6 +97,11 @@ class ServerRequest extends FormRequest
 
             if ($this->custom() && $this->integer('ipv4_count') + $this->integer('ipv6_count') === 0) {
                 $validator->errors()->add('ipv4_count', __('A server needs at least one IP address.'));
+            }
+
+            // docs/adr/0024 §8: customers never get a server of a template not offered to them.
+            if ($this->billingSystem() !== null && OsTemplate::query()->where('uuid', $this->string('os_template'))->where('is_active', false)->exists()) {
+                $validator->errors()->add('os_template', __(ServerCreator::INACTIVE_TEMPLATE));
             }
         }];
     }

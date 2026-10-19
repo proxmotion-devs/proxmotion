@@ -1,7 +1,7 @@
 format: 2
 slug: lamp
 name: LAMP
-version: 1.0.0
+version: 1.0.1
 category: web
 description:
     en: Apache, MariaDB and PHP from the distribution's packages, with a database for your site and optionally a Let's Encrypt certificate.
@@ -10,7 +10,7 @@ maintainers: [{ name: Proxmotion }]
 homepage: https://httpd.apache.org/
 requires:
     platform: linux
-    os: [debian]
+    os: { families: [debian] }
     min_versions: { ubuntu: '22.04', debian: '12' }
 resources: { min_memory_mib: 1024, min_disk_mib: 10240, min_cores: 1 }
 network_models: [bridged, routed]

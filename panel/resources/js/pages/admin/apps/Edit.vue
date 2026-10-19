@@ -34,6 +34,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { useDateTime } from '@/composables/useDateTime';
 import type { TemplateVersion } from '@/lib/osPicker';
+import type { Distribution } from '@/lib/osTemplates';
 import { CATEGORIES, editable, languageOf, pruned } from '@/lib/recipes';
 import type {
     RecipeAction,
@@ -115,8 +116,9 @@ const props = defineProps<{
         published_at: string | null;
         created_at: string | null;
     }[];
-    osGroups: Record<string, { families: string[]; os_release: string[] }>;
-    /** Family and version pairs of the active Linux OS templates. */
+    /** The distributions the panel knows (docs/adr/0024). */
+    distributions: Distribution[];
+    /** Distribution and version pairs the active Linux OS templates are matched as. */
     osTemplates: TemplateVersion[];
     library: Record<string, string>;
     trials: Trial[];
@@ -922,7 +924,7 @@ const statusLabels = {
                     v-else
                     v-model="definition.requires"
                     :templates="osTemplates"
-                    :groups="osGroups"
+                    :catalog="distributions"
                     :readonly="readonly"
                 />
             </div>

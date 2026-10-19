@@ -84,7 +84,7 @@ class RecipeEditorTest extends AdminTestCase
         $this->assertSame('1.0.0', $draft?->version);
         $this->assertSame($wireguard->current()->files, $draft->files);
         $this->assertSame(['my-vpn', 'My VPN'], [$draft->definition['slug'], $draft->definition['name']]);
-        $this->assertSame(['app' => 'my-vpn', 'from' => 'wireguard@1.3.0'], AuditLog::query()->where('action', 'app.copied')->sole()->properties);
+        $this->assertSame(['app' => 'my-vpn', 'from' => 'wireguard@1.3.1'], AuditLog::query()->where('action', 'app.copied')->sole()->properties);
         $this->assertSame('WireGuard', $wireguard->current()->refresh()->definition['name'], 'The original stays as it was.');
     }
 
@@ -199,41 +199,43 @@ class RecipeEditorTest extends AdminTestCase
             ->component('admin/apps/Edit')
             ->where('app.editable', true)
             ->where('app.modified', false)
-            ->where('app.bundled_version', '1.3.0')
+            ->where('app.bundled_version', '1.3.1')
             ->where('app.source', 'bundled')
             ->where('draft', null)
-            ->where('published.version', '1.3.0')
+            ->where('published.version', '1.3.1')
             ->where('published.definition.slug', 'wireguard')
             ->where('published.files', fn ($files) => collect($files)->has('lib.sh'))
             ->where('library', fn ($library) => collect($library)->has('proxmotion.sh'))
-            ->where('osGroups.rhel.families', ['almalinux', 'rocky', 'centos', 'fedora']));
+            ->where('distributions', fn ($distributions) => collect($distributions)->contains(fn (array $entry) => $entry['id'] === 'rhel' && $entry['base'] === 'almalinux')));
 
         $this->post(route('admin.apps.copy', $this->app('wireguard')), ['slug' => 'my-vpn', 'name' => 'My VPN']);
 
         $this->get(route('admin.apps.edit', $this->app('my-vpn')))->assertInertia(fn ($page) => $page
             ->where('app.editable', true)
-            ->where('app.copied_from', ['slug' => 'wireguard', 'name' => 'WireGuard', 'version' => '1.3.0'])
+            ->where('app.copied_from', ['slug' => 'wireguard', 'name' => 'WireGuard', 'version' => '1.3.1'])
             ->where('app.upstream_version', null)
             ->where('draft.version', '1.0.0')
             ->where('draft.errors', [])
             ->where('versions.0.status', 'draft'));
     }
 
-    public function test_the_os_picker_gets_the_family_and_version_pairs_of_active_linux_templates()
+    public function test_the_os_picker_gets_what_active_linux_templates_are_matched_as()
     {
-        OsTemplate::factory()->create(['family' => 'debian', 'version' => '13']);
-        OsTemplate::factory()->create(['family' => 'debian', 'version' => '12']);
-        OsTemplate::factory()->create(['name' => 'Debian 12 (copy)', 'family' => 'debian', 'version' => '12']);
-        OsTemplate::factory()->create(['family' => 'Ubuntu', 'version' => '24.04']);
-        OsTemplate::factory()->create(['family' => 'rocky', 'version' => '9', 'is_active' => false]);
+        OsTemplate::factory()->create(['distribution' => 'debian', 'version' => '13']);
+        OsTemplate::factory()->create(['distribution' => 'debian', 'version' => '12']);
+        OsTemplate::factory()->create(['name' => 'Debian 12 (copy)', 'distribution' => 'debian', 'version' => '12']);
+        OsTemplate::factory()->create(['name' => 'Pardus 23.4', 'distribution' => 'pardus', 'version' => '23.4', 'compatible_with' => 'debian', 'compatible_version' => '12']);
+        OsTemplate::factory()->create(['distribution' => 'ubuntu', 'version' => '24.04']);
+        OsTemplate::factory()->create(['distribution' => 'rocky', 'version' => '9', 'is_active' => false]);
         OsTemplate::factory()->windows()->create();
 
         $this->get(route('admin.apps.edit', $this->app('docker')))->assertInertia(fn ($page) => $page
             ->where('osTemplates', [
-                ['family' => 'debian', 'version' => '12'],
-                ['family' => 'debian', 'version' => '13'],
-                ['family' => 'ubuntu', 'version' => '24.04'],
-            ]));
+                ['distribution' => 'debian', 'version' => '12'],
+                ['distribution' => 'debian', 'version' => '13'],
+                ['distribution' => 'ubuntu', 'version' => '24.04'],
+            ])
+            ->where('distributions.0.id', 'debian'));
     }
 
     public function test_versions_are_compared_in_the_history()
@@ -259,38 +261,38 @@ class RecipeEditorTest extends AdminTestCase
         $definition['resources']['min_memory_mib'] = 1024;
 
         $this->save($wireguard, Yaml::dump($definition, 6, 4), $wireguard->current()->files)->assertSessionHasNoErrors();
-        $this->assertSame('1.3.0-local.1', $wireguard->draft()?->version);
+        $this->assertSame('1.3.1-local.1', $wireguard->draft()?->version);
         $this->assertFalse($wireguard->refresh()->isModified(), 'A draft changes nothing yet.');
 
         $this->post(route('admin.apps.publish', $wireguard), ['bump' => 'major'])->assertSessionHasNoErrors();
         $wireguard->refresh();
-        $this->assertSame('1.3.0-local.1', $wireguard->current()->version, 'Bundled edits ignore the bump.');
+        $this->assertSame('1.3.1-local.1', $wireguard->current()->version, 'Bundled edits ignore the bump.');
         $this->assertSame(AppRecipeVersion::ORIGIN_LOCAL, $wireguard->current()->origin);
         $this->assertTrue($wireguard->isModified());
         $this->assertSame(1024, $wireguard->recipe()->minMemoryMib);
 
-        // A panel update ships wireguard 1.3.1: it is kept, not offered.
-        $this->app->instance(RecipeLoader::class, $this->recipesWithWireguard('1.3.1'));
+        // A panel update ships wireguard 1.3.2: it is kept, not offered.
+        $this->app->instance(RecipeLoader::class, $this->recipesWithWireguard('1.3.2'));
         $this->assertSame(['wireguard'], app(RecipeSynchronizer::class)->sync()['held']);
         $wireguard->refresh();
-        $this->assertSame('1.3.0-local.1', $wireguard->current()->version);
-        $this->assertSame(AppRecipeVersionStatus::Archived, $wireguard->versions()->where('version', '1.3.1')->sole()->status);
+        $this->assertSame('1.3.1-local.1', $wireguard->current()->version);
+        $this->assertSame(AppRecipeVersionStatus::Archived, $wireguard->versions()->where('version', '1.3.2')->sole()->status);
 
         $this->get(route('admin.apps.edit', $wireguard))->assertInertia(fn ($page) => $page
             ->where('app.modified', true)
-            ->where('app.bundled_version', '1.3.1')
+            ->where('app.bundled_version', '1.3.2')
             ->where('app.bundled_newer', true));
 
         // A second edit is numbered after the newest bundled version.
         $this->save($wireguard, Yaml::dump($wireguard->current()->definition, 6, 4), $wireguard->current()->files);
-        $this->assertSame('1.3.1-local.1', $wireguard->draft()?->version);
+        $this->assertSame('1.3.2-local.1', $wireguard->draft()?->version);
 
         $this->post(route('admin.apps.revert', $wireguard))->assertSessionHasNoErrors();
         $wireguard->refresh();
-        $this->assertSame('1.3.1', $wireguard->current()->version);
+        $this->assertSame('1.3.2', $wireguard->current()->version);
         $this->assertFalse($wireguard->isModified());
         $this->assertNull($wireguard->draft(), 'Going back drops the draft.');
-        $this->assertSame(AppRecipeVersionStatus::Archived, $wireguard->versions()->where('version', '1.3.0-local.1')->sole()->status);
+        $this->assertSame(AppRecipeVersionStatus::Archived, $wireguard->versions()->where('version', '1.3.1-local.1')->sole()->status);
         $this->assertSame(1, AuditLog::query()->where('action', 'app.reverted')->count());
         $this->post(route('admin.apps.revert', $wireguard))->assertSessionHasErrors('app');
     }

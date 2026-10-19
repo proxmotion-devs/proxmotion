@@ -18,7 +18,11 @@ import { Input } from '@/components/ui/input';
 import { Spinner } from '@/components/ui/spinner';
 import { formatMib } from '@/lib/format';
 import { optionalNumber } from '@/lib/forms';
-import { firstStepWithError, WIZARD_STEPS } from '@/lib/serverWizard';
+import {
+    firstStepWithError,
+    makesTestServer,
+    WIZARD_STEPS,
+} from '@/lib/serverWizard';
 import { create, index, store } from '@/routes/admin/servers';
 import { NETWORK_MODELS } from '@/types/admin';
 import type {
@@ -47,7 +51,10 @@ const props = defineProps<{
     packages: PackageOption[];
     placementGroups: PlacementGroupOption[];
     ipv4Pools: Ipv4PoolOption[];
-    osTemplates: Option[];
+    /** Inactive ones make a test server without a billing system (docs/adr/0024 §8). */
+    osTemplates: (Option & { active: boolean })[];
+    /** Preselected by ?os_template= (a template checked without a running server). */
+    selectedOsTemplate?: string | null;
     apps: OrderedAppOption[];
     nodes: PlacementNode[];
 }>();
@@ -72,7 +79,8 @@ const form = useForm({
         port_speed_mbps: '',
         traffic_gb: '',
     } as NewServerResources,
-    os_template: props.osTemplates[0]?.value ?? null,
+    os_template:
+        props.selectedOsTemplate ?? props.osTemplates[0]?.value ?? null,
     app: '',
     app_inputs: {} as Record<string, string | number | boolean>,
     network_model: null as NetworkModel | null,
@@ -164,6 +172,19 @@ const billingSystemOptions = computed(() => [
     ...props.billingSystems,
 ]);
 
+// An inactive template is tried on a test server: no billing system, no billing ids.
+const testServer = computed(() =>
+    makesTestServer(props.osTemplates, form.os_template),
+);
+
+watch(testServer, (test) => {
+    if (test) {
+        form.billing_system = '';
+        form.external_id = '';
+        form.external_client_id = '';
+    }
+});
+
 const missing = computed(
     () => props.locations.length === 0 || props.osTemplates.length === 0,
 );
@@ -245,7 +266,9 @@ const summary = computed(() => {
         [trans('Hostname'), form.hostname],
         [
             trans('Billing system'),
-            optionLabel(billingSystemOptions.value, form.billing_system),
+            testServer.value
+                ? trans('None (test server)')
+                : optionLabel(billingSystemOptions.value, form.billing_system),
         ],
     ];
 });
@@ -484,44 +507,57 @@ const submit = () => {
                         placeholder="ssh-ed25519 AAAA… user@host"
                     />
                 </FormField>
-                <FormField
-                    label="Billing system"
-                    for="billing_system"
-                    :error="errors.billing_system"
-                    hint="Needed for billing IDs. Only this billing system's API tokens can manage the server."
+                <p
+                    v-if="testServer"
+                    class="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm"
+                    data-test="test-server-note"
                 >
-                    <NativeSelect
-                        id="billing_system"
-                        v-model="form.billing_system"
-                        :options="billingSystemOptions"
-                    />
-                </FormField>
-                <div class="grid gap-4 sm:grid-cols-2">
+                    {{
+                        $t(
+                            'The chosen OS template is inactive, so this becomes a test server without a billing system. Activate the template to offer it to customers.',
+                        )
+                    }}
+                </p>
+                <template v-else>
                     <FormField
-                        label="Billing service ID"
-                        for="external_id"
-                        :error="errors.external_id"
-                        hint="Optional. The service ID in your billing system."
+                        label="Billing system"
+                        for="billing_system"
+                        :error="errors.billing_system"
+                        hint="Needed for billing IDs. Only this billing system's API tokens can manage the server."
                     >
-                        <Input
-                            id="external_id"
-                            v-model="form.external_id"
-                            autocomplete="off"
+                        <NativeSelect
+                            id="billing_system"
+                            v-model="form.billing_system"
+                            :options="billingSystemOptions"
                         />
                     </FormField>
-                    <FormField
-                        label="Billing client ID"
-                        for="external_client_id"
-                        :error="errors.external_client_id"
-                        hint="Optional. The customer's ID in your billing system."
-                    >
-                        <Input
-                            id="external_client_id"
-                            v-model="form.external_client_id"
-                            autocomplete="off"
-                        />
-                    </FormField>
-                </div>
+                    <div class="grid gap-4 sm:grid-cols-2">
+                        <FormField
+                            label="Billing service ID"
+                            for="external_id"
+                            :error="errors.external_id"
+                            hint="Optional. The service ID in your billing system."
+                        >
+                            <Input
+                                id="external_id"
+                                v-model="form.external_id"
+                                autocomplete="off"
+                            />
+                        </FormField>
+                        <FormField
+                            label="Billing client ID"
+                            for="external_client_id"
+                            :error="errors.external_client_id"
+                            hint="Optional. The customer's ID in your billing system."
+                        >
+                            <Input
+                                id="external_client_id"
+                                v-model="form.external_client_id"
+                                autocomplete="off"
+                            />
+                        </FormField>
+                    </div>
+                </template>
             </template>
 
             <template v-else>

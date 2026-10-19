@@ -438,7 +438,7 @@ const cloudbaseUrl = 'https://cloudbase.it/cloudbase-init/';
                         <li>
                             {{
                                 $t(
-                                    'On the OS templates page the template is listed under Found on Proxmox with a suggested name, family and version. Check them and click Add.',
+                                    'On the OS templates page the template is listed under Found on Proxmox with a suggested name, operating system and version. Check them and click Add.',
                                 )
                             }}
                         </li>
@@ -650,7 +650,7 @@ const cloudbaseUrl = 'https://cloudbase.it/cloudbase-init/';
                         <li>
                             {{
                                 $t(
-                                    'Add the OS template with the family windows: the panel then treats its servers as Windows (password of Administrator, PowerShell scripts).',
+                                    'Add the OS template with the operating system Windows: the panel then treats its servers as Windows (password of Administrator, PowerShell scripts).',
                                 )
                             }}
                         </li>

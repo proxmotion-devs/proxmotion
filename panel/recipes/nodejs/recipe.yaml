@@ -1,7 +1,7 @@
 format: 2
 slug: nodejs
 name: Node.js
-version: 1.0.0
+version: 1.0.1
 category: web
 description:
     en: A long-term support release of Node.js with npm from NodeSource's package repository, optionally with the PM2 process manager.
@@ -10,7 +10,7 @@ maintainers: [{ name: Proxmotion }]
 homepage: https://nodejs.org/
 requires:
     platform: linux
-    os: [debian]
+    os: { families: [debian] }
     min_versions: { ubuntu: '22.04', debian: '12' }
 resources: { min_memory_mib: 512, min_disk_mib: 5120, min_cores: 1 }
 network_models: [bridged, routed, nat]

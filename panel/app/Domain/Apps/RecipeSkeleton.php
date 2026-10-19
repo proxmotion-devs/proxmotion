@@ -27,7 +27,7 @@ final class RecipeSkeleton
             maintainers: [{ name: Your name }]
             requires:
                 platform: linux
-                os: [debian, rhel]
+                os: { families: [debian, rhel] }
             resources: { min_memory_mib: 512, min_disk_mib: 5120, min_cores: 1 }
             network_models: [bridged, routed]
             install_modes: [post]

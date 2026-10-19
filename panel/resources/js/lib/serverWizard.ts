@@ -209,3 +209,16 @@ export function groupFit(
         ).length,
     };
 }
+
+/**
+ * Whether the chosen OS template is inactive: the server is then a test
+ * server without a billing system (docs/adr/0024 §8).
+ */
+export function makesTestServer(
+    osTemplates: { value: string; active: boolean }[],
+    chosen: string | null,
+): boolean {
+    return (
+        osTemplates.find((option) => option.value === chosen)?.active === false
+    );
+}

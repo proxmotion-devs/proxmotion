@@ -418,7 +418,7 @@ const topics = [
                 <p>
                     {{
                         $t(
-                            "The app is inactive, or the server's OS template family and version, its package resources or its network model do not fit what the app's Compatibility tab asks for.",
+                            "The app is inactive, or the server's operating system and version, its package resources or its network model do not fit what the app's Compatibility tab asks for.",
                         )
                     }}
                 </p>
