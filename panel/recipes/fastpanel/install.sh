@@ -44,8 +44,16 @@ else
 
     pm_step 15 "Installing FASTPANEL and its services"
     database=$(pm_input database)
+    # Without --mysql the installer picks per OS (Percona 8.0 on Debian 12, the
+    # OS's own server on Ubuntu); its "default" is the OS's own server.
+    # MariaDB 10.11 is not offered: FASTPANEL takes it from MariaDB's frozen
+    # legacy repository, whose downloads can redirect to a web page.
     options=()
-    [ -z "$database" ] || [ "$database" = default ] || options=(--mysql "$database")
+    case "$database" in
+        '' | default) ;;
+        distribution) options=(--mysql default) ;;
+        *) options=(--mysql "$database") ;;
+    esac
     # The downloaded script only fetches and runs the real installer and then
     # removes it, so it exits 0 even when the installer failed. Its status is
     # not trusted: the checks below decide.

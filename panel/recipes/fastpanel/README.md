@@ -4,9 +4,14 @@ Installs the [FASTPANEL](https://fastpanel.direct/) hosting control panel with i
 official installer: the panel, nginx and Apache, a database server, FTP and mail.
 Supported on Debian 12 and Ubuntu 22.04 and 24.04.
 
-| Input      | Meaning                                                                                      |
-| ---------- | -------------------------------------------------------------------------------------------- |
-| `database` | `default` (the installer's choice for the OS), `mariadb10.11`, `mariadb11.4` or `percona8.0` |
+| Input      | Meaning                                                                                                                                                                                                                                                                    |
+| ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `database` | `default` (the installer's choice: Percona Server 8.0 on Debian 12, the operating system's own server on Ubuntu), `distribution` (the operating system's own server, e.g. MariaDB 10.11 on Debian 12), `mariadb11.4`, `mariadb11.8` (MariaDB's repository) or `percona8.0` |
+
+MariaDB 10.11 is not offered as its own choice: FASTPANEL installs it from MariaDB's
+legacy repository (`downloads.mariadb.com`), which no longer receives updates and
+whose package downloads can be redirected to a web page, failing the install. Choose
+`distribution` on Debian 12 for MariaDB 10.11.
 
 Outputs: the panel address (`https://<server address>:8888/`), the user `fastuser` and a
 generated password.
