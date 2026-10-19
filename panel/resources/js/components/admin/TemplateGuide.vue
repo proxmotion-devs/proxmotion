@@ -52,6 +52,10 @@ dnf install -y cloud-init cloud-utils-growpart qemu-guest-agent
 # The agent blocks guest-exec and file access here by default; the panel needs them
 sed -i -e 's/^FILTER_RPC_ARGS=.*/FILTER_RPC_ARGS=""/' -e 's/^BLACKLIST_RPC=.*/BLACKLIST_RPC=/' \\
   /etc/sysconfig/qemu-ga
+# SELinux confines the agent's commands (no directories under /var/lib, no installers):
+# make only the agent's domain permissive, the rest of SELinux stays enforcing
+dnf install -y policycoreutils-python-utils
+semanage permissive -a virt_qemu_ga_t
 systemctl enable qemu-guest-agent cloud-init cloud-init-local cloud-config cloud-final
 rm -f /etc/NetworkManager/system-connections/*                 # installer network profile
 dnf clean all`,

@@ -280,6 +280,7 @@ monthly):
 | The panel does not list the template | Set `POOL` to the panel's resource pool (or add the template to the pool in Proxmox), then sync |
 | Servers boot but the panel cannot reach the guest agent | The template was not built from a prepared image; rebuild it with these scripts |
 | `Command guest-exec has been disabled` (AlmaLinux, Rocky, RHEL, CentOS, Fedora) | Their `qemu-guest-agent` blocks `guest-exec` and file access by default. In the template (and on servers already cloned from it): `sed -i -e 's/^FILTER_RPC_ARGS=.*/FILTER_RPC_ARGS=""/' -e 's/^BLACKLIST_RPC=.*/BLACKLIST_RPC=/' /etc/sysconfig/qemu-ga && systemctl restart qemu-guest-agent` (see [iso-templates.md](iso-templates.md#4-prepare-the-system-for-cloning)) |
+| `mkdir failed … Permission denied` or `failed to open file '/var/lib/proxmotion/…'` (AlmaLinux, Rocky, RHEL) | SELinux confines the commands the guest agent runs. In the template and on servers already cloned from it: `dnf install -y policycoreutils-python-utils && semanage permissive -a virt_qemu_ga_t` (only the agent's domain becomes permissive). `ausearch -m avc -ts recent` shows what was denied |
 
 ## Why not reuse Virtualizor templates?
 

@@ -51,7 +51,7 @@ final readonly class GuestPackage
             }
         }
 
-        $agent->run($server->vmid, ['mkdir', '-p', '-m', '700', ...array_values(array_unique($directories))]);
+        $agent->runOrFail($server->vmid, ['mkdir', '-p', '-m', '700', ...array_values(array_unique($directories))]);
 
         foreach ($files as $path => $content) {
             $agent->writeFile($server->vmid, $directory.'/'.$path, $content);

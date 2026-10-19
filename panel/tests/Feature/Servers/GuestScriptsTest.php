@@ -469,7 +469,9 @@ class GuestScriptsTest extends TestCase
 
     public function test_a_failing_trial_fails_its_task()
     {
-        $this->proxmox->execHandler = fn (array $command) => [3, '', "growpart is not installed.\n"];
+        $this->proxmox->execHandler = fn (array $command) => $command === ['sh', '/usr/local/sbin/proxmotion-disk']
+            ? [3, '', "growpart is not installed.\n"]
+            : [0, '', ''];
 
         $this->actingAs($this->admin)
             ->post(route('admin.os-templates.scripts.run', [$this->osTemplate, 'disk_resized']), ['server' => $this->server->uuid]);

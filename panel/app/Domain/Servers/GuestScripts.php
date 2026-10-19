@@ -300,7 +300,7 @@ final readonly class GuestScripts
         $path = '/usr/local/sbin/proxmotion-'.$name;
         $config = self::LINUX_CONFIG_DIR.'/'.$event->name();
 
-        $agent->run($vmid, ['mkdir', '-p', self::LINUX_CONFIG_DIR, '/usr/local/sbin']);
+        $agent->runOrFail($vmid, ['mkdir', '-p', self::LINUX_CONFIG_DIR, '/usr/local/sbin']);
         $agent->writeFile($vmid, $config.'.json', self::json($inputs));
         $agent->writeFile($vmid, $config.'.vars', self::vars($inputs));
         $agent->writeFile($vmid, $path, $script);

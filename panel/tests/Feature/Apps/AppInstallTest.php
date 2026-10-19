@@ -239,6 +239,24 @@ class AppInstallTest extends TestCase
         $this->assertSame('The installer could not be started: Failed to start transient service unit: Unit already exists.', $installation->error);
     }
 
+    public function test_a_directory_that_cannot_be_created_fails_with_the_reason_before_any_file_is_written()
+    {
+        // AlmaLinux 9 with SELinux enforcing: the agent's commands are confined.
+        $this->proxmox->execHandler = fn (array $command) => $command[0] === 'mkdir'
+            ? [1, '', "mkdir: cannot create directory '/var/lib/proxmotion': Permission denied\n"]
+            : [0, '', ''];
+
+        $installation = $this->install();
+
+        $this->assertSame(AppInstallationStatus::Failed, $installation->status);
+        $this->assertStringContainsString("mkdir failed inside VM {$this->server->vmid} (exit code 1): mkdir: cannot create directory '/var/lib/proxmotion': Permission denied", (string) $installation->error);
+        $this->assertStringContainsString('SELinux', (string) $installation->error);
+        $this->assertSame([], array_filter(
+            array_keys($this->proxmox->guestFiles[$this->server->vmid] ?? []),
+            fn (string $path) => str_starts_with($path, '/var/lib/proxmotion/'),
+        ));
+    }
+
     public function test_a_failed_installation_can_be_retried_with_a_new_unit()
     {
         $installation = $this->install();

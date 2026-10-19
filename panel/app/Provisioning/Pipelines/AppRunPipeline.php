@@ -79,7 +79,7 @@ final readonly class AppRunPipeline
         // An upgrade writes the version it upgrades to, with the install inputs for it (docs/adr/0016 §4).
         $upgrade = $run->kind === AppRunKind::Upgrade;
         $this->package->upload($agent, $server, $installation, $upgrade ? $run->runVersion() : null, $upgrade ? $run->inputs : null);
-        $agent->run($server->vmid, ['mkdir', '-p', '-m', '700', $directory]);
+        $agent->runOrFail($server->vmid, ['mkdir', '-p', '-m', '700', $directory]);
         $agent->writeFile($server->vmid, $directory.'/inputs.json', GuestPackage::json($run->inputs === [] ? new stdClass : $run->inputs));
         $agent->writeFile($server->vmid, $directory.'/status.json', GuestPackage::startingStatus());
 

@@ -138,6 +138,26 @@ final readonly class GuestAgentResource
     }
 
     /**
+     * run() for a command the next steps depend on (creating directories):
+     * a non-zero exit throws with its error output instead of letting the
+     * following file writes fail without the reason.
+     *
+     * @param  non-empty-list<string>  $command
+     *
+     * @throws GuestAgentException when the command fails or times out
+     */
+    public function runOrFail(int $vmid, array $command, int $timeoutSeconds = 60): GuestExecStatus
+    {
+        $status = $this->run($vmid, $command, timeoutSeconds: $timeoutSeconds);
+
+        if (! $status->succeeded()) {
+            throw GuestAgentException::commandFailed($vmid, $command, $status->exitCode, $status->stderr);
+        }
+
+        return $status;
+    }
+
+    /**
      * Set a user's password inside the guest. The password is sent to Proxmox
      * only; callers must not log it.
      */
