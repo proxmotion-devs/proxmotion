@@ -62,65 +62,70 @@ import type {
     UnavailableApp,
 } from '@/types/admin';
 
-const props = defineProps<{
-    server: {
-        uuid: string;
-        hostname: string;
-        status: ServerStatus;
-        can_retry: boolean;
-        origin: 'provisioned' | 'adopted';
-        vmid: number;
-        network_model: NetworkModel;
-        cpu_cores: number;
-        memory_mib: number;
-        disk_mib: number;
-        port_speed_mbps: number | null;
-        traffic_bytes: number | null;
-        has_password: boolean;
-        busy: boolean;
-        /** New CPU or memory wait for a restart. */
-        reboot_required: boolean;
-        /** Drafts of apps may be tried on it (docs/adr/0018 §7). */
-        is_test: boolean;
-        billing_system: string | null;
-        external_id: string | null;
-        external_client_id: string | null;
-        cluster: { uuid: string; name: string };
-        node: string;
-        storage: string | null;
-        location: string;
-        package: string | null;
-        os_template: string | null;
-        platform: OsPlatform;
-        addresses: {
-            address: string;
-            version: 4 | 6;
-            /** The primary address of its version (listed first). */
-            primary: boolean;
-            pool: { uuid: string; name: string };
-            ptr: string | null;
-            ptr_pending: boolean;
-        }[];
-        provisioned_at: string | null;
-        created_at: string | null;
-    };
-    tasks: Task[];
-    revealedPassword: string | null;
-    revealedAppOutputs: RevealedAppOutputs | null;
-    reinstallOptions: ReinstallOptions;
-    resourceOptions: ResourceOptions;
-    drifts: Drift[];
-    /** Deferred: undefined until loaded, null when unknown. */
-    power?: string | null;
-    /** Deferred: whether the guest agent answers; null when unknown. */
-    agent?: boolean | null;
-    apps: AppInstallation[];
-    appOptions: AppOption[];
-    /** Active apps that do not fit the server, with the first reason. */
-    unavailableApps: UnavailableApp[];
-    entitlements: AppEntitlement[];
-    entitlementOptions: Option[];
-}>();
+const props = withDefaults(
+    defineProps<{
+        server: {
+            uuid: string;
+            hostname: string;
+            status: ServerStatus;
+            can_retry: boolean;
+            origin: 'provisioned' | 'adopted';
+            vmid: number;
+            network_model: NetworkModel;
+            cpu_cores: number;
+            memory_mib: number;
+            disk_mib: number;
+            port_speed_mbps: number | null;
+            traffic_bytes: number | null;
+            has_password: boolean;
+            busy: boolean;
+            /** New CPU or memory wait for a restart. */
+            reboot_required: boolean;
+            /** Drafts of apps may be tried on it (docs/adr/0018 §7). */
+            is_test: boolean;
+            billing_system: string | null;
+            external_id: string | null;
+            external_client_id: string | null;
+            cluster: { uuid: string; name: string };
+            node: string;
+            storage: string | null;
+            location: string;
+            package: string | null;
+            os_template: string | null;
+            platform: OsPlatform;
+            addresses: {
+                address: string;
+                version: 4 | 6;
+                /** The primary address of its version (listed first). */
+                primary: boolean;
+                pool: { uuid: string; name: string };
+                ptr: string | null;
+                ptr_pending: boolean;
+            }[];
+            provisioned_at: string | null;
+            created_at: string | null;
+        };
+        tasks: Task[];
+        revealedPassword: string | null;
+        revealedAppOutputs: RevealedAppOutputs | null;
+        reinstallOptions: ReinstallOptions;
+        resourceOptions: ResourceOptions;
+        drifts: Drift[];
+        /** Deferred: undefined until loaded, null when unknown. */
+        power?: string | null;
+        /** Deferred: whether the guest agent answers; undefined until loaded, null when unknown. */
+        agent?: boolean | null;
+        apps: AppInstallation[];
+        appOptions: AppOption[];
+        /** Active apps that do not fit the server, with the first reason. */
+        unavailableApps: UnavailableApp[];
+        entitlements: AppEntitlement[];
+        entitlementOptions: Option[];
+    }>(),
+    // Vue turns a missing Boolean prop into false, which showed the agent as
+    // unreachable while the deferred prop was still loading.
+    { agent: undefined },
+);
 
 setLayoutProps({
     breadcrumbs: [
@@ -163,6 +168,14 @@ const powerAction = (action: PowerAction) =>
 
 const post = (action: ReturnType<typeof suspend>) =>
     router.visit(action, { preserveScroll: true });
+
+// Only the password changes, so the page does not ask Proxmox for the power
+// state and the guest agent again.
+const revealPassword = () =>
+    router.visit(password(props.server.uuid), {
+        preserveScroll: true,
+        only: ['revealedPassword'],
+    });
 
 const modelLabel =
     NETWORK_MODELS.find((model) => model.value === props.server.network_model)
@@ -415,7 +428,7 @@ const resetAfterTrial = () => {
                                 <Button
                                     variant="outline"
                                     size="sm"
-                                    @click="post(password(server.uuid))"
+                                    @click="revealPassword"
                                 >
                                     <Eye class="h-4 w-4" />
                                     {{ $t('Show') }}

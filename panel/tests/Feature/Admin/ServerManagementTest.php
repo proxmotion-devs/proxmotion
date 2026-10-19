@@ -11,6 +11,7 @@ use App\Enums\ServerOrigin;
 use App\Enums\ServerStatus;
 use App\Enums\TaskStatus;
 use App\Enums\TaskType;
+use App\Http\Middleware\HandleInertiaRequests;
 use App\Models\AppRecipe;
 use App\Models\AuditLog;
 use App\Models\BillingSystem;
@@ -385,6 +386,29 @@ class ServerManagementTest extends AdminTestCase
         $server = Server::query()->sole();
 
         $this->post(route('admin.servers.password', $server))->assertSessionHas('revealed_password', 'chosen-password-123');
+    }
+
+    public function test_revealing_the_password_reloads_only_the_password()
+    {
+        $this->post(route('admin.servers.store'), $this->payload(['root_password' => 'chosen-password-123']));
+        $server = Server::query()->sole();
+
+        // As the page's reveal button asks for it: the redirect back keeps the partial reload headers.
+        $page = $this->from(route('admin.servers.show', $server))
+            ->withHeaders([
+                'X-Inertia' => 'true',
+                'X-Inertia-Version' => (string) app(HandleInertiaRequests::class)->version(request()),
+                'X-Inertia-Partial-Component' => 'admin/servers/Show',
+                'X-Inertia-Partial-Data' => 'revealedPassword',
+            ])
+            ->followingRedirects()
+            ->post(route('admin.servers.password', $server))
+            ->assertOk();
+
+        $this->assertSame('chosen-password-123', $page->json('props.revealedPassword'));
+        $this->assertNull($page->json('props.agent'), 'The guest agent is not asked again.');
+        $this->assertNull($page->json('props.power'));
+        $this->assertNull($page->json('deferredProps'));
     }
 
     public function test_input_is_validated()
