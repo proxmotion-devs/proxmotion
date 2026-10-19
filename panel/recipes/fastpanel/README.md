@@ -13,10 +13,13 @@ generated password.
 
 FASTPANEL can only be installed on a freshly installed server: its installer stops when
 nginx, Apache or a database server is already there (its log is
-`/tmp/install_fastpanel.debug`). The installer also finishes successfully when its web
-server step fails, so the recipe checks for `/usr/sbin/nginx` afterwards and fails with the
-last lines of that log (copied into the run's log) when nginx is missing. The panel asks for a free licence key on the first
-login. The browser warns about the panel's self-signed certificate until one is issued
+`/tmp/install_fastpanel.debug`). The installer's exit status cannot be trusted (its
+downloader exits 0 even when the installer failed), so the recipe fails when `fastpanel2`
+or `/usr/sbin/nginx` is missing or the installer printed its failure message, with the
+first error of that log as the reason and its last lines in the run's log. When a
+download fails (e.g. from the MariaDB repository), try again later or choose another
+database server; reinstall the server first. The panel asks for a free licence key on
+the first login. The browser warns about the panel's self-signed certificate until one is issued
 in the panel.
 
 Running the recipe again on a server where FASTPANEL is installed only sets a new
