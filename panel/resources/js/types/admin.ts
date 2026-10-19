@@ -128,10 +128,38 @@ export type GuestScriptEvent =
 export type GuestScriptSlot = {
     event: GuestScriptEvent;
     content: string | null;
+    /** Saved but not published: runs only in trials (docs/adr/0023). */
+    draft: string | null;
     default: string | null;
     inputs: string[];
     can_be_tried: boolean;
     critical: boolean;
+};
+
+/** One run of a guest script, as the Scripts page lists it. */
+export type GuestScriptRun = {
+    uuid: string;
+    server: string;
+    server_uuid: string;
+    source: 'default' | 'published' | 'draft';
+    trace: boolean;
+    /** An administrator's trial; otherwise an operation ran it. */
+    trial: boolean;
+    status: 'running' | 'succeeded' | 'failed';
+    exit_code: number | null;
+    message: string | null;
+    started_at: string | null;
+    finished_at: string | null;
+};
+
+export type GuestScriptRunDetail = GuestScriptRun & {
+    script: string;
+    inputs: Record<string, unknown>;
+    stdout: string | null;
+    stderr: string | null;
+    output_truncated: boolean;
+    /** False for password scripts, whose output is never kept. */
+    output_kept: boolean;
 };
 
 export type Package = {

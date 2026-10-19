@@ -7,6 +7,7 @@ use App\Enums\TaskStatus;
 use App\Enums\TaskType;
 use App\Models\AuditLog;
 use App\Models\GuestScript;
+use App\Models\GuestScriptLog;
 use App\Models\OsTemplate;
 use App\Models\Server;
 use App\Models\Task;
@@ -290,7 +291,7 @@ class GuestScriptsTest extends TestCase
                 ->where('servers', [['value' => $this->server->uuid, 'label' => $this->server->hostname]]));
     }
 
-    public function test_admins_save_and_reset_scripts_and_both_are_audited()
+    public function test_saving_writes_a_draft_that_operations_do_not_run_until_it_is_published()
     {
         $this->actingAs($this->admin)
             ->put(route('admin.os-templates.scripts.update', [$this->osTemplate, 'disk_resized']), ['script' => "#!/bin/sh\r\necho one\r\n"])
@@ -299,15 +300,146 @@ class GuestScriptsTest extends TestCase
         $this->actingAs($this->admin)
             ->put(route('admin.os-templates.scripts.update', [$this->osTemplate, 'disk_resized']), ['script' => "#!/bin/sh\necho two\n"]);
 
-        $this->assertSame("#!/bin/sh\necho two\n", GuestScript::query()->sole()->content);
-        $updates = AuditLog::query()->where('action', 'guest_script.updated')->orderBy('id')->get();
-        $this->assertSame([null, "#!/bin/sh\necho one\n"], $updates->pluck('properties.before')->all(), 'Line endings are normalised.');
-        $this->assertSame("#!/bin/sh\necho two\n", $updates[1]->properties['after']);
+        $script = GuestScript::query()->sole();
+        $this->assertNull($script->content);
+        $this->assertSame("#!/bin/sh\necho two\n", $script->draft_content);
+        $drafts = AuditLog::query()->where('action', 'guest_script.draft_saved')->orderBy('id')->get();
+        $this->assertSame([null, "#!/bin/sh\necho one\n"], $drafts->pluck('properties.before')->all(), 'Line endings are normalised.');
+
+        $this->grow();
+        $this->assertSame(file_get_contents(resource_path('guest/linux/disk.sh')), $this->proxmox->guestFiles[$this->server->vmid]['/usr/local/sbin/proxmotion-disk'], 'The default still runs.');
+
+        $this->actingAs($this->admin)->post(route('admin.os-templates.scripts.publish', [$this->osTemplate, 'disk_resized']))->assertRedirect();
+
+        $script->refresh();
+        $this->assertSame("#!/bin/sh\necho two\n", $script->content);
+        $this->assertNull($script->draft_content);
+        $published = AuditLog::query()->where('action', 'guest_script.updated')->sole();
+        $this->assertNull($published->properties['before']);
+        $this->assertSame("#!/bin/sh\necho two\n", $published->properties['after']);
+    }
+
+    public function test_resetting_keeps_the_draft_and_discarding_keeps_the_published_script()
+    {
+        $this->override(GuestScriptEvent::DiskResized, "echo live\n");
+        GuestScript::query()->sole()->forceFill(['draft_content' => "echo draft\n"])->save();
 
         $this->actingAs($this->admin)->delete(route('admin.os-templates.scripts.destroy', [$this->osTemplate, 'disk_resized']));
 
-        $this->assertSame(0, GuestScript::query()->count());
-        $this->assertSame("#!/bin/sh\necho two\n", AuditLog::query()->where('action', 'guest_script.reset')->sole()->properties['before']);
+        $script = GuestScript::query()->sole();
+        $this->assertNull($script->content);
+        $this->assertSame("echo draft\n", $script->draft_content);
+        $this->assertSame("echo live\n", AuditLog::query()->where('action', 'guest_script.reset')->sole()->properties['before']);
+
+        $this->actingAs($this->admin)->delete(route('admin.os-templates.scripts.discard', [$this->osTemplate, 'disk_resized']));
+
+        $this->assertSame(0, GuestScript::query()->count(), 'Nothing is left of the row.');
+        $this->assertSame("echo draft\n", AuditLog::query()->where('action', 'guest_script.draft_discarded')->sole()->properties['before']);
+
+        $this->override(GuestScriptEvent::DiskResized, "echo live\n");
+        GuestScript::query()->sole()->forceFill(['draft_content' => "echo draft\n"])->save();
+        $this->actingAs($this->admin)->delete(route('admin.os-templates.scripts.discard', [$this->osTemplate, 'disk_resized']));
+
+        $this->assertSame("echo live\n", GuestScript::query()->sole()->content);
+        $this->assertNull(GuestScript::query()->sole()->draft_content);
+    }
+
+    public function test_publishing_without_a_draft_changes_nothing()
+    {
+        $this->override(GuestScriptEvent::DiskResized, "echo live\n");
+
+        $this->actingAs($this->admin)->post(route('admin.os-templates.scripts.publish', [$this->osTemplate, 'disk_resized']));
+
+        $this->assertSame("echo live\n", GuestScript::query()->sole()->content);
+        $this->assertSame(0, AuditLog::query()->where('action', 'guest_script.updated')->count());
+    }
+
+    public function test_a_draft_is_tried_at_its_own_path_with_a_trace_and_its_output_is_logged()
+    {
+        $this->override(GuestScriptEvent::DiskResized, "echo live\n");
+        GuestScript::query()->sole()->forceFill(['draft_content' => "#!/bin/sh\nset -e\necho growing\nfalse\n"])->save();
+        $this->proxmox->execHandler = fn (array $command) => $command === ['sh', '-x', '/usr/local/sbin/proxmotion-disk-draft']
+            ? [1, "growing\n", "+ set -e\n+ echo growing\n+ false\n"]
+            : [0, '', ''];
+
+        $this->actingAs($this->admin)
+            ->post(route('admin.os-templates.scripts.run', [$this->osTemplate, 'disk_resized']), ['server' => $this->server->uuid, 'draft' => true, 'trace' => true])
+            ->assertSessionHasNoErrors();
+
+        $files = $this->proxmox->guestFiles[$this->server->vmid];
+        $this->assertSame("#!/bin/sh\nset -e\necho growing\nfalse\n", $files['/usr/local/sbin/proxmotion-disk-draft']);
+        $this->assertArrayNotHasKey('/usr/local/sbin/proxmotion-disk', $files, 'The published script is left alone.');
+        $task = $this->server->tasks()->where('type', TaskType::GuestScript)->sole();
+        $this->assertSame(TaskStatus::Failed, $task->status);
+        $this->assertSame('The file system could not be grown inside the server: exit code 1', $task->error, 'Trace lines are no reason.');
+
+        $log = GuestScriptLog::query()->sole();
+        $this->assertSame('draft', $log->source);
+        $this->assertTrue($log->trace);
+        $this->assertSame('failed', $log->status);
+        $this->assertSame(1, $log->exit_code);
+        $this->assertSame("growing\n", $log->stdout);
+        $this->assertSame($this->server->disk_mib, $log->inputs['disk_mib']);
+        $this->assertTrue(AuditLog::query()->where('action', 'guest_script.run')->sole()->properties['draft']);
+
+        $this->actingAs($this->admin)
+            ->get(route('admin.os-templates.scripts', $this->osTemplate))
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('scripts.2.draft', "#!/bin/sh\nset -e\necho growing\nfalse\n")
+                ->where('canTrace', true)
+                ->has('logs.disk_resized', 1)
+                ->where('logs.disk_resized.0.uuid', $log->uuid)
+                ->where('logs.disk_resized.0.trial', true)
+                ->where('logs.disk_resized.0.status', 'failed')
+                ->missing('logs.disk_resized.0.stdout'));
+
+        $this->actingAs($this->admin)
+            ->getJson(route('admin.guest-script-logs.show', $log))
+            ->assertOk()
+            ->assertJsonPath('stdout', "growing\n")
+            ->assertJsonPath('stderr', "+ set -e\n+ echo growing\n+ false\n")
+            ->assertJsonPath('script', "#!/bin/sh\nset -e\necho growing\nfalse\n")
+            ->assertJsonPath('inputs.hostname', $this->server->hostname)
+            ->assertJsonPath('server', $this->server->hostname);
+    }
+
+    public function test_a_draft_trial_needs_a_draft()
+    {
+        $this->actingAs($this->admin)
+            ->post(route('admin.os-templates.scripts.run', [$this->osTemplate, 'disk_resized']), ['server' => $this->server->uuid, 'draft' => true]);
+
+        $this->assertSame(0, $this->server->tasks()->where('type', TaskType::GuestScript)->count());
+    }
+
+    public function test_runs_during_operations_are_logged_and_password_output_is_never_kept()
+    {
+        $this->proxmox->execHandler = fn (array $command) => match ($command) {
+            ['sh', '/usr/local/sbin/proxmotion-disk'] => [0, "resized\n", ''],
+            ['sh', '/usr/local/sbin/proxmotion-password'] => [0, "password is chosen-password-123\n", ''],
+            default => [0, '', ''],
+        };
+        $this->override(GuestScriptEvent::PasswordReset, "#!/bin/sh\nread -r password\n");
+
+        $this->grow();
+        app(TaskRunner::class)->start($this->server, TaskType::ResetPassword, $this->admin, secret: 'chosen-password-123');
+
+        $disk = GuestScriptLog::query()->where('event', 'disk_resized')->sole();
+        $this->assertSame(['default', 'succeeded', "resized\n"], [$disk->source, $disk->status, $disk->stdout]);
+        $password = GuestScriptLog::query()->where('event', 'password_reset')->sole();
+        $this->assertSame(['published', 'succeeded', 0], [$password->source, $password->status, $password->exit_code]);
+        $this->assertNull($password->stdout);
+        $this->assertStringNotContainsString('chosen-password-123', json_encode($password->getAttributes()) ?: '');
+    }
+
+    public function test_a_run_without_an_agent_is_logged_with_the_reason()
+    {
+        $this->proxmox->agentDown[$this->server->vmid] = true;
+
+        $this->grow();
+
+        $log = GuestScriptLog::query()->sole();
+        $this->assertSame('failed', $log->status);
+        $this->assertStringStartsWith('The guest agent did not answer', (string) $log->message);
     }
 
     public function test_scripts_are_validated()

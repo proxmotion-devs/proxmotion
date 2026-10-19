@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\AppLog;
+use App\Models\GuestScriptLog;
 use App\Models\IdempotencyKey;
 use App\Models\WebhookDelivery;
 use Illuminate\Support\Facades\Schedule;
@@ -14,8 +15,8 @@ Schedule::command('model:prune', ['--model' => [IdempotencyKey::class]])->hourly
 // Drop webhook deliveries after 30 days (docs/adr/0013).
 Schedule::command('model:prune', ['--model' => [WebhookDelivery::class]])->daily();
 
-// Drop the logs of app scripts after 90 days (docs/adr/0021).
-Schedule::command('model:prune', ['--model' => [AppLog::class]])->daily();
+// Drop the logs of app scripts and guest scripts after 90 days (docs/adr/0021, 0023).
+Schedule::command('model:prune', ['--model' => [AppLog::class, GuestScriptLog::class]])->daily();
 
 // Follow app installers running inside servers (docs/adr/0015).
 Schedule::command('apps:poll')->everyMinute()->withoutOverlapping();
