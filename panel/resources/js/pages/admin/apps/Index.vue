@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3';
 import { FileUp, Pencil, Plus } from '@lucide/vue';
-import { ref } from 'vue';
+import { computed, ref } from 'vue';
 import FormDialog from '@/components/admin/FormDialog.vue';
+import AppSystemsDialog from '@/components/admin/AppSystemsDialog.vue';
+import type { AppOsVersion } from '@/components/admin/AppSystemsDialog.vue';
 import FormField from '@/components/admin/FormField.vue';
 import GuideBox from '@/components/admin/GuideBox.vue';
 import StatusBadge from '@/components/admin/StatusBadge.vue';
@@ -27,7 +29,8 @@ defineOptions({
     layout: { breadcrumbs: [{ title: 'Apps', href: index() }] },
 });
 
-defineProps<{
+const props = defineProps<{
+    osVersions: AppOsVersion[];
     apps: {
         slug: string;
         name: string;
@@ -39,7 +42,10 @@ defineProps<{
         version: string | null;
         category: string;
         description: AppText;
-        os: string[];
+        platform: string;
+        recipe_os: string[];
+        suggested_ids: number[];
+        os_version_ids: number[];
         billing: 'free' | 'paid';
         is_active: boolean;
         installed_count: number;
@@ -50,6 +56,35 @@ const page = usePage<{ locale: string }>();
 
 const describe = (text: AppText) =>
     (page.props.locale === 'tr' ? text.tr : null) ?? text.en;
+
+// The operating system versions an app is offered on (docs/adr/0026).
+const systemsFor = ref<(typeof props.apps)[number] | null>(null);
+const systemsOpen = computed({
+    get: () => systemsFor.value !== null,
+    set: (value: boolean) => {
+        if (!value) {
+            systemsFor.value = null;
+        }
+    },
+});
+
+/** "Ubuntu 22.04, 24.04 · Debian 12". */
+const tickedLabel = (ids: number[]) => {
+    const bySystem = new Map<string, string[]>();
+
+    for (const version of props.osVersions) {
+        if (ids.includes(version.id)) {
+            bySystem.set(version.system, [
+                ...(bySystem.get(version.system) ?? []),
+                version.version,
+            ]);
+        }
+    }
+
+    return [...bySystem.entries()]
+        .map(([system, versions]) => `${system} ${versions.join(', ')}`)
+        .join(' · ');
+};
 
 const toggle = (slug: string, active: boolean) =>
     router.visit(update(slug), {
@@ -208,7 +243,23 @@ const submitCreate = () =>
                             </p>
                         </td>
                         <td class="px-4 py-3 text-xs">
-                            <div v-for="os in app.os" :key="os">{{ os }}</div>
+                            <span v-if="app.os_version_ids.length">{{
+                                tickedLabel(app.os_version_ids)
+                            }}</span>
+                            <StatusBadge
+                                v-else
+                                tone="warning"
+                                label="Not offered on any system"
+                            />
+                            <Button
+                                variant="link"
+                                size="sm"
+                                class="block h-auto px-0 text-xs"
+                                :data-test="`systems-${app.slug}`"
+                                @click="systemsFor = app"
+                            >
+                                {{ $t('Choose systems') }}
+                            </Button>
                         </td>
                         <td class="px-4 py-3">{{ app.installed_count }}</td>
                         <td class="px-4 py-3 text-right whitespace-nowrap">
@@ -253,6 +304,13 @@ const submitCreate = () =>
             </table>
         </div>
     </div>
+
+    <AppSystemsDialog
+        v-if="systemsFor"
+        v-model:open="systemsOpen"
+        :app="systemsFor"
+        :os-versions="osVersions"
+    />
 
     <FormDialog
         v-model:open="createOpen"

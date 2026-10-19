@@ -2,7 +2,7 @@
 
 - **Status:** Accepted
 - **Date:** 2026-10-19
-- **Supersedes:** ADR 0022 (derivative distributions). **Amends:** ADR 0016 §3 (operating systems: families and groups).
+- **Supersedes:** ADR 0022 (derivative distributions). **Amends:** ADR 0016 §3 (operating systems: families and groups). **Amended by:** ADR 0026 (operating systems are the administrators' own list; families, compatible systems and the matching of §4 only suggest).
 
 ## Context
 

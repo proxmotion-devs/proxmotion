@@ -9,7 +9,6 @@ use App\Http\Controllers\Admin\AppRecipeController;
 use App\Http\Controllers\Admin\BillingSystemController;
 use App\Http\Controllers\Admin\ClusterController;
 use App\Http\Controllers\Admin\DashboardController;
-use App\Http\Controllers\Admin\DistributionController;
 use App\Http\Controllers\Admin\DnsProviderController;
 use App\Http\Controllers\Admin\DriftController;
 use App\Http\Controllers\Admin\GuestScriptController;
@@ -19,6 +18,7 @@ use App\Http\Controllers\Admin\IpPoolController;
 use App\Http\Controllers\Admin\IpPoolRdnsController;
 use App\Http\Controllers\Admin\LocationController;
 use App\Http\Controllers\Admin\NodeController;
+use App\Http\Controllers\Admin\OperatingSystemController;
 use App\Http\Controllers\Admin\OsTemplateController;
 use App\Http\Controllers\Admin\PackageController;
 use App\Http\Controllers\Admin\PlacementGroupController;
@@ -66,12 +66,12 @@ Route::post('ip-pools/{ipPool}/addresses/keep-only', [IpAddressController::class
 Route::patch('ip-addresses/{ipAddress}', [IpAddressController::class, 'update'])->name('ip-addresses.update');
 Route::delete('ip-addresses/{ipAddress}', [IpAddressController::class, 'destroy'])->name('ip-addresses.destroy');
 
-// The operating systems OS templates are picked from (docs/adr/0025), keyed by os-release ID.
-Route::post('distributions', [DistributionController::class, 'store'])->name('distributions.store');
-Route::put('distributions/{distribution:slug}', [DistributionController::class, 'update'])->name('distributions.update');
-Route::delete('distributions/{distribution:slug}', [DistributionController::class, 'destroy'])->name('distributions.destroy');
-Route::post('distributions/{distribution:slug}/releases', [DistributionController::class, 'storeRelease'])->name('distributions.releases.store');
-Route::delete('distributions/{distribution:slug}/releases/{release}', [DistributionController::class, 'destroyRelease'])->scopeBindings()->name('distributions.releases.destroy');
+// The operating systems and versions OS templates are of (docs/adr/0026).
+Route::post('operating-systems', [OperatingSystemController::class, 'store'])->name('operating-systems.store');
+Route::put('operating-systems/{operatingSystem}', [OperatingSystemController::class, 'update'])->name('operating-systems.update');
+Route::delete('operating-systems/{operatingSystem}', [OperatingSystemController::class, 'destroy'])->name('operating-systems.destroy');
+Route::post('operating-systems/{operatingSystem}/versions', [OperatingSystemController::class, 'storeVersion'])->name('operating-systems.versions.store');
+Route::delete('operating-systems/{operatingSystem}/versions/{version}', [OperatingSystemController::class, 'destroyVersion'])->scopeBindings()->name('operating-systems.versions.destroy');
 
 Route::resource('os-templates', OsTemplateController::class)->only(['index', 'store', 'update', 'destroy'])
     ->parameters(['os-templates' => 'osTemplate']);
@@ -90,6 +90,7 @@ Route::resource('placement-groups', PlacementGroupController::class)->only(['ind
 
 Route::get('apps', [AppController::class, 'index'])->name('apps.index');
 Route::patch('apps/{appRecipe}', [AppController::class, 'update'])->name('apps.update');
+Route::put('apps/{appRecipe}/systems', [AppController::class, 'systems'])->name('apps.systems');
 // Recipe editor (docs/adr/0018).
 Route::post('apps', [AppRecipeController::class, 'store'])->name('apps.store');
 Route::post('apps/import', [AppRecipeController::class, 'import'])->middleware('throttle:20,1')->name('apps.import');

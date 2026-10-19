@@ -27,12 +27,13 @@ use App\Models\User;
 use App\Provisioning\ServerCreator;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\Concerns\BuildsInfrastructure;
+use Tests\Concerns\OffersApps;
 use Tests\Support\FakeProxmoxCluster;
 use Tests\Unit\PublicKeyTest;
 
 class ServerManagementTest extends AdminTestCase
 {
-    use BuildsInfrastructure;
+    use BuildsInfrastructure, OffersApps;
 
     private FakeProxmoxCluster $proxmox;
 
@@ -472,6 +473,7 @@ class ServerManagementTest extends AdminTestCase
     public function test_the_create_form_offers_the_apps_each_template_fits()
     {
         app(RecipeSynchronizer::class)->sync();
+        $this->offerApps();
         $windows = OsTemplate::factory()->windows()->create();
 
         $this->get(route('admin.servers.create'))
@@ -485,6 +487,7 @@ class ServerManagementTest extends AdminTestCase
     public function test_a_server_can_be_created_with_an_app()
     {
         app(RecipeSynchronizer::class)->sync();
+        $this->offerApps();
 
         $this->post(route('admin.servers.store'), $this->payload(['app' => 'openvpn', 'app_inputs' => ['port' => 1195]]))
             ->assertSessionHasNoErrors();
@@ -499,6 +502,7 @@ class ServerManagementTest extends AdminTestCase
     public function test_apps_that_do_not_fit_and_invalid_app_inputs_are_shown_on_the_form()
     {
         app(RecipeSynchronizer::class)->sync();
+        $this->offerApps();
         AppRecipe::query()->where('slug', 'docker')->update(['is_active' => false]);
 
         $this->post(route('admin.servers.store'), $this->payload(['app' => 'docker']))->assertSessionHasErrors('app');
@@ -511,6 +515,7 @@ class ServerManagementTest extends AdminTestCase
     public function test_admins_can_grant_and_revoke_paid_apps()
     {
         app(RecipeSynchronizer::class)->sync();
+        $this->offerApps();
         $openvpn = AppRecipe::query()->with('latestVersion')->where('slug', 'openvpn')->firstOrFail();
         $version = $openvpn->latestVersion;
         $this->assertNotNull($version);

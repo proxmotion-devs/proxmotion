@@ -37,7 +37,7 @@ use Illuminate\Validation\Rule;
  */
 class ServerController extends ApiController
 {
-    private const WITH = ['package:id,uuid,name', 'location:id,uuid,name', 'osTemplate:id,uuid,name', 'ipAddresses.pool'];
+    private const WITH = ['package:id,uuid,name', 'location:id,uuid,name', 'osTemplate:id,uuid,operating_system_version_id,name', 'ipAddresses.pool'];
 
     public function __construct(private readonly TaskRunner $tasks) {}
 

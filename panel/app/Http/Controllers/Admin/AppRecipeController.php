@@ -108,16 +108,16 @@ class AppRecipeController extends Controller
                 'published_at' => $version->reviewed_at?->toIso8601String(),
                 'created_at' => $version->created_at?->toIso8601String(),
             ]),
-            // requires.os names families and distributions (docs/adr/0024 §4).
+            // requires.os names families and well-known os-release IDs; it only suggests systems (docs/adr/0024 §4, 0026).
             'distributions' => Distributions::forForm(),
             'library' => $loader->library(),
-            // The distribution and version pairs the active Linux OS templates are
-            // matched as, for the requirements' OS picker (lowest version first).
+            // The system and version pairs of the active Linux OS templates,
+            // for the requirements' OS picker (lowest version first).
             'osTemplates' => OsTemplate::query()
                 ->where('is_active', true)
                 ->where('platform', OsPlatform::Linux)
-                ->get(['distribution', 'version', 'compatible_with', 'compatible_version'])
-                ->map(fn (OsTemplate $template) => ['distribution' => $template->matchDistribution(), 'version' => $template->matchVersion()])
+                ->get(['distribution', 'version'])
+                ->map(fn (OsTemplate $template) => ['distribution' => $template->distribution, 'version' => $template->version])
                 ->unique(fn (array $template) => $template['distribution'].' '.$template['version'])
                 ->sort(fn (array $a, array $b) => strcmp($a['distribution'], $b['distribution']) ?: version_compare($a['version'], $b['version']))
                 ->values(),

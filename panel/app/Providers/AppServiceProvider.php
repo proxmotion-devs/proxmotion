@@ -2,7 +2,6 @@
 
 namespace App\Providers;
 
-use App\Domain\Infrastructure\DistributionCatalog;
 use App\Models\ApiToken;
 use Carbon\CarbonImmutable;
 use Illuminate\Cache\RateLimiting\Limit;
@@ -20,8 +19,7 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        // Read once per request (or queued job) and forgotten when changed.
-        $this->app->scoped(DistributionCatalog::class);
+        //
     }
 
     /**

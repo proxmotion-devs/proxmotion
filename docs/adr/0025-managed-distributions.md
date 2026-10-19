@@ -1,6 +1,6 @@
 # 25. Operating systems managed by administrators
 
-- **Status:** Accepted
+- **Status:** Superseded by ADR 0026 (never released)
 - **Date:** 2026-10-20
 - **Amends:** ADR 0024 §2 (the catalog) and §5 (the admin form).
 

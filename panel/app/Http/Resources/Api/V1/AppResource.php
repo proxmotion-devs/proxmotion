@@ -4,12 +4,10 @@ declare(strict_types=1);
 
 namespace App\Http\Resources\Api\V1;
 
-use App\Domain\Apps\Recipe;
 use App\Domain\Apps\RecipeAction;
 use App\Domain\Apps\RecipeInput;
 use App\Domain\Apps\RecipeOutput;
 use App\Domain\Infrastructure\Distributions;
-use App\Enums\OsFamily;
 use App\Models\AppRecipe;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -46,8 +44,8 @@ class AppResource extends JsonResource
             'category' => $recipe->category,
             'description' => $recipe->description,
             'format' => $recipe->format,
-            // Format 2 recipes name families and distributions (docs/adr/0024); `os` then lists the distributions they cover by name, with any version.
-            'os' => $recipe->format === 1 ? $recipe->os : array_map(fn (string $distribution) => ['family' => Distributions::apiName($distribution), 'versions' => []], self::coveredDistributions($recipe)),
+            // The operating systems administrators offer the app on (docs/adr/0026), by system slug with their versions.
+            'os' => $this->offeredOn(),
             'requires' => [
                 'platform' => $recipe->platform,
                 // Deprecated: families and distributions in one list, as before.
@@ -76,18 +74,20 @@ class AppResource extends JsonResource
     }
 
     /**
-     * The known base distributions of the recipe's families, then its own distributions.
+     * The ticked versions grouped by system, as v1's `os` always was: `family`
+     * is the system's slug (the templates' `distribution`).
      *
-     * @return list<string>
+     * @return list<array{family: string, versions: list<string>}>
      */
-    private static function coveredDistributions(Recipe $recipe): array
+    private function offeredOn(): array
     {
-        $distributions = [];
+        $systems = [];
 
-        foreach ($recipe->families ?? [] as $family) {
-            $distributions = [...$distributions, ...Distributions::ofFamily(OsFamily::from($family))];
+        foreach ($this->osVersions->loadMissing('operatingSystem') as $version) {
+            $slug = Distributions::apiName($version->operatingSystem->slug);
+            $systems[$slug][] = $version->version;
         }
 
-        return array_values(array_unique([...$distributions, ...($recipe->distributions ?? [])]));
+        return array_map(fn (string $slug, array $versions) => ['family' => $slug, 'versions' => $versions], array_keys($systems), array_values($systems));
     }
 }

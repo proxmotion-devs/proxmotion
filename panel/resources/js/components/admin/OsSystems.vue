@@ -1,147 +1,83 @@
 <script setup lang="ts">
 import { router, useForm } from '@inertiajs/vue3';
 import { Pencil, Plus, X } from '@lucide/vue';
-import { trans } from 'laravel-vue-i18n';
-import { computed, ref } from 'vue';
+import { ref } from 'vue';
 import ConfirmDelete from '@/components/admin/ConfirmDelete.vue';
 import FormDialog from '@/components/admin/FormDialog.vue';
 import FormField from '@/components/admin/FormField.vue';
 import NativeSelect from '@/components/admin/NativeSelect.vue';
 import { Button } from '@/components/ui/button';
-import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { find } from '@/lib/osTemplates';
-import type { Distribution, Family } from '@/lib/osTemplates';
-import { destroy, store, update } from '@/routes/admin/distributions';
+import type { OperatingSystem } from '@/lib/osTemplates';
+import { destroy, store, update } from '@/routes/admin/operating-systems';
 import {
-    destroy as destroyRelease,
-    store as storeRelease,
-} from '@/routes/admin/distributions/releases';
+    destroy as destroyVersion,
+    store as storeVersion,
+} from '@/routes/admin/operating-systems/versions';
+import type { OsPlatform } from '@/types/admin';
 
 /**
- * The operating systems the OS template form offers and their versions,
- * managed by administrators (docs/adr/0025).
+ * The administrators' operating systems and their versions (docs/adr/0026):
+ * OS templates are of one of these versions, and apps are ticked for them.
  */
-const props = defineProps<{
-    distributions: Distribution[];
-    families: Family[];
-}>();
+defineProps<{ systems: OperatingSystem[] }>();
 
-const familyLabel = (value: string) =>
-    trans(
-        props.families.find((family) => family.value === value)?.label ?? value,
-    );
-
-const familyOptions = computed(() =>
-    props.families.map((family) => ({
-        value: family.value,
-        label: trans(family.label),
-    })),
-);
+const platformOptions = [
+    { value: 'linux', label: 'Linux' },
+    { value: 'windows', label: 'Windows' },
+];
 
 // --- A system ---------------------------------------------------------
 
 const systemOpen = ref(false);
-const editing = ref<Distribution | null>(null);
+const editing = ref<OperatingSystem | null>(null);
 
-const system = useForm({
-    slug: '',
-    name: '',
-    family: 'debian',
-    base: '',
-    same_version: false,
-});
+const system = useForm({ name: '', platform: 'linux' as OsPlatform });
 
-/** Systems apps can be matched as: of the same family, not built on another one. */
-const baseOptions = computed(() => [
-    { value: '', label: trans('None') },
-    ...props.distributions
-        .filter(
-            (distribution) =>
-                distribution.base === null &&
-                distribution.family === system.family &&
-                distribution.family !== 'windows' &&
-                distribution.id !== editing.value?.id,
-        )
-        .map((distribution) => ({
-            value: distribution.id,
-            label: distribution.name,
-        })),
-]);
-
-const openSystem = (distribution: Distribution | null) => {
-    editing.value = distribution;
+const openSystem = (entry: OperatingSystem | null) => {
+    editing.value = entry;
     system.clearErrors();
     system.defaults({
-        slug: distribution?.id ?? '',
-        name: distribution?.name ?? '',
-        family: distribution?.family ?? 'debian',
-        base: distribution?.base ?? '',
-        same_version: distribution?.same_version ?? false,
+        name: entry?.name ?? '',
+        platform: entry?.platform ?? 'linux',
     });
     system.reset();
     systemOpen.value = true;
 };
 
-const saveSystem = () => {
-    const target = editing.value;
-
-    system
-        .transform((data) => {
-            const values = { ...data, base: data.base || null };
-
-            if (target) {
-                delete (values as Partial<typeof values>).slug;
-            }
-
-            return values;
-        })
-        .submit(target ? update(target.id) : store(), {
-            preserveScroll: true,
-            onSuccess: () => (systemOpen.value = false),
-        });
-};
+const saveSystem = () =>
+    system.submit(editing.value ? update(editing.value.id) : store(), {
+        preserveScroll: true,
+        onSuccess: () => (systemOpen.value = false),
+    });
 
 // --- A version --------------------------------------------------------
 
-const releaseOpen = ref(false);
-const adding = ref<Distribution | null>(null);
+const versionOpen = ref(false);
+const adding = ref<OperatingSystem | null>(null);
 
-const release = useForm({ version: '', base_version: '' });
+const version = useForm({ version: '' });
 
-const baseOfAdding = computed(() =>
-    adding.value?.base && !adding.value.same_version
-        ? find(props.distributions, adding.value.base)
-        : undefined,
-);
-
-const openRelease = (distribution: Distribution) => {
-    adding.value = distribution;
-    release.clearErrors();
-    release.reset();
-    releaseOpen.value = true;
+const openVersion = (entry: OperatingSystem) => {
+    adding.value = entry;
+    version.clearErrors();
+    version.reset();
+    versionOpen.value = true;
 };
 
-const saveRelease = () => {
-    if (!adding.value) {
-        return;
+const saveVersion = () => {
+    if (adding.value) {
+        version.submit(storeVersion(adding.value.id), {
+            preserveScroll: true,
+            onSuccess: () => (versionOpen.value = false),
+        });
     }
-
-    release.submit(storeRelease(adding.value.id), {
-        preserveScroll: true,
-        onSuccess: () => (releaseOpen.value = false),
-    });
 };
 
-const removeRelease = (distribution: Distribution, releaseId: number) =>
-    router.visit(
-        destroyRelease({ distribution: distribution.id, release: releaseId }),
-        { preserveScroll: true },
-    );
-
-const shown = (version: string) =>
-    version === 'rolling' ? trans('rolling') : version;
+const removeVersion = (entry: OperatingSystem, id: number) =>
+    router.visit(destroyVersion({ operatingSystem: entry.id, version: id }), {
+        preserveScroll: true,
+    });
 </script>
 
 <template>
@@ -155,63 +91,62 @@ const shown = (version: string) =>
                 <p class="text-sm text-muted-foreground">
                     {{
                         $t(
-                            'What the OS template form offers. Add a system or a version of one.',
+                            'Your list: add a system, then its versions. OS templates and apps use these versions.',
                         )
                     }}
                 </p>
             </div>
-            <Button variant="outline" size="sm" @click="openSystem(null)">
+            <Button
+                variant="outline"
+                size="sm"
+                data-test="add-system"
+                @click="openSystem(null)"
+            >
                 <Plus class="h-4 w-4" />
                 {{ $t('Add operating system') }}
             </Button>
         </div>
 
-        <ul class="flex flex-col divide-y">
+        <p
+            v-if="systems.length === 0"
+            class="rounded-lg border border-dashed p-3 text-sm text-muted-foreground"
+        >
+            {{
+                $t(
+                    'No operating systems yet. Add one, for example Ubuntu, then its versions.',
+                )
+            }}
+        </p>
+        <ul v-else class="flex flex-col divide-y">
             <li
-                v-for="distribution in distributions"
-                :key="distribution.id"
+                v-for="entry in systems"
+                :key="entry.id"
                 class="flex flex-wrap items-center gap-x-4 gap-y-2 py-2"
-                :data-test="`os-system-${distribution.id}`"
+                :data-test="`os-system-${entry.id}`"
             >
-                <div class="min-w-40">
-                    <div class="text-sm font-medium">
-                        {{ distribution.name }}
-                    </div>
+                <div class="min-w-32">
+                    <div class="text-sm font-medium">{{ entry.name }}</div>
                     <div class="text-xs text-muted-foreground">
-                        {{ familyLabel(distribution.family) }}
-                        <template v-if="distribution.base">
-                            ·
-                            {{
-                                $t('built on :name', {
-                                    name:
-                                        find(distributions, distribution.base)
-                                            ?.name ?? distribution.base,
-                                })
-                            }}
-                        </template>
+                        {{ entry.platform === 'windows' ? 'Windows' : 'Linux' }}
                     </div>
                 </div>
                 <div class="flex flex-1 flex-wrap items-center gap-1.5">
                     <span
-                        v-for="item in distribution.releases"
-                        :key="item.version"
+                        v-for="item in entry.versions"
+                        :key="item.id"
                         class="inline-flex items-center gap-1 rounded-md border bg-muted/40 py-0.5 pr-1 pl-2 text-xs"
                     >
-                        {{ shown(item.version) }}
-                        <span
-                            v-if="item.base_version"
-                            class="text-muted-foreground"
-                            >→ {{ item.base_version }}</span
-                        >
+                        {{ item.version }}
                         <button
+                            v-if="item.templates === 0"
                             type="button"
                             class="rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"
                             :aria-label="
                                 $t('Delete :name', {
-                                    name: `${distribution.name} ${item.version}`,
+                                    name: `${entry.name} ${item.version}`,
                                 })
                             "
-                            @click="removeRelease(distribution, item.id)"
+                            @click="removeVersion(entry, item.id)"
                         >
                             <X class="h-3 w-3" />
                         </button>
@@ -220,8 +155,8 @@ const shown = (version: string) =>
                         variant="ghost"
                         size="sm"
                         class="h-6 px-2 text-xs"
-                        :data-test="`add-version-${distribution.id}`"
-                        @click="openRelease(distribution)"
+                        :data-test="`add-version-${entry.id}`"
+                        @click="openVersion(entry)"
                     >
                         <Plus class="h-3 w-3" />
                         {{ $t('Version') }}
@@ -231,16 +166,14 @@ const shown = (version: string) =>
                     <Button
                         variant="ghost"
                         size="icon"
-                        :aria-label="
-                            $t('Edit :name', { name: distribution.name })
-                        "
-                        @click="openSystem(distribution)"
+                        :aria-label="$t('Edit :name', { name: entry.name })"
+                        @click="openSystem(entry)"
                     >
                         <Pencil class="h-4 w-4" />
                     </Button>
                     <ConfirmDelete
-                        :action="destroy(distribution.id)"
-                        :name="distribution.name"
+                        :action="destroy(entry.id)"
+                        :name="entry.name"
                     />
                 </div>
             </li>
@@ -253,100 +186,45 @@ const shown = (version: string) =>
         :processing="system.processing"
         @submit="saveSystem"
     >
-        <div class="grid gap-4 sm:grid-cols-2">
-            <FormField
-                label="Name"
-                for="system-name"
-                :error="system.errors.name"
-            >
-                <Input
-                    id="system-name"
-                    v-model="system.name"
-                    required
-                    placeholder="Zorin OS"
-                />
-            </FormField>
-            <FormField
-                label="ID"
-                for="system-slug"
-                :error="system.errors.slug"
-                hint="The ID line of /etc/os-release, e.g. zorin."
-            >
-                <Input
-                    id="system-slug"
-                    v-model="system.slug"
-                    required
-                    :disabled="editing !== null"
-                    placeholder="zorin"
-                />
-            </FormField>
-        </div>
-        <FormField
-            label="Family"
-            for="system-family"
-            :error="system.errors.family"
-            hint="Apps written for a family are offered on all of its systems."
-        >
-            <NativeSelect
-                id="system-family"
-                v-model="system.family"
-                :options="familyOptions"
+        <FormField label="Name" for="system-name" :error="system.errors.name">
+            <Input
+                id="system-name"
+                v-model="system.name"
+                required
+                placeholder="Ubuntu"
             />
         </FormField>
         <FormField
-            label="Built on"
-            for="system-base"
-            :error="system.errors.base"
-            hint="Optional: for a system with its own version numbers, such as Pardus on Debian. Apps are then offered as on that system."
+            label="Type"
+            for="system-platform"
+            :error="system.errors.platform"
+            hint="Picks the scripts that set the password, addresses and disk."
         >
             <NativeSelect
-                id="system-base"
-                v-model="system.base"
-                :options="baseOptions"
+                id="system-platform"
+                v-model="system.platform"
+                :options="platformOptions"
             />
         </FormField>
-        <Label v-if="system.base" class="flex items-center gap-3 font-normal">
-            <Checkbox v-model="system.same_version" />
-            {{ $t('Its versions are the same (RHEL 9 is AlmaLinux 9)') }}
-        </Label>
     </FormDialog>
 
     <FormDialog
-        v-model:open="releaseOpen"
+        v-model:open="versionOpen"
         title="Add version"
-        :processing="release.processing"
-        @submit="saveRelease"
+        :processing="version.processing"
+        @submit="saveVersion"
     >
         <p class="text-sm font-medium">{{ adding?.name }}</p>
         <FormField
             label="Version"
-            for="release-version"
-            :error="release.errors.version"
-            hint="As VERSION_ID in /etc/os-release; it also covers its point releases (12 covers 12.7). Use rolling for a rolling system."
+            for="system-version"
+            :error="version.errors.version"
         >
             <Input
-                id="release-version"
-                v-model="release.version"
+                id="system-version"
+                v-model="version.version"
                 required
                 placeholder="24.04"
-            />
-        </FormField>
-        <FormField
-            v-if="baseOfAdding"
-            label="Matched as"
-            hint="The release of the system it is built on that apps are offered as."
-            for="release-base"
-            :error="release.errors.base_version"
-        >
-            <NativeSelect
-                id="release-base"
-                v-model="release.base_version"
-                :options="
-                    baseOfAdding.releases.map((item) => ({
-                        value: item.version,
-                        label: `${baseOfAdding?.name} ${item.version}`,
-                    }))
-                "
             />
         </FormField>
     </FormDialog>

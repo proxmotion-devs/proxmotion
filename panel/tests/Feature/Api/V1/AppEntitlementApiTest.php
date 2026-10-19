@@ -7,12 +7,15 @@ use App\Enums\ServerStatus;
 use App\Models\AppRecipe;
 use App\Models\AuditLog;
 use App\Models\Server;
+use Tests\Concerns\OffersApps;
 
 /**
  * Granting and revoking rights to paid apps through the API (docs/adr/0019).
  */
 class AppEntitlementApiTest extends ApiTestCase
 {
+    use OffersApps;
+
     private Server $server;
 
     protected function setUp(): void
@@ -20,6 +23,8 @@ class AppEntitlementApiTest extends ApiTestCase
         parent::setUp();
 
         app(RecipeSynchronizer::class)->sync();
+
+        $this->offerApps();
         $this->server = $this->provisionedServer();
 
         // OpenVPN stands in for a paid app.

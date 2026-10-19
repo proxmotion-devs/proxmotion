@@ -18,6 +18,7 @@ use App\Models\User;
 use App\Provisioning\ServerCreator;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Concerns\BuildsInfrastructure;
+use Tests\Concerns\OffersApps;
 use Tests\Support\FakeProxmoxCluster;
 use Tests\TestCase;
 
@@ -28,7 +29,7 @@ use Tests\TestCase;
  */
 class AppEntitlementTest extends TestCase
 {
-    use BuildsInfrastructure, RefreshDatabase;
+    use BuildsInfrastructure, OffersApps, RefreshDatabase;
 
     private FakeProxmoxCluster $proxmox;
 
@@ -44,6 +45,7 @@ class AppEntitlementTest extends TestCase
         $this->proxmox = (new FakeProxmoxCluster)->addTemplate(9000)->install();
         $this->admin = User::factory()->create();
         app(RecipeSynchronizer::class)->sync();
+        $this->offerApps();
 
         // WireGuard stands in for a paid app.
         $this->paid = AppRecipe::query()->with('latestVersion')->where('slug', 'wireguard')->firstOrFail();

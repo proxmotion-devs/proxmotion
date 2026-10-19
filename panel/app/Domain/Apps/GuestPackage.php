@@ -37,10 +37,9 @@ final readonly class GuestPackage
         $directory = $installation->guestDirectory();
         $files = $this->recipes->library() + $version->files + [
             'inputs.json' => self::json($inputs === [] ? new stdClass : $inputs),
-            'server.json' => self::json($this->serverFacts($server) + [
-                // run.sh compares them with /etc/os-release before any script runs (docs/adr/0016 §3).
-                'os_release' => self::osReleaseIds($server, $version),
-            ]),
+            // No os_release list: administrators chose the systems the app is
+            // offered on (docs/adr/0026), so run.sh checks none inside the server.
+            'server.json' => self::json($this->serverFacts($server)),
         ];
 
         $directories = [$directory];
@@ -56,25 +55,6 @@ final readonly class GuestPackage
         foreach ($files as $path => $content) {
             $agent->writeFile($server->vmid, $directory.'/'.$path, $content);
         }
-    }
-
-    /**
-     * The os-release IDs run.sh accepts; empty: any. The panel may have
-     * matched the template as a compatible distribution (docs/adr/0024), so
-     * its own ID is accepted too, for one whose ID_LIKE does not name it.
-     *
-     * @return list<string>
-     */
-    private static function osReleaseIds(Server $server, AppRecipeVersion $version): array
-    {
-        $ids = $version->recipe()->osReleaseIds();
-        $distribution = $server->osTemplate?->distribution;
-
-        if ($ids !== [] && $distribution !== null && ! in_array($distribution, $ids, true)) {
-            $ids[] = $distribution;
-        }
-
-        return $ids;
     }
 
     /**

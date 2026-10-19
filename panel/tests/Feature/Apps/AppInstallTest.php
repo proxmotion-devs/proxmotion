@@ -6,6 +6,7 @@ use App\Domain\Apps\AppEligibility;
 use App\Domain\Apps\AppInstallConflict;
 use App\Domain\Apps\AppInstaller;
 use App\Domain\Apps\AppNotEligible;
+use App\Domain\Apps\AppSystems;
 use App\Domain\Apps\InstallationPoller;
 use App\Domain\Apps\RecipeSynchronizer;
 use App\Enums\AppInstallationStatus;
@@ -14,6 +15,7 @@ use App\Enums\TaskType;
 use App\Models\AppInstallation;
 use App\Models\AppRecipe;
 use App\Models\AuditLog;
+use App\Models\OperatingSystem;
 use App\Models\OsTemplate;
 use App\Models\Server;
 use App\Models\User;
@@ -24,6 +26,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\Concerns\BuildsInfrastructure;
+use Tests\Concerns\OffersApps;
 use Tests\Support\FakeProxmoxCluster;
 use Tests\TestCase;
 
@@ -34,7 +37,7 @@ use Tests\TestCase;
  */
 class AppInstallTest extends TestCase
 {
-    use BuildsInfrastructure, RefreshDatabase;
+    use BuildsInfrastructure, OffersApps, RefreshDatabase;
 
     private FakeProxmoxCluster $proxmox;
 
@@ -51,6 +54,7 @@ class AppInstallTest extends TestCase
         $this->server = app(ServerCreator::class)->create($this->order())->refresh();
         $this->admin = User::factory()->create();
         app(RecipeSynchronizer::class)->sync();
+        $this->offerApps();
     }
 
     /**
@@ -97,7 +101,7 @@ class AppInstallTest extends TestCase
         $this->assertSame(file_get_contents(base_path('recipes/_lib/run.sh')), $files[$directory.'/run.sh']);
         $this->assertSame(file_get_contents(base_path('recipes/_lib/proxmotion.sh')), $files[$directory.'/proxmotion.sh']);
         $this->assertSame(['port' => 51900], json_decode($files[$directory.'/inputs.json'], true));
-        $this->assertSame(['hostname' => 'web1.example.com', 'primary_ipv4' => '203.0.113.2', 'primary_ipv6' => null, 'os_release' => ['debian', 'ubuntu']], json_decode($files[$directory.'/server.json'], true));
+        $this->assertSame(['hostname' => 'web1.example.com', 'primary_ipv4' => '203.0.113.2', 'primary_ipv6' => null], json_decode($files[$directory.'/server.json'], true));
         $this->assertSame('installing', json_decode($files[$directory.'/status.json'], true)['status']);
 
         $start = collect($this->proxmox->guestCommands)->last();
@@ -291,97 +295,53 @@ class AppInstallTest extends TestCase
         $this->assertStringNotContainsString('newer', $this->proxmox->guestFiles[$this->server->vmid][$this->directory($installation).'/install.sh']);
     }
 
-    public function test_apps_follow_the_distribution_of_the_servers_template()
+    public function test_apps_are_offered_on_the_versions_ticked_for_them()
     {
         $wireguard = AppRecipe::query()->where('slug', 'wireguard')->firstOrFail();
         $eligibility = app(AppEligibility::class);
-        $useTemplate = function (array $attributes) {
-            $this->server->forceFill(['os_template_id' => OsTemplate::factory()->create($attributes)->id])->save();
-            $this->server->unsetRelation('osTemplate');
-        };
+        $noble = $this->server->osTemplate->operating_system_version_id;
+        $this->assertNull($eligibility->forServer($wireguard, $this->server));
 
-        $useTemplate(['name' => 'Rocky 9', 'distribution' => 'rocky', 'version' => '9']);
-        $this->assertSame('This app does not support the operating system.', $eligibility->forServer($wireguard, $this->server)?->translatedMessage(), 'Rocky is not in the Debian family.');
-
-        $useTemplate(['name' => 'Debian 13', 'distribution' => 'debian', 'version' => '13']);
-        $this->assertNull($eligibility->forServer($wireguard, $this->server), 'Newer than min_versions, not named by version.');
-
-        $useTemplate(['name' => 'Debian 11', 'distribution' => 'debian', 'version' => '11']);
-        $this->assertNotNull($eligibility->forServer($wireguard, $this->server), 'Older than min_versions.');
-    }
-
-    public function test_apps_are_not_offered_on_versions_newer_than_max_versions()
-    {
-        $wireguard = AppRecipe::query()->where('slug', 'wireguard')->firstOrFail();
-        $version = $wireguard->latestVersion;
-        $this->assertNotNull($version);
-        $definition = $version->definition;
-        $definition['requires']['max_versions'] = ['ubuntu' => '24.04', 'debian' => '12'];
-        $version->forceFill(['definition' => $definition])->save();
-        $wireguard->unsetRelation('latestVersion');
-        $eligibility = app(AppEligibility::class);
-        $useTemplate = function (array $attributes) {
-            $this->server->forceFill(['os_template_id' => OsTemplate::factory()->create($attributes)->id])->save();
-            $this->server->unsetRelation('osTemplate');
-        };
-
-        $useTemplate(['name' => 'Debian 13', 'distribution' => 'debian', 'version' => '13']);
+        // A version nobody ticked for the app (docs/adr/0026), whatever the recipe says.
+        $trixie = OsTemplate::factory()->create(['name' => 'Debian 13', 'distribution' => 'debian', 'version' => '13']);
+        $this->server->forceFill(['os_template_id' => $trixie->id])->save();
+        $this->server->unsetRelation('osTemplate');
         $this->assertSame('This app does not support the operating system.', $eligibility->forServer($wireguard, $this->server)?->translatedMessage());
-        $this->assertNotNull($eligibility->forCatalog($wireguard, $this->server->osTemplate, null));
+        $this->assertNotNull($eligibility->forCatalog($wireguard, $trixie, null));
 
-        $useTemplate(['name' => 'Debian 12', 'distribution' => 'debian', 'version' => '12']);
+        $wireguard->osVersions()->attach($trixie->operating_system_version_id);
         $this->assertNull($eligibility->forServer($wireguard, $this->server));
 
-        $useTemplate(['name' => 'Debian 12.7', 'distribution' => 'debian', 'version' => '12.7']);
-        $this->assertNull($eligibility->forServer($wireguard, $this->server), 'A maximum of 12 covers its point releases.');
-
-        $useTemplate(['name' => 'Ubuntu 24.04', 'distribution' => 'ubuntu', 'version' => '24.04']);
-        $this->assertNull($eligibility->forServer($wireguard, $this->server));
+        // Unticking a version takes the app away from it.
+        $wireguard->osVersions()->detach($noble);
+        $this->assertNotNull($eligibility->forCatalog($wireguard, OsTemplate::query()->where('operating_system_version_id', $noble)->firstOrFail(), null));
     }
 
-    public function test_the_runner_learns_which_operating_systems_to_accept()
-    {
-        $installation = $this->install();
-        $server = json_decode($this->proxmox->guestFiles[$this->server->vmid][$this->directory($installation).'/server.json'], true);
-
-        // run.sh compares them with ID and ID_LIKE of /etc/os-release.
-        $this->assertSame(['debian', 'ubuntu'], $server['os_release']);
-    }
-
-    public function test_a_distribution_is_matched_as_the_one_it_is_compatible_with()
+    public function test_the_recipe_only_suggests_versions()
     {
         $wireguard = AppRecipe::query()->where('slug', 'wireguard')->firstOrFail();
-        $version = $wireguard->latestVersion;
-        $this->assertNotNull($version);
-        $definition = $version->definition;
-        $definition['requires']['max_versions'] = ['debian' => '12'];
-        $version->forceFill(['definition' => $definition])->save();
-        $wireguard->unsetRelation('latestVersion');
-        $eligibility = app(AppEligibility::class);
-        $useTemplate = function (array $attributes) {
-            $this->server->forceFill(['os_template_id' => OsTemplate::factory()->create($attributes)->id])->save();
-            $this->server->unsetRelation('osTemplate');
-        };
+        $version = fn (string $distribution, string $number) => OsTemplate::factory()->create(['distribution' => $distribution, 'version' => $number])->operating_system_version_id;
+        $trixie = $version('debian', '13');
+        $bullseye = $version('debian', '11');
+        $rocky = $version('rocky', '9');
+        $named = OperatingSystem::query()->create(['name' => 'Debian GNU/Linux', 'platform' => 'linux'])->versions()->create(['version' => '13'])->id;
 
-        // Pardus 23.4 is matched as Debian 12, not by its own version (docs/adr/0024).
-        $useTemplate(['name' => 'Pardus 23', 'distribution' => 'pardus', 'version' => '23.4', 'compatible_with' => 'debian', 'compatible_version' => '12']);
-        $this->assertNull($eligibility->forServer($wireguard, $this->server));
+        $suggested = AppSystems::suggested($wireguard, AppSystems::all());
 
-        $useTemplate(['name' => 'Pardus 25', 'distribution' => 'pardus', 'version' => '25.0', 'compatible_with' => 'debian', 'compatible_version' => '13']);
-        $this->assertNotNull($eligibility->forServer($wireguard, $this->server), 'The Debian it is compatible with is newer than max_versions.');
-
-        $useTemplate(['name' => 'Unknown', 'distribution' => 'mydistro', 'family' => 'debian', 'version' => '1']);
-        $this->assertNotNull($eligibility->forServer($wireguard, $this->server), 'A family covers only the distributions the panel knows.');
+        $this->assertContains($trixie, $suggested, 'Newer than min_versions.');
+        $this->assertNotContains($bullseye, $suggested, 'Older than min_versions.');
+        $this->assertNotContains($rocky, $suggested, 'Not in the Debian family.');
+        $this->assertContains($named, $suggested, 'A system of its own is recognised by its name.');
+        $this->assertNotContains($trixie, $wireguard->osVersions()->pluck('operating_system_versions.id')->all(), 'Suggestions are not ticked.');
     }
 
-    public function test_the_runner_also_accepts_the_templates_own_distribution()
+    public function test_the_runner_checks_no_operating_system()
     {
-        $this->server->osTemplate->forceFill(['distribution' => 'pardus', 'version' => '23.4', 'compatible_with' => 'debian', 'compatible_version' => '12'])->save();
-
         $installation = $this->install();
         $server = json_decode($this->proxmox->guestFiles[$this->server->vmid][$this->directory($installation).'/server.json'], true);
 
-        $this->assertSame(['debian', 'ubuntu', 'pardus'], $server['os_release']);
+        // Administrators chose the systems; run.sh compares nothing with /etc/os-release.
+        $this->assertArrayNotHasKey('os_release', $server);
     }
 
     public function test_one_app_installs_at_a_time_and_an_installed_app_is_not_installed_twice()
@@ -430,6 +390,7 @@ class AppInstallTest extends TestCase
     {
         AppRecipe::query()->where('slug', 'docker')->update(['is_active' => false]);
         $paid = AppRecipe::factory()->withDefinition(['billing' => 'paid'])->create();
+        $paid->osVersions()->attach($this->server->osTemplate->operating_system_version_id);
 
         foreach (['docker' => 'This app is not available.', $paid->slug => 'This app has to be bought for the server first.'] as $slug => $message) {
             try {

@@ -1,15 +1,14 @@
 <script setup lang="ts">
 import { Head, Link, useForm } from '@inertiajs/vue3';
 import { FileCode, Pencil, Plus, ScanSearch } from '@lucide/vue';
-import { trans } from 'laravel-vue-i18n';
 import { computed, ref, watch } from 'vue';
 import ConfirmDelete from '@/components/admin/ConfirmDelete.vue';
-import OsReleaseCheckDialog from '@/components/admin/OsReleaseCheckDialog.vue';
-import OsSystems from '@/components/admin/OsSystems.vue';
 import FormDialog from '@/components/admin/FormDialog.vue';
 import FormField from '@/components/admin/FormField.vue';
 import GuideBox from '@/components/admin/GuideBox.vue';
 import NativeSelect from '@/components/admin/NativeSelect.vue';
+import OsReleaseCheckDialog from '@/components/admin/OsReleaseCheckDialog.vue';
+import OsSystems from '@/components/admin/OsSystems.vue';
 import StatusBadge from '@/components/admin/StatusBadge.vue';
 import Heading from '@/components/Heading.vue';
 import { Button } from '@/components/ui/button';
@@ -17,15 +16,12 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
-    OTHER,
-    find,
-    releaseOf,
-    releaseOptions,
-    releaseValue,
+    findVersion,
     suggestedName,
-    systemParts,
+    versionLabel,
+    versionOptions,
 } from '@/lib/osTemplates';
-import type { Distribution, Family, OsTemplateValues } from '@/lib/osTemplates';
+import type { OperatingSystem } from '@/lib/osTemplates';
 import { index as clustersIndex } from '@/routes/admin/clusters';
 import {
     destroy,
@@ -45,25 +41,16 @@ type FoundTemplate = {
     name: string;
     proxmox_template_ids: number[];
     places: string[];
-    guess: {
-        name: string;
-        distribution: string;
-        version: string;
-        compatible_with: string | null;
-        compatible_version: string | null;
-    };
+    /** The name and, when the list has it, the version the template name points to. */
+    guess: { name: string; operating_system_version_id: number | null };
 };
 
 const props = defineProps<{
     templates: OsTemplate[];
     proxmoxTemplates: ProxmoxTemplate[];
     found: FoundTemplate[];
-    distributions: Distribution[];
-    families: Family[];
+    systems: OperatingSystem[];
 }>();
-
-const familyLabel = (value: string) =>
-    props.families.find((family) => family.value === value)?.label ?? value;
 
 // The same image usually has the same name on every node and cluster, so
 // templates are picked by name: one tick maps all of them.
@@ -90,78 +77,41 @@ const mappedLabel = (template: OsTemplate) =>
         .map((candidate) => `${candidate.cluster} #${candidate.vmid}`)
         .join(', ');
 
-const system = (template: OsTemplate) =>
-    systemParts(template, props.distributions);
+/** "Ubuntu 24.04" from the list, else what the template copied. */
+const systemOf = (template: OsTemplate) => {
+    const found = findVersion(
+        props.systems,
+        template.operating_system_version_id,
+    );
+
+    return found
+        ? versionLabel(found.system, found.version.version)
+        : `${template.distribution} ${template.version}`;
+};
+
+const osOptions = computed(() => versionOptions(props.systems));
 
 const dialogOpen = ref(false);
 const editing = ref<OsTemplate | null>(null);
 
 const form = useForm({
     name: '',
-    distribution: 'ubuntu',
-    version: '',
-    family: 'other',
-    compatible_with: '',
-    compatible_version: '',
+    operating_system_version_id: null as number | null,
     is_active: true,
     sort_order: 0,
     proxmox_template_ids: [] as number[],
 });
 
-const known = computed(() => find(props.distributions, form.distribution));
+const suggestion = () => {
+    const found = findVersion(props.systems, form.operating_system_version_id);
 
-// One select: a release of a known system (its family and the system apps
-// are matched as follow from the catalog on the server), or "Other…" with
-// its ID and version typed below.
-const osOptions = computed(() =>
-    releaseOptions(props.distributions, props.families, trans, form),
-);
-
-const choice = computed<string | null>({
-    get: () =>
-        known.value
-            ? releaseValue(
-                  form.distribution,
-                  releaseOf(known.value, form.version) ?? form.version,
-              )
-            : OTHER,
-    set: (value) => {
-        if (value === null || value === OTHER) {
-            Object.assign(form, { distribution: '', version: '' });
-
-            return;
-        }
-
-        const [distribution, release] = value.split('@');
-        // A point release (9.6) stays while its release (9) is picked.
-        const keep =
-            distribution === form.distribution &&
-            releaseOf(known.value, form.version) === release;
-
-        Object.assign(form, {
-            distribution,
-            version: keep ? form.version : release,
-            family: 'other',
-            compatible_with: '',
-            compatible_version: '',
-        });
-    },
-});
-
-/** A known system without a version gets its first listed release. */
-const withRelease = (distribution: string, version: string) =>
-    version === ''
-        ? (find(props.distributions, distribution)?.releases[0]?.version ?? '')
-        : version;
-
-const suggestion = () =>
-    suggestedName(known.value, form.distribution, form.version);
-// The name follows the system while it is still the one suggested for it,
-// also when a check changes the system of a saved template.
+    return found ? suggestedName(found.system, found.version.version) : '';
+};
+// The name follows the system while it is still the one suggested for it.
 let suggested = '';
 
 watch(
-    () => [form.distribution, form.version],
+    () => form.operating_system_version_id,
     () => {
         const next = suggestion();
 
@@ -179,25 +129,12 @@ const openForm = (
 ) => {
     editing.value = template;
     form.clearErrors();
-    const distribution = template
-        ? template.distribution
-        : (found?.guess.distribution ?? 'ubuntu');
     form.defaults({
         name: template?.name ?? found?.guess.name ?? '',
-        distribution,
-        version: withRelease(
-            distribution,
-            template?.version ?? found?.guess.version ?? '',
-        ),
-        family: template?.family ?? 'other',
-        compatible_with:
-            (template
-                ? template.compatible_with
-                : found?.guess.compatible_with) ?? '',
-        compatible_version:
-            (template
-                ? template.compatible_version
-                : found?.guess.compatible_version) ?? '',
+        operating_system_version_id:
+            template?.operating_system_version_id ??
+            found?.guess.operating_system_version_id ??
+            null,
         is_active: template?.is_active ?? true,
         sort_order: template?.sort_order ?? 0,
         proxmox_template_ids: [
@@ -236,30 +173,6 @@ const checkOpen = computed({
         }
     },
 });
-
-const nameOf = (field: string, value: string | null) => {
-    if (value === null || value === '') {
-        return '—';
-    }
-
-    if (field === 'family') {
-        return trans(familyLabel(value));
-    }
-
-    return field === 'distribution' || field === 'compatible_with'
-        ? (find(props.distributions, value)?.name ?? value)
-        : value;
-};
-
-/** The edit form with what the server reported; saved only when the administrator saves it. */
-const applyCheck = (template: OsTemplate, values: OsTemplateValues) => {
-    openForm(template);
-    form.distribution = values.distribution;
-    form.version = values.version;
-    form.family = values.family;
-    form.compatible_with = values.compatible_with ?? '';
-    form.compatible_version = values.compatible_version ?? '';
-};
 
 const submit = () => {
     form.submit(editing.value ? update(editing.value.uuid) : store(), {
@@ -328,7 +241,7 @@ const submit = () => {
                 <li>
                     {{
                         $t(
-                            'Pick the operating system from the list: apps use it to decide whether they fit a server.',
+                            'Add the system and its version under Operating systems if they are missing, then pick the version in the template. On the Apps page, tick the versions each app runs on.',
                         )
                     }}
                 </li>
@@ -342,7 +255,7 @@ const submit = () => {
             </ol>
         </GuideBox>
 
-        <OsSystems :distributions="distributions" :families="families" />
+        <OsSystems :systems="systems" />
 
         <section
             v-if="found.length"
@@ -369,7 +282,10 @@ const submit = () => {
                         <div class="text-sm font-medium">
                             {{ item.name }}
                             <span
-                                v-if="item.guess.distribution !== ''"
+                                v-if="
+                                    item.guess.operating_system_version_id !==
+                                    null
+                                "
                                 class="font-normal text-muted-foreground"
                                 >→ {{ item.guess.name }}</span
                             >
@@ -420,19 +336,7 @@ const submit = () => {
                             />
                         </td>
                         <td class="px-4 py-3">
-                            <div>{{ system(template).system }}</div>
-                            <div class="text-xs text-muted-foreground">
-                                {{ $t(familyLabel(template.family)) }}
-                                <template v-if="system(template).matchedAs">
-                                    ·
-                                    {{
-                                        $t('apps as :system', {
-                                            system: system(template)
-                                                .matchedAs as string,
-                                        })
-                                    }}
-                                </template>
-                            </div>
+                            {{ systemOf(template) }}
                         </td>
                         <td class="px-4 py-3 font-mono text-xs">
                             <span v-if="template.proxmox_template_ids.length">{{
@@ -517,52 +421,17 @@ const submit = () => {
         <FormField
             label="Operating system"
             for="os"
-            :error="known ? form.errors.version : undefined"
-            hint="Apps use it to decide whether they fit a server."
+            :error="form.errors.operating_system_version_id"
+            hint="From your list of operating systems above. Apps are offered on the versions ticked for them."
         >
             <NativeSelect
                 id="os"
-                v-model="choice"
+                v-model="form.operating_system_version_id"
                 :options="osOptions"
+                placeholder="Choose a version"
                 data-test="os-choice"
             />
         </FormField>
-        <div
-            v-if="!known"
-            class="grid gap-4 sm:grid-cols-2"
-            data-test="other-os"
-        >
-            <FormField
-                label="Distribution"
-                for="distribution"
-                :error="form.errors.distribution"
-                hint="The ID line of /etc/os-release, e.g. zorin."
-            >
-                <Input
-                    id="distribution"
-                    v-model="form.distribution"
-                    required
-                    placeholder="zorin"
-                    data-test="distribution"
-                />
-            </FormField>
-            <FormField
-                label="Version"
-                for="version"
-                :error="form.errors.version"
-                hint="As VERSION_ID in /etc/os-release."
-            >
-                <Input
-                    id="version"
-                    v-model="form.version"
-                    required
-                    placeholder="1.0"
-                />
-            </FormField>
-            <p class="text-xs text-muted-foreground sm:col-span-2">
-                {{ $t('Apps are offered only for the systems in the list.') }}
-            </p>
-        </div>
         <FormField label="Name" for="name" :error="form.errors.name">
             <Input
                 id="name"
@@ -653,7 +522,5 @@ const submit = () => {
         v-if="checking"
         v-model:open="checkOpen"
         :template="checking"
-        :name-of="nameOf"
-        @apply="(values) => checking && applyCheck(checking, values)"
     />
 </template>

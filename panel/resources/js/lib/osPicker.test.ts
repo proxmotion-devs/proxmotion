@@ -21,8 +21,6 @@ const entry = (
     name: id,
     family,
     base,
-    same_version: false,
-    releases: [],
 });
 
 const catalog: Distribution[] = [

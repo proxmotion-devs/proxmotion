@@ -11,7 +11,7 @@ import {
     toggle,
 } from '@/lib/osPicker';
 import type { Requires, TemplateVersion } from '@/lib/osPicker';
-import { find } from '@/lib/osTemplates';
+
 import type { Distribution } from '@/lib/osTemplates';
 
 /**
@@ -29,7 +29,8 @@ const props = defineProps<{
 const requires = defineModel<Requires>({ required: true });
 
 const name = (distribution: string) =>
-    find(props.catalog, distribution)?.name ?? distribution;
+    props.catalog.find((entry) => entry.id === distribution)?.name ??
+    distribution;
 
 const distributions = computed(() => distributionsOf(props.templates));
 

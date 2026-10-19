@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Domain\Infrastructure;
 
-use App\Enums\OsFamily;
 use App\Enums\ServerStatus;
 use App\Models\OsTemplate;
 use App\Models\Server;
@@ -14,8 +13,8 @@ use Illuminate\Support\Collection;
 
 /**
  * Compares an OS template with /etc/os-release of a running server built
- * from it, read through the guest agent (docs/adr/0024 §8). It only reads
- * and suggests: the administrator decides what to save.
+ * from it, read through the guest agent (docs/adr/0024 §8, 0026). It only
+ * reads and shows; nothing is saved from it.
  */
 final readonly class OsReleaseCheck
 {
@@ -67,55 +66,21 @@ final readonly class OsReleaseCheck
     }
 
     /**
-     * What the server says the template is, and which of its fields differ.
+     * What the server runs, next to the template's system and version. Only
+     * for administrators to see (docs/adr/0026): nothing is changed or
+     * suggested, the system list is theirs.
      *
-     * @return array{suggestion: array{distribution: string, version: string, family: string, compatible_with: string|null, compatible_version: string|null}, differences: list<array{field: string, template: string|null, server: string|null}>}
+     * @return array{template_system: string, server_system: string, version_matches: bool|null}
      */
     public function compare(OsTemplate $template, OsRelease $release): array
     {
-        $distribution = preg_match('/^[a-z0-9][a-z0-9._-]{0,31}$/', $release->id) === 1 ? $release->id : 'linux';
-        // Debian's VERSION_ID is "12" for 12.7: a template version that only adds parts is kept.
-        $version = $release->versionId === null || self::sameVersion($template->version, $release->versionId) ? $template->version : $release->versionId;
-        $family = Distributions::family($distribution) ?? OsFamily::fromOsReleaseIds([$distribution, ...$release->idLike]);
-        $base = Distributions::base($distribution);
+        $template->loadMissing('osVersion.operatingSystem');
 
-        if ($base !== null) {
-            $compatibleWith = $base;
-            $compatibleVersion = Distributions::baseVersion($distribution, $version);
-        } elseif (! Distributions::known($distribution) && $template->compatible_with !== null && Distributions::family($template->compatible_with) === $family) {
-            [$compatibleWith, $compatibleVersion] = [$template->compatible_with, $template->compatible_version];
-        } else {
-            [$compatibleWith, $compatibleVersion] = [null, null];
-        }
-
-        $suggestion = [
-            'distribution' => $distribution,
-            'version' => $version,
-            'family' => $family->value,
-            'compatible_with' => $compatibleWith,
-            'compatible_version' => $compatibleVersion,
+        return [
+            'template_system' => $template->osVersion?->label() ?? trim("{$template->distribution} {$template->version}"),
+            'server_system' => $release->prettyName ?? trim($release->id.' '.($release->versionId ?? '')),
+            'version_matches' => $release->versionId === null ? null : self::sameVersion($template->version, $release->versionId),
         ];
-        $current = [
-            'distribution' => $template->distribution,
-            'version' => $template->version,
-            'family' => $template->family->value,
-            'compatible_with' => $template->compatible_with,
-            'compatible_version' => $template->compatible_version,
-        ];
-        $differences = [];
-
-        foreach ($suggestion as $field => $value) {
-            // The version a distribution is compatible with is not in os-release: only a missing one counts.
-            if ($field === 'compatible_version' && ($value === null || $current[$field] !== null)) {
-                continue;
-            }
-
-            if ($current[$field] !== $value) {
-                $differences[] = ['field' => $field, 'template' => $current[$field], 'server' => $value];
-            }
-        }
-
-        return ['suggestion' => $suggestion, 'differences' => $differences];
     }
 
     /** Whether two versions agree, one perhaps with more parts ("12" and "12.7"). */

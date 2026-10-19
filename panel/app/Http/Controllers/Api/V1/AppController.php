@@ -57,7 +57,7 @@ class AppController extends ApiController
         $server = $request->filled('server') ? Server::query()->with('osTemplate')->where('uuid', $request->string('server'))->first() : null;
         $mode = $request->enum('mode', AppInstallMode::class) ?? AppInstallMode::Post;
 
-        $apps = AppRecipe::query()->with('latestVersion')->where('is_active', true)->orderBy('name')->get();
+        $apps = AppRecipe::query()->with(['latestVersion', 'osVersions.operatingSystem'])->where('is_active', true)->orderBy('name')->get();
 
         if ($server === null) {
             return AppResource::collection($apps->filter(fn (AppRecipe $app) => $eligibility->forCatalog($app, $osTemplate, $package, $mode) === null)->values());

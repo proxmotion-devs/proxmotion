@@ -207,11 +207,10 @@ On a cluster with **local** storage, create the template on every node that shou
 1. If the panel's API token is limited to a resource pool, make sure the template is in that
    pool (*Datacenter → Permissions → Pools → `<pool>` → Members → Add → Virtual Machine*).
 2. *Admin → Clusters*: run a sync.
-3. *Admin → OS templates*: map the new Proxmox template to an OS template. For a system built on
-   another one (Pardus on Debian, Linux Mint on Ubuntu, Oracle Linux on AlmaLinux), tick *Based on
-   another system*, enter its `ID` from `/etc/os-release` and its version, and choose the base system
-   and base version (Pardus 23: Debian 12): apps are offered by the base (ADR 0022). Without a known
-   base, choose `other`: the template works but no app is offered.
+3. *Admin → OS templates*: add the system and its version under *Operating systems* if they are
+   missing (Pardus, 23), then map the new Proxmox template to an OS template of that version. On
+   *Admin → Apps*, tick the new version for the apps that run on it (*Choose systems*; what a recipe
+   says it runs on is suggested): no app is offered on a version until then (ADR 0026).
 4. Create a test server and check: it boots with the right IP and hostname, the root password
    and SSH keys work, the disk has the package size (`df -h /`), and the server page shows the
    guest agent as reachable.

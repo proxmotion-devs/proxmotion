@@ -16,16 +16,12 @@ const catalog: Distribution[] = [
         name: 'Debian',
         family: 'debian',
         base: null,
-        same_version: false,
-        releases: [],
     },
     {
         id: 'ubuntu',
         name: 'Ubuntu',
         family: 'debian',
         base: null,
-        same_version: false,
-        releases: [],
     },
 ];
 

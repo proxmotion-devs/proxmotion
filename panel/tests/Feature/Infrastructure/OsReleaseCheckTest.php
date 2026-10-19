@@ -47,7 +47,7 @@ class OsReleaseCheckTest extends TestCase
         return $this->getJson(route('admin.os-templates.os-release', ['osTemplate' => $this->osTemplate, ...$query]));
     }
 
-    public function test_a_matching_template_has_no_differences()
+    public function test_the_server_is_shown_next_to_the_templates_system()
     {
         $this->osRelease("PRETTY_NAME=\"Ubuntu 24.04.1 LTS\"\nNAME=\"Ubuntu\"\nVERSION_ID=\"24.04\"\nID=ubuntu\nID_LIKE=debian\n");
 
@@ -56,62 +56,36 @@ class OsReleaseCheckTest extends TestCase
             ->assertJsonPath('server', $this->server->uuid)
             ->assertJsonPath('servers.0.value', $this->server->uuid)
             ->assertJsonPath('os_release', ['id' => 'ubuntu', 'id_like' => ['debian'], 'version_id' => '24.04', 'pretty_name' => 'Ubuntu 24.04.1 LTS'])
-            ->assertJsonPath('differences', []);
+            ->assertJsonPath('template_system', 'Ubuntu 24.04')
+            ->assertJsonPath('server_system', 'Ubuntu 24.04.1 LTS')
+            ->assertJsonPath('version_matches', true);
     }
 
-    public function test_differences_are_listed_and_nothing_is_saved()
+    public function test_another_version_is_reported_and_nothing_is_saved()
     {
         $this->osRelease("ID=debian\nVERSION_ID=\"12\"\nPRETTY_NAME=\"Debian GNU/Linux 12 (bookworm)\"\n");
 
         $this->check()
             ->assertOk()
-            ->assertJsonPath('suggestion', ['distribution' => 'debian', 'version' => '12', 'family' => 'debian', 'compatible_with' => null, 'compatible_version' => null])
-            ->assertJsonPath('differences', [
-                ['field' => 'distribution', 'template' => 'ubuntu', 'server' => 'debian'],
-                ['field' => 'version', 'template' => '24.04', 'server' => '12'],
-            ]);
+            ->assertJsonPath('server_system', 'Debian GNU/Linux 12 (bookworm)')
+            ->assertJsonPath('version_matches', false);
 
         $this->assertSame(['ubuntu', '24.04'], [$this->osTemplate->refresh()->distribution, $this->osTemplate->version]);
     }
 
-    public function test_a_point_release_in_the_template_still_matches()
+    public function test_a_point_release_still_matches()
     {
         $this->osTemplate->forceFill(['distribution' => 'debian', 'version' => '12.7'])->save();
         $this->osRelease("ID=debian\nVERSION_ID=\"12\"\n");
 
-        $this->check()->assertOk()->assertJsonPath('differences', []);
+        $this->check()->assertOk()->assertJsonPath('server_system', 'debian 12')->assertJsonPath('version_matches', true);
     }
 
-    public function test_a_distribution_with_its_own_versions_is_matched_as_its_base()
+    public function test_a_server_without_a_version_says_nothing_about_it()
     {
-        $this->osTemplate->forceFill(['distribution' => 'debian', 'version' => '12'])->save();
-        $this->osRelease("ID=pardus\nID_LIKE=debian\nVERSION_ID=\"23.4\"\n", '/usr/lib/os-release');
+        $this->osRelease("ID=arch\nPRETTY_NAME=\"Arch Linux\"\n");
 
-        $this->check()
-            ->assertOk()
-            ->assertJsonPath('suggestion', ['distribution' => 'pardus', 'version' => '23.4', 'family' => 'debian', 'compatible_with' => 'debian', 'compatible_version' => '12'])
-            ->assertJsonPath('differences.0', ['field' => 'distribution', 'template' => 'debian', 'server' => 'pardus'])
-            ->assertJsonPath('differences.2', ['field' => 'compatible_with', 'template' => null, 'server' => 'debian']);
-    }
-
-    public function test_rhel_gets_almalinux_of_the_same_version()
-    {
-        $this->osTemplate->forceFill(['distribution' => 'almalinux', 'version' => '9.6'])->save();
-        $this->osRelease("NAME=\"Red Hat Enterprise Linux\"\nID=\"rhel\"\nID_LIKE=\"fedora\"\nVERSION_ID=\"9.6\"\n");
-
-        $this->check()
-            ->assertOk()
-            ->assertJsonPath('suggestion', ['distribution' => 'rhel', 'version' => '9.6', 'family' => 'rhel', 'compatible_with' => 'almalinux', 'compatible_version' => '9.6']);
-    }
-
-    public function test_an_unknown_distribution_takes_its_family_from_id_like()
-    {
-        $this->osRelease("ID=zorin\nID_LIKE=\"ubuntu debian\"\nVERSION_ID=\"17\"\n");
-
-        $this->check()
-            ->assertOk()
-            ->assertJsonPath('suggestion.family', 'debian')
-            ->assertJsonPath('suggestion.compatible_with', null);
+        $this->check()->assertOk()->assertJsonPath('version_matches', null);
     }
 
     public function test_an_agent_that_does_not_answer_is_reported()

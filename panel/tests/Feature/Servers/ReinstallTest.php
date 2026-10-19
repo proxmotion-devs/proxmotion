@@ -22,13 +22,14 @@ use Illuminate\Support\Sleep;
 use Illuminate\Testing\TestResponse;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\Concerns\BuildsInfrastructure;
+use Tests\Concerns\OffersApps;
 use Tests\Support\FakeProxmoxCluster;
 use Tests\TestCase;
 use Tests\Unit\PublicKeyTest;
 
 class ReinstallTest extends TestCase
 {
-    use BuildsInfrastructure, RefreshDatabase;
+    use BuildsInfrastructure, OffersApps, RefreshDatabase;
 
     private FakeProxmoxCluster $proxmox;
 
@@ -231,6 +232,7 @@ class ReinstallTest extends TestCase
     public function test_an_app_can_come_with_the_new_system()
     {
         app(RecipeSynchronizer::class)->sync();
+        $this->offerApps();
 
         $this->actingAs($this->admin)
             ->get(route('admin.servers.show', $this->server))
@@ -248,6 +250,7 @@ class ReinstallTest extends TestCase
     public function test_an_app_that_does_not_fit_refuses_the_reinstall()
     {
         app(RecipeSynchronizer::class)->sync();
+        $this->offerApps();
         AppRecipe::query()->where('slug', 'docker')->update(['is_active' => false]);
 
         $this->reinstall(['app' => 'docker'])->assertSessionHasErrors('app');

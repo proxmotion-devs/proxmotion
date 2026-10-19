@@ -33,9 +33,13 @@ class RecipeEditorTest extends AdminTestCase
         return AppRecipe::query()->where('slug', $slug)->sole();
     }
 
+    /** Whether the app is offered on an Ubuntu 24.04 template, ticked for it as administrators do (docs/adr/0026). */
     private function offeredOnUbuntu(AppRecipe $app): bool
     {
-        return app(AppEligibility::class)->forCatalog($app->refresh()->load('latestVersion'), OsTemplate::factory()->create(), null) === null;
+        $template = OsTemplate::factory()->create();
+        $app->osVersions()->syncWithoutDetaching([(int) $template->operating_system_version_id]);
+
+        return app(AppEligibility::class)->forCatalog($app->refresh()->load('latestVersion'), $template, null) === null;
     }
 
     /**
@@ -206,7 +210,7 @@ class RecipeEditorTest extends AdminTestCase
             ->where('published.definition.slug', 'wireguard')
             ->where('published.files', fn ($files) => collect($files)->has('lib.sh'))
             ->where('library', fn ($library) => collect($library)->has('proxmotion.sh'))
-            ->where('distributions', fn ($distributions) => collect($distributions)->contains(fn (array $entry) => $entry['id'] === 'rhel' && $entry['base'] === 'almalinux')));
+            ->where('distributions', fn ($distributions) => collect($distributions)->contains(fn (array $entry) => $entry['id'] === 'rhel' && $entry['family'] === 'rhel')));
 
         $this->post(route('admin.apps.copy', $this->app('wireguard')), ['slug' => 'my-vpn', 'name' => 'My VPN']);
 
@@ -219,12 +223,12 @@ class RecipeEditorTest extends AdminTestCase
             ->where('versions.0.status', 'draft'));
     }
 
-    public function test_the_os_picker_gets_what_active_linux_templates_are_matched_as()
+    public function test_the_os_picker_gets_the_systems_and_versions_of_active_linux_templates()
     {
         OsTemplate::factory()->create(['distribution' => 'debian', 'version' => '13']);
         OsTemplate::factory()->create(['distribution' => 'debian', 'version' => '12']);
         OsTemplate::factory()->create(['name' => 'Debian 12 (copy)', 'distribution' => 'debian', 'version' => '12']);
-        OsTemplate::factory()->create(['name' => 'Pardus 23.4', 'distribution' => 'pardus', 'version' => '23.4', 'compatible_with' => 'debian', 'compatible_version' => '12']);
+        OsTemplate::factory()->create(['name' => 'Pardus 23.4', 'distribution' => 'pardus', 'version' => '23.4']);
         OsTemplate::factory()->create(['distribution' => 'ubuntu', 'version' => '24.04']);
         OsTemplate::factory()->create(['distribution' => 'rocky', 'version' => '9', 'is_active' => false]);
         OsTemplate::factory()->windows()->create();
@@ -233,6 +237,7 @@ class RecipeEditorTest extends AdminTestCase
             ->where('osTemplates', [
                 ['distribution' => 'debian', 'version' => '12'],
                 ['distribution' => 'debian', 'version' => '13'],
+                ['distribution' => 'pardus', 'version' => '23.4'],
                 ['distribution' => 'ubuntu', 'version' => '24.04'],
             ])
             ->where('distributions.0.id', 'debian'));
