@@ -210,7 +210,7 @@ class RecipeEditorTest extends AdminTestCase
             ->where('published.definition.slug', 'wireguard')
             ->where('published.files', fn ($files) => collect($files)->has('lib.sh'))
             ->where('library', fn ($library) => collect($library)->has('proxmotion.sh'))
-            ->where('distributions', fn ($distributions) => collect($distributions)->contains(fn (array $entry) => $entry['id'] === 'rhel' && $entry['family'] === 'rhel')));
+            ->where('systems.slug', 'wireguard'));
 
         $this->post(route('admin.apps.copy', $this->app('wireguard')), ['slug' => 'my-vpn', 'name' => 'My VPN']);
 
@@ -223,24 +223,27 @@ class RecipeEditorTest extends AdminTestCase
             ->where('versions.0.status', 'draft'));
     }
 
-    public function test_the_os_picker_gets_the_systems_and_versions_of_active_linux_templates()
+    public function test_the_editor_ticks_the_apps_systems_and_the_drafts_suggestions()
     {
-        OsTemplate::factory()->create(['distribution' => 'debian', 'version' => '13']);
-        OsTemplate::factory()->create(['distribution' => 'debian', 'version' => '12']);
-        OsTemplate::factory()->create(['name' => 'Debian 12 (copy)', 'distribution' => 'debian', 'version' => '12']);
-        OsTemplate::factory()->create(['name' => 'Pardus 23.4', 'distribution' => 'pardus', 'version' => '23.4']);
-        OsTemplate::factory()->create(['distribution' => 'ubuntu', 'version' => '24.04']);
-        OsTemplate::factory()->create(['distribution' => 'rocky', 'version' => '9', 'is_active' => false]);
-        OsTemplate::factory()->windows()->create();
+        $trixie = OsTemplate::factory()->create(['distribution' => 'debian', 'version' => '13'])->operating_system_version_id;
+        $rocky = OsTemplate::factory()->create(['distribution' => 'rocky', 'version' => '9'])->operating_system_version_id;
+        $docker = $this->app('docker');
+        $docker->osVersions()->attach($rocky);
 
-        $this->get(route('admin.apps.edit', $this->app('docker')))->assertInertia(fn ($page) => $page
-            ->where('osTemplates', [
-                ['distribution' => 'debian', 'version' => '12'],
-                ['distribution' => 'debian', 'version' => '13'],
-                ['distribution' => 'pardus', 'version' => '23.4'],
-                ['distribution' => 'ubuntu', 'version' => '24.04'],
-            ])
-            ->where('distributions.0.id', 'debian'));
+        // The ticks are the app's, not the recipe's (docs/adr/0026): the draft only changes what is suggested.
+        $draft = $docker->latestVersion?->definition ?? [];
+        $draft['requires']['os'] = ['distributions' => ['rocky']];
+        unset($draft['requires']['min_versions'], $draft['requires']['max_versions']);
+        $this->save($docker, Yaml::dump($draft, 6, 4), $docker->latestVersion?->files ?? [])->assertSessionHasNoErrors();
+
+        $this->get(route('admin.apps.edit', $docker))->assertInertia(fn ($page) => $page
+            ->where('osVersions', fn ($versions) => collect($versions)->pluck('id')->contains($trixie))
+            ->where('systems', ['slug' => 'docker', 'platform' => 'linux', 'os_version_ids' => [$rocky], 'suggested_ids' => [$rocky]]));
+
+        // Saved at once, without publishing.
+        $this->put(route('admin.apps.systems', $docker), ['os_version_ids' => [$rocky, $trixie]])->assertSessionHasNoErrors();
+        $this->assertNotNull($docker->refresh()->draft());
+        $this->assertEqualsCanonicalizing([$rocky, $trixie], $docker->osVersions()->pluck('operating_system_versions.id')->all());
     }
 
     public function test_versions_are_compared_in_the_history()

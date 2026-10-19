@@ -4,7 +4,7 @@ import { FileUp, Pencil, Plus } from '@lucide/vue';
 import { computed, ref } from 'vue';
 import FormDialog from '@/components/admin/FormDialog.vue';
 import AppSystemsDialog from '@/components/admin/AppSystemsDialog.vue';
-import type { AppOsVersion } from '@/components/admin/AppSystemsDialog.vue';
+import type { AppOsVersion } from '@/components/admin/AppSystemsPicker.vue';
 import FormField from '@/components/admin/FormField.vue';
 import GuideBox from '@/components/admin/GuideBox.vue';
 import StatusBadge from '@/components/admin/StatusBadge.vue';
@@ -58,12 +58,16 @@ const describe = (text: AppText) =>
     (page.props.locale === 'tr' ? text.tr : null) ?? text.en;
 
 // The operating system versions an app is offered on (docs/adr/0026).
-const systemsFor = ref<(typeof props.apps)[number] | null>(null);
+// The app whose systems are open, by slug: the props refresh after each tick.
+const systemsSlug = ref<string | null>(null);
+const systemsFor = computed(
+    () => props.apps.find((app) => app.slug === systemsSlug.value) ?? null,
+);
 const systemsOpen = computed({
     get: () => systemsFor.value !== null,
     set: (value: boolean) => {
         if (!value) {
-            systemsFor.value = null;
+            systemsSlug.value = null;
         }
     },
 });
@@ -256,7 +260,7 @@ const submitCreate = () =>
                                 size="sm"
                                 class="block h-auto px-0 text-xs"
                                 :data-test="`systems-${app.slug}`"
-                                @click="systemsFor = app"
+                                @click="systemsSlug = app.slug"
                             >
                                 {{ $t('Choose systems') }}
                             </Button>

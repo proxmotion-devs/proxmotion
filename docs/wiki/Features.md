@@ -259,7 +259,7 @@ Requirements of every template: **cloud-init** and the **QEMU guest agent** inst
 
 Operating systems are the administrators' own list ([ADR 0026](../adr/0026-operating-systems-of-administrators.md)): in the *Operating systems* section of the page they add a system (a name such as "Ubuntu", and Linux or Windows) and its versions (26.04, 24.04, …). The list starts empty. Each template is of one of those versions, picked from a single list; its system, version and platform (which picks the guest scripts) come from it.
 
-Apps are offered on the versions administrators tick for each app on the *Apps* page (*Choose systems*). What a recipe says it runs on is only a suggestion there (*Tick the suggested ones*).
+Apps are offered on the versions administrators tick for each app, on the editor's *Requirements* tab or with *Choose systems* on the *Apps* page; a tick is saved at once, no publishing needed. What a recipe says it runs on is only a suggestion there (*Tick the suggested ones*).
 
 **Name guess.** When templates are found on Proxmox, the panel guesses the distribution and version from the template's name and fills in the form.
 

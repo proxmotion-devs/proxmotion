@@ -35,15 +35,31 @@ final class AppSystems
     }
 
     /**
-     * The versions the recipe (the published one, else the draft) suggests.
+     * The versions for the admin pages' tick lists.
+     *
+     * @param  Collection<int, OperatingSystemVersion>  $versions
+     * @return list<array{id: int, system: string, version: string, platform: string}>
+     */
+    public static function options(Collection $versions): array
+    {
+        return array_values($versions->map(fn (OperatingSystemVersion $version) => [
+            'id' => $version->id,
+            'system' => $version->operatingSystem->name,
+            'version' => $version->version,
+            'platform' => $version->operatingSystem->platform->value,
+        ])->all());
+    }
+
+    /**
+     * The versions a recipe suggests: the given one (the editor's draft),
+     * else the published version, else the newest.
      *
      * @param  Collection<int, OperatingSystemVersion>  $versions
      * @return list<int>
      */
-    public static function suggested(AppRecipe $app, Collection $versions): array
+    public static function suggested(AppRecipe $app, Collection $versions, ?Recipe $recipe = null): array
     {
-        $version = $app->latestVersion ?? $app->versions()->latest('id')->first();
-        $recipe = $version?->recipe();
+        $recipe ??= ($app->latestVersion ?? $app->versions()->latest('id')->first())?->recipe();
 
         if ($recipe === null) {
             return [];

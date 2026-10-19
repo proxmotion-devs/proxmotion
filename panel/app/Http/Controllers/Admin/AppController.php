@@ -44,12 +44,7 @@ class AppController extends Controller
 
         return Inertia::render('admin/apps/Index', [
             // The operating system versions apps can be ticked for (docs/adr/0026).
-            'osVersions' => $versions->map(fn (OperatingSystemVersion $version) => [
-                'id' => $version->id,
-                'system' => $version->operatingSystem->name,
-                'version' => $version->version,
-                'platform' => $version->operatingSystem->platform->value,
-            ])->values(),
+            'osVersions' => AppSystems::options($versions),
             'apps' => AppRecipe::query()
                 ->with(['latestVersion', 'osVersions:id', 'versions' => fn ($query) => $query->where('status', AppRecipeVersionStatus::Draft)])
                 ->withCount(['installations as installed_count' => fn ($query) => $query->where('status', AppInstallationStatus::Installed)->where('is_trial', false)])

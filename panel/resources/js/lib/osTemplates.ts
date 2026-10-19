@@ -22,17 +22,6 @@ export type OperatingSystem = {
     versions: SystemVersion[];
 };
 
-/**
- * A known os-release ID, for the recipe editor's OS picker
- * (Distributions::forForm()).
- */
-export type Distribution = {
-    id: string;
-    name: string;
-    family: string;
-    base: string | null;
-};
-
 /** "Ubuntu 24.04". */
 export function versionLabel(
     system: { name: string },

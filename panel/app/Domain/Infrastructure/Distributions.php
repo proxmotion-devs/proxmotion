@@ -62,16 +62,6 @@ final class Distributions
         return self::KNOWN[$distribution]['name'] ?? ucfirst($distribution);
     }
 
-    /**
-     * The well-known IDs of a family (those a recipe naming the family covers by name).
-     *
-     * @return list<string>
-     */
-    public static function ofFamily(OsFamily $family): array
-    {
-        return array_keys(array_filter(self::KNOWN, fn (array $entry) => $entry['family'] === $family && $family !== OsFamily::Windows));
-    }
-
     /** A distribution name from before docs/adr/0024 (archlinux) as its os-release ID (arch). */
     public static function fromOldName(string $name): string
     {
@@ -84,21 +74,5 @@ final class Distributions
     public static function apiName(string $distribution): string
     {
         return self::API_NAMES[$distribution] ?? $distribution;
-    }
-
-    /**
-     * The well-known IDs for the recipe editor's OS picker.
-     *
-     * @return list<array{id: string, name: string, family: string, base: null}>
-     */
-    public static function forForm(): array
-    {
-        $list = [];
-
-        foreach (self::KNOWN as $id => $entry) {
-            $list[] = ['id' => $id, 'name' => $entry['name'], 'family' => $entry['family']->value, 'base' => null];
-        }
-
-        return $list;
     }
 }

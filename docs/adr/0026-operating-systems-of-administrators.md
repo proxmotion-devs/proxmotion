@@ -22,7 +22,7 @@ What administrators want is simpler: their own list ("Ubuntu" with 26.04 and 24.
 
 ### 3. Administrators tick the versions each app is offered on
 
-`app_recipe_operating_system_version`, edited from *Apps → Choose systems* and audited as `app.systems_changed`. Eligibility (catalog, install, order, reinstall, upgrade) asks only whether the template's version is ticked for the app; trial runs of drafts on test servers skip the check. A Linux app cannot be ticked for a Windows system and the other way round.
+`app_recipe_operating_system_version`, ticked in one component (`AppSystemsPicker`) shown on the editor's *Requirements* tab and in *Apps → Choose systems*. A tick is saved at once and audited as `app.systems_changed`; it is not part of the recipe, so drafts and publishing do not touch it. (The first version of this change kept the editor's old OS picker, which wrote `requires.os` into the draft; administrators ticked there, published and saw nothing change. That picker is gone; `requires.os` is edited only in *Edit as YAML*.) Eligibility (catalog, install, order, reinstall, upgrade) asks only whether the template's version is ticked for the app; trial runs of drafts on test servers skip the check. A Linux app cannot be ticked for a Windows system and the other way round.
 
 A recipe's `requires.os`, `min_versions` and `max_versions` stay in the recipe format but only **suggest** versions: the dialog marks them and *Tick the suggested ones* ticks them. A system is matched to the recipe's os-release IDs by its slug when the panel knows it, else by its name (`TemplateNameGuess`: "Rocky Linux" → `rocky`). New apps and new versions are ticked by nobody: an app is offered nowhere until an administrator ticks a version.
 

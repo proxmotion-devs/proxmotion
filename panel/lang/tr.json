@@ -1562,7 +1562,6 @@
     "Paid: needs a right granted by the billing system": "Ücretli: faturalama sisteminin verdiği bir hak gerekir",
     "Smallest server it needs": "Gereken en küçük sunucu",
     "There are no active Linux OS templates yet. Add them under OS templates; until then the operating systems can only be changed in the YAML view.": "Henüz etkin bir Linux işletim sistemi şablonu yok. İşletim sistemi şablonları altından ekleyin; o zamana kadar işletim sistemleri yalnızca YAML görünümünde değiştirilebilir.",
-    "This recipe is for Windows, which apps do not support yet; change it in the YAML view.": "Bu tarif Windows içindir ve uygulamalar henüz Windows'u desteklemiyor; YAML görünümünde değiştirin.",
     "Ticking a version selects the versions between it and the others. The server checks its operating system again before a script runs.": "Bir sürümü işaretlemek, onunla diğerleri arasındaki sürümleri de seçer. Sunucu, bir betik çalışmadan önce işletim sistemini yeniden kontrol eder.",
     "Versions": "Sürümler",
     "What the customer fills in": "Müşterinin doldurdukları",
@@ -1635,12 +1634,12 @@
     "Operating systems of the app saved.": "Uygulamanın işletim sistemleri kaydedildi.",
     "Picks the scripts that set the password, addresses and disk.": "Şifreyi, adresleri ve diski ayarlayan betikleri seçer.",
     "The app does not run on that kind of system.": "Uygulama bu tür bir sistemde çalışmaz.",
-    "The app is offered only on the versions you tick.": "Uygulama yalnızca işaretlediğiniz sürümlerde sunulur.",
     "The recipe says:": "Tarif diyor ki:",
     "The server reports another version. Check that the template is of the version you picked.": "Sunucu başka bir sürüm bildiriyor. Şablonun seçtiğiniz sürümde olduğunu kontrol edin.",
     "The version matches the server.": "Sürüm sunucuyla eşleşiyor.",
     "Tick the suggested ones": "Önerilenleri işaretle",
     "Version added. Tick it on the apps that run on it.": "Sürüm eklendi. Üzerinde çalışan uygulamalarda işaretleyin.",
     "Your list: add a system, then its versions. OS templates and apps use these versions.": "Sizin listeniz: bir sistem, sonra sürümlerini ekleyin. OS şablonları ve uygulamalar bu sürümleri kullanır.",
-    "suggested": "önerilen"
+    "suggested": "önerilen",
+    "The app is offered only on the versions you tick. A tick is saved at once.": "Uygulama yalnızca işaretlediğiniz sürümlerde sunulur. Her işaret hemen kaydedilir."
 }
