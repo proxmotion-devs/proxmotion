@@ -17,7 +17,8 @@ use Illuminate\Support\Sleep;
  * Proxmox VE 9 checks VM.GuestAgent.* privileges (exec and set-user-password
  * need VM.GuestAgent.Unrestricted); older releases checked VM.Monitor.
  * Requests fail with a ProxmoxRequestFailed (HTTP 500) when the VM is not
- * running or its agent does not answer.
+ * running or its agent does not answer, and with a GuestAgentException when
+ * the guest's qemu-ga settings block the command.
  */
 final readonly class GuestAgentResource
 {
@@ -59,7 +60,7 @@ final readonly class GuestAgentResource
             throw GuestAgentException::fileTooLarge($file, strlen($content), self::MAX_WRITE_BYTES);
         }
 
-        $this->client->post($this->path($vmid, 'file-write'), [
+        $this->post($vmid, 'file-write', [
             'file' => $file,
             'content' => base64_encode($content),
             'encode' => 0,
@@ -71,7 +72,7 @@ final readonly class GuestAgentResource
      */
     public function readFile(int $vmid, string $file): GuestFile
     {
-        $data = $this->client->get($this->path($vmid, 'file-read'), ['file' => $file]);
+        $data = $this->get($vmid, 'file-read', ['file' => $file]);
 
         return GuestFile::fromApi(is_array($data) ? $data : []);
     }
@@ -96,14 +97,14 @@ final readonly class GuestAgentResource
             $params['input-data'] = $input;
         }
 
-        $data = $this->client->post($this->path($vmid, 'exec'), $params);
+        $data = $this->post($vmid, 'exec', $params);
 
         return is_array($data) && is_numeric($data['pid'] ?? null) ? (int) $data['pid'] : 0;
     }
 
     public function execStatus(int $vmid, int $pid): GuestExecStatus
     {
-        $data = $this->client->get($this->path($vmid, 'exec-status'), ['pid' => $pid]);
+        $data = $this->get($vmid, 'exec-status', ['pid' => $pid]);
 
         return GuestExecStatus::fromApi(is_array($data) ? $data : []);
     }
@@ -142,10 +143,45 @@ final readonly class GuestAgentResource
      */
     public function setUserPassword(int $vmid, string $username, string $password): void
     {
-        $this->client->post($this->path($vmid, 'set-user-password'), [
+        $this->post($vmid, 'set-user-password', [
             'username' => $username,
             'password' => $password,
         ]);
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    private function post(int $vmid, string $command, array $data): mixed
+    {
+        try {
+            return $this->client->post($this->path($vmid, $command), $data);
+        } catch (ProxmoxRequestFailed $e) {
+            throw self::disabled($vmid, $e) ?? $e;
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>  $query
+     */
+    private function get(int $vmid, string $command, array $query): mixed
+    {
+        try {
+            return $this->client->get($this->path($vmid, $command), $query);
+        } catch (ProxmoxRequestFailed $e) {
+            throw self::disabled($vmid, $e) ?? $e;
+        }
+    }
+
+    /**
+     * The agent answers "Command guest-exec has been disabled" for commands its
+     * settings in the guest block.
+     */
+    private static function disabled(int $vmid, ProxmoxRequestFailed $e): ?GuestAgentException
+    {
+        return preg_match('/Command (guest-[a-z-]+) has been disabled/', $e->getMessage(), $match) === 1
+            ? GuestAgentException::commandDisabled($vmid, $match[1])
+            : null;
     }
 
     private function path(int $vmid, string $command): string

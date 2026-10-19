@@ -129,6 +129,9 @@ apt clean
 ```bash
 dnf upgrade -y
 dnf install -y cloud-init cloud-utils-growpart qemu-guest-agent
+# The agent blocks guest-exec and file access here by default; the panel needs them
+sed -i -e 's/^FILTER_RPC_ARGS=.*/FILTER_RPC_ARGS=""/' -e 's/^BLACKLIST_RPC=.*/BLACKLIST_RPC=/' \
+  /etc/sysconfig/qemu-ga
 systemctl enable qemu-guest-agent cloud-init cloud-init-local cloud-config cloud-final
 rm -f /etc/NetworkManager/system-connections/*                 # installer network profile
 dnf clean all

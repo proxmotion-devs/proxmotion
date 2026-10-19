@@ -51,6 +51,9 @@ class FakeProxmoxCluster
     /** @var array<int, bool> VMIDs whose guest agent does not answer */
     public array $agentDown = [];
 
+    /** @var array<int, list<string>> agent commands (exec, file-read, …) each guest blocks, as RHEL-family qemu-ga does by default */
+    public array $agentBlocked = [];
+
     /** @var array<int, bool> VMIDs that /cluster/resources lists with maxdisk 0, as Proxmox can for stopped VMs */
     public array $unknownDiskSize = [];
 
@@ -252,6 +255,10 @@ class FakeProxmoxCluster
     {
         if ($this->vms[$vmid]['status'] !== 'running' || ($this->agentDown[$vmid] ?? false)) {
             return Create::promiseFor(new Psr7Response(500, ['Content-Type' => 'application/json'], '{"data":null}', '1.1', 'QEMU guest agent is not running'));
+        }
+
+        if (in_array($command, $this->agentBlocked[$vmid] ?? [], true)) {
+            return Create::promiseFor(new Psr7Response(500, ['Content-Type' => 'application/json'], '{"data":null}', '1.1', "Agent error: Command guest-{$command} has been disabled: the command is not allowed"));
         }
 
         switch ($command) {
