@@ -39,7 +39,7 @@ final readonly class GuestPackage
             'inputs.json' => self::json($inputs === [] ? new stdClass : $inputs),
             'server.json' => self::json($this->serverFacts($server) + [
                 // run.sh compares them with /etc/os-release before any script runs (docs/adr/0016 §3).
-                'os_release' => OsFamilies::osReleaseIds($version->recipe()->families),
+                'os_release' => self::osReleaseIds($server, $version),
             ]),
         ];
 
@@ -56,6 +56,25 @@ final readonly class GuestPackage
         foreach ($files as $path => $content) {
             $agent->writeFile($server->vmid, $directory.'/'.$path, $content);
         }
+    }
+
+    /**
+     * The os-release IDs run.sh accepts; empty: any. The panel matched a
+     * derivative through its base (docs/adr/0022), so its own ID is accepted
+     * too, for one whose ID_LIKE does not name the base.
+     *
+     * @return list<string>
+     */
+    private static function osReleaseIds(Server $server, AppRecipeVersion $version): array
+    {
+        $ids = OsFamilies::osReleaseIds($version->recipe()->families);
+        $distribution = $server->osTemplate?->distribution;
+
+        if ($ids !== [] && $distribution !== null && ! in_array($distribution, $ids, true)) {
+            $ids[] = $distribution;
+        }
+
+        return $ids;
     }
 
     /**

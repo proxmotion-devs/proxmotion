@@ -107,6 +107,9 @@ export type OsTemplate = {
     name: string;
     family: string;
     version: string;
+    /** A derivative's os-release ID; family and version then name its base. */
+    distribution: string | null;
+    distribution_version: string | null;
     platform: OsPlatform;
     is_active: boolean;
     sort_order: number;

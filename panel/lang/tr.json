@@ -1231,7 +1231,7 @@
     "Then create a test server yourself before customers order:": "Müşteriler sipariş vermeden önce kendiniz bir test sunucusu oluşturun:",
     "New server": "Yeni sunucu",
     "Steps": "Adımlar",
-    "Check the family and version: apps use them to decide whether they fit a server.": "Aile ve sürümü kontrol edin: uygulamalar bir sunucuya uyup uymadıklarına bunlara bakarak karar verir.",
+    "Check the family and version: apps use them to decide whether they fit a server. For a system based on another one, such as Pardus on Debian, tick Based on another system and give the base it was built from.": "Aile ve sürümü kontrol edin: uygulamalar bir sunucuya uyup uymadıklarına bunlara bakarak karar verir. Pardus gibi Debian üzerine kurulu bir sistem için Başka bir sisteme dayanıyor kutusunu işaretleyin ve hangi sistemden türetildiğini girin.",
     "Open OS templates": "İşletim sistemi şablonlarını aç",
     "Apps are installed inside customers' servers through the guest agent, at order time or later from the billing system's client area.": "Uygulamalar müşteri sunucularına guest agent üzerinden kurulur; sipariş sırasında ya da sonradan faturalama sisteminin müşteri alanından.",
     "Bundled apps": "Hazır uygulamalar",
@@ -1571,5 +1571,14 @@
     "What the customer fills in": "Müşterinin doldurdukları",
     "What the customer gets back": "Müşterinin geri aldıkları",
     "When it can be installed": "Ne zaman kurulabilir",
-    "With a new server or a reinstall": "Yeni bir sunucuyla ya da yeniden kurulumla"
+    "With a new server or a reinstall": "Yeni bir sunucuyla ya da yeniden kurulumla",
+    "Based on another system": "Başka bir sisteme dayanıyor",
+    "For a derivative such as Pardus, Linux Mint or Oracle Linux. Apps are matched against the system it is based on.": "Pardus, Linux Mint veya Oracle Linux gibi türev dağıtımlar için. Uygulamalar, dayandığı sisteme göre eşleştirilir.",
+    "Distribution": "Dağıtım",
+    "The ID line of /etc/os-release, e.g. pardus.": "/etc/os-release içindeki ID satırı, ör. pardus.",
+    "Its version": "Kendi sürümü",
+    "Based on": "Dayandığı sistem",
+    "The system it was built from. Choose other when you do not know it: no apps are offered then.": "Türetildiği sistem. Bilmiyorsanız other seçin: bu durumda uygulama sunulmaz.",
+    "Base version": "Temel sürüm",
+    "The version of the base system, e.g. 12 for Pardus 23 on Debian 12.": "Temel sistemin sürümü, ör. Debian 12 tabanlı Pardus 23 için 12."
 }

@@ -23,6 +23,9 @@ class OsTemplateResource extends JsonResource
             'name' => $this->name,
             'family' => $this->family,
             'version' => $this->version,
+            // A derivative's own os-release ID and version; family and version name its base (docs/adr/0022).
+            'distribution' => $this->distribution,
+            'distribution_version' => $this->distribution_version,
         ];
     }
 }

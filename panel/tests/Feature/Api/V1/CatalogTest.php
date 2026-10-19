@@ -51,6 +51,8 @@ class CatalogTest extends ApiTestCase
                 'name' => $this->osTemplate->name,
                 'family' => $this->osTemplate->family,
                 'version' => $this->osTemplate->version,
+                'distribution' => null,
+                'distribution_version' => null,
             ]]]);
     }
 }

@@ -1127,12 +1127,14 @@ components:
         country_code: { type: [string, 'null'] }
     OsTemplate:
       type: object
-      required: [id, name, family, version]
+      required: [id, name, family, version, distribution, distribution_version]
       properties:
         id: { type: string, format: uuid }
         name: { type: string }
-        family: { type: string, examples: [ubuntu] }
-        version: { type: string, examples: ['24.04'] }
+        family: { type: string, examples: [ubuntu], description: 'The system apps are matched against; for a derivative, the system it is based on (docs/adr/0022).' }
+        version: { type: string, examples: ['24.04'], description: 'Version of that system (for Pardus 23 on Debian 12: 12).' }
+        distribution: { type: [string, 'null'], examples: [pardus], description: 'A derivative''s own os-release ID; null for the systems named by family.' }
+        distribution_version: { type: [string, 'null'], examples: ['23.4'], description: 'The derivative''s own version.' }
     OrderedApp:
       type: [string, 'null']
       description: |

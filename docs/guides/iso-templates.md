@@ -200,14 +200,18 @@ On a cluster with **local** storage, create the template on every node that shou
 1. If the panel's API token is limited to a resource pool, make sure the template is in that
    pool (*Datacenter → Permissions → Pools → `<pool>` → Members → Add → Virtual Machine*).
 2. *Admin → Clusters*: run a sync.
-3. *Admin → OS templates*: map the new Proxmox template to an OS template.
+3. *Admin → OS templates*: map the new Proxmox template to an OS template. For a system built on
+   another one (Pardus on Debian, Linux Mint on Ubuntu, Oracle Linux on AlmaLinux), tick *Based on
+   another system*, enter its `ID` from `/etc/os-release` and its version, and choose the base system
+   and base version (Pardus 23: Debian 12): apps are offered by the base (ADR 0022). Without a known
+   base, choose `other`: the template works but no app is offered.
 4. Create a test server and check: it boots with the right IP and hostname, the root password
    and SSH keys work, the disk has the package size (`df -h /`), and the server page shows the
    guest agent as reachable.
 
 ## Windows Server
 
-Set the OS template's *Platform* to **Windows** in the panel. How the panel handles Windows
+Choose the family **windows** for the OS template in the panel. How the panel handles Windows
 servers, and a Cloudbase-Init configuration that avoids an extra restart on the first boot, are in
 [windows-templates.md](windows-templates.md).
 

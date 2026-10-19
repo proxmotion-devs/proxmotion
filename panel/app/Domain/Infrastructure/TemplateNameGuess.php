@@ -6,12 +6,33 @@ namespace App\Domain\Infrastructure;
 
 /**
  * Guesses the operating system of a Proxmox VM template from its name
- * (e.g. "ubuntu-2404-cloud", "debian-12", "alma9", "win2022"), so an OS
- * template can be added with one click. Administrators check the guess
- * before saving; nothing is stored without them.
+ * (e.g. "ubuntu-2404-cloud", "debian-12", "alma9", "win2022", "pardus-23"),
+ * so an OS template can be added with one click. Administrators check the
+ * guess before saving; nothing is stored without them.
+ *
+ * Derivatives (docs/adr/0022) get their own os-release ID as distribution
+ * and the system they are based on as family. Their base version is only
+ * guessed where it is the same number (RHEL and Oracle Linux 9 are
+ * AlmaLinux 9); otherwise the administrator enters it.
  */
 final class TemplateNameGuess
 {
+    /**
+     * Name fragments of derivatives, looked for first: os-release ID, base
+     * family, display name and whether the version is the base's.
+     *
+     * @var array<string, array{string, string, string, bool}>
+     */
+    private const array DERIVATIVES = [
+        'pardus' => ['pardus', 'debian', 'Pardus', false],
+        'linuxmint' => ['linuxmint', 'ubuntu', 'Linux Mint', false],
+        'mint' => ['linuxmint', 'ubuntu', 'Linux Mint', false],
+        'kali' => ['kali', 'debian', 'Kali Linux', false],
+        'oraclelinux' => ['ol', 'almalinux', 'Oracle Linux', true],
+        'oracle' => ['ol', 'almalinux', 'Oracle Linux', true],
+        'rhel' => ['rhel', 'almalinux', 'Red Hat Enterprise Linux', true],
+    ];
+
     /** Name fragments in the order they are looked for, with their family. */
     private const array FAMILIES = [
         'ubuntu' => 'ubuntu',
@@ -42,12 +63,30 @@ final class TemplateNameGuess
     ];
 
     /**
-     * @return array{name: string, family: string, version: string}
+     * @return array{name: string, family: string, version: string, distribution: string|null, distribution_version: string|null}
      */
     public static function fromName(?string $templateName): array
     {
         $raw = trim((string) $templateName);
         $lower = strtolower($raw);
+
+        foreach (self::DERIVATIVES as $fragment => [$distribution, $family, $name, $sameVersion]) {
+            $position = strpos($lower, $fragment);
+
+            if ($position === false) {
+                continue;
+            }
+
+            $version = self::version('other', substr($lower, $position + strlen($fragment)));
+
+            return [
+                'name' => trim("{$name} {$version}"),
+                'family' => $family,
+                'version' => $sameVersion ? $version : '',
+                'distribution' => $distribution,
+                'distribution_version' => $version === '' ? null : $version,
+            ];
+        }
 
         foreach (self::FAMILIES as $fragment => $family) {
             $position = strpos($lower, $fragment);
@@ -58,10 +97,10 @@ final class TemplateNameGuess
 
             $version = self::version($family, substr($lower, $position + strlen($fragment)));
 
-            return ['name' => self::displayName($family, $version), 'family' => $family, 'version' => $version];
+            return ['name' => self::displayName($family, $version), 'family' => $family, 'version' => $version, 'distribution' => null, 'distribution_version' => null];
         }
 
-        return ['name' => $raw, 'family' => 'other', 'version' => self::version('other', $lower)];
+        return ['name' => $raw, 'family' => 'other', 'version' => self::version('other', $lower), 'distribution' => null, 'distribution_version' => null];
     }
 
     /**

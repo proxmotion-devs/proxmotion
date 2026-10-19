@@ -32,7 +32,13 @@ type FoundTemplate = {
     name: string;
     proxmox_template_ids: number[];
     places: string[];
-    guess: { name: string; family: string; version: string };
+    guess: {
+        name: string;
+        family: string;
+        version: string;
+        distribution: string | null;
+        distribution_version: string | null;
+    };
 };
 
 const props = defineProps<{
@@ -71,13 +77,28 @@ const mappedLabel = (template: OsTemplate) =>
         .map((candidate) => `${candidate.cluster} #${candidate.vmid}`)
         .join(', ');
 
+/** "pardus 23 · debian 12" for a derivative, "debian 12" otherwise. */
+const systemLabel = (template: OsTemplate) => {
+    const base = `${template.family} ${template.version}`;
+
+    return template.distribution
+        ? `${template.distribution} ${template.distribution_version ?? ''}`.trim() +
+              ` · ${base}`
+        : base;
+};
+
 const dialogOpen = ref(false);
 const editing = ref<OsTemplate | null>(null);
+// A derivative (Pardus on Debian) names its own system and, in family and
+// version, the one it is based on, which apps are matched against (docs/adr/0022).
+const derivative = ref(false);
 
 const form = useForm({
     name: '',
     family: 'ubuntu' as string | null,
     version: '',
+    distribution: '',
+    distribution_version: '',
     is_active: true,
     sort_order: 0,
     proxmox_template_ids: [] as number[],
@@ -93,6 +114,13 @@ const openForm = (
         name: template?.name ?? found?.guess.name ?? '',
         family: template?.family ?? found?.guess.family ?? 'ubuntu',
         version: template?.version ?? found?.guess.version ?? '',
+        distribution:
+            (template ? template.distribution : found?.guess.distribution) ??
+            '',
+        distribution_version:
+            (template
+                ? template.distribution_version
+                : found?.guess.distribution_version) ?? '',
         is_active: template?.is_active ?? true,
         sort_order: template?.sort_order ?? 0,
         proxmox_template_ids: [
@@ -102,6 +130,7 @@ const openForm = (
         ],
     });
     form.reset();
+    derivative.value = form.distribution !== '';
     dialogOpen.value = true;
 };
 
@@ -121,6 +150,11 @@ const toggleGroup = (ids: number[], value: boolean | 'indeterminate') => {
 };
 
 const submit = () => {
+    form.transform((data) =>
+        derivative.value && data.family !== 'windows'
+            ? data
+            : { ...data, distribution: '', distribution_version: '' },
+    );
     form.submit(editing.value ? update(editing.value.uuid) : store(), {
         preserveScroll: true,
         onSuccess: () => (dialogOpen.value = false),
@@ -187,7 +221,7 @@ const submit = () => {
                 <li>
                     {{
                         $t(
-                            'Check the family and version: apps use them to decide whether they fit a server.',
+                            'Check the family and version: apps use them to decide whether they fit a server. For a system based on another one, such as Pardus on Debian, tick Based on another system and give the base it was built from.',
                         )
                     }}
                 </li>
@@ -270,7 +304,7 @@ const submit = () => {
                             />
                         </td>
                         <td class="px-4 py-3">
-                            {{ template.family }} {{ template.version }}
+                            {{ systemLabel(template) }}
                         </td>
                         <td class="px-4 py-3 font-mono text-xs">
                             <span v-if="template.proxmox_template_ids.length">{{
@@ -345,12 +379,65 @@ const submit = () => {
                 placeholder="Ubuntu 24.04 LTS"
             />
         </FormField>
+        <Label
+            v-if="form.family !== 'windows'"
+            class="flex items-start gap-3 font-normal"
+        >
+            <Checkbox
+                v-model="derivative"
+                class="mt-0.5"
+                data-test="derivative"
+            />
+            <span class="flex flex-col gap-0.5">
+                <span>{{ $t('Based on another system') }}</span>
+                <span class="text-xs text-muted-foreground">
+                    {{
+                        $t(
+                            'For a derivative such as Pardus, Linux Mint or Oracle Linux. Apps are matched against the system it is based on.',
+                        )
+                    }}
+                </span>
+            </span>
+        </Label>
+        <div
+            v-if="derivative && form.family !== 'windows'"
+            class="grid gap-4 sm:grid-cols-2"
+        >
+            <FormField
+                label="Distribution"
+                for="distribution"
+                :error="form.errors.distribution"
+                hint="The ID line of /etc/os-release, e.g. pardus."
+            >
+                <Input
+                    id="distribution"
+                    v-model="form.distribution"
+                    required
+                    placeholder="pardus"
+                />
+            </FormField>
+            <FormField
+                label="Its version"
+                for="distribution_version"
+                :error="form.errors.distribution_version"
+            >
+                <Input
+                    id="distribution_version"
+                    v-model="form.distribution_version"
+                    placeholder="23.4"
+                />
+            </FormField>
+        </div>
         <div class="grid gap-4 sm:grid-cols-2">
             <FormField
-                label="Family"
+                :label="derivative ? 'Based on' : 'Family'"
                 for="family"
                 :error="form.errors.family"
-                hint="Apps and the default scripts (Linux or Windows) follow the family."
+                :hint="
+                    derivative
+                        ? 'The system it was built from. Choose other when you do not know it: no apps are offered then.'
+                        : 'Apps and the default scripts (Linux or Windows) follow the family.'
+                "
             >
                 <NativeSelect
                     id="family"
@@ -359,15 +446,20 @@ const submit = () => {
                 />
             </FormField>
             <FormField
-                label="Version"
+                :label="derivative ? 'Base version' : 'Version'"
                 for="version"
                 :error="form.errors.version"
+                :hint="
+                    derivative
+                        ? 'The version of the base system, e.g. 12 for Pardus 23 on Debian 12.'
+                        : undefined
+                "
             >
                 <Input
                     id="version"
                     v-model="form.version"
                     required
-                    placeholder="24.04"
+                    :placeholder="derivative ? '12' : '24.04'"
                 />
             </FormField>
         </div>

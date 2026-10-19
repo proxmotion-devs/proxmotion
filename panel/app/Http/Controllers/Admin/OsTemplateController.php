@@ -36,6 +36,8 @@ class OsTemplateController extends Controller
                     'name' => $template->name,
                     'family' => $template->family,
                     'version' => $template->version,
+                    'distribution' => $template->distribution,
+                    'distribution_version' => $template->distribution_version,
                     'platform' => $template->platform->value,
                     'is_active' => $template->is_active,
                     'sort_order' => $template->sort_order,

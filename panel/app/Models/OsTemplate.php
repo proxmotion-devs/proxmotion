@@ -18,18 +18,25 @@ use Illuminate\Support\Carbon;
  * An operating system offered to customers, backed by one Proxmox VM template per cluster
  * (or per node, when templates live on local storage).
  *
+ * `family` and `version` name the system apps are matched against. For a
+ * derivative (Pardus, Linux Mint, Oracle Linux) they name the system it is
+ * based on (Debian 12), and `distribution` / `distribution_version` say what
+ * it really is (docs/adr/0022); both are null for the base systems themselves.
+ *
  * @property int $id
  * @property string $uuid
  * @property string $name
  * @property string $family
  * @property string $version
+ * @property string|null $distribution
+ * @property string|null $distribution_version
  * @property OsPlatform $platform
  * @property bool $is_active
  * @property int $sort_order
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  */
-#[Fillable(['name', 'family', 'version', 'platform', 'is_active', 'sort_order'])]
+#[Fillable(['name', 'family', 'version', 'distribution', 'distribution_version', 'platform', 'is_active', 'sort_order'])]
 class OsTemplate extends Model
 {
     /** @use HasFactory<OsTemplateFactory> */

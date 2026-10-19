@@ -68,6 +68,8 @@ actions:
 
 ### 3. Operating systems: families and groups
 
+*Amended 2026-10-19 by ADR 0022:* for a derivative (Pardus, Linux Mint, Oracle Linux), the template's family and version name the system it is based on, and its own os-release `ID` and version are stored as `distribution` / `distribution_version`; `server.json` accepts that `ID` too.
+
 *Revised 2026-10-17.* The first version had templates list capabilities (`systemd`, `apt`, `dnf`, `bash`, …) that recipes asked for. That asked administrators for something the template's family already says, and a wrong tick made an app fail inside the server. Recipes now name operating systems the way Linux distributions describe themselves in `/etc/os-release` (`ID`, and `ID_LIKE` for the distribution they derive from):
 
 - `requires.os` lists template families (`ubuntu`, `rocky`, …) or **groups**: `debian` (Debian, Ubuntu), `rhel` (RHEL, AlmaLinux, Rocky, CentOS, Fedora), `suse` (openSUSE), `arch` (Arch Linux). Omitted: any OS of the platform. `min_versions` gives the lowest version per family; every family in it must be covered by `os`. `max_versions` (added 2026-10-17) gives the highest, for software whose vendor has no packages for newer releases yet (FASTPANEL on Debian 13); a template version is compared by as many parts as the maximum has, so `12` covers `12.7` and `24.04` covers `24.04.1`, and the same coverage rule applies. The map from groups to families and to os-release IDs lives in one place (`App\Domain\Apps\OsFamilies`).

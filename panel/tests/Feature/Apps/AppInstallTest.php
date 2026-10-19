@@ -330,6 +330,42 @@ class AppInstallTest extends TestCase
         $this->assertSame(['debian', 'ubuntu'], $server['os_release']);
     }
 
+    public function test_derivatives_are_matched_through_the_system_they_are_based_on()
+    {
+        $wireguard = AppRecipe::query()->where('slug', 'wireguard')->firstOrFail();
+        $version = $wireguard->latestVersion;
+        $this->assertNotNull($version);
+        $definition = $version->definition;
+        $definition['requires']['max_versions'] = ['debian' => '12'];
+        $version->forceFill(['definition' => $definition])->save();
+        $wireguard->unsetRelation('latestVersion');
+        $eligibility = app(AppEligibility::class);
+        $useTemplate = function (array $attributes) {
+            $this->server->forceFill(['os_template_id' => OsTemplate::factory()->create($attributes)->id])->save();
+            $this->server->unsetRelation('osTemplate');
+        };
+
+        // Pardus 23 is matched as Debian 12, not by its own version.
+        $useTemplate(['name' => 'Pardus 23', 'family' => 'debian', 'version' => '12', 'distribution' => 'pardus', 'distribution_version' => '23.4']);
+        $this->assertNull($eligibility->forServer($wireguard, $this->server));
+
+        $useTemplate(['name' => 'Pardus 25', 'family' => 'debian', 'version' => '13', 'distribution' => 'pardus', 'distribution_version' => '25.0']);
+        $this->assertNotNull($eligibility->forServer($wireguard, $this->server), 'Its base is newer than max_versions.');
+
+        $useTemplate(['name' => 'Unknown', 'family' => 'other', 'version' => '1', 'distribution' => 'mydistro', 'distribution_version' => '1']);
+        $this->assertNotNull($eligibility->forServer($wireguard, $this->server), 'No apps without a known base.');
+    }
+
+    public function test_the_runner_also_accepts_a_derivatives_own_id()
+    {
+        $this->server->osTemplate->forceFill(['family' => 'debian', 'version' => '12', 'distribution' => 'pardus', 'distribution_version' => '23.4'])->save();
+
+        $installation = $this->install();
+        $server = json_decode($this->proxmox->guestFiles[$this->server->vmid][$this->directory($installation).'/server.json'], true);
+
+        $this->assertSame(['debian', 'ubuntu', 'pardus'], $server['os_release']);
+    }
+
     public function test_one_app_installs_at_a_time_and_an_installed_app_is_not_installed_twice()
     {
         $wireguard = $this->install();
