@@ -169,6 +169,14 @@ const powerAction = (action: PowerAction) =>
 const post = (action: ReturnType<typeof suspend>) =>
     router.visit(action, { preserveScroll: true });
 
+// Only the password changes, so the page does not ask Proxmox for the power
+// state and the guest agent again.
+const revealPassword = () =>
+    router.visit(password(props.server.uuid), {
+        preserveScroll: true,
+        only: ['revealedPassword'],
+    });
+
 const modelLabel =
     NETWORK_MODELS.find((model) => model.value === props.server.network_model)
         ?.label ?? props.server.network_model;
@@ -420,7 +428,7 @@ const resetAfterTrial = () => {
                                 <Button
                                     variant="outline"
                                     size="sm"
-                                    @click="post(password(server.uuid))"
+                                    @click="revealPassword"
                                 >
                                     <Eye class="h-4 w-4" />
                                     {{ $t('Show') }}
