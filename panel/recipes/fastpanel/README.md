@@ -13,7 +13,9 @@ generated password.
 
 FASTPANEL can only be installed on a freshly installed server: its installer stops when
 nginx, Apache or a database server is already there (its log is
-`/tmp/install_fastpanel.debug`). The panel asks for a free licence key on the first
+`/tmp/install_fastpanel.debug`). The installer also finishes successfully when its web
+server step fails, so the recipe checks for `/usr/sbin/nginx` afterwards and fails with the
+last lines of that log (copied into the run's log) when nginx is missing. The panel asks for a free licence key on the first
 login. The browser warns about the panel's self-signed certificate until one is issued
 in the panel.
 

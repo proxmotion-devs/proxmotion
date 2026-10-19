@@ -1,7 +1,7 @@
 format: 2
 slug: fastpanel
 name: FASTPANEL
-version: 1.0.1
+version: 1.0.2
 category: control-panel
 description:
     en: The FASTPANEL hosting control panel with its web, database, FTP and mail services. Needs a freshly installed server.

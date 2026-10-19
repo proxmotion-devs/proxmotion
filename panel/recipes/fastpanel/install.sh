@@ -33,6 +33,21 @@ else
     rm -f "$installer"
 fi
 
+# The installer goes on when its web server step fails and still exits 0;
+# the panel then cannot run nginx.
+if [ ! -x /usr/sbin/nginx ]; then
+    debug_log=/tmp/install_fastpanel.debug
+    reason="nginx is missing (/usr/sbin/nginx)."
+
+    if [ -s "$debug_log" ]; then
+        echo "Last lines of $debug_log:"
+        tail -n 40 "$debug_log"
+        reason="$reason Last installer line: $(grep -v '^[[:space:]]*$' "$debug_log" | tail -n 1)"
+    fi
+
+    pm_fail "FASTPANEL was installed without its web server: $reason"
+fi
+
 pm_step 90 "Setting the administrator password"
 command -v mogwai >/dev/null || pm_fail "FASTPANEL was installed but its mogwai tool is missing."
 password=$(head -c 48 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | cut -c 1-20)
