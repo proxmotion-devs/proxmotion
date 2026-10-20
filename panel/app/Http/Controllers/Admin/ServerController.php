@@ -33,12 +33,14 @@ use App\Http\Requests\Admin\AddressChangeRequest;
 use App\Http\Requests\Admin\ChangeResourcesRequest;
 use App\Http\Requests\Admin\ServerRequest;
 use App\Http\Requests\HostnameRequest;
+use App\Http\Requests\RebuildRequest;
 use App\Http\Requests\ReinstallRequest;
 use App\Models\AppEntitlement;
 use App\Models\AppInstallation;
 use App\Models\AppLog;
 use App\Models\AppRecipe;
 use App\Models\AppRun;
+use App\Models\AuditLog;
 use App\Models\BillingSystem;
 use App\Models\IpAddress;
 use App\Models\IpPool;
@@ -67,6 +69,7 @@ use App\Proxmox\Exceptions\ProxmoxException;
 use Illuminate\Container\Attributes\CurrentUser;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -231,6 +234,8 @@ class ServerController extends Controller
                 'status' => $server->status,
                 // In error, or stuck in a busy status after its task ended (Server::isStranded()).
                 'can_retry' => $server->status === ServerStatus::Error || $server->isStranded(),
+                // A failed creation may also be started over without its half-built VM (docs/adr/0032 §7).
+                'can_rebuild' => $request->user()?->can('rebuild', $server) ?? false,
                 'origin' => $server->origin,
                 'vmid' => $server->vmid,
                 'network_model' => $server->network_model,
@@ -431,6 +436,28 @@ class ServerController extends Controller
     public function verify(Server $server, #[CurrentUser] User $admin): RedirectResponse
     {
         return $this->startTask($server, TaskType::Verify, $admin, [ServerStatus::Active], 'Checking the server…');
+    }
+
+    /**
+     * Delete the half-built VM of a failed creation and create the server
+     * again with the same VMID, addresses and MAC address (docs/adr/0032 §7).
+     */
+    public function rebuild(RebuildRequest $request, Server $server, #[CurrentUser] User $admin): RedirectResponse
+    {
+        try {
+            DB::transaction(function () use ($request, $server, $admin) {
+                $this->tasks->start($server, TaskType::Create, $admin, input: ['fresh' => true]);
+                AuditLog::record('server.rebuilt', $admin, $server, ['hostname' => $server->hostname, 'vmid' => $server->vmid], $request->ip());
+            });
+        } catch (ProvisioningException $e) {
+            $this->toast('error', $e->getMessage());
+
+            return back();
+        }
+
+        $this->toast('info', 'Rebuilding the server from scratch…');
+
+        return back();
     }
 
     public function retry(Server $server, #[CurrentUser] User $admin): RedirectResponse

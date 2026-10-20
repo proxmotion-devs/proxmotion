@@ -10,6 +10,7 @@ use App\Enums\PowerAction;
 use App\Enums\TaskStatus;
 use App\Enums\TaskType;
 use App\Models\Task;
+use App\Provisioning\Exceptions\ForeignVm;
 use App\Provisioning\Pipelines\AddressesPipeline;
 use App\Provisioning\Pipelines\AppRunPipeline;
 use App\Provisioning\Pipelines\ChangeResourcesPipeline;
@@ -177,7 +178,7 @@ class RunServerTask implements ShouldQueue
      */
     private function messageFor(Throwable $e): string
     {
-        if ($e instanceof ProxmoxException || $e instanceof TaskDeadlineExceeded) {
+        if ($e instanceof ProxmoxException || $e instanceof TaskDeadlineExceeded || $e instanceof ForeignVm) {
             return $e->getMessage();
         }
 

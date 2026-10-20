@@ -36,7 +36,8 @@ final readonly class TaskPlan
     public function steps(Task $task): array
     {
         return match ($task->type) {
-            TaskType::Create => $this->build($task->server),
+            // Rebuilt from scratch (docs/adr/0032 §7): the half-built VM is deleted first.
+            TaskType::Create => [...(($task->input['fresh'] ?? false) === true ? ['stop', 'destroy'] : []), ...$this->build($task->server)],
             TaskType::Reinstall => ['stop', 'destroy', ...$this->build($task->server)],
             TaskType::ChangeResources => ['configure', 'resize', 'addresses', 'apply'],
             TaskType::ChangePrimaryAddress, TaskType::ChangeAddresses => ['addresses', 'guest_addresses'],

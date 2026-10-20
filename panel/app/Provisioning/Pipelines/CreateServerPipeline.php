@@ -14,6 +14,7 @@ use App\Enums\PowerAction;
 use App\Enums\ServerStatus;
 use App\Models\Server;
 use App\Models\Task;
+use App\Provisioning\Exceptions\ForeignVm;
 use App\Provisioning\LinkedClones;
 use App\Provisioning\Network\NetworkConfig;
 use App\Provisioning\Stages\StagedPipeline;
@@ -52,18 +53,96 @@ final readonly class CreateServerPipeline implements StagedPipeline
 
     public function stages(): array
     {
-        return ['provision', ...self::BUILD_STAGES, 'finish'];
+        return ['provision', 'discard', 'destroy', ...self::BUILD_STAGES, 'finish'];
     }
 
     public function runStage(Task $task, string $stage): ?int
     {
         $server = $task->server;
+        // Rebuild from scratch (docs/adr/0032 §7): the half-built VM goes first.
+        $fresh = ($task->input['fresh'] ?? false) === true;
 
         return match ($stage) {
             'provision' => $this->provision($server),
+            'discard' => $fresh ? $this->discard($task, $server) : null,
+            'destroy' => $fresh ? $this->destroyOldVm($task, $server) : null,
             'finish' => $this->finish($task, $server),
             default => $this->runBuildStage($task, $stage),
         };
+    }
+
+    /**
+     * Stop a half-built VM before it is deleted, but only one the panel
+     * created for this server: configured, its description names the server;
+     * cloned but not configured yet (a clone that broke), it has the name the
+     * clone gave it.
+     *
+     * @throws ForeignVm
+     */
+    private function discard(Task $task, Server $server): null
+    {
+        $config = $this->clients->forCluster($server->cluster)->qemu($server->node->name)->config($server->vmid);
+        $ours = $config === null
+            || str_contains(is_string($config['description'] ?? null) ? $config['description'] : '', "Server {$server->uuid}")
+            || ($config['name'] ?? null) === $server->vmName();
+
+        if (! $ours) {
+            throw ForeignVm::at($server->vmid);
+        }
+
+        return $this->stopOldVm($task, $server);
+    }
+
+    /**
+     * Stop the server's VM, if it has one, and remember its net0, whose MAC
+     * address the new VM keeps (task input previous_net0). Reinstalling and
+     * rebuilding from scratch run this before destroyOldVm().
+     */
+    public function stopOldVm(Task $task, Server $server): null
+    {
+        $client = $this->clients->forCluster($server->cluster);
+        $qemu = $client->qemu($server->node->name);
+        $config = $qemu->config($server->vmid);
+
+        if ($config === null) {
+            return null;
+        }
+
+        $task->rememberInput('previous_net0', is_string($config['net0'] ?? null) ? $config['net0'] : null);
+        $client->taskWaiter()->waitForVm($server->node->name, $server->vmid);
+
+        if ($qemu->status($server->vmid)['status'] === 'running') {
+            // The disks are deleted next, so a clean shutdown gains nothing.
+            $client->taskWaiter()->wait($qemu->power($server->vmid, 'stop'), timeoutSeconds: 120);
+        }
+
+        $task->completeStep('stop');
+
+        return null;
+    }
+
+    /**
+     * Delete the server's VM and its disks, if it has one.
+     *
+     * @return int|null null once it is gone, else the seconds until the next check
+     */
+    public function destroyOldVm(Task $task, Server $server): ?int
+    {
+        $client = $this->clients->forCluster($server->cluster);
+        $qemu = $client->qemu($server->node->name);
+
+        $delay = $this->stages->proxmoxTask(
+            $task,
+            $client,
+            fn () => $qemu->config($server->vmid) !== null ? $qemu->destroy($server->vmid) : null,
+            timeoutSeconds: 600,
+        );
+
+        if ($delay === null) {
+            $task->completeStep('destroy');
+        }
+
+        return $delay;
     }
 
     private function provision(Server $server): null

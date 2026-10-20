@@ -14,6 +14,7 @@ import AppList from '@/components/servers/AppList.vue';
 import PowerControls from '@/components/servers/PowerControls.vue';
 import HostnameDialog from '@/components/servers/HostnameDialog.vue';
 import RdnsDialog from '@/components/servers/RdnsDialog.vue';
+import RebuildDialog from '@/components/servers/RebuildDialog.vue';
 import ReapplyAddressesButton from '@/components/servers/ReapplyAddressesButton.vue';
 import ReinstallDialog from '@/components/servers/ReinstallDialog.vue';
 import RemoveAddressButton from '@/components/servers/RemoveAddressButton.vue';
@@ -38,6 +39,7 @@ import {
     power as powerRoute,
     rdns,
     reapplyAddresses,
+    rebuild,
     reinstall,
     resetPassword,
     resources,
@@ -79,6 +81,7 @@ const props = withDefaults(
             vm_name: string | null;
             status: ServerStatus;
             can_retry: boolean;
+            can_rebuild: boolean;
             origin: 'provisioned' | 'adopted';
             vmid: number;
             network_model: NetworkModel;
@@ -312,6 +315,11 @@ const resetAfterTrial = () => {
                     <RotateCcw class="h-4 w-4" />
                     {{ $t('Retry') }}
                 </Button>
+                <RebuildDialog
+                    v-if="server.can_rebuild"
+                    :action="rebuild(server.uuid)"
+                    :hostname="server.hostname"
+                />
             </div>
         </div>
 

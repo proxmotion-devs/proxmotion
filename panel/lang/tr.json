@@ -1732,5 +1732,10 @@
     "The checks did not finish inside the server.": "Kontroller sunucunun içinde tamamlanmadı.",
     "The server did not report its hostname.": "Sunucu hostname'ini bildirmedi.",
     "The server reports :actual.": "Sunucu :actual bildiriyor.",
-    "The server did not report the size of its root file system.": "Sunucu kök dosya sisteminin boyutunu bildirmedi."
+    "The server did not report the size of its root file system.": "Sunucu kök dosya sisteminin boyutunu bildirmedi.",
+    "Rebuild from scratch": "Sıfırdan yeniden kur",
+    "Rebuild from scratch?": "Sıfırdan yeniden kurulsun mu?",
+    "The VM this creation left behind and its disks are deleted, then the server is created again from its OS template with the same VMID, IP addresses and MAC address. Use it when Retry keeps failing on a broken VM. A VM Proxmotion did not create for this server is never deleted.": "Bu oluşturmadan geriye kalan VM ve diskleri silinir, ardından sunucu OS şablonundan aynı VMID, IP adresleri ve MAC adresiyle yeniden oluşturulur. Yeniden dene bozuk bir VM yüzünden başarısız olmaya devam ediyorsa kullanın. Proxmotion'ın bu sunucu için oluşturmadığı bir VM asla silinmez.",
+    "Rebuild": "Yeniden kur",
+    "Rebuilding the server from scratch…": "Sunucu sıfırdan yeniden kuruluyor…"
 }

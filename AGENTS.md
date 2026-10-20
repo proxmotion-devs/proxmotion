@@ -127,7 +127,7 @@ proxmotion/
 │   │   │   ├── TaskEstimates.php         # remaining time of a create/reinstall: per-step medians of the last 20 successful runs with its OS template (ADR 0032 §5)
 │   │   │   ├── Placement/                # NodePlacer (least memory used after placement), Placement, PlacementRules (placement groups, chosen node/storage)
 │   │   │   ├── Network/                  # NetworkConfig: net0, ipconfig0, nameserver, anti-spoofing addresses
-│   │   │   └── Pipelines/                # CreateServer, ReinstallServer (staged, ADR 0032), Power (suspend/unsuspend, power actions), ResetPassword, ChangeResources, Addresses (primary address changes, address edits, apply again), TerminateServer, InstallApp, AppRun (uninstalls, upgrades and actions) — idempotent
+│   │   │   └── Pipelines/                # CreateServer (also "Rebuild from scratch": deletes the failed creation's VM first, only one the panel created for the server), ReinstallServer (both staged, ADR 0032), Power (suspend/unsuspend, power actions), ResetPassword, ChangeResources, Addresses (primary address changes, address edits, apply again), TerminateServer, InstallApp, AppRun (uninstalls, upgrades and actions) — idempotent
 │   │   ├── Jobs/                         # Queue jobs: RunServerTask (pipelines; queues itself again with a delay while a staged task waits, ADR 0032), SyncCluster, PublishPtr/RemovePtr (rDNS), DeliverWebhook, PollAppInstallation and PollAppRun (queued by apps:poll), StopAppScript (after a timeout or cancel, ADR 0030)
 │   │   ├── Http/
 │   │   │   ├── Controllers/Admin/
@@ -452,7 +452,7 @@ This panel manages customer infrastructure and is internet-facing. Agents **must
 5. **Console links** from the API are single-use, valid ≤60 s and signed; there is no SSO into the panel.
 6. **Network isolation:** Proxmox firewall `ipfilter`/`macfilter` must be enabled for every VPS (anti-spoofing); customers may use only the IPs assigned to them. NAT VPS port forwards are restricted to the customer's allocated range.
 7. **User input** (hostname, rDNS, SSH keys, cloud-init data, app inputs) is strictly validated and never passed raw into Proxmox parameters or a shell.
-8. **Destructive operations** (terminate, reinstall, snapshot rollback, node/cluster removal) require extra confirmation in the admin UI (and in the billing modules) and are written to `AuditLog`.
+8. **Destructive operations** (terminate, reinstall, rebuild from scratch, snapshot rollback, node/cluster removal) require extra confirmation in the admin UI (and in the billing modules) and are written to `AuditLog`.
 9. **App Marketplace and guest scripts:** only scripts from recipe files, the panel's default guest scripts (`resources/guest`) and guest script overrides that administrators saved on an OS template (audited, ADR 0010; drafts only in trial runs, ADR 0023) are ever executed inside a VPS via the Guest Agent; free-form commands/scripts from customers or the API are never executed. Inputs are type-validated and passed as `inputs.json`. Secret outputs are stored encrypted and never logged. Custom recipes require `apps.manage` and are audited.
 10. Every panel user is an administrator and must confirm TOTP 2FA before any admin page opens (`2fa` middleware; `PROXMOTION_REQUIRE_ADMIN_2FA=false` only for local development). Users cannot delete their own accounts. Creating an administrator is audited. Session cookies `Secure`, `HttpOnly`, `SameSite=Lax`.
 11. `.env` and real credentials are never committed; only `.env.example`.

@@ -20,7 +20,7 @@ Create and reinstall tasks run in **stages** (`App\Provisioning\Stages`). A pipe
 
 | Pipeline | Stages |
 |---|---|
-| Create | `provision`, `clone`, `configure`, `resize`, `firewall`, `start`, `wait_agent`, `name_guest`, `name_guest_wait`, `guest_scripts`, `verify` (§6), `finish` |
+| Create | `provision`, `discard` and `destroy` (only when rebuilt from scratch, §7), `clone`, `configure`, `resize`, `firewall`, `start`, `wait_agent`, `name_guest`, `name_guest_wait`, `guest_scripts`, `verify` (§6), `finish` |
 | Reinstall | `prepare`, `destroy`, then the same as create from `clone` |
 
 The stage a task is in and what the stage needs to remember (the UPID of a running Proxmox task, when a wait began) are stored on the task (`tasks.stage`, `tasks.stage_state`, cleared when the next stage begins). What later stages need, such as the `net0` of the deleted VM whose MAC address a reinstall keeps, goes into `tasks.input`. Task steps (`completeStep()`) stay as they were: stages are how the work is split up, steps are what administrators and billing systems see.
@@ -70,7 +70,16 @@ A server became `active` once its guest agent answered and cloud-init or Windows
 - **A failed check only warns.** The server becomes `active` as before; the step names the failed checks. A check the guest cannot answer (an agent that refuses `guest-exec` or `guest-network-get-interfaces`, `df` without `--output`) is `skipped`, not failed. An agent that does not answer at all leaves a note on the step during a create or reinstall and fails a *Check again* task.
 - Billing systems see `verify` tasks admins start like any other task (`task.succeeded`, `task.failed`); the checks themselves are not in API v1.
 
-### 7. What does not change
+### 7. Rebuild from scratch
+
+*Retry* of a failed creation starts a new create task that continues from what Proxmox shows: a VM with the server's VMID counts as cloned (*VM already exists.*). When that VM is broken (a clone that failed half-way, a disk that is not there), every retry fails the same way, and an administrator had to delete the VM on Proxmox by hand.
+
+- *Rebuild from scratch* on the server page is offered for a server in `error` (or stranded) whose latest task is a create, next to *Retry*. It asks for the hostname to be typed, like a reinstall, and is audited as `server.rebuilt` (hostname, VMID).
+- It starts a create task with the input `fresh`. Its stages `discard` and `destroy`, which do nothing otherwise, stop the VM, remember its `net0` (so the new VM keeps the MAC address, as a reinstall does) and delete it with its disks; then the creation runs as usual with the same VMID and addresses. The plan shows `stop` and `destroy` first.
+- **Only a VM the panel created for this server is deleted:** its description names the server (`Server <uuid>`, set when it was configured) or, for a clone that broke before it was configured, it has the name the clone gave it (`Server::vmName()`). Any other VM with that VMID fails the task with *VM <vmid> was not created by Proxmotion for this server, so it is not deleted.* and stays as it is.
+- Reinstalls and the stop/delete stages they share (`CreateServerPipeline::stopOldVm()`, `destroyOldVm()`) are unchanged; a failed reinstall is retried as before, which already deletes and re-clones. Rebuilding is admin only; billing systems keep their API.
+
+### 8. What does not change
 
 Other task types still run as one job. The API, its task resource and the webhooks are unchanged: a staged task is `running` from its first stage to its last, and its steps look as before. Retry after a failure still starts a new task that continues from what Proxmox shows.
 
@@ -79,6 +88,7 @@ Other task types still run as one job. The API, its task resource and the webhoo
 - A worker is busy only while a stage works, so more servers can be created at the same time with the same workers.
 - A long clone or a slow Windows setup no longer puts a healthy server in `error`; the deadline is the one limit for the whole task.
 - Delayed jobs need a queue that supports delays (database, Redis); the `sync` queue sleeps instead.
+- A creation stuck on a broken VM is started over from the server page instead of by hand on Proxmox, without touching VMs the panel did not create for the server.
 - A server that came up without working networking, the wrong hostname or a disk that was not grown is noticed by an administrator right after it was built, not by its customer. Pings to a gateway that drops ICMP fail although the server works; that is why checks only warn.
 - Administrators see every step a provisioning will go through, how long each took and roughly how long is left; a step that takes much longer than usual stands out. Estimates start once a template has three timed successful runs, and they only know what happened before (a busier node or a slower mirror is not foreseen).
 - Nothing of this has run on a real queue or against a real Proxmox server yet: delayed dispatches on Redis with Horizon and on the database queue, and a Windows server whose setup outlasts one job, are on the verification list in `AGENTS.md`.
