@@ -13,7 +13,6 @@ import AddressesDialog from '@/components/servers/AddressesDialog.vue';
 import AppList from '@/components/servers/AppList.vue';
 import PowerControls from '@/components/servers/PowerControls.vue';
 import HostnameDialog from '@/components/servers/HostnameDialog.vue';
-import PrimaryAddressDialog from '@/components/servers/PrimaryAddressDialog.vue';
 import RdnsDialog from '@/components/servers/RdnsDialog.vue';
 import ReapplyAddressesButton from '@/components/servers/ReapplyAddressesButton.vue';
 import ReinstallDialog from '@/components/servers/ReinstallDialog.vue';
@@ -36,7 +35,6 @@ import {
     index,
     password,
     power as powerRoute,
-    primaryAddress,
     rdns,
     reapplyAddresses,
     reinstall,
@@ -550,11 +548,6 @@ const resetAfterTrial = () => {
                             :action="changeAddresses(server.uuid)"
                             :addresses="server.addresses"
                             :pools="addressPools"
-                            :disabled="busy"
-                        />
-                        <PrimaryAddressDialog
-                            :action="primaryAddress(server.uuid)"
-                            :addresses="server.addresses"
                             :disabled="busy"
                         />
                     </div>

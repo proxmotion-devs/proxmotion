@@ -20,9 +20,11 @@ The billing API and the billing modules are left out on purpose: billing systems
 
 `Provisioning/AddressChanger::request()` takes an `AddressChange`:
 
-- **add:** addresses to assign, each of an IP version, optionally from a given pool, and either the next free address or a specific one (a free IPv6 address inside a pool's network may be new, as for the primary address);
+- **add:** addresses to assign, each of an IP version, optionally from a given pool, either the next free address or a specific one (a free IPv6 address inside a pool's network may be new, as for the primary address), and optionally marked as the new primary of its version;
 - **remove:** addresses of the server to release;
-- **primary:** per IP version, the address that becomes the primary (one the server keeps, or a specific address added in the same change).
+- **primary:** per IP version, the address that becomes the primary: one the server keeps, or a specific address added in the same change. An added address marked as the primary does the same without naming it, so the next free address can become the primary. Only one primary per version may be chosen.
+
+Choosing an address the server keeps without removing the old primary is ADR 0011's swap (the old one stays as an additional address); choosing an added one and removing the old primary is its replacement.
 
 Everything is decided under the location's lock inside one transaction, like provisioning. The Proxmox and guest work then runs as one `change_addresses` task. Nothing in the panel changes when a rule below fails.
 
@@ -55,7 +57,7 @@ cloud-init's `ipconfig0` is never changed (ADR 0011). A re-run continues where t
 
 - The header of *IP addresses* gets **Apply again** (with confirmation) and **Edit IP addresses**. The edit dialog lists the server's addresses with a primary choice per version and a *Remove* mark, and rows to add addresses (version, pool, next free or a specific address). It shows which addresses are released and that their reverse DNS records are removed.
 - Every additional address gets a **Remove** button next to its rDNS button (with confirmation); it sends the same request with that one address.
-- *Change primary address* stays as it is.
+- The edit dialog covers everything *Change primary address* did (swap, replace with the next free or a specific address), so that button and its admin route `POST /admin/servers/{server}/primary-address` are removed. The dialog's primary choice lists the addresses the server keeps and the rows being added (*Next free address (added)* or the specific address). `PrimaryAddressChanger` and the billing API's `POST /servers/{id}/primary-address` (ADR 0011) stay, as do `change_primary_address` tasks in the history.
 
 ## Consequences
 

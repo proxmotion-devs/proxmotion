@@ -165,6 +165,47 @@ class AddressChangeTest extends TestCase
         $this->assertSame(['before' => $old, 'after' => '203.0.113.6'], $audit->properties['primary']['IPv4']);
     }
 
+    public function test_an_additional_address_becomes_the_primary_and_the_old_one_stays()
+    {
+        $server = $this->server(ipv4: 2);
+        [$first, $second] = $this->addresses($server);
+
+        $task = $this->change($server, new AddressChange(primary: [4 => $second]));
+
+        $this->assertSame(TaskStatus::Succeeded, $task->status, (string) $task->error);
+        $this->assertSame([$second, $first], $this->addresses($server), 'Swapped; the count stays.');
+        $this->assertSame("{$second}/29", $this->guestInputs($server)['primary_ipv4']);
+        $this->assertSame(["{$first}/29"], $this->guestInputs($server)['addresses']);
+    }
+
+    public function test_the_next_free_address_replaces_the_primary()
+    {
+        $server = $this->server();
+        [$old] = $this->addresses($server);
+
+        $task = $this->change($server, new AddressChange(
+            add: [new AddressAddition(IpVersion::V4, primary: true)],
+            remove: [$old],
+        ));
+
+        $this->assertSame(TaskStatus::Succeeded, $task->status, (string) $task->error);
+        [$new] = $this->addresses($server);
+        $this->assertNotSame($old, $new);
+        $this->assertCount(1, $this->addresses($server));
+        $this->assertTrue(IpAddress::query()->where('address', $new)->sole()->is_primary);
+        $this->assertSame([$new], $this->proxmox->vms[$server->vmid]['ipset']);
+        $this->assertSame("{$new}/29", $this->guestInputs($server)['primary_ipv4']);
+    }
+
+    public function test_one_primary_per_version()
+    {
+        $server = $this->server(ipv4: 2);
+        [, $second] = $this->addresses($server);
+
+        $this->assertRefused($server, new AddressChange(add: [new AddressAddition(IpVersion::V4, primary: true)], primary: [4 => $second]), 'Choose one primary');
+        $this->assertRefused($server, new AddressChange(add: [new AddressAddition(IpVersion::V4, primary: true), new AddressAddition(IpVersion::V4, primary: true)]), 'Choose one primary');
+    }
+
     public function test_the_primary_is_not_removed_without_a_new_one()
     {
         $server = $this->server(ipv4: 2);
@@ -304,6 +345,16 @@ class AddressChangeTest extends TestCase
             ->assertSessionHasNoErrors();
 
         $this->assertSame([$primary, '203.0.113.6'], $this->addresses($server));
+
+        $this->actingAs($this->admin)
+            ->post(route('admin.servers.addresses', $server), [
+                'add' => [['ip_version' => 4, 'primary' => true]],
+                'remove' => [$primary],
+            ])
+            ->assertSessionHasNoErrors();
+        $this->assertNotContains($primary, $this->addresses($server));
+        $this->assertSame('203.0.113.6', $this->addresses($server)[1], 'The new address is the primary, listed first.');
+        [$primary] = $this->addresses($server);
 
         $this->actingAs($this->admin)
             ->post(route('admin.servers.addresses', $server), ['remove' => [$primary]])

@@ -225,7 +225,7 @@ Every VPS gets the Proxmox firewall with **`ipfilter` and `macfilter`** enabled 
 
 ### 6.5 Changing the primary address
 
-([ADR 0011](../adr/0011-changing-the-primary-address.md)) An administrator or the billing API can make another address the **primary**:
+([ADR 0011](../adr/0011-changing-the-primary-address.md)) The billing API (`POST /servers/{id}/primary-address`) can make another address the **primary**; administrators do the same with *Edit IP addresses* (6.5.1):
 
 - **swap** with one of the server's additional addresses, or
 - **replace** it with a free address from a pool (the old primary is released).
@@ -377,7 +377,7 @@ All of these are available on the admin server page; the ones marked ✓ are als
 | **Fetch the password once** | ✓ | `GET /servers/{id}/password` returns it once, then `410` |
 | **Change resources** (upgrade / downgrade) | ✓ | Disk only grows (and is grown inside the guest at once); CPU and memory of a running VM apply at the next restart unless `reboot` is sent; the newest extra addresses are released on a downgrade; the server stays on its node |
 | **Change hostname** | ✓ | Renamed inside the guest; PTRs that matched the old name follow; the Proxmox VM name stays ([ADR 0012](../adr/0012-changing-the-hostname.md)) |
-| **Change primary address** | ✓ | Swap or replace (see 6.5) |
+| **Change primary address** | ✓ | Swap or replace (see 6.5); in the admin panel part of *Edit IP addresses* |
 | **Edit IP addresses**, **Apply again** | — | Add, remove, choose the primary; apply the addresses again (see 6.5.1) |
 | **rDNS** | ✓ | Per public address |
 | **Console** | ✓ (link) | See [Browser console](#10-browser-console) |

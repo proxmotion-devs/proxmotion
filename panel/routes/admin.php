@@ -138,7 +138,6 @@ Route::post('servers/{server}/password', [ServerController::class, 'revealPasswo
 Route::post('servers/{server}/rdns', RdnsController::class)->middleware('throttle:30,1')->name('servers.rdns');
 Route::post('servers/{server}/reinstall', [ServerController::class, 'reinstall'])->middleware('throttle:10,1')->name('servers.reinstall');
 Route::post('servers/{server}/resources', [ServerController::class, 'changeResources'])->middleware('throttle:10,1')->name('servers.resources');
-Route::post('servers/{server}/primary-address', [ServerController::class, 'changePrimaryAddress'])->middleware('throttle:10,1')->name('servers.primary-address');
 Route::post('servers/{server}/addresses', [ServerController::class, 'changeAddresses'])->middleware('throttle:10,1')->name('servers.addresses');
 Route::post('servers/{server}/addresses/reapply', [ServerController::class, 'reapplyAddresses'])->middleware('throttle:10,1')->name('servers.reapply-addresses');
 Route::post('servers/{server}/hostname', [ServerController::class, 'changeHostname'])->middleware('throttle:10,1')->name('servers.hostname');

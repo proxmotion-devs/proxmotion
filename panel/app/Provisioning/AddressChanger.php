@@ -164,8 +164,9 @@ final readonly class AddressChanger
     }
 
     /**
-     * Keep one primary per IP version: the chosen one, else the current one
-     * (refused when it is removed), else the first added one. The chosen
+     * Keep one primary per IP version: the added address marked as the
+     * primary or the chosen address, else the current one (refused when it is
+     * removed), else the first added one. The chosen
      * primary is always flagged, so the oldest address never takes its place.
      *
      * @param  EloquentCollection<int, IpAddress>  $current
@@ -193,8 +194,20 @@ final readonly class AddressChanger
             }
 
             $wanted = $change->primaryOf($version);
+            // Added addresses marked as the primary, by their position in the change.
+            $marked = array_values(array_filter(
+                $added,
+                fn (IpAddress $address, int $index) => $change->add[$index]->primary && $change->add[$index]->version === $version,
+                ARRAY_FILTER_USE_BOTH,
+            ));
 
-            if ($wanted !== null) {
+            if (count($marked) + ($wanted === null ? 0 : 1) > 1) {
+                throw new ProvisioningException('Choose one primary :version address.', ['version' => $label]);
+            }
+
+            if ($marked !== []) {
+                $primary = $marked[0];
+            } elseif ($wanted !== null) {
                 $primary = collect($kept)->first(fn (IpAddress $address) => $address->address === $wanted)
                     ?? throw new ProvisioningException(':address is not an address the server keeps.', ['address' => $wanted]);
             } elseif ($currentPrimary !== null && isset($remove[$currentPrimary->id])) {

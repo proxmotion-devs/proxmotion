@@ -13,7 +13,8 @@ import type { RouteDefinition } from '@/wayfinder';
 /**
  * Edit a server's addresses in one change (docs/adr/0028): remove some, add
  * the next free or a specific address of a pool on the server's network, and
- * choose the primary of each IP version.
+ * choose the primary of each IP version: an address the server keeps (a swap)
+ * or one being added (with the old one removed, a replacement).
  */
 const props = defineProps<{
     action: RouteDefinition<'post'>;
@@ -24,22 +25,29 @@ const props = defineProps<{
 
 type Version = 4 | 6;
 type Row = {
+    /** Stable while rows are added and removed; "row:<id>" chooses it as the primary. */
+    id: number;
     ip_version: Version;
     pool: string;
     specific: boolean;
     address: string;
 };
 
+const ROW = 'row:';
+
 const open = ref(false);
 const removed = ref<string[]>([]);
+/** Per version: an address the server keeps, or "row:<id>" of an added one. */
 const primary = ref<Record<Version, string | null>>({ 4: null, 6: null });
 const rows = ref<Row[]>([]);
+let nextRowId = 1;
 
 const form = useForm({
     add: [] as {
         ip_version: Version;
         pool: string | null;
         address: string | null;
+        primary: boolean;
     }[],
     remove: [] as string[],
     primary_ipv4: null as string | null,
@@ -88,26 +96,25 @@ const freeAddresses = (row: Row) =>
         )
         .flatMap((pool) => pool.addresses);
 
-/** What the server would keep of a version, with the specific addresses being added. */
-const candidates = (version: Version) => [
+/** What the server would have of a version: the addresses it keeps and those being added. */
+const primaryOptions = (version: Version) => [
     ...props.addresses
         .filter(
             (address) =>
                 address.version === version &&
                 !removed.value.includes(address.address),
         )
-        .map((address) => address.address),
+        .map((address) => ({ value: address.address, label: address.address })),
     ...rows.value
-        .filter(
-            (row) =>
-                row.ip_version === version &&
-                row.specific &&
-                row.address.trim() !== '',
-        )
-        .map((row) => row.address.trim()),
+        .filter((row) => row.ip_version === version)
+        .map((row) => ({
+            value: `${ROW}${row.id}`,
+            label:
+                row.specific && row.address.trim() !== ''
+                    ? trans(':address (added)', { address: row.address.trim() })
+                    : trans('Next free address (added)'),
+        })),
 ];
-const primaryOptions = (version: Version) =>
-    candidates(version).map((address) => ({ value: address, label: address }));
 
 const versionsShown = computed(() =>
     VERSIONS.filter(
@@ -121,7 +128,10 @@ const versionsShown = computed(() =>
 const missingPrimary = (version: Version) => {
     const chosen = primary.value[version];
 
-    return chosen === null || !candidates(version).includes(chosen);
+    return (
+        chosen === null ||
+        !primaryOptions(version).some((option) => option.value === chosen)
+    );
 };
 
 const toggleRemove = (address: string) => {
@@ -132,13 +142,27 @@ const toggleRemove = (address: string) => {
 
 const addRow = () =>
     rows.value.push({
+        id: nextRowId++,
         ip_version: poolVersions.value[0] ?? 4,
         pool: '',
         specific: false,
         address: '',
     });
 
+/** A row that leaves its version is no longer its primary. */
+const unchoose = (row: Row) => {
+    if (primary.value[row.ip_version] === `${ROW}${row.id}`) {
+        primary.value[row.ip_version] = currentPrimary(row.ip_version);
+    }
+};
+
+const removeRow = (row: Row) => {
+    unchoose(row);
+    rows.value = rows.value.filter((other) => other.id !== row.id);
+};
+
 const setVersion = (row: Row, value: string | null) => {
+    unchoose(row);
     row.ip_version = value === '6' ? 6 : 4;
     row.pool = '';
     row.address = '';
@@ -168,15 +192,19 @@ const submit = () => {
         return;
     }
 
-    const primaryFor = (version: Version) =>
-        primary.value[version] !== currentPrimary(version)
-            ? primary.value[version]
+    const primaryFor = (version: Version) => {
+        const chosen = primary.value[version];
+
+        return chosen !== currentPrimary(version) && !chosen?.startsWith(ROW)
+            ? chosen
             : null;
+    };
 
     form.add = rows.value.map((row) => ({
         ip_version: row.ip_version,
         pool: row.pool === '' ? null : row.pool,
         address: row.specific ? row.address.trim() || null : null,
+        primary: primary.value[row.ip_version] === `${ROW}${row.id}`,
     }));
     form.remove = [...removed.value];
     form.primary_ipv4 = primaryFor(4);
@@ -279,7 +307,7 @@ const rowError = (index: number) =>
             </p>
             <div
                 v-for="(row, index) in rows"
-                :key="index"
+                :key="row.id"
                 class="grid gap-2 rounded-md border p-3"
                 :data-test="`add-row-${index}`"
             >
@@ -304,7 +332,7 @@ const rowError = (index: number) =>
                         size="icon"
                         :aria-label="$t('Remove row')"
                         :title="$t('Remove row')"
-                        @click="rows.splice(index, 1)"
+                        @click="removeRow(row)"
                     >
                         <X class="h-4 w-4" />
                     </Button>
@@ -397,7 +425,7 @@ const rowError = (index: number) =>
             <p class="text-xs text-muted-foreground">
                 {{
                     $t(
-                        'Only addresses the server keeps and specific addresses being added can become the primary.',
+                        'An added address that becomes the primary replaces the old one when you remove it; otherwise the old one stays as an additional address.',
                     )
                 }}
             </p>

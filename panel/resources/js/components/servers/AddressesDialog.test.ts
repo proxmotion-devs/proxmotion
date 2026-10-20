@@ -115,10 +115,17 @@ describe('AddressesDialog', () => {
         await second.findAll('select')[1].setValue('specific');
         await second.find('input').setValue(' 203.0.113.6 ');
 
-        const primaries = wrapper
-            .findAll('#primary_ipv4 option')
-            .map((option) => option.element.getAttribute('value'));
-        expect(primaries).toContain('203.0.113.6');
+        expect(
+            wrapper
+                .findAll('#primary_ipv4 option')
+                .map((option) => option.text()),
+        ).toEqual([
+            'Choose…',
+            '203.0.113.2',
+            '203.0.113.3',
+            'Next free address (added)',
+            ':address (added)',
+        ]);
         expect(
             second
                 .findAll('datalist option')
@@ -129,10 +136,60 @@ describe('AddressesDialog', () => {
 
         const form = submit.mock.contexts.at(-1) as Record<string, unknown>;
         expect(form.add).toEqual([
-            { ip_version: 4, pool: null, address: null },
-            { ip_version: 4, pool: 'main', address: '203.0.113.6' },
+            { ip_version: 4, pool: null, address: null, primary: false },
+            {
+                ip_version: 4,
+                pool: 'main',
+                address: '203.0.113.6',
+                primary: false,
+            },
         ]);
         expect(form.primary_ipv4).toBeNull();
+    });
+
+    it('replaces the primary with an added next free address', async () => {
+        const wrapper = mountDialog();
+        await open(wrapper);
+
+        await wrapper.find('[data-test="add-row"]').trigger('click');
+        await wrapper.find('[data-test="remove-203.0.113.2"]').setValue(true);
+        const added = wrapper
+            .findAll('#primary_ipv4 option')
+            .find((option) => option.text() === 'Next free address (added)');
+        await wrapper
+            .find('#primary_ipv4')
+            .setValue(added?.attributes('value'));
+        expect(wrapper.text()).not.toContain('Choose a new primary address');
+
+        await wrapper.find('form').trigger('submit');
+
+        const form = submit.mock.contexts.at(-1) as Record<string, unknown>;
+        expect(form.add).toEqual([
+            { ip_version: 4, pool: null, address: null, primary: true },
+        ]);
+        expect(form.remove).toEqual(['203.0.113.2']);
+        expect(form.primary_ipv4).toBeNull();
+    });
+
+    it('forgets a removed row that was the primary', async () => {
+        const wrapper = mountDialog();
+        await open(wrapper);
+
+        await wrapper.find('[data-test="add-row"]').trigger('click');
+        const added = wrapper
+            .findAll('#primary_ipv4 option')
+            .find((option) => option.text() === 'Next free address (added)');
+        await wrapper
+            .find('#primary_ipv4')
+            .setValue(added?.attributes('value'));
+        await wrapper
+            .find('[data-test="add-row-0"]')
+            .find('button')
+            .trigger('click');
+
+        expect(
+            (wrapper.find('#primary_ipv4').element as HTMLSelectElement).value,
+        ).toBe('203.0.113.2');
     });
 
     it('sends nothing when nothing changed', async () => {

@@ -14,7 +14,8 @@ use Illuminate\Validation\Validator;
 
 /**
  * Editing a server's addresses on the admin server page (docs/adr/0028):
- * "add" rows (IP version, optional pool, optional specific address), "remove"
+ * "add" rows (IP version, optional pool, optional specific address, whether it
+ * becomes the primary), "remove"
  * (addresses of the server) and the new primary per IP version.
  */
 class AddressChangeRequest extends FormRequest
@@ -32,6 +33,7 @@ class AddressChangeRequest extends FormRequest
             'add.*.ip_version' => ['required', 'integer', 'in:4,6'],
             'add.*.pool' => ['nullable', 'string', 'exists:ip_pools,uuid'],
             'add.*.address' => ['nullable', 'string', 'ip'],
+            'add.*.primary' => ['nullable', 'boolean'],
             'remove' => ['nullable', 'array', 'max:'.self::MAX_ROWS],
             'remove.*' => ['required', 'string', 'ip', 'distinct'],
             'primary_ipv4' => ['nullable', 'string', 'ipv4'],
@@ -75,6 +77,7 @@ class AddressChangeRequest extends FormRequest
                 IpVersion::from((int) $row['ip_version']),
                 $pool === null ? null : $pools->get($pool),
                 $address === '' ? null : $address,
+                (bool) ($row['primary'] ?? false),
             );
         }
 

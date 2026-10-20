@@ -32,7 +32,6 @@ use App\Http\Requests\Admin\AddressChangeRequest;
 use App\Http\Requests\Admin\ChangeResourcesRequest;
 use App\Http\Requests\Admin\ServerRequest;
 use App\Http\Requests\HostnameRequest;
-use App\Http\Requests\PrimaryAddressRequest;
 use App\Http\Requests\ReinstallRequest;
 use App\Models\AppEntitlement;
 use App\Models\AppInstallation;
@@ -57,7 +56,6 @@ use App\Provisioning\Exceptions\ProvisioningException;
 use App\Provisioning\Exceptions\TaskAlreadyRunning;
 use App\Provisioning\IpAllocator;
 use App\Provisioning\Placement\NodePlacer;
-use App\Provisioning\PrimaryAddressChanger;
 use App\Provisioning\ResourceChanger;
 use App\Provisioning\ServerCreator;
 use App\Provisioning\TaskFailer;
@@ -468,25 +466,6 @@ class ServerController extends Controller
         }
 
         $this->toast('info', 'Changing the hostname…');
-
-        return back();
-    }
-
-    public function changePrimaryAddress(PrimaryAddressRequest $request, Server $server, #[CurrentUser] User $admin, PrimaryAddressChanger $changer): RedirectResponse
-    {
-        try {
-            $changer->request($server, $request->ipVersion(), $request->address(), $admin, $request->ip());
-        } catch (ProvisioningException $e) {
-            if ($request->address() !== null && ! $e instanceof TaskAlreadyRunning) {
-                throw ValidationException::withMessages(['address' => $e->translatedMessage()]);
-            }
-
-            $this->toast('error', $e->translatedMessage());
-
-            return back();
-        }
-
-        $this->toast('info', 'Changing the primary address…');
 
         return back();
     }
