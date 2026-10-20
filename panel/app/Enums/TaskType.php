@@ -25,4 +25,5 @@ enum TaskType: string
     case InstallApp = 'install_app';
     case AppRun = 'app_run';
     case Verify = 'verify';
+    case EnableAntiSpoofing = 'enable_anti_spoofing';
 }

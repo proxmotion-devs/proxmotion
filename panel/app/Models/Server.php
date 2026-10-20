@@ -58,6 +58,7 @@ use Illuminate\Support\Carbon;
  * @property string|null $external_client_id billing customer id
  * @property Carbon|null $provisioned_at
  * @property array{checked_at: string, checks: list<array{key: string, status: string, params: array<string, string>, detail: string|null}>}|null $verification the latest checks from inside the server (ServerVerifier)
+ * @property Carbon|null $firewall_checked_at when FirewallChecker last compared its VM firewall (docs/adr/0033)
  * @property Carbon|null $terminated_at
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
@@ -96,6 +97,7 @@ class Server extends Model
             'is_test' => 'boolean',
             'provisioned_at' => 'datetime',
             'verification' => 'array',
+            'firewall_checked_at' => 'datetime',
             'terminated_at' => 'datetime',
         ];
     }

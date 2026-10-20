@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { Link, router } from '@inertiajs/vue3';
 import { Check, EyeOff, Play, Square, TriangleAlert } from '@lucide/vue';
+import { trans } from 'laravel-vue-i18n';
+import AntiSpoofingButton from '@/components/servers/AntiSpoofingButton.vue';
 import { Button } from '@/components/ui/button';
 import { useDateTime } from '@/composables/useDateTime';
 import { formatMib } from '@/lib/format';
 import { accept, applyPower, dismiss, markError } from '@/routes/admin/drifts';
-import { adopt, show } from '@/routes/admin/servers';
+import { adopt, enableAntiSpoofing, show } from '@/routes/admin/servers';
 import type { Drift, DriftType } from '@/types/admin';
 import type { RouteDefinition } from '@/wayfinder';
 
@@ -27,6 +29,32 @@ const typeLabels: Record<DriftType, string> = {
     resource_mismatch: 'Different resources',
     power_mismatch: 'Power state differs',
     unmanaged_vm: 'VM not managed by the panel',
+    firewall_mismatch: 'Anti-spoofing is not working',
+};
+
+// What FirewallChecker found (docs/adr/0033), English keys.
+const firewallProblems: Record<string, string> = {
+    firewall_off: 'the VM firewall is off',
+    ipfilter_off: 'the IP filter is off',
+    macfilter_off: 'the MAC filter is off',
+    radv_on: 'router advertisements are allowed',
+    interface_firewall_off: 'net0 has no firewall flag',
+    dhcp_server_allowed: 'the DHCP server rules are missing',
+    addresses_differ: 'the IP set differs from the panel',
+};
+
+const list = (value: unknown): string[] =>
+    Array.isArray(value) ? value.map(String) : [];
+
+/** Translated problems as one sentence: "The VM firewall is off, net0 has no firewall flag." */
+const problemSentence = (problems: unknown): string => {
+    const text = list(problems)
+        .map((problem) => trans(firewallProblems[problem] ?? problem))
+        .join(', ');
+
+    return text === ''
+        ? ''
+        : `${text.charAt(0).toUpperCase()}${text.slice(1)}.`;
 };
 
 const resources = (values: Drift['expected']) =>
@@ -111,6 +139,29 @@ const post = (action: RouteDefinition<'post'>) =>
                                 )
                             }}
                         </template>
+                        <template
+                            v-else-if="drift.type === 'firewall_mismatch'"
+                        >
+                            {{ problemSentence(drift.actual?.problems) }}
+                            <template v-if="list(drift.actual?.extra).length">
+                                {{
+                                    $t('Not assigned to it: :addresses.', {
+                                        addresses: list(
+                                            drift.actual?.extra,
+                                        ).join(', '),
+                                    })
+                                }}
+                            </template>
+                            <template v-if="list(drift.actual?.missing).length">
+                                {{
+                                    $t('Missing: :addresses.', {
+                                        addresses: list(
+                                            drift.actual?.missing,
+                                        ).join(', '),
+                                    })
+                                }}
+                            </template>
+                        </template>
                         <template v-else>
                             {{
                                 $t(
@@ -175,6 +226,11 @@ const post = (action: RouteDefinition<'post'>) =>
                         )
                     }}
                 </Button>
+                <AntiSpoofingButton
+                    v-if="drift.type === 'firewall_mismatch' && drift.server"
+                    :action="enableAntiSpoofing(drift.server.uuid)"
+                    :addresses="list(drift.expected?.addresses)"
+                />
                 <Button
                     v-if="drift.type === 'unmanaged_vm'"
                     as-child

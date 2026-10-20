@@ -24,6 +24,7 @@ trait FakesProxmox
             '*/api2/json/cluster/resources?type=storage' => $this->proxmoxFixture('cluster-resources-storage'),
             '*/api2/json/cluster/resources?type=vm' => $this->proxmoxFixture('cluster-resources-vm'),
             '*/api2/json/nodes/*/network?type=any_bridge' => $this->proxmoxFixture('node-network-bridges'),
+            '*/api2/json/cluster/firewall/options' => $this->proxmoxFixture('cluster-firewall-options'),
         ]);
     }
 

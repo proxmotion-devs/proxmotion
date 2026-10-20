@@ -34,6 +34,8 @@ use Illuminate\Support\Carbon;
  * @property string|null $pve_version
  * @property Carbon|null $last_synced_at
  * @property string|null $last_sync_error
+ * @property bool|null $firewall_enabled the datacenter firewall's `enable` option at the last sync; null: not read yet
+ * @property bool|null $firewall_ebtables the datacenter firewall's `ebtables` option (ARP filtering) at the last sync
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  * @property-read Location $location
@@ -58,7 +60,22 @@ class Cluster extends Model
             'verify_tls' => 'boolean',
             'is_active' => 'boolean',
             'last_synced_at' => 'datetime',
+            'firewall_enabled' => 'boolean',
+            'firewall_ebtables' => 'boolean',
         ];
+    }
+
+    /**
+     * Why the VM firewalls of this cluster cannot stop spoofing, or null when
+     * they can (or the sync has not read the options yet). docs/adr/0033
+     */
+    public function guestFirewallProblem(): ?string
+    {
+        return match (true) {
+            $this->firewall_enabled === false => 'The datacenter firewall is off, so the anti-spoofing filters of its servers do nothing.',
+            $this->firewall_ebtables === false => 'ebtables is off in the datacenter firewall, so its servers can send ARP replies for any address.',
+            default => null,
+        };
     }
 
     public function connection(): ProxmoxConnection

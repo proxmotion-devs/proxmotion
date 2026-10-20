@@ -19,8 +19,11 @@ use Illuminate\Support\Facades\Http;
  */
 class FakeProxmoxCluster
 {
-    /** @var array<int, array{node: string, pool: string|null, template: bool, status: string, config: array<string, mixed>, ipset: list<string>|null, firewall: array<string, mixed>}> */
+    /** @var array<int, array{node: string, pool: string|null, template: bool, status: string, config: array<string, mixed>, ipset: list<string>|null, firewall: array<string, mixed>, rules: list<array<string, mixed>>}> */
     public array $vms = [];
+
+    /** @var array<string, int> GET /cluster/firewall/options */
+    public array $datacenterFirewall = ['enable' => 1];
 
     /** @var list<array{method: string, path: string, data: array<string, mixed>}> */
     public array $writes = [];
@@ -132,6 +135,7 @@ class FakeProxmoxCluster
             ],
             'ipset' => null,
             'firewall' => [],
+            'rules' => [],
         ];
 
         return $this;
@@ -183,6 +187,7 @@ class FakeProxmoxCluster
                 ...array_fill_keys($this->unpropagatedPermissions[$query['path']] ?? [], 0),
             ]]),
             $path === '/cluster/resources' => $this->ok($this->resources()),
+            $path === '/cluster/firewall/options' => $this->ok($this->datacenterFirewall),
             (bool) preg_match('#^/nodes/([^/]+)/tasks$#', $path) => $this->ok(array_map(
                 fn (string $upid) => ['upid' => $upid],
                 $this->activeTasks[(int) ($query['vmid'] ?? 0)] ?? [],
@@ -263,7 +268,10 @@ class FakeProxmoxCluster
             (bool) preg_match('#^/status/(start|stop|shutdown|reboot)$#', $suffix, $m) => $this->power($node, $vmid, $m[1]),
             $suffix === '/vncproxy' && $method === 'POST' => $this->vncProxy($node, $vmid),
             str_starts_with($suffix, '/agent/') => $this->agent($vmid, substr($suffix, 7), $data),
+            $suffix === '/firewall/options' && $method === 'GET' => $this->ok($vm['firewall']),
             $suffix === '/firewall/options' => $this->firewallOptions($vmid, $data),
+            $suffix === '/firewall/rules' && $method === 'GET' => $this->ok(array_map(fn (array $rule, int $pos) => [...$rule, 'pos' => $pos], $vm['rules'], array_keys($vm['rules']))),
+            $suffix === '/firewall/rules' => $this->addRule($vmid, $data),
             $suffix === '/firewall/ipset' && $method === 'GET' => $this->ok($vm['ipset'] === null ? [] : [['name' => 'ipfilter-net0']]),
             $suffix === '/firewall/ipset' => $this->createIpset($vmid),
             $suffix === '/firewall/ipset/ipfilter-net0' && $method === 'GET' => $this->ok(array_map(fn ($cidr) => ['cidr' => $cidr], $vm['ipset'] ?? [])),
@@ -539,7 +547,19 @@ class FakeProxmoxCluster
      */
     private function firewallOptions(int $vmid, array $data): PromiseInterface
     {
-        $this->vms[$vmid]['firewall'] = $data;
+        // Like Proxmox, a PUT changes only the options it names.
+        $this->vms[$vmid]['firewall'] = [...$this->vms[$vmid]['firewall'], ...$data];
+
+        return $this->ok(null);
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    private function addRule(int $vmid, array $data): PromiseInterface
+    {
+        // New rules go to the top, as Proxmox puts them without `pos`.
+        array_unshift($this->vms[$vmid]['rules'], $data);
 
         return $this->ok(null);
     }

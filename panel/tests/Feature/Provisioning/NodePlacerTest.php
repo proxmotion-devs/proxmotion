@@ -135,6 +135,41 @@ class NodePlacerTest extends TestCase
         $this->assertTrue($placer->place($this->location, $spec, $this->osTemplate, 'vmbr0')->node->is($this->node));
     }
 
+    public function test_clusters_whose_firewall_cannot_stop_spoofing_are_skipped()
+    {
+        // A second, busier cluster whose datacenter firewall works; the first one's is off (docs/adr/0033).
+        $this->cluster->forceFill(['firewall_enabled' => false, 'firewall_ebtables' => true])->save();
+        $this->cluster = Cluster::factory()->for($this->location)->create(['name' => 'second']);
+        $this->cluster->forceFill(['firewall_enabled' => true, 'firewall_ebtables' => true])->save();
+        $other = $this->addNode('r9-1');
+        $this->osTemplate->proxmoxTemplates()->attach(ProxmoxTemplate::query()->forceCreate([
+            'cluster_id' => $this->cluster->id, 'node_id' => $other->id, 'vmid' => 9100, 'name' => 'debian-12',
+        ]));
+        Server::factory()->for($other)->create(['memory_mib' => 32768]);
+
+        $this->assertTrue($this->place()->node->is($other));
+
+        $this->cluster->forceFill(['firewall_ebtables' => false])->save();
+        $this->expectExceptionMessage('The Proxmox firewall is off on every cluster of this location that has this OS template, so new servers could spoof addresses.');
+        $this->place();
+    }
+
+    public function test_a_cluster_not_synced_yet_is_not_skipped()
+    {
+        $this->assertNull($this->cluster->firewall_enabled);
+
+        $this->assertTrue($this->place()->node->is($this->node));
+    }
+
+    public function test_a_chosen_node_of_a_cluster_without_ebtables_is_refused()
+    {
+        $this->cluster->forceFill(['firewall_enabled' => true, 'firewall_ebtables' => false])->save();
+
+        $this->expectExceptionMessage('ebtables is off in the datacenter firewall, so its servers can send ARP replies for any address.');
+
+        $this->placeOn($this->node);
+    }
+
     private function placeOn(Node $node, ?string $storage = null): Placement
     {
         return app(NodePlacer::class)->place($this->location, ServerSpec::fromPackage($this->package), $this->osTemplate, 'vmbr0', new PlacementRules(node: $node, storage: $storage));

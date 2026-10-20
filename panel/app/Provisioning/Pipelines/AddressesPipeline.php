@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace App\Provisioning\Pipelines;
 
+use App\Domain\Infrastructure\FirewallChecker;
 use App\Domain\Servers\GuestScripts;
 use App\Enums\GuestScriptEvent;
+use App\Enums\ServerOrigin;
 use App\Models\IpAddress;
 use App\Models\Task;
 use App\Provisioning\IpAllocator;
@@ -30,6 +32,7 @@ final readonly class AddressesPipeline
         private NetworkConfig $network,
         private IpAllocator $ips,
         private GuestScripts $guestScripts,
+        private FirewallChecker $firewall,
     ) {}
 
     public function run(Task $task): void
@@ -42,13 +45,21 @@ final readonly class AddressesPipeline
         $released = array_values($releasing->map(fn (IpAddress $address) => $address->address)->all());
         $keep = array_values(array_diff($this->network->allowedAddresses($server), $released));
 
-        $qemu->enableAntiSpoofing($server->vmid, $keep);
+        $reapply = ($task->input['reapply'] ?? false) === true;
+        $qemu->enableAntiSpoofing($server->vmid, $keep, setPolicies: $server->origin === ServerOrigin::Provisioned);
 
-        // "Apply again" makes the IP set exactly the server's addresses (docs/adr/0028 §3).
-        $remove = ($task->input['reapply'] ?? false) === true
+        // "Apply again" makes the IP set exactly the server's addresses (docs/adr/0028 §3)
+        // and turns net0's firewall flag back on (docs/adr/0033).
+        $remove = $reapply
             ? array_values(array_diff($qemu->antiSpoofingAddresses($server->vmid), $keep))
             : $released;
         $qemu->removeFromAntiSpoofing($server->vmid, $remove);
+
+        if ($reapply) {
+            $qemu->enableInterfaceFirewall($server->vmid);
+            // Read it back at once: a firewall drift closes now, not after the next sync.
+            $this->firewall->recheck($server, $qemu);
+        }
 
         // Only now, out of the firewall, may another server get it.
         $this->ips->releaseAddresses($releasing);

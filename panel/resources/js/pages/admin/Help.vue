@@ -538,6 +538,33 @@ const topics = [
                     }}
                 </p>
             </HelpQuestion>
+
+            <HelpQuestion
+                id="trouble-anti-spoofing"
+                title="Why does a cluster say anti-spoofing does not work?"
+            >
+                <p>
+                    {{
+                        $t(
+                            "Each server's VM firewall lets it use only its own addresses and MAC address and stops ARP replies for other addresses, router advertisements and DHCP server replies. Proxmox applies none of it while the datacenter firewall or its ebtables option is off, so the panel places no new servers on such a cluster.",
+                        )
+                    }}
+                </p>
+                <p>
+                    {{
+                        $t(
+                            'In Proxmox, open Datacenter → Firewall → Options and turn on Firewall and ebtables, then sync the cluster. Check the input policy first: with DROP, allow the API (8006) and SSH to the nodes, or you lock yourself out.',
+                        )
+                    }}
+                </p>
+                <p>
+                    {{
+                        $t(
+                            "Adopted servers and servers whose VM firewall was changed in Proxmox get Enable anti-spoofing on their page. On a shared IPv6 /64 a server can still claim a neighbour's IPv6 address through NDP; give each server a routed /64 to avoid it.",
+                        )
+                    }}
+                </p>
+            </HelpQuestion>
         </section>
     </div>
 </template>

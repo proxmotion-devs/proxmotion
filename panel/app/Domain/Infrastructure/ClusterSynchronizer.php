@@ -32,6 +32,7 @@ final readonly class ClusterSynchronizer
         private ProxmoxClientFactory $clients,
         private ProtectedAddresses $protected,
         private DriftDetector $drift,
+        private FirewallChecker $firewall,
     ) {}
 
     /**
@@ -48,19 +49,23 @@ final readonly class ClusterSynchronizer
             $storages = $client->cluster()->storages();
             $guests = $client->cluster()->guests();
             $bridges = $this->fetchBridges($client, $nodes);
+            $firewall = $client->cluster()->firewall();
         } catch (ProxmoxException $e) {
             $cluster->forceFill(['last_sync_error' => $e->getMessage()])->save();
 
             throw $e;
         }
 
-        DB::transaction(function () use ($cluster, $version, $status, $nodes, $storages, $guests, $bridges) {
+        DB::transaction(function () use ($cluster, $version, $status, $nodes, $storages, $guests, $bridges, $firewall) {
             $cluster->forceFill([
                 'type' => $status->isCluster() ? ClusterType::Cluster : ClusterType::Standalone,
                 'proxmox_cluster_name' => $status->clusterName,
                 'pve_version' => $version !== '' ? $version : null,
                 'last_synced_at' => now(),
                 'last_sync_error' => null,
+                // Without these the VM firewalls stop no spoofing (docs/adr/0033).
+                'firewall_enabled' => $firewall->enabled,
+                'firewall_ebtables' => $firewall->ebtables,
             ])->save();
 
             $nodeModels = $this->syncNodes($cluster, $nodes);
@@ -70,7 +75,7 @@ final readonly class ClusterSynchronizer
             $this->reserveNodeAddresses($cluster);
         });
 
-        $this->drift->detect($cluster, $guests);
+        $this->drift->detect($cluster, $guests, $this->firewall->check($cluster, $guests));
     }
 
     /**

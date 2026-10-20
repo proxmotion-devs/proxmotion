@@ -44,6 +44,7 @@ final readonly class TaskPlan
             TaskType::Unsuspend => ['start', 'wait_agent'],
             TaskType::Terminate => ['stop', 'destroy', 'release_ips'],
             TaskType::Verify => ['verify'],
+            TaskType::EnableAntiSpoofing => ['firewall'],
             default => [],
         };
     }

@@ -225,6 +225,7 @@ class ClusterController extends Controller
             'nodes_count' => $cluster->getAttribute('nodes_count') ?? $cluster->nodes->count(),
             'last_synced_at' => $cluster->last_synced_at?->toIso8601String(),
             'last_sync_error' => $cluster->last_sync_error,
+            'firewall_problem' => $cluster->guestFirewallProblem(),
         ];
     }
 

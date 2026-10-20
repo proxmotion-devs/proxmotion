@@ -137,6 +137,7 @@ Route::post('servers/{server}/power/{action}', [ServerController::class, 'power'
 Route::post('servers/{server}/retry', [ServerController::class, 'retry'])->name('servers.retry');
 Route::post('servers/{server}/rebuild', [ServerController::class, 'rebuild'])->middleware('throttle:10,1')->name('servers.rebuild');
 Route::post('servers/{server}/verify', [ServerController::class, 'verify'])->middleware('throttle:10,1')->name('servers.verify');
+Route::post('servers/{server}/anti-spoofing', [ServerController::class, 'enableAntiSpoofing'])->middleware('throttle:10,1')->name('servers.enable-anti-spoofing');
 Route::post('tasks/{task}/fail', [TaskController::class, 'fail'])->name('tasks.fail');
 Route::post('servers/{server}/password', [ServerController::class, 'revealPassword'])->middleware('throttle:20,1')->name('servers.password');
 Route::post('servers/{server}/rdns', RdnsController::class)->middleware('throttle:30,1')->name('servers.rdns');

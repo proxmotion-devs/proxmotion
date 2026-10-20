@@ -22,6 +22,7 @@ use App\Domain\Servers\ServerReinstaller;
 use App\Enums\AppInstallationStatus;
 use App\Enums\AppRunKind;
 use App\Enums\AppRunStatus;
+use App\Enums\DriftType;
 use App\Enums\IpVersion;
 use App\Enums\NodeStatus;
 use App\Enums\PowerAction;
@@ -58,6 +59,7 @@ use App\Provisioning\AddressChanger;
 use App\Provisioning\Exceptions\ProvisioningException;
 use App\Provisioning\Exceptions\TaskAlreadyRunning;
 use App\Provisioning\IpAllocator;
+use App\Provisioning\Network\NetworkConfig;
 use App\Provisioning\Placement\NodePlacer;
 use App\Provisioning\ResourceChanger;
 use App\Provisioning\ServerCreator;
@@ -94,6 +96,7 @@ class ServerController extends Controller
             'servers' => Server::query()
                 ->when(! $showTerminated, fn ($query) => $query->occupying())
                 ->with(['node:id,name', 'location:id,name', 'package:id,name', 'billingSystem:id,name', 'ipAddresses:id,server_id,address'])
+                ->withExists(['drifts as firewall_drift' => fn ($query) => $query->where('type', DriftType::FirewallMismatch)->whereNull('resolved_at')->whereNull('dismissed_at')])
                 ->latest()
                 ->paginate(50)
                 ->withQueryString()
@@ -111,6 +114,8 @@ class ServerController extends Controller
                     'location' => $server->location->name,
                     'package' => $server->package?->name,
                     'addresses' => $server->ipAddresses->pluck('address'),
+                    // Its VM firewall does not stop spoofing (docs/adr/0033).
+                    'unprotected' => (bool) $server->getAttribute('firewall_drift'),
                 ]),
             'showTerminated' => $showTerminated,
         ]);
@@ -270,6 +275,8 @@ class ServerController extends Controller
                 'provisioned_at' => $server->provisioned_at?->toIso8601String(),
                 // The latest checks from inside the server (docs/adr/0032 §6).
                 'verification' => $server->verification,
+                // When its VM firewall was last found as anti-spoofing needs it, or compared (docs/adr/0033).
+                'firewall_checked_at' => $server->firewall_checked_at?->toIso8601String(),
                 'created_at' => $server->created_at?->toIso8601String(),
             ],
             'tasks' => $server->tasks()->latest('id')->limit(10)->get()->map(function (Task $task) use ($server, $failer, $plan, $estimates) {
@@ -436,6 +443,43 @@ class ServerController extends Controller
     public function verify(Server $server, #[CurrentUser] User $admin): RedirectResponse
     {
         return $this->startTask($server, TaskType::Verify, $admin, [ServerStatus::Active], 'Checking the server…');
+    }
+
+    /**
+     * Turn anti-spoofing on (again) in the VM firewall: for adopted VMs, or
+     * after the firewall was changed in Proxmox (docs/adr/0033). The VM can
+     * then use only the addresses the panel records for it.
+     */
+    public function enableAntiSpoofing(Request $request, Server $server, #[CurrentUser] User $admin, NetworkConfig $network): RedirectResponse
+    {
+        if (! in_array($server->status, [ServerStatus::Active, ServerStatus::Suspended], true)) {
+            $this->toast('error', 'This action is not possible while the server is :status.', ['status' => __(ucfirst($server->status->value))]);
+
+            return back();
+        }
+
+        $addresses = $network->allowedAddresses($server);
+
+        if ($addresses === []) {
+            $this->toast('error', 'The server has no IP addresses in the panel, so the filter would cut it off. Add its addresses first.');
+
+            return back();
+        }
+
+        try {
+            DB::transaction(function () use ($request, $server, $admin, $addresses) {
+                $this->tasks->start($server, TaskType::EnableAntiSpoofing, $admin);
+                AuditLog::record('server.anti_spoofing_enabled', $admin, $server, ['hostname' => $server->hostname, 'addresses' => $addresses], $request->ip());
+            });
+        } catch (ProvisioningException $e) {
+            $this->toast('error', $e->getMessage());
+
+            return back();
+        }
+
+        $this->toast('info', 'Turning on anti-spoofing…');
+
+        return back();
     }
 
     /**

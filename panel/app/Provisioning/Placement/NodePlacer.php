@@ -23,6 +23,9 @@ use Illuminate\Support\Collection;
  * cluster, has the OS template, has the bridge the server's network uses, and
  * still has room for the server's CPU, memory and disk after over-commit.
  *
+ * Clusters whose datacenter firewall or ebtables the last sync found off are
+ * skipped, since their VM firewalls would stop no spoofing (docs/adr/0033).
+ *
  * Administrators may also choose the node, and optionally its storage: the
  * same checks apply to that node, except that a node in maintenance may be
  * chosen (maintenance only keeps automatic placement away from it).
@@ -41,10 +44,18 @@ final class NodePlacer
 
         $templates = $osTemplate->proxmoxTemplates()
             ->whereHas('cluster', fn ($query) => $query->where('location_id', $location->id)->where('is_active', true))
+            ->with('cluster')
             ->get();
 
         if ($templates->isEmpty()) {
             throw ProvisioningException::noTemplate();
+        }
+
+        // Anti-spoofing only works where the datacenter firewall does (docs/adr/0033).
+        $templates = $templates->filter(fn (ProxmoxTemplate $template) => $template->cluster->guestFirewallProblem() === null)->values();
+
+        if ($templates->isEmpty()) {
+            throw ProvisioningException::firewallOff();
         }
 
         $nodes = Node::query()
@@ -92,6 +103,10 @@ final class NodePlacer
 
         if ($node->cluster->location_id !== $location->id || ! $node->cluster->is_active) {
             throw new ProvisioningException('The chosen node is not in an active cluster of this location.');
+        }
+
+        if (($problem = $node->cluster->guestFirewallProblem()) !== null) {
+            throw new ProvisioningException($problem);
         }
 
         if ($rules->groups !== null && ! in_array($node->id, PlacementGroup::nodeIdsOf($rules->groups), true)) {

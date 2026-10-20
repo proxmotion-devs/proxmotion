@@ -29,6 +29,8 @@ export type Cluster = {
     nodes_count: number;
     last_synced_at: string | null;
     last_sync_error: string | null;
+    /** Why anti-spoofing does not work on this cluster (an English key), or null. */
+    firewall_problem: string | null;
 };
 
 export type Storage = {
@@ -225,6 +227,7 @@ export type TaskType =
     | 'guest_script'
     | 'change_primary_address'
     | 'change_addresses'
+    | 'enable_anti_spoofing'
     | 'change_hostname'
     | 'install_app'
     | 'app_run'
@@ -252,6 +255,8 @@ export type ServerListItem = {
     location: string;
     package: string | null;
     addresses: string[];
+    /** An open firewall drift: its VM firewall does not stop spoofing (docs/adr/0033). */
+    unprotected: boolean;
 };
 
 export type Task = {
@@ -275,15 +280,17 @@ export type DriftType =
     | 'node_mismatch'
     | 'resource_mismatch'
     | 'power_mismatch'
-    | 'unmanaged_vm';
+    | 'unmanaged_vm'
+    | 'firewall_mismatch';
 
 /** A difference between the panel and Proxmox (ADR 0005). */
 export type Drift = {
     uuid: string;
     type: DriftType;
     vmid: number;
-    expected: Record<string, string | number | null> | null;
-    actual: Record<string, string | number | null> | null;
+    /** firewall_mismatch: `addresses` the IP set should hold; `problems`, `missing` and `extra` in `actual` (docs/adr/0033). */
+    expected: Record<string, string | number | string[] | null> | null;
+    actual: Record<string, string | number | string[] | null> | null;
     first_seen_at: string;
     last_seen_at: string;
     cluster: { uuid: string; name: string };

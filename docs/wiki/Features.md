@@ -225,6 +225,15 @@ For IPv4 pools the panel **generates the addresses** of the range. Each address 
 
 Every VPS gets the Proxmox firewall with **`ipfilter` and `macfilter`** enabled and an ipset of exactly its own addresses, so a customer can only use the IPs assigned to them. The ipset follows address changes.
 
+([ADR 0033](../adr/0033-anti-spoofing-that-works.md)) What this stops and what keeps it working:
+
+- **ARP spoofing**: Proxmox's ebtables rules drop ARP packets whose sender address is not in the ipset, so a server cannot answer ARP for a neighbour's or the gateway's address. **IP and MAC spoofing**: other source addresses and MAC addresses are dropped.
+- **Rogue router advertisements** (`radv: 0`) and **rogue DHCP servers** (two outgoing DROP rules for DHCP and DHCPv6 server replies) are stopped too. All options are written explicitly.
+- **The datacenter firewall must be on, with ebtables.** The sync reads both; while either is off, the cluster page and list warn and **no new servers are placed on that cluster** (a chosen node is refused). The panel does not turn it on itself.
+- **Changes made in Proxmox are noticed**: each sync compares the VM firewall of 20 servers (checked longest ago first) and reports a *firewall* drift: firewall, IP or MAC filter off, router advertisements allowed, `net0` without the firewall flag, DHCP rules missing, or an ipset that differs from the panel. Servers with one are marked in the server list.
+- **Enable anti-spoofing** on the server page (adopted servers and servers with a firewall drift) and on the drift turns it on again after a confirmation listing the addresses. Adopted VMs keep their own firewall policies; nothing runs inside the server. *Apply again* also restores `net0`'s firewall flag. Both read the firewall back when they finish, so the drift closes and the page shows *Anti-spoofing on* at once.
+- **Not covered:** NDP target spoofing on a shared IPv6 `/64` (Proxmox does not check the target address of neighbour advertisements); give each server a routed `/64`.
+
 ### 6.5 Changing the primary address
 
 ([ADR 0011](../adr/0011-changing-the-primary-address.md)) The billing API (`POST /servers/{id}/primary-address`) can make another address the **primary**; administrators do the same with *Edit IP addresses* (6.5.1):

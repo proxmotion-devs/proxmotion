@@ -141,21 +141,49 @@ final readonly class QemuResource
     }
 
     /**
+     * The VM firewall options anti-spoofing needs (docs/adr/0033): IP filter
+     * (also the ARP sender addresses through ebtables) and MAC filter, no
+     * router advertisements, DHCP and NDP for the VM's own addresses only.
+     */
+    public const ANTI_SPOOFING_OPTIONS = ['enable' => 1, 'ipfilter' => 1, 'macfilter' => 1, 'radv' => 0, 'ndp' => 1, 'dhcp' => 1];
+
+    /**
+     * Rules that keep the VM from answering other guests as a DHCP server
+     * (DHCPv4 server → client, DHCPv6 server → client). Proxmox's `dhcp`
+     * option only lets the client side through and the IP filter allows the
+     * VM's own address as source, so without them such replies pass.
+     */
+    public const DHCP_SERVER_RULES = [
+        ['type' => 'out', 'action' => 'DROP', 'proto' => 'udp', 'sport' => '67', 'dport' => '68', 'enable' => 1, 'comment' => 'Proxmotion: no DHCP server'],
+        ['type' => 'out', 'action' => 'DROP', 'proto' => 'udp', 'sport' => '547', 'dport' => '546', 'enable' => 1, 'comment' => 'Proxmotion: no DHCPv6 server'],
+    ];
+
+    /**
      * Enable the VM firewall with IP and MAC filtering (anti-spoofing).
+     * Both policies become ACCEPT unless $setPolicies is false (adopted VMs
+     * keep theirs: only the filters are the panel's business there).
      *
      * @param  list<string>  $addresses  IPs the VM may use on net0
      */
-    public function enableAntiSpoofing(int $vmid, array $addresses): void
+    public function enableAntiSpoofing(int $vmid, array $addresses, bool $setPolicies = true): void
     {
         $base = $this->path($vmid, 'firewall');
 
-        $this->client->put("{$base}/options", ['enable' => 1, 'ipfilter' => 1, 'macfilter' => 1, 'policy_in' => 'ACCEPT', 'policy_out' => 'ACCEPT']);
+        $this->client->put("{$base}/options", [
+            ...self::ANTI_SPOOFING_OPTIONS,
+            ...($setPolicies ? ['policy_in' => 'ACCEPT', 'policy_out' => 'ACCEPT'] : []),
+        ]);
+
+        $comments = array_map(fn (array $rule) => $rule['comment'] ?? null, $this->firewallRules($vmid));
+
+        foreach (self::DHCP_SERVER_RULES as $rule) {
+            if (! in_array($rule['comment'], $comments, true)) {
+                $this->client->post("{$base}/rules", $rule);
+            }
+        }
 
         // Proxmox uses the IP set "ipfilter-net0" to decide which addresses net0 may use.
-        $existing = ClusterResource::listOfArrays($this->client->get("{$base}/ipset"));
-        $names = array_map(fn (array $set) => $set['name'] ?? null, $existing);
-
-        if (! in_array('ipfilter-net0', $names, true)) {
+        if (! $this->hasAntiSpoofingSet($vmid)) {
             $this->client->post("{$base}/ipset", ['name' => 'ipfilter-net0', 'comment' => 'Managed by Proxmotion']);
         }
 
@@ -169,6 +197,67 @@ final readonly class QemuResource
                 $this->client->post("{$base}/ipset/ipfilter-net0", ['cidr' => $address]);
             }
         }
+    }
+
+    /**
+     * The VM firewall's options as Proxmox stores them (options left at their default are missing).
+     *
+     * @return array<string, mixed>
+     */
+    public function firewallOptions(int $vmid): array
+    {
+        $data = $this->client->get($this->path($vmid, 'firewall/options'));
+
+        /** @var array<string, mixed> */
+        return is_array($data) ? $data : [];
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    public function firewallRules(int $vmid): array
+    {
+        return ClusterResource::listOfArrays($this->client->get($this->path($vmid, 'firewall/rules')));
+    }
+
+    /**
+     * Whether the VM firewall has an IP set for net0 (Proxmox lists no
+     * entries for a missing set, as for an empty one).
+     */
+    public function hasAntiSpoofingSet(int $vmid): bool
+    {
+        $names = array_map(fn (array $set) => $set['name'] ?? null, ClusterResource::listOfArrays($this->client->get($this->path($vmid, 'firewall/ipset'))));
+
+        return in_array('ipfilter-net0', $names, true);
+    }
+
+    /**
+     * Turn on the firewall flag of net0 (the VM firewall filters nothing
+     * without it), keeping the rest of the interface. Proxmox applies the
+     * flag to a running VM at once.
+     *
+     * @return bool whether net0 had to be changed
+     */
+    public function enableInterfaceFirewall(int $vmid): bool
+    {
+        $net0 = (string) (($this->config($vmid) ?? [])['net0'] ?? '');
+
+        if ($net0 === '' || self::interfaceFirewalled($net0)) {
+            return false;
+        }
+
+        $options = array_values(array_filter(explode(',', $net0), fn (string $option) => ! str_starts_with($option, 'firewall=')));
+        $this->updateConfig($vmid, ['net0' => implode(',', [...$options, 'firewall=1'])]);
+
+        return true;
+    }
+
+    /**
+     * Whether an interface setting like "virtio=…,bridge=vmbr0,firewall=1" has its firewall on.
+     */
+    public static function interfaceFirewalled(string $interface): bool
+    {
+        return in_array('firewall=1', explode(',', $interface), true);
     }
 
     /**

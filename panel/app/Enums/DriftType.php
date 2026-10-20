@@ -23,4 +23,7 @@ enum DriftType: string
 
     /** A VM in the panel's resource pool that is neither a server nor a template. */
     case UnmanagedVm = 'unmanaged_vm';
+
+    /** The VM firewall no longer stops spoofing: a filter or net0's firewall flag is off, or the IP set differs (docs/adr/0033). */
+    case FirewallMismatch = 'firewall_mismatch';
 }

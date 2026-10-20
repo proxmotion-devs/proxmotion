@@ -1,0 +1,7 @@
+{
+    "data": {
+        "enable": 1,
+        "policy_in": "ACCEPT",
+        "policy_out": "ACCEPT"
+    }
+}

@@ -15,6 +15,7 @@ import PowerControls from '@/components/servers/PowerControls.vue';
 import HostnameDialog from '@/components/servers/HostnameDialog.vue';
 import RdnsDialog from '@/components/servers/RdnsDialog.vue';
 import RebuildDialog from '@/components/servers/RebuildDialog.vue';
+import AntiSpoofingButton from '@/components/servers/AntiSpoofingButton.vue';
 import ReapplyAddressesButton from '@/components/servers/ReapplyAddressesButton.vue';
 import ReinstallDialog from '@/components/servers/ReinstallDialog.vue';
 import RemoveAddressButton from '@/components/servers/RemoveAddressButton.vue';
@@ -33,6 +34,7 @@ import {
     apps as installApp,
     console as openConsole,
     destroy,
+    enableAntiSpoofing,
     hostname as changeHostname,
     index,
     password,
@@ -109,6 +111,8 @@ const props = withDefaults(
             addresses: ServerAddress[];
             provisioned_at: string | null;
             verification: ServerVerification | null;
+            /** When the VM firewall was last compared with what anti-spoofing needs (docs/adr/0033). */
+            firewall_checked_at: string | null;
             created_at: string | null;
         };
         tasks: Task[];
@@ -150,7 +154,8 @@ const { formatDateTime } = useDateTime();
 // Refresh while a task runs, so progress and the power state show up live.
 const { start, stop } = usePoll(
     3000,
-    { only: ['server', 'tasks', 'power', 'agent', 'apps'] },
+    // drifts too: a finished task can close one (Enable anti-spoofing, docs/adr/0033).
+    { only: ['server', 'tasks', 'power', 'agent', 'apps', 'drifts'] },
     { autoStart: false },
 );
 
@@ -236,6 +241,20 @@ const runningTasks = computed(() =>
 );
 
 const active = computed(() => props.server.status === 'active');
+// A firewall drift says it was changed in Proxmox; an adopted VM not compared yet may never have had it (docs/adr/0033).
+const firewallDrift = computed(() =>
+    props.drifts.some((drift) => drift.type === 'firewall_mismatch'),
+);
+const offerAntiSpoofing = computed(
+    () =>
+        ['active', 'suspended'].includes(props.server.status) &&
+        (firewallDrift.value ||
+            (props.server.origin === 'adopted' &&
+                props.server.firewall_checked_at === null)),
+);
+const antiSpoofingOn = computed(
+    () => props.server.firewall_checked_at !== null && !firewallDrift.value,
+);
 
 const toggleTestServer = () =>
     router.visit(testServer(props.server.uuid), {
@@ -555,13 +574,47 @@ const resetAfterTrial = () => {
                         <span class="text-sm font-normal text-muted-foreground"
                             >· {{ $t(modelLabel) }}</span
                         >
+                        <StatusBadge
+                            v-if="antiSpoofingOn"
+                            class="ml-2 align-middle"
+                            tone="success"
+                            label="Anti-spoofing on"
+                            :title="
+                                $t('Checked :time', {
+                                    time: formatDateTime(
+                                        server.firewall_checked_at,
+                                    ),
+                                })
+                            "
+                        />
+                        <StatusBadge
+                            v-else-if="firewallDrift"
+                            class="ml-2 align-middle"
+                            tone="warning"
+                            label="Anti-spoofing off"
+                        />
                     </h3>
-                    <div v-if="active" class="flex flex-wrap gap-2">
+                    <div
+                        v-if="active || offerAntiSpoofing"
+                        class="flex flex-wrap gap-2"
+                    >
+                        <AntiSpoofingButton
+                            v-if="offerAntiSpoofing"
+                            :action="enableAntiSpoofing(server.uuid)"
+                            :addresses="
+                                server.addresses.map(
+                                    (address) => address.address,
+                                )
+                            "
+                            :disabled="busy"
+                        />
                         <ReapplyAddressesButton
+                            v-if="active"
                             :action="reapplyAddresses(server.uuid)"
                             :disabled="busy || server.addresses.length === 0"
                         />
                         <AddressesDialog
+                            v-if="active"
                             :action="changeAddresses(server.uuid)"
                             :addresses="server.addresses"
                             :pools="addressPools"

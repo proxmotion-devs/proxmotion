@@ -12,6 +12,7 @@ use App\Enums\TaskType;
 use App\Models\Task;
 use App\Provisioning\Exceptions\ForeignVm;
 use App\Provisioning\Pipelines\AddressesPipeline;
+use App\Provisioning\Pipelines\AntiSpoofingPipeline;
 use App\Provisioning\Pipelines\AppRunPipeline;
 use App\Provisioning\Pipelines\ChangeResourcesPipeline;
 use App\Provisioning\Pipelines\CreateServerPipeline;
@@ -56,7 +57,7 @@ class RunServerTask implements ShouldQueue
      */
     public function __construct(public Task $task, public int $dispatch = 0) {}
 
-    public function handle(CreateServerPipeline $create, PowerPipeline $power, TerminateServerPipeline $terminate, ResetPasswordPipeline $resetPassword, ReinstallServerPipeline $reinstall, ChangeResourcesPipeline $changeResources, GuestScripts $guestScripts, AddressesPipeline $addresses, HostnamePipeline $hostname, InstallAppPipeline $installApp, AppRunPipeline $appRun, ServerVerifier $verifier, StageRunner $stages, TaskFailer $failer): void
+    public function handle(CreateServerPipeline $create, PowerPipeline $power, TerminateServerPipeline $terminate, ResetPasswordPipeline $resetPassword, ReinstallServerPipeline $reinstall, ChangeResourcesPipeline $changeResources, GuestScripts $guestScripts, AddressesPipeline $addresses, HostnamePipeline $hostname, InstallAppPipeline $installApp, AppRunPipeline $appRun, AntiSpoofingPipeline $antiSpoofing, ServerVerifier $verifier, StageRunner $stages, TaskFailer $failer): void
     {
         $task = $this->task;
 
@@ -96,6 +97,7 @@ class RunServerTask implements ShouldQueue
                     TaskType::InstallApp => $installApp->run($task),
                     TaskType::AppRun => $appRun->run($task),
                     TaskType::Verify => $verifier->runTask($task),
+                    TaskType::EnableAntiSpoofing => $antiSpoofing->run($task),
                 };
             }
         } catch (Throwable $e) {

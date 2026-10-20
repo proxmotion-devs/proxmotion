@@ -170,6 +170,26 @@ const submitNode = () => {
             </div>
         </div>
 
+        <div
+            v-if="cluster.firewall_problem"
+            class="flex gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200"
+        >
+            <AlertTriangle class="mt-0.5 h-4 w-4 shrink-0" />
+            <div class="flex flex-col gap-1">
+                <div class="font-medium">
+                    {{ $t('Anti-spoofing does not work on this cluster') }}
+                </div>
+                <div>{{ $t(cluster.firewall_problem) }}</div>
+                <div>
+                    {{
+                        $t(
+                            'No new servers are placed here until it is fixed. In Proxmox, open Datacenter → Firewall → Options and turn on Firewall and ebtables, then sync. Check the input policy first: with DROP, allow the API (8006) and SSH to the nodes.',
+                        )
+                    }}
+                </div>
+            </div>
+        </div>
+
         <dl
             class="grid gap-4 rounded-xl border p-4 text-sm sm:grid-cols-2 lg:grid-cols-4"
         >
