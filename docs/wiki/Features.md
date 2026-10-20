@@ -362,7 +362,7 @@ From the **billing API** (`POST /servers`) or the **admin create wizard** (*Serv
 5. **Access & billing** — hostname (optional when the location has a hostname template), root password, SSH keys, billing system and service ids.
 6. **Review**.
 
-The **create pipeline**: full clone (or a linked clone when the OS template asks for one and the storage allows it, ADR 0027) → VM config + cloud-init (`ciuser`, password, SSH keys, network, nameservers, guest agent) → grow disk → anti-spoofing firewall → start → wait for the guest agent → guest scripts → optional app install.
+The **create pipeline**: full clone (or a linked clone when the OS template asks for one and the storage allows it, ADR 0027) → VM config + cloud-init (`ciuser`, password, SSH keys, network, nameservers, guest agent) → grow disk → anti-spoofing firewall → start → wait for the guest agent (Linux: until cloud-init has finished; Windows: until setup has finished) → guest scripts → optional app install.
 
 **SSH keys** are validated: ed25519, ECDSA, RSA ≥ 2048 bits; DSA is refused.
 

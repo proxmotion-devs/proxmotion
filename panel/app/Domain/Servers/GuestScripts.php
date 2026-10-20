@@ -13,6 +13,7 @@ use App\Models\Server;
 use App\Models\Task;
 use App\Proxmox\Data\GuestExecStatus;
 use App\Proxmox\Exceptions\GuestAgentException;
+use App\Proxmox\Exceptions\GuestCommandDisabled;
 use App\Proxmox\Exceptions\ProxmoxException;
 use App\Proxmox\ProxmoxClientFactory;
 use App\Proxmox\Resources\GuestAgentResource;
@@ -55,6 +56,20 @@ final readonly class GuestScripts
         .'$service = Get-Service -Name cloudbase-init -ErrorAction SilentlyContinue; '
         .'Write-Output ([string]$state.ImageState); Write-Output ([string]$service.Status)',
     ];
+
+    /**
+     * How long cloud-init of a new Linux system may still run once its guest
+     * agent answers. The agent starts early in the boot, while cloud-init
+     * still sets the hostname, /etc/hosts and the network.
+     */
+    public const CLOUD_INIT_TIMEOUT_SECONDS = 600;
+
+    /**
+     * Prints cloud-init's status ("status: running", "status: done", …), or
+     * nothing on a system without cloud-init. A fixed command: nothing in it
+     * comes from the server or a customer.
+     */
+    public const CLOUD_INIT_STATUS_COMMAND = ['sh', '-c', 'command -v cloud-init > /dev/null 2>&1 || exit 0; cloud-init status 2> /dev/null || true'];
 
     /** Runs of a script when the guest restarts while it runs. */
     private const ATTEMPTS = 3;
@@ -258,7 +273,9 @@ final readonly class GuestScripts
      * only once Windows setup has finished: its agent already answers during
      * sysprep's specialize pass, before Windows restarts into OOBE and before
      * Cloudbase-Init runs. If setup does not finish in time, the step records
-     * that and the operation goes on as well.
+     * that and the operation goes on as well. A Linux server is ready once
+     * cloud-init has finished (waitForCloudInit()), so that it does not undo
+     * what the guest scripts set (the hostname, /etc/hosts).
      */
     public function waitForAgentStep(Task $task, Server $server, int $timeoutSeconds = self::AGENT_TIMEOUT_SECONDS, bool $setup = false): bool
     {
@@ -274,9 +291,45 @@ final readonly class GuestScripts
             return false;
         }
 
-        $task->completeStep('wait_agent');
+        $task->completeStep('wait_agent', $setup ? $this->waitForCloudInit($server) : null);
 
         return true;
+    }
+
+    /**
+     * Poll until cloud-init no longer runs (done, error, disabled, or not
+     * installed). The agent going away meanwhile (cloud-init restarting the
+     * guest) is waited out like a check that has not passed yet.
+     *
+     * @return string|null a note for the step when it was not waited out cleanly
+     */
+    private function waitForCloudInit(Server $server): ?string
+    {
+        $agent = $this->clients->forCluster($server->cluster)->guestAgent($server->node->name);
+        $deadline = Carbon::now()->addSeconds(self::CLOUD_INIT_TIMEOUT_SECONDS);
+
+        while (true) {
+            try {
+                $result = $agent->run($server->vmid, self::CLOUD_INIT_STATUS_COMMAND, timeoutSeconds: 60);
+                $status = preg_match('/^status:\s*(.+)$/m', $result->stdout, $match) === 1 ? trim($match[1]) : '';
+
+                if (! in_array($status, ['running', 'not started'], true)) {
+                    return in_array($status, ['error', 'degraded', 'degraded done'], true)
+                        ? "cloud-init finished with status {$status}: check /var/log/cloud-init.log inside the server."
+                        : null;
+                }
+            } catch (GuestCommandDisabled $e) {
+                return 'Could not check whether cloud-init has finished: '.$e->getMessage();
+            } catch (ProxmoxException) {
+                // The guest restarted while the check ran: check again once it is back.
+            }
+
+            if (Carbon::now()->greaterThanOrEqualTo($deadline)) {
+                return 'cloud-init was still running after '.intdiv(self::CLOUD_INIT_TIMEOUT_SECONDS, 60).' minutes: the server may still be setting itself up.';
+            }
+
+            Sleep::for(5)->seconds();
+        }
     }
 
     /**

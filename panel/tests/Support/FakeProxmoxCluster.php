@@ -3,6 +3,7 @@
 namespace Tests\Support;
 
 use App\Domain\Apps\AppLogs;
+use App\Domain\Servers\GuestScripts;
 use GuzzleHttp\Promise\Create;
 use GuzzleHttp\Promise\PromiseInterface;
 use GuzzleHttp\Psr7\Response as Psr7Response;
@@ -75,6 +76,16 @@ class FakeProxmoxCluster
      * @var (callable(list<string>, string|null): array{int, string, string})|null
      */
     public $execHandler = null;
+
+    /**
+     * What "cloud-init status" prints per VM, one answer per check; the last repeats ("status: done" by default).
+     *
+     * @var array<int, list<string>>
+     */
+    public array $cloudInitStatus = [];
+
+    /** @var array<int, int> how often cloud-init was checked per VM (kept out of guestCommands) */
+    public array $cloudInitChecks = [];
 
     /** How often an app log was read (kept out of guestCommands). */
     public int $guestLogReads = 0;
@@ -305,7 +316,12 @@ class FakeProxmoxCluster
                     default => null,
                 };
 
-                if ($read !== null) {
+                if ($commandLine === GuestScripts::CLOUD_INIT_STATUS_COMMAND) {
+                    // The cloud-init check of a new Linux system (kept out of guestCommands).
+                    $answers = $this->cloudInitStatus[$vmid] ?? ['status: done'];
+                    [$exitCode, $out, $err] = [0, $answers[min($this->cloudInitChecks[$vmid] ?? 0, count($answers) - 1)]."\n", ''];
+                    $this->cloudInitChecks[$vmid] = ($this->cloudInitChecks[$vmid] ?? 0) + 1;
+                } elseif ($read !== null) {
                     $this->guestLogReads++;
                     $file = $this->guestFiles[$vmid][$commandLine[$read]] ?? null;
                     [$exitCode, $out, $err] = $file === null

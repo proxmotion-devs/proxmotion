@@ -19,9 +19,9 @@ class GuestAgentException extends ProxmoxException
      * RHEL-family images (AlmaLinux, Rocky, CentOS, Fedora) ship qemu-ga with
      * guest-exec and the file commands blocked in /etc/sysconfig/qemu-ga.
      */
-    public static function commandDisabled(int $vmid, string $command): self
+    public static function commandDisabled(int $vmid, string $command): GuestCommandDisabled
     {
-        return new self("The guest agent of VM {$vmid} refuses {$command}: it is disabled in the guest's qemu-ga settings (AlmaLinux, Rocky and RHEL block it by default). Allow it in /etc/sysconfig/qemu-ga of the template and the server, then restart qemu-guest-agent (see docs/guides/os-templates.md).");
+        return new GuestCommandDisabled("The guest agent of VM {$vmid} refuses {$command}: it is disabled in the guest's qemu-ga settings (AlmaLinux, Rocky and RHEL block it by default). Allow it in /etc/sysconfig/qemu-ga of the template and the server, then restart qemu-guest-agent (see docs/guides/os-templates.md).");
     }
 
     /**

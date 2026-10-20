@@ -21,7 +21,8 @@ use Tests\TestCase;
 /**
  * A new or reinstalled Windows server is ready once Windows setup has
  * finished, not when its guest agent first answers (during sysprep's
- * specialize pass). Linux servers and unsuspends only wait for the agent.
+ * specialize pass). Linux servers wait for cloud-init instead (CloudInitWaitTest);
+ * unsuspends only wait for the agent.
  */
 class WindowsSetupWaitTest extends TestCase
 {
@@ -179,7 +180,7 @@ class WindowsSetupWaitTest extends TestCase
         $this->assertSame(ServerStatus::Active, $server->refresh()->status);
     }
 
-    public function test_linux_servers_only_wait_for_the_agent()
+    public function test_linux_servers_wait_for_cloud_init_instead()
     {
         $this->osTemplate->forceFill(['distribution' => 'ubuntu'])->save();
         $this->answers = ["IMAGE_STATE_UNDEPLOYABLE\r\n\r\n"];
@@ -189,6 +190,7 @@ class WindowsSetupWaitTest extends TestCase
 
         $this->assertSame(0, $this->checks);
         $this->assertSame([], $this->proxmox->guestCommands);
+        $this->assertSame(1, $this->proxmox->cloudInitChecks[$server->vmid], 'CloudInitWaitTest covers the rest.');
         Sleep::assertNeverSlept();
         $this->assertSame(ServerStatus::Active, $server->status);
         $this->assertNull($this->waitStep($server->tasks()->sole())['message']);
