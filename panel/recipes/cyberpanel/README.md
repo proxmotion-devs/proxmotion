@@ -1,8 +1,8 @@
 # CyberPanel
 
 Installs [CyberPanel](https://cyberpanel.net/) with OpenLiteSpeed through its official
-installer on Ubuntu 22.04, 24.04 or 26.04, AlmaLinux 8 to 10 or Rocky Linux 8 (x86_64
-only): OpenLiteSpeed, MariaDB, and Postfix, PowerDNS and Pure-FTPd unless the `services`
+installer on Ubuntu 22.04, 24.04 or 26.04 or AlmaLinux 8 to 10 (x86_64 only):
+OpenLiteSpeed, MariaDB, and Postfix, PowerDNS and Pure-FTPd unless the `services`
 input is off. The `addons` input adds Memcached and Redis with their PHP extensions. The
 install takes 20 to 60 minutes.
 
@@ -13,9 +13,17 @@ generated password, and a notice.
   from LiteSpeed and is not offered.
 - **Password:** the installer gets a throwaway password; the real one is set afterwards
   with CyberPanel's `adminPass`.
+- **AlmaLinux 8:** CyberPanel builds its environment on `/usr/bin/python3`, which is
+  Python 3.6 there. CyberPanel supports it, but its installer sometimes gains code that
+  needs Python 3.7 or later (on 2026-10-20 it failed on
+  `subprocess.run(capture_output=...)`) until CyberPanel fixes it; the install then fails
+  with that error.
+- **Not on Rocky Linux:** `cyberpanel.net/install.sh` does not recognise it, so the recipe
+  refuses it at once.
 - **Fresh server only:** the recipe refuses a server where a web or database server is
   running. The installer exits with status 0 on many errors, so the recipe checks that
-  CyberPanel is there afterwards (its log is `/var/log/installLogs.txt`); a half-finished
+  CyberPanel is there afterwards and fails with the last Python exception or `ERROR` line
+  the installer printed (its own log is `/var/log/installLogs.txt`); a half-finished
   install needs a reinstall of the server.
 - **Restart:** CyberPanel recommends one restart after the install; the recipe does not
   restart the server on its own.
