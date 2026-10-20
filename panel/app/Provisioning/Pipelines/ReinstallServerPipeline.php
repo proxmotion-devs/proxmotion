@@ -57,9 +57,10 @@ final readonly class ReinstallServerPipeline
 
         $this->create->build($task, $previousNet0);
 
-        // The new system is ready once its guest agent answers; if it never
-        // does (template without agent), the server still runs and the reinstall succeeds.
-        $this->guestScripts->waitForAgentStep($task, $server);
+        // The new system is ready once its guest agent answers (Windows: once setup has
+        // finished); if it never does (template without agent), the server still runs
+        // and the reinstall succeeds.
+        $this->guestScripts->waitForAgentStep($task, $server, setup: true);
 
         // Additional addresses and the template's script (ADR 0009, 0010).
         $this->guestScripts->afterInstall($task, $server);
