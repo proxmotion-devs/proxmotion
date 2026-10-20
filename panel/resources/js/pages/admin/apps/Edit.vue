@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import AppSystemsPicker from '@/components/admin/AppSystemsPicker.vue';
+import type { AppOsVersion } from '@/components/admin/AppSystemsPicker.vue';
 import { Head, Link, router, useForm, usePage, usePoll } from '@inertiajs/vue3';
 import {
     ArrowLeft,
@@ -25,7 +27,6 @@ import NativeSelect from '@/components/admin/NativeSelect.vue';
 import StatusBadge from '@/components/admin/StatusBadge.vue';
 import CodeEditor from '@/components/apps/CodeEditor.vue';
 import GbInput from '@/components/apps/GbInput.vue';
-import OsPicker from '@/components/apps/OsPicker.vue';
 import RecipeFieldsEditor from '@/components/apps/RecipeFieldsEditor.vue';
 import Heading from '@/components/Heading.vue';
 import AppInputFields from '@/components/servers/AppInputFields.vue';
@@ -33,8 +34,6 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { useDateTime } from '@/composables/useDateTime';
-import type { TemplateVersion } from '@/lib/osPicker';
-import type { Distribution } from '@/lib/osTemplates';
 import { CATEGORIES, editable, languageOf, pruned } from '@/lib/recipes';
 import type {
     RecipeAction,
@@ -116,10 +115,15 @@ const props = defineProps<{
         published_at: string | null;
         created_at: string | null;
     }[];
-    /** The distributions the panel knows (docs/adr/0024). */
-    distributions: Distribution[];
-    /** Distribution and version pairs the active Linux OS templates are matched as. */
-    osTemplates: TemplateVersion[];
+    /** The operating system versions apps can be ticked for (docs/adr/0026). */
+    osVersions: AppOsVersion[];
+    /** The app's ticks and what its recipe suggests; saved at once, not with the draft. */
+    systems: {
+        slug: string;
+        platform: string;
+        suggested_ids: number[];
+        os_version_ids: number[];
+    };
     library: Record<string, string>;
     trials: Trial[];
     /** Active test servers, with the reason when the draft does not fit one. */
@@ -910,23 +914,7 @@ const statusLabels = {
                 <h3 class="text-sm font-medium">
                     {{ $t('Operating systems') }}
                 </h3>
-                <p
-                    v-if="definition.requires.platform !== 'linux'"
-                    class="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm"
-                >
-                    {{
-                        $t(
-                            'This recipe is for Windows, which apps do not support yet; change it in the YAML view.',
-                        )
-                    }}
-                </p>
-                <OsPicker
-                    v-else
-                    v-model="definition.requires"
-                    :templates="osTemplates"
-                    :catalog="distributions"
-                    :readonly="readonly"
-                />
+                <AppSystemsPicker :app="systems" :os-versions="osVersions" />
             </div>
 
             <div class="grid gap-2">

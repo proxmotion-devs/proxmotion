@@ -8,7 +8,6 @@ use App\Domain\Infrastructure\Distributions;
 use App\Enums\AppInstallMode;
 use App\Enums\NetworkModel;
 use App\Enums\OsFamily;
-use App\Models\OsTemplate;
 
 /**
  * A validated recipe.yaml (docs/adr/0015, 0016). Format 1 recipes (no
@@ -250,19 +249,12 @@ final readonly class Recipe
     }
 
     /**
-     * Whether the recipe can run on servers of this template (docs/adr/0024 §4).
+     * Whether the recipe's `requires.os` suggests an operating system
+     * version: only a suggestion, administrators tick the versions an app
+     * is offered on (docs/adr/0026). Matched by the system's os-release ID
+     * (or that of the system it is built on, unless the recipe names its own).
      */
-    public function supportsTemplate(OsTemplate $template): bool
-    {
-        return $this->supports($template->platform->value, $template->distribution, $template->version, $template->compatible_with, $template->compatible_version);
-    }
-
-    /**
-     * Whether the recipe runs on a distribution and version. A template with
-     * a compatible distribution is matched as that one, unless the recipe
-     * names its own distribution.
-     */
-    public function supports(string $platform, string $distribution, string $version, ?string $compatibleWith = null, ?string $compatibleVersion = null): bool
+    public function suggests(string $platform, string $distribution, string $version, ?string $compatibleWith = null, ?string $compatibleVersion = null): bool
     {
         $own = Distributions::fromOldName($distribution);
         $match = $compatibleWith === null ? $own : Distributions::fromOldName($compatibleWith);
@@ -298,7 +290,7 @@ final readonly class Recipe
 
     /**
      * Whether `requires.os` covers a distribution: any OS, the distribution
-     * itself, or its family in the catalog.
+     * itself, or its family among the well-known IDs (Distributions).
      */
     public function coversDistribution(string $distribution): bool
     {
@@ -306,28 +298,19 @@ final readonly class Recipe
             return true;
         }
 
-        $family = Distributions::family($distribution);
-
-        return in_array($distribution, $this->distributions ?? [], true)
-            || ($family !== null && in_array($family->value, $this->families ?? [], true));
-    }
-
-    /**
-     * The os-release ID / ID_LIKE values the runner accepts inside the
-     * server (docs/adr/0016 §3): those of the families and the
-     * distributions; empty: any.
-     *
-     * @return list<string>
-     */
-    public function osReleaseIds(): array
-    {
-        $ids = [];
-
-        foreach ($this->families ?? [] as $family) {
-            $ids = [...$ids, ...(OsFamily::tryFrom($family)?->osReleaseIds() ?? [])];
+        if (in_array($distribution, $this->distributions ?? [], true)) {
+            return true;
         }
 
-        return array_values(array_unique([...$ids, ...($this->distributions ?? [])]));
+        $families = $this->families ?? [];
+
+        if ($families === []) {
+            return false;
+        }
+
+        $family = Distributions::family($distribution);
+
+        return $family !== null && in_array($family->value, $families, true);
     }
 
     /**

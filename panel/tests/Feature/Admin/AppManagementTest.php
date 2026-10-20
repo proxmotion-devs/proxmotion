@@ -11,6 +11,7 @@ use App\Models\Server;
 use App\Provisioning\ServerCreator;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\Concerns\BuildsInfrastructure;
+use Tests\Concerns\OffersApps;
 use Tests\Concerns\PublishesRecipeVersions;
 use Tests\Support\FakeProxmoxCluster;
 
@@ -19,7 +20,7 @@ use Tests\Support\FakeProxmoxCluster;
  */
 class AppManagementTest extends AdminTestCase
 {
-    use BuildsInfrastructure, PublishesRecipeVersions;
+    use BuildsInfrastructure, OffersApps, PublishesRecipeVersions;
 
     private FakeProxmoxCluster $proxmox;
 
@@ -33,6 +34,7 @@ class AppManagementTest extends AdminTestCase
         $this->proxmox = (new FakeProxmoxCluster)->addTemplate(9000)->install();
         $this->server = app(ServerCreator::class)->create($this->order())->refresh();
         app(RecipeSynchronizer::class)->sync();
+        $this->offerApps();
     }
 
     public function test_the_apps_page_lists_the_synced_recipes()
@@ -44,7 +46,9 @@ class AppManagementTest extends AdminTestCase
                 ->has('apps', 16)
                 ->where('apps.2.slug', 'docker')
                 ->where('apps.2.is_active', true)
-                ->where('apps.2.os', ['linux: debian family', 'ubuntu ≥ 22.04', 'debian ≥ 12']));
+                ->where('apps.2.recipe_os', ['linux: debian family', 'ubuntu ≥ 22.04', 'debian ≥ 12'])
+                ->where('apps.2.os_version_ids', [$this->server->osTemplate->operating_system_version_id])
+                ->has('osVersions', 1));
     }
 
     public function test_an_admin_can_deactivate_an_app()

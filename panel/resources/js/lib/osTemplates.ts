@@ -1,122 +1,80 @@
 /**
- * The OS template form's catalog of distributions (docs/adr/0024): what a
- * template is (its os-release ID and version), its family, and the
- * distribution apps are matched as when it has its own version numbers.
+ * The administrators' operating systems and versions (docs/adr/0026): OS
+ * templates are of one version, and apps are ticked for the versions they
+ * are offered on.
  */
 
-/** A distribution the panel knows (Distributions::forForm()). */
-export type Distribution = {
-    id: string;
-    name: string;
-    family: string;
-    /** The distribution it is compatible with (pardus → debian). */
-    base: string | null;
-    /** Its versions are the base's (RHEL 9 = AlmaLinux 9). */
-    same_version: boolean;
-    example: string;
+import type { OsPlatform } from '@/types/admin';
+
+/** A version of a system (OsTemplateController::index()). */
+export type SystemVersion = {
+    id: number;
+    version: string;
+    /** How many OS templates use it; such a version cannot be deleted. */
+    templates: number;
 };
 
-export type Family = { value: string; label: string; custom: boolean };
+/** An operating system with its versions, newest first. */
+export type OperatingSystem = {
+    id: number;
+    name: string;
+    platform: OsPlatform;
+    versions: SystemVersion[];
+};
 
-/** The select value for a distribution the panel does not know. */
-export const OTHER = '__other';
-
-export function find(
-    distributions: Distribution[],
-    id: string | null | undefined,
-): Distribution | undefined {
-    return distributions.find((distribution) => distribution.id === id);
+/** "Ubuntu 24.04". */
+export function versionLabel(
+    system: { name: string },
+    version: string,
+): string {
+    return `${system.name} ${version}`.trim();
 }
 
-/** The select's options, grouped by family, with "Other…" last. */
-export function distributionOptions(
-    distributions: Distribution[],
-    families: Family[],
-    translate: (key: string) => string,
-): { value: string; label: string; group?: string }[] {
-    const familyLabel = (value: string) =>
-        translate(
-            families.find((family) => family.value === value)?.label ?? value,
-        );
-
-    return [
-        ...distributions.map((distribution) => ({
-            value: distribution.id,
-            label: distribution.name,
-            group: familyLabel(distribution.family),
+/** The template form's select: every version, grouped by system. */
+export function versionOptions(
+    systems: OperatingSystem[],
+): { value: number; label: string; group: string }[] {
+    return systems.flatMap((system) =>
+        system.versions.map((version) => ({
+            value: version.id,
+            label: versionLabel(system, version.version),
+            group: system.name,
         })),
-        { value: OTHER, label: translate('Other…') },
-    ];
-}
-
-/**
- * The distributions a template can be compatible with: known, not built on
- * another one, of the same family (none for Windows and "other").
- */
-export function compatibleOptions(
-    distributions: Distribution[],
-    family: string,
-): Distribution[] {
-    return distributions.filter(
-        (distribution) =>
-            distribution.base === null &&
-            distribution.family === family &&
-            family !== 'windows' &&
-            family !== 'other',
     );
 }
 
-/** "Ubuntu 24.04 LTS", "Pardus 23.4": the name suggested until one is typed. */
+/** The system and version of a version id. */
+export function findVersion(
+    systems: OperatingSystem[],
+    id: number | null | undefined,
+): { system: OperatingSystem; version: SystemVersion } | undefined {
+    for (const system of systems) {
+        const version = system.versions.find((entry) => entry.id === id);
+
+        if (version) {
+            return { system, version };
+        }
+    }
+
+    return undefined;
+}
+
+/** "Ubuntu 24.04 LTS", "Windows Server 2022": the name suggested until one is typed. */
 export function suggestedName(
-    distribution: Distribution | undefined,
-    id: string,
+    system: { name: string } | undefined,
     version: string,
 ): string {
-    const name =
-        distribution?.id === 'windows' && version.length === 4
-            ? 'Windows Server'
-            : (distribution?.name ?? id);
+    if (!system) {
+        return '';
+    }
+
     const lts =
-        distribution?.id === 'ubuntu' &&
+        /^ubuntu$/i.test(system.name) &&
         /^\d\d\.04$/.test(version) &&
         Number.parseInt(version, 10) % 2 === 0;
 
-    return `${name} ${version}${lts ? ' LTS' : ''}`.trim();
+    return `${versionLabel(system, version)}${lts ? ' LTS' : ''}`;
 }
-
-/**
- * The list's system column: "Ubuntu 24.04 · Debian family", or for one
- * matched as another "Pardus 23.4 · Debian family · apps as Debian 12".
- */
-export function systemParts(
-    template: {
-        distribution: string;
-        version: string;
-        family: string;
-        compatible_with: string | null;
-        compatible_version: string | null;
-    },
-    distributions: Distribution[],
-): { system: string; family: string; matchedAs: string | null } {
-    const name = (id: string) => find(distributions, id)?.name ?? id;
-
-    return {
-        system: `${name(template.distribution)} ${template.version}`.trim(),
-        family: template.family,
-        matchedAs: template.compatible_with
-            ? `${name(template.compatible_with)} ${template.compatible_version ?? ''}`.trim()
-            : null,
-    };
-}
-
-/** The fields of a template that say what it is. */
-export type OsTemplateValues = {
-    distribution: string;
-    version: string;
-    family: string;
-    compatible_with: string | null;
-    compatible_version: string | null;
-};
 
 /** GET os-templates/{template}/os-release (OsTemplateController::osRelease()). */
 export type OsReleaseResult = {
@@ -128,10 +86,10 @@ export type OsReleaseResult = {
         version_id: string | null;
         pretty_name: string | null;
     };
-    suggestion: OsTemplateValues;
-    differences: {
-        field: keyof OsTemplateValues;
-        template: string | null;
-        server: string | null;
-    }[];
+    /** "Ubuntu 24.04": the template's system and version. */
+    template_system: string;
+    /** What the server calls itself (PRETTY_NAME). */
+    server_system: string;
+    /** Whether VERSION_ID agrees with the template's version; null when the server has none. */
+    version_matches: boolean | null;
 };

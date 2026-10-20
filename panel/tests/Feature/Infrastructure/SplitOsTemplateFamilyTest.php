@@ -22,8 +22,9 @@ class SplitOsTemplateFamilyTest extends TestCase
     {
         parent::setUp();
 
+        // Back to the columns of docs/adr/0022, through the later list of operating systems (docs/adr/0026).
+        (require database_path('migrations/2026_11_16_000000_create_operating_systems_tables.php'))->down();
         $this->migration = require database_path('migrations/2026_11_14_000000_split_os_template_family_and_distribution.php');
-        // Back to the columns of docs/adr/0022.
         $this->migration->down();
     }
 

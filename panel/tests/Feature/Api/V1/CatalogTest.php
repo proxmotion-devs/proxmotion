@@ -57,17 +57,17 @@ class CatalogTest extends ApiTestCase
             ]]]);
     }
 
-    public function test_family_and_version_keep_their_meaning_for_a_template_matched_as_another()
+    public function test_family_and_version_are_the_systems_slug_and_version()
     {
-        // docs/adr/0024 §6: `family` / `version` are what apps are matched as, with the old names.
-        $this->osTemplate->forceFill(['distribution' => 'pardus', 'version' => '23.4', 'compatible_with' => 'debian', 'compatible_version' => '12'])->save();
+        // docs/adr/0024 §6, 0026: `family` is the system's slug with the old names, `os_family` its family when the panel knows it.
+        $this->osTemplate->forceFill(['distribution' => 'pardus', 'version' => '23.4'])->save();
         OsTemplate::factory()->create(['name' => 'Arch', 'distribution' => 'arch', 'version' => '2025.10.01', 'sort_order' => 1]);
-        OsTemplate::factory()->create(['name' => 'Zorin', 'distribution' => 'zorin', 'family' => 'debian', 'version' => '17', 'sort_order' => 2]);
+        OsTemplate::factory()->create(['name' => 'Zorin', 'distribution' => 'zorin', 'version' => '17', 'sort_order' => 2]);
 
         $templates = $this->api('GET', '/api/v1/os-templates')->assertOk()->json('data');
 
         $this->assertSame(
-            [['debian', '12', 'pardus', '23.4', 'debian'], ['archlinux', '2025.10.01', 'arch', '2025.10.01', 'arch'], ['other', '17', 'zorin', '17', 'debian']],
+            [['pardus', '23.4', 'pardus', '23.4', 'debian'], ['archlinux', '2025.10.01', 'arch', '2025.10.01', 'arch'], ['zorin', '17', 'zorin', '17', 'other']],
             array_map(fn (array $template) => [$template['family'], $template['version'], $template['distribution'], $template['distribution_version'], $template['os_family']], $templates),
         );
     }

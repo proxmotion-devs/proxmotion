@@ -1131,11 +1131,11 @@ components:
       properties:
         id: { type: string, format: uuid }
         name: { type: string }
-        family: { type: string, deprecated: true, examples: [ubuntu], description: 'The distribution apps are matched as, with the names v1 always used (`archlinux`, `opensuse`; `other` for a distribution the panel does not know and that names no compatible one). For Pardus 23.4 compatible with Debian 12: `debian` (docs/adr/0024 §6). Use `distribution` and `os_family`.' }
-        version: { type: string, deprecated: true, examples: ['24.04'], description: 'The version apps are matched as (for Pardus 23.4 compatible with Debian 12: 12).' }
-        distribution: { type: string, examples: [ubuntu, pardus], description: 'What the template is: the ID of its /etc/os-release.' }
-        distribution_version: { type: string, examples: ['24.04', '23.4'], description: 'Its own version (VERSION_ID).' }
-        os_family: { type: string, enum: [debian, rhel, suse, arch, windows, other], description: 'Its family, like ID_LIKE in /etc/os-release.' }
+        family: { type: string, deprecated: true, examples: [ubuntu], description: 'The slug of its operating system with the names v1 always used (`archlinux`, `opensuse`), as in an app''s `os` (docs/adr/0026). Use `distribution` and `os_family`.' }
+        version: { type: string, deprecated: true, examples: ['24.04'], description: 'The version of its operating system, as `distribution_version`.' }
+        distribution: { type: string, examples: [ubuntu, pardus], description: 'The slug of its operating system, made from the name administrators gave it (docs/adr/0026).' }
+        distribution_version: { type: string, examples: ['24.04', '23.4'], description: 'The version of its operating system, from the administrators'' list (docs/adr/0026).' }
+        os_family: { type: string, enum: [debian, rhel, suse, arch, windows, other], description: 'The family of a well-known system (like ID_LIKE in /etc/os-release); `other` for a system the panel does not know.' }
     OrderedApp:
       type: [string, 'null']
       description: |
@@ -1270,7 +1270,7 @@ components:
         format: { type: integer, enum: [1, 2], description: 'Recipe format (docs/adr/0016).' }
         os:
           type: array
-          description: 'Format 1: the exact OS versions. Format 2: the distributions `requires` covers by name (families written out as the distributions the panel knows, v1 names such as `archlinux`) with `versions` empty (any version the requirements accept); use `requires`.'
+          description: 'The operating system versions administrators offer the app on (docs/adr/0026), grouped by system slug (v1 names such as `archlinux`). The catalog filtered by `os_template` or `server` already applies them.'
           items:
             type: object
             properties:
@@ -1278,7 +1278,7 @@ components:
               versions: { type: array, items: { type: string }, examples: [['22.04', '24.04']] }
         requires:
           type: object
-          description: 'Which OS templates fit (docs/adr/0024 §4). A template is matched as the distribution and version it is compatible with, or else as itself. The catalog filtered by `os_template` or `server` already applies it.'
+          description: 'What the recipe says it runs on (docs/adr/0024 §4). Only a suggestion for administrators since docs/adr/0026: the app is offered on the versions listed in `os`.'
           properties:
             platform: { type: string, enum: [linux, windows] }
             os: { type: [array, 'null'], deprecated: true, items: { type: string }, description: '`os_families` and `distributions` in one list. null: any OS of the platform.', examples: [['debian', 'almalinux']] }

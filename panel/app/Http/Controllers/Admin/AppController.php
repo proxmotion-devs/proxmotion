@@ -7,6 +7,7 @@ namespace App\Http\Controllers\Admin;
 use App\Domain\Apps\AppInstallConflict;
 use App\Domain\Apps\AppInstaller;
 use App\Domain\Apps\AppRunner;
+use App\Domain\Apps\AppSystems;
 use App\Domain\Apps\AppTrials;
 use App\Enums\AppInstallationStatus;
 use App\Enums\AppRecipeVersionStatus;
@@ -18,6 +19,7 @@ use App\Models\AppInstallation;
 use App\Models\AppRecipe;
 use App\Models\AppRun;
 use App\Models\AuditLog;
+use App\Models\OperatingSystemVersion;
 use App\Models\Server;
 use App\Models\User;
 use App\Provisioning\Exceptions\ProvisioningException;
@@ -38,13 +40,17 @@ class AppController extends Controller
 {
     public function index(): Response
     {
+        $versions = AppSystems::all();
+
         return Inertia::render('admin/apps/Index', [
+            // The operating system versions apps can be ticked for (docs/adr/0026).
+            'osVersions' => AppSystems::options($versions),
             'apps' => AppRecipe::query()
-                ->with(['latestVersion', 'versions' => fn ($query) => $query->where('status', AppRecipeVersionStatus::Draft)])
+                ->with(['latestVersion', 'osVersions:id', 'versions' => fn ($query) => $query->where('status', AppRecipeVersionStatus::Draft)])
                 ->withCount(['installations as installed_count' => fn ($query) => $query->where('status', AppInstallationStatus::Installed)->where('is_trial', false)])
                 ->orderBy('name')
                 ->get()
-                ->map(function (AppRecipe $app) {
+                ->map(function (AppRecipe $app) use ($versions) {
                     // An app that was never published shows its draft (docs/adr/0018).
                     $draft = $app->versions->first();
                     $recipe = ($app->latestVersion ?? $draft)?->recipe();
@@ -63,7 +69,11 @@ class AppController extends Controller
                         'version' => $app->latestVersion?->version,
                         'category' => $app->category,
                         'description' => $recipe->description,
-                        'os' => $recipe->osSummary(),
+                        'platform' => $recipe->platform,
+                        // What the recipe says it runs on, and the versions that matches.
+                        'recipe_os' => $recipe->osSummary(),
+                        'suggested_ids' => AppSystems::suggested($app, $versions),
+                        'os_version_ids' => $app->osVersions->pluck('id')->values(),
                         'billing' => $recipe->billing,
                         'is_active' => $app->is_active,
                         'installed_count' => (int) $app->getAttribute('installed_count'),
@@ -72,6 +82,31 @@ class AppController extends Controller
                 ->filter()
                 ->values(),
         ]);
+    }
+
+    /**
+     * The operating system versions the app is offered on (docs/adr/0026).
+     */
+    public function systems(Request $request, AppRecipe $appRecipe, #[CurrentUser] User $admin): RedirectResponse
+    {
+        $data = $request->validate([
+            'os_version_ids' => ['present', 'array'],
+            'os_version_ids.*' => ['integer', 'distinct', Rule::exists('operating_system_versions', 'id')],
+        ]);
+
+        $ids = array_values(array_map(intval(...), $data['os_version_ids']));
+        $platform = ($appRecipe->latestVersion ?? $appRecipe->versions()->latest('id')->first())?->recipe()->platform;
+
+        // A Linux app is never offered on Windows, and the other way round.
+        if (OperatingSystemVersion::query()->whereKey($ids)->whereHas('operatingSystem', fn ($query) => $query->where('platform', '!=', $platform))->exists()) {
+            throw ValidationException::withMessages(['os_version_ids' => __('The app does not run on that kind of system.')]);
+        }
+
+        AppSystems::set($appRecipe, $ids, $admin, $request->ip());
+
+        $this->toast('success', 'Operating systems of the app saved.');
+
+        return back();
     }
 
     public function update(Request $request, AppRecipe $appRecipe, #[CurrentUser] User $admin): RedirectResponse

@@ -257,13 +257,9 @@ Requirements of every template: **cloud-init** and the **QEMU guest agent** inst
 - [ISO templates](../guides/iso-templates.md) — building a Linux template by hand from an ISO.
 - [Windows templates](../guides/windows-templates.md).
 
-Each template has ([ADR 0024](../adr/0024-os-families-and-distributions.md)):
+Operating systems are the administrators' own list ([ADR 0026](../adr/0026-operating-systems-of-administrators.md)): in the *Operating systems* section of the page they add a system (a name such as "Ubuntu", and Linux or Windows) and its versions (26.04, 24.04, …). The list starts empty. Each template is of one of those versions, picked from a single list; its system, version and platform (which picks the guest scripts) come from it.
 
-- **distribution** — its `/etc/os-release` `ID` (`ubuntu`, `debian`, `almalinux`, `ol`, `pardus`, …) — and its own **version**;
-- **family** — `debian`, `rhel`, `suse`, `arch`, `windows` or `other`, and with it the **platform** (Linux / Windows). Both follow from the built-in distribution catalog; only an unknown distribution picks a family by hand;
-- **compatible with** / **compatible version** for derivatives with their own version numbers ([ADR 0022](../adr/0022-derivative-distributions.md)): e.g. Pardus 23.4 is matched as Debian 12; RHEL and Oracle Linux are matched as AlmaLinux of the same version.
-
-Apps are matched against the family and against the distribution and version the template is matched as.
+Apps are offered on the versions administrators tick for each app, on the editor's *Requirements* tab or with *Choose systems* on the *Apps* page; a tick is saved at once, no publishing needed. What a recipe says it runs on is only a suggestion there (*Tick the suggested ones*).
 
 **Name guess.** When templates are found on Proxmox, the panel guesses the distribution and version from the template's name and fills in the form.
 
@@ -433,7 +429,7 @@ None of the bundled recipes has run on a real guest yet; see [Verification statu
 
 ([ADR 0015](../adr/0015-app-marketplace.md), [ADR 0004](../adr/0004-post-boot-delivery-via-guest-agent.md))
 
-1. **Eligibility.** The panel checks the server's operating system (family, distribution, version range), resources (memory, disk, cores) and network model. Apps that do not fit are **not offered** to customers and requests for them are rejected with `422`. The admin server page lists them greyed out with the reason.
+1. **Eligibility.** The panel checks that the server's operating system version is ticked for the app, its resources (memory, disk, cores) and network model. Apps that do not fit are **not offered** to customers and requests for them are rejected with `422`. The admin server page lists them greyed out with the reason.
 2. **Inputs** declared by the recipe (port, enum, slug, email, domain, password, HTTPS URL, …) are **validated by type** and written into the VPS as `inputs.json`. They are **never interpolated into a script**.
 3. A short `install_app` task uses the **guest agent** to write the recipe into the VPS and start the runner (`run.sh`) detached with `systemd-run`.
 4. The script reports progress to `status.json`; every minute `apps:poll` reads it through the guest agent. **There is no phone-home**: the VPS needs no network path to the panel and no panel token is ever placed on it.

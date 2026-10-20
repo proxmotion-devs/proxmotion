@@ -209,7 +209,7 @@ class ServerController extends Controller
 
     public function show(Request $request, Server $server, GuestAgentProbe $agent, AppEligibility $eligibility, AppUpgrades $upgrades, TaskFailer $failer, LiveAppPolls $live): Response
     {
-        $server->load(['node:id,uuid,name', 'cluster:id,uuid,name', 'location:id,name', 'package:id,name', 'billingSystem:id,name', 'osTemplate:id,name,distribution,version,family,compatible_with,compatible_version,platform', 'storage:id,name', 'ipAddresses.pool:id,uuid,name,version']);
+        $server->load(['node:id,uuid,name', 'cluster:id,uuid,name', 'location:id,name', 'package:id,name', 'billingSystem:id,name', 'osTemplate:id,operating_system_version_id,name,distribution,version,family,platform', 'storage:id,name', 'ipAddresses.pool:id,uuid,name,version']);
 
         // The page's refreshes while an app script runs ask the guest, so step and progress show live (docs/adr/0021).
         if (in_array('apps', explode(',', (string) $request->header('X-Inertia-Partial-Data')), true)) {

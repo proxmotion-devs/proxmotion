@@ -5,6 +5,7 @@ namespace Tests\Feature\Api\V1;
 use App\Domain\Apps\RecipeSynchronizer;
 use App\Models\AppRecipe;
 use App\Models\Server;
+use Tests\Concerns\OffersApps;
 use Tests\Unit\PublicKeyTest;
 
 /**
@@ -14,11 +15,15 @@ use Tests\Unit\PublicKeyTest;
  */
 class OrderedAppApiTest extends ApiTestCase
 {
+    use OffersApps;
+
     protected function setUp(): void
     {
         parent::setUp();
 
         app(RecipeSynchronizer::class)->sync();
+
+        $this->offerApps();
     }
 
     /**

@@ -22,22 +22,14 @@ class OsTemplateResource extends JsonResource
         return [
             'id' => $this->uuid,
             'name' => $this->name,
-            // Deprecated (docs/adr/0024 §6): the distribution and version apps are
-            // matched as, with the names v1 always used (archlinux, opensuse, other).
-            'family' => $this->legacyFamily(),
-            'version' => $this->matchVersion(),
+            // Deprecated (docs/adr/0024 §6): the system's slug with the names
+            // v1 always used (archlinux, opensuse), as in an app's `os`.
+            'family' => Distributions::apiName($this->distribution),
+            'version' => $this->version,
+            // The system's slug and version from the administrators' list (docs/adr/0026).
             'distribution' => $this->distribution,
             'distribution_version' => $this->version,
             'os_family' => $this->family->value,
         ];
-    }
-
-    private function legacyFamily(): string
-    {
-        if ($this->compatible_with !== null) {
-            return Distributions::apiName($this->compatible_with);
-        }
-
-        return Distributions::known($this->distribution) ? Distributions::apiName($this->distribution) : 'other';
     }
 }

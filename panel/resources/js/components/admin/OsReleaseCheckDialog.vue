@@ -13,23 +13,19 @@ import {
     DialogTitle,
 } from '@/components/ui/dialog';
 import { Spinner } from '@/components/ui/spinner';
-import type { OsReleaseResult, OsTemplateValues } from '@/lib/osTemplates';
+import type { OsReleaseResult } from '@/lib/osTemplates';
 import { osRelease } from '@/routes/admin/os-templates';
 import { create as createServer } from '@/routes/admin/servers';
 import type { OsTemplate } from '@/types/admin';
 
 /**
  * Compares an OS template with /etc/os-release of a running server built
- * from it (docs/adr/0024 §8). Nothing is saved here: "Use the server's
- * values" opens the edit form with them.
+ * from it (docs/adr/0024 §8, 0026): what the server reports next to the
+ * template's system and version. Nothing is saved.
  */
 const props = defineProps<{
     template: OsTemplate;
-    /** Display names of distributions and families. */
-    nameOf: (field: string, value: string | null) => string;
 }>();
-
-const emit = defineEmits<{ apply: [values: OsTemplateValues] }>();
 
 const open = defineModel<boolean>('open', { required: true });
 
@@ -42,14 +38,6 @@ const noServer = ref(false);
 const loading = ref(false);
 // Answers for an earlier request are dropped.
 let generation = 0;
-
-const FIELDS: Record<string, string> = {
-    distribution: 'Distribution',
-    version: 'Version',
-    family: 'Family',
-    compatible_with: 'Compatible with',
-    compatible_version: 'Its version',
-};
 
 const load = async (wanted: string | null) => {
     const current = ++generation;
@@ -124,13 +112,6 @@ const reported = computed(() => {
         .filter(Boolean)
         .join(' · ');
 });
-
-const apply = () => {
-    if (result.value) {
-        emit('apply', result.value.suggestion);
-        open.value = false;
-    }
-};
 </script>
 
 <template>
@@ -191,83 +172,30 @@ const apply = () => {
                 </Link>
             </p>
             <template v-else-if="result">
-                <div class="grid gap-1 text-sm">
-                    <span class="font-medium">{{
-                        result.os_release.pretty_name ?? result.os_release.id
-                    }}</span>
-                    <span class="font-mono text-xs text-muted-foreground">{{
-                        reported
-                    }}</span>
-                </div>
+                <dl class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
+                    <dt class="text-muted-foreground">{{ $t('Template') }}</dt>
+                    <dd class="font-medium">{{ result.template_system }}</dd>
+                    <dt class="text-muted-foreground">{{ $t('Server') }}</dt>
+                    <dd class="font-medium">{{ result.server_system }}</dd>
+                </dl>
+                <span class="font-mono text-xs text-muted-foreground">{{
+                    reported
+                }}</span>
                 <p
-                    v-if="result.differences.length === 0"
+                    v-if="result.version_matches === true"
                     class="rounded-lg border border-emerald-500/40 bg-emerald-500/10 p-3 text-sm"
                     data-test="os-release-match"
                 >
-                    {{ $t('The template matches the server.') }}
+                    {{ $t('The version matches the server.') }}
                 </p>
-                <div v-else class="overflow-x-auto rounded-lg border">
-                    <table
-                        class="w-full text-sm"
-                        data-test="os-release-differences"
-                    >
-                        <thead
-                            class="bg-muted/50 text-left text-muted-foreground"
-                        >
-                            <tr>
-                                <th class="px-3 py-2 font-medium" />
-                                <th class="px-3 py-2 font-medium">
-                                    {{ $t('Template') }}
-                                </th>
-                                <th class="px-3 py-2 font-medium">
-                                    {{ $t('Server') }}
-                                </th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr
-                                v-for="difference in result.differences"
-                                :key="difference.field"
-                                class="border-t"
-                            >
-                                <td class="px-3 py-2 font-medium">
-                                    {{
-                                        $t(
-                                            FIELDS[difference.field] ??
-                                                difference.field,
-                                        )
-                                    }}
-                                </td>
-                                <td class="px-3 py-2">
-                                    {{
-                                        nameOf(
-                                            difference.field,
-                                            difference.template,
-                                        )
-                                    }}
-                                </td>
-                                <td class="px-3 py-2">
-                                    {{
-                                        nameOf(
-                                            difference.field,
-                                            difference.server,
-                                        )
-                                    }}
-                                </td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
                 <p
-                    v-if="
-                        result.suggestion.compatible_with &&
-                        !result.suggestion.compatible_version
-                    "
-                    class="text-xs text-muted-foreground"
+                    v-else-if="result.version_matches === false"
+                    class="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm"
+                    data-test="os-release-mismatch"
                 >
                     {{
                         $t(
-                            'The version of the system it is compatible with is not in /etc/os-release: enter it in the form.',
+                            'The server reports another version. Check that the template is of the version you picked.',
                         )
                     }}
                 </p>
@@ -277,13 +205,6 @@ const apply = () => {
                 <Button variant="outline" @click="open = false">{{
                     $t('Close')
                 }}</Button>
-                <Button
-                    v-if="result && result.differences.length"
-                    data-test="os-release-apply"
-                    @click="apply"
-                >
-                    {{ $t("Use the server's values") }}
-                </Button>
             </DialogFooter>
         </DialogContent>
     </Dialog>

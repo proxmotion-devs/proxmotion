@@ -12,6 +12,7 @@ use Database\Factories\OsTemplateFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Carbon;
@@ -20,27 +21,26 @@ use Illuminate\Support\Carbon;
  * An operating system offered to customers, backed by one Proxmox VM template per cluster
  * (or per node, when templates live on local storage).
  *
- * `distribution` and `version` say what it is, like ID and VERSION_ID of
- * /etc/os-release; the family (and with it the platform) follows from the
- * distribution when the catalog knows it (docs/adr/0024). A distribution
- * with its own version numbers names the one apps are matched as in
- * `compatible_with` / `compatible_version` (Pardus 23.4 as Debian 12).
+ * It is of one version of an operating system from the administrators' list
+ * (docs/adr/0026). `distribution` (the system's slug), `version` and the
+ * platform are copied from it on save, for API v1 and the guest scripts;
+ * `family` is only reported in API v1 (`os_family`).
  *
  * @property int $id
  * @property string $uuid
+ * @property int|null $operating_system_version_id
  * @property string $name
  * @property string $distribution
  * @property string $version
  * @property OsFamily $family
- * @property string|null $compatible_with
- * @property string|null $compatible_version
  * @property OsPlatform $platform
  * @property bool $is_active
  * @property int $sort_order
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
+ * @property-read OperatingSystemVersion|null $osVersion
  */
-#[Fillable(['name', 'distribution', 'version', 'family', 'compatible_with', 'compatible_version', 'is_active', 'sort_order'])]
+#[Fillable(['name', 'operating_system_version_id', 'distribution', 'version', 'is_active', 'sort_order'])]
 class OsTemplate extends Model
 {
     /** @use HasFactory<OsTemplateFactory> */
@@ -49,8 +49,19 @@ class OsTemplate extends Model
     protected static function booted(): void
     {
         static::saving(function (OsTemplate $template) {
-            $template->family = Distributions::family($template->distribution) ?? $template->family ?? OsFamily::Other;
-            $template->platform = $template->family->platform();
+            // Given a system slug and version only (factories, older code): they are added to the list.
+            if ($template->operating_system_version_id === null
+                || ($template->isDirty(['distribution', 'version']) && ! $template->isDirty('operating_system_version_id'))) {
+                $template->operating_system_version_id = self::listed($template->distribution, $template->version)->id;
+            }
+
+            $version = OperatingSystemVersion::query()->with('operatingSystem')->findOrFail($template->operating_system_version_id);
+            $template->distribution = $version->operatingSystem->slug;
+            $template->version = $version->version;
+            $template->platform = $version->operatingSystem->platform;
+            $template->family = $template->platform === OsPlatform::Windows
+                ? OsFamily::Windows
+                : (Distributions::family($template->distribution) ?? OsFamily::Other);
         });
     }
 
@@ -67,16 +78,24 @@ class OsTemplate extends Model
         ];
     }
 
-    /** The distribution apps are matched as (docs/adr/0024 §4). */
-    public function matchDistribution(): string
+    /** The listed version of a system by its slug, added when missing. */
+    private static function listed(string $slug, string $version): OperatingSystemVersion
     {
-        return $this->compatible_with ?? $this->distribution;
+        $system = OperatingSystem::query()->where('slug', $slug)->first() ?? OperatingSystem::query()->forceCreate([
+            'slug' => $slug,
+            'name' => Distributions::name($slug),
+            'platform' => Distributions::family($slug) === OsFamily::Windows ? OsPlatform::Windows : OsPlatform::Linux,
+        ]);
+
+        return $system->versions()->firstOrCreate(['version' => $version]);
     }
 
-    /** The version apps are matched as. */
-    public function matchVersion(): string
+    /**
+     * @return BelongsTo<OperatingSystemVersion, $this>
+     */
+    public function osVersion(): BelongsTo
     {
-        return $this->compatible_with === null ? $this->version : (string) $this->compatible_version;
+        return $this->belongsTo(OperatingSystemVersion::class, 'operating_system_version_id');
     }
 
     /**

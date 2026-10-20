@@ -105,14 +105,11 @@ export type IpAddress = {
 export type OsTemplate = {
     uuid: string;
     name: string;
-    /** The os-release ID (docs/adr/0024). */
+    /** The version of the administrators' operating systems it is of (docs/adr/0026). */
+    operating_system_version_id: number | null;
+    /** The system's slug and the version, copied from it. */
     distribution: string;
     version: string;
-    /** Follows from the distribution, unless the panel does not know it. */
-    family: string;
-    /** The distribution apps are matched as, for one with its own version numbers. */
-    compatible_with: string | null;
-    compatible_version: string | null;
     platform: OsPlatform;
     is_active: boolean;
     sort_order: number;

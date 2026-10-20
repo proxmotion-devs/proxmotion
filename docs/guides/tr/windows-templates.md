@@ -11,8 +11,9 @@ içinde anlatılıyor (İngilizce).
 
 ## Panel Windows için ne yapar
 
-*Admin → OS templates* sayfasında OS şablonu için **Windows** işletim sistemini seçin: ailesi ve
-platformu `windows` olur (diğer tüm işletim sistemleri Linux'tur). Platform şunları belirler:
+*Admin → OS templates* sayfasında *Operating systems* bölümüne işletim sistemini (örneğin "Windows
+Server") **Windows** türüyle ekleyin, sürümünü (2022) ekleyin ve OS şablonu için o sürümü seçin:
+platformu `windows` olur. Platform şunları belirler:
 
 | İşlem | Windows'ta nasıl çalışır |
 |---|---|

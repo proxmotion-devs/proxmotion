@@ -8,12 +8,9 @@ namespace App\Domain\Infrastructure;
  * Guesses the operating system of a Proxmox VM template from its name
  * (e.g. "ubuntu-2404-cloud", "debian-12", "alma9", "win2022", "pardus-23"),
  * so an OS template can be added with one click. Administrators check the
- * guess before saving; nothing is stored without them.
- *
- * Distributions built on another one (docs/adr/0024) get that one as
- * compatible distribution. Its version is only guessed where it is the
- * same number (RHEL and Oracle Linux 9 are AlmaLinux 9); otherwise the
- * administrator enters it.
+ * guess before saving; nothing is stored without them. The guessed
+ * os-release ID is matched with the administrators' operating systems
+ * (docs/adr/0026).
  */
 final class TemplateNameGuess
 {
@@ -48,7 +45,7 @@ final class TemplateNameGuess
     ];
 
     /**
-     * @return array{name: string, distribution: string, version: string, compatible_with: string|null, compatible_version: string|null}
+     * @return array{name: string, distribution: string, version: string}
      */
     public static function fromName(?string $templateName): array
     {
@@ -63,19 +60,11 @@ final class TemplateNameGuess
             }
 
             $version = self::version($distribution, substr($lower, $position + strlen($fragment)));
-            $base = Distributions::base($distribution);
 
-            return [
-                'name' => self::displayName($distribution, $version),
-                'distribution' => $distribution,
-                'version' => $version,
-                'compatible_with' => $base,
-                'compatible_version' => $base !== null && Distributions::sameVersion($distribution) && $version !== '' ? $version : null,
-            ];
+            return ['name' => self::displayName($distribution, $version), 'distribution' => $distribution, 'version' => $version];
         }
 
-        // Unknown: the administrator gives the os-release ID and the family.
-        return ['name' => $raw, 'distribution' => '', 'version' => self::version('', $lower), 'compatible_with' => null, 'compatible_version' => null];
+        return ['name' => $raw, 'distribution' => '', 'version' => self::version('', $lower)];
     }
 
     /**

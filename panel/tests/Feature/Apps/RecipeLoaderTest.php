@@ -221,9 +221,9 @@ class RecipeLoaderTest extends TestCase
         $this->assertSame(1, $recipe->format);
         $this->assertSame(['install' => ['script' => 'install.sh', 'timeout_minutes' => 7]], $recipe->lifecycle);
         $this->assertSame(['install.sh'], array_keys($files));
-        $this->assertTrue($recipe->supports('linux', 'ubuntu', '24.04'));
-        $this->assertFalse($recipe->supports('linux', 'ubuntu', '22.04'), 'Format 1 lists exact versions.');
-        $this->assertTrue($recipe->supports('linux', 'linuxmint', '22', 'ubuntu', '24.04'), 'Matched as the distribution it is compatible with.');
+        $this->assertTrue($recipe->suggests('linux', 'ubuntu', '24.04'));
+        $this->assertFalse($recipe->suggests('linux', 'ubuntu', '22.04'), 'Format 1 lists exact versions.');
+        $this->assertTrue($recipe->suggests('linux', 'linuxmint', '22', 'ubuntu', '24.04'), 'Matched as the distribution it is compatible with.');
     }
 
     public function test_unknown_formats_are_refused()

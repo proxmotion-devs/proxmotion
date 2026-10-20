@@ -21,6 +21,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Sleep;
 use Illuminate\Validation\ValidationException;
 use Tests\Concerns\BuildsInfrastructure;
+use Tests\Concerns\OffersApps;
 use Tests\Support\FakeProxmoxCluster;
 use Tests\TestCase;
 
@@ -31,7 +32,7 @@ use Tests\TestCase;
  */
 class OrderedAppTest extends TestCase
 {
-    use BuildsInfrastructure, RefreshDatabase;
+    use BuildsInfrastructure, OffersApps, RefreshDatabase;
 
     private FakeProxmoxCluster $proxmox;
 
@@ -45,6 +46,7 @@ class OrderedAppTest extends TestCase
         $this->proxmox = (new FakeProxmoxCluster)->addTemplate(9000)->install();
         $this->admin = User::factory()->create();
         app(RecipeSynchronizer::class)->sync();
+        $this->offerApps();
     }
 
     private function app(string $slug): AppRecipe
