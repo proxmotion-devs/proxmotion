@@ -38,6 +38,7 @@ use Illuminate\Support\Carbon;
  * @property int $vmid
  * @property string|null $mac_address
  * @property string $hostname
+ * @property string|null $vm_name the Proxmox VM name when it is not the hostname (docs/adr/0031); see vmName()
  * @property ServerStatus $status
  * @property ServerOrigin $origin
  * @property bool $is_test drafts of apps may be tried on it (docs/adr/0018 §7); never has a billing system
@@ -202,6 +203,15 @@ class Server extends Model
     public function appEntitlements(): HasMany
     {
         return $this->hasMany(AppEntitlement::class);
+    }
+
+    /**
+     * The name of its Proxmox VM: the primary address of a server named from
+     * its location's template (docs/adr/0031), else the hostname.
+     */
+    public function vmName(): string
+    {
+        return $this->vm_name ?? $this->hostname;
     }
 
     /**

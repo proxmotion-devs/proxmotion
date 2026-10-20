@@ -42,18 +42,24 @@ class ServerOrder
 
     /**
      * @param array<string, mixed>|null $package the package from GET /packages, needed for extra_* options
+     * @param bool $locationNamesServers whether the location names servers without a domain (GET /locations: generates_hostnames)
      * @return array<string, mixed>
      */
-    public function payload(?array $package): array
+    public function payload(?array $package, bool $locationNamesServers = false): array
     {
         $payload = [
             'external_id' => (string) $this->params['serviceid'],
             'external_client_id' => isset($this->params['userid']) ? (string) $this->params['userid'] : null,
             'package' => $this->packageId(),
-            'location' => $this->choice('location', $this->setting(2)),
+            'location' => $this->location(),
             'os_template' => $this->osTemplate(),
-            'hostname' => $this->hostname(),
         ];
+
+        $hostname = $this->hostname($locationNamesServers);
+
+        if ($hostname !== null) {
+            $payload['hostname'] = $hostname;
+        }
 
         $networkModel = $this->choice('network_model', $this->setting(4));
 
@@ -213,9 +219,25 @@ class ServerOrder
     }
 
     /**
-     * The service's domain if it is a valid hostname, else "vps<service id>".
+     * The service's domain if it is a valid hostname. Otherwise null when the
+     * location names the server itself (its hostname template, docs/adr/0031),
+     * else "vps<service id>".
      */
-    public function hostname(): string
+    public function hostname(bool $locationNamesServers = false): ?string
+    {
+        $domain = $this->domain();
+
+        if ($domain !== null) {
+            return $domain;
+        }
+
+        return $locationNamesServers ? null : 'vps' . $this->params['serviceid'];
+    }
+
+    /**
+     * The service's domain if it is a valid hostname.
+     */
+    public function domain(): ?string
     {
         $domain = strtolower(trim(isset($this->params['domain']) ? (string) $this->params['domain'] : ''));
         $domain = rtrim($domain, '.');
@@ -224,7 +246,15 @@ class ServerOrder
             return $domain;
         }
 
-        return 'vps' . $this->params['serviceid'];
+        return null;
+    }
+
+    /**
+     * The location of the order: the "location" option or the module setting.
+     */
+    public function location(): string
+    {
+        return $this->choice('location', $this->setting(2));
     }
 
     /**

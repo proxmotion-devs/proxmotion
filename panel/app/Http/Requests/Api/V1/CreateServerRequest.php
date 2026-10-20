@@ -11,6 +11,7 @@ use App\Models\BillingSystem;
 use App\Models\Location;
 use App\Models\OsTemplate;
 use App\Models\Package;
+use App\Provisioning\HostnameGenerator;
 use App\Provisioning\NewServer;
 use App\Provisioning\ServerSpec;
 use App\Rules\Hostname;
@@ -47,7 +48,8 @@ class CreateServerRequest extends FormRequest
             'os_template' => ['required', 'string', Rule::exists('os_templates', 'uuid')->where('is_active', true)],
             // Default: the first network model the package allows; required without a package.
             'network_model' => ['nullable', 'required_without:package', Rule::enum(NetworkModel::class)->except([NetworkModel::Nat])],
-            'hostname' => ['required', 'string', 'max:253', new Hostname],
+            // Empty: generated from the location's hostname template (docs/adr/0031).
+            'hostname' => ['nullable', 'string', 'max:253', new Hostname],
             // Empty: the next free address of the location's pools.
             'primary_ipv4' => ['nullable', 'ipv4'],
             // Empty: a random password, fetched once through GET /servers/{id}/password.
@@ -85,6 +87,10 @@ class CreateServerRequest extends FormRequest
                 $validator->errors()->add('network_model', __('This package does not allow the selected network model.'));
             }
 
+            if (! $this->filled('hostname') && ($problem = HostnameGenerator::missingHostname($this->string('location')->toString())) !== null) {
+                $validator->errors()->add('hostname', $problem);
+            }
+
             $spec = $this->spec();
 
             if ($spec->ipv4Count + $spec->ipv6Count === 0) {
@@ -100,7 +106,7 @@ class CreateServerRequest extends FormRequest
             spec: $this->spec(),
             osTemplate: OsTemplate::query()->where('uuid', $this->string('os_template'))->firstOrFail(),
             networkModel: $this->networkModel(),
-            hostname: $this->string('hostname')->lower()->toString(),
+            hostname: $this->filled('hostname') ? $this->string('hostname')->lower()->toString() : null,
             rootPassword: $this->filled('root_password') ? $this->string('root_password')->toString() : Str::password(20, symbols: false),
             package: $this->package(),
             sshKeys: PublicKey::implode($this->sshKeys()),

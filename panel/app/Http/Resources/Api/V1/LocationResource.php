@@ -23,6 +23,8 @@ class LocationResource extends JsonResource
             'name' => $this->name,
             'code' => $this->code,
             'country_code' => $this->country_code,
+            // Servers ordered here may come without a hostname (docs/adr/0031).
+            'generates_hostnames' => ($this->hostname_template ?? '') !== '',
         ];
     }
 }

@@ -9,7 +9,7 @@ client area. The module is a thin client of the Proxmotion billing API v1
 
 | WHMCS | Proxmotion |
 |---|---|
-| Create | Orders the server (package, location, OS, hostname, password, SSH key, configurable options). Installation runs in Proxmotion; the client area shows the progress. Running Create again for a service that has a server changes nothing. |
+| Create | Orders the server (package, location, OS, hostname, password, SSH key, configurable options). The hostname is the service's domain; without a valid one, a location with a hostname template in Proxmotion names the server (e.g. `ip-203-0-113-10.example.com`) and the service's domain follows, otherwise it is `vps<service id>`. Installation runs in Proxmotion; the client area shows the progress. Running Create again for a service that has a server changes nothing. |
 | Suspend / Unsuspend | Stops / starts the server (the WHMCS suspension reason is passed on) |
 | Terminate | Deletes the server and its disks; the addresses are released |
 | Change Password | Sets the service password as the root password (at least 12 characters) |

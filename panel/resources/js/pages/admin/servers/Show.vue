@@ -72,6 +72,8 @@ const props = withDefaults(
         server: {
             uuid: string;
             hostname: string;
+            /** Its address when the hostname was generated: the title (docs/adr/0031). */
+            vm_name: string | null;
             status: ServerStatus;
             can_retry: boolean;
             origin: 'provisioned' | 'adopted';
@@ -126,10 +128,13 @@ const props = withDefaults(
     { agent: undefined },
 );
 
+// A server named from its location's template is titled by its address (docs/adr/0031).
+const title = computed(() => props.server.vm_name ?? props.server.hostname);
+
 setLayoutProps({
     breadcrumbs: [
         { title: 'Servers', href: index() },
-        { title: props.server.hostname, href: show(props.server.uuid) },
+        { title: title.value, href: show(props.server.uuid) },
     ],
 });
 
@@ -254,15 +259,15 @@ const resetAfterTrial = () => {
 </script>
 
 <template>
-    <Head :title="server.hostname" />
+    <Head :title="title" />
 
     <div class="flex flex-col gap-6 p-4">
         <!-- Who the server is, its state and the everyday controls. -->
         <div class="flex flex-wrap items-start justify-between gap-4">
             <div class="flex flex-col gap-2">
                 <Heading
-                    :title="server.hostname"
-                    :description="`VMID ${server.vmid} · ${server.node} · ${server.os_template ?? '—'}`"
+                    :title="title"
+                    :description="`${server.vm_name ? `${server.hostname} · ` : ''}VMID ${server.vmid} · ${server.node} · ${server.os_template ?? '—'}`"
                 />
                 <div class="flex flex-wrap gap-2">
                     <ServerStatusBadge :status="server.status" />

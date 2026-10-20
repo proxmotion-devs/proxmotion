@@ -94,6 +94,8 @@ class ServerController extends Controller
                 ->through(fn (Server $server) => [
                     'uuid' => $server->uuid,
                     'hostname' => $server->hostname,
+                    // Shown as the title when the hostname was generated (docs/adr/0031).
+                    'vm_name' => $server->vm_name,
                     'status' => $server->status,
                     'vmid' => $server->vmid,
                     'billing_system' => $server->billingSystem?->name,
@@ -115,8 +117,9 @@ class ServerController extends Controller
 
         return Inertia::render('admin/servers/Create', [
             'billingSystems' => BillingSystem::options(),
-            'locations' => Location::query()->orderBy('name')->get(['uuid', 'name'])
-                ->map(fn (Location $location) => ['value' => $location->uuid, 'label' => $location->name]),
+            'locations' => Location::query()->orderBy('name')->get(['uuid', 'name', 'code', 'hostname_template'])
+                // With a template, the hostname may stay empty (docs/adr/0031).
+                ->map(fn (Location $location) => ['value' => $location->uuid, 'label' => $location->name, 'code' => $location->code, 'hostname_template' => $location->hostname_template]),
             'packages' => Package::query()->where('is_active', true)->with('placementGroups:id,uuid')->orderBy('sort_order')->orderBy('name')->get()
                 ->map(fn (Package $package) => [
                     'value' => $package->uuid,
@@ -220,6 +223,8 @@ class ServerController extends Controller
             'server' => [
                 'uuid' => $server->uuid,
                 'hostname' => $server->hostname,
+                // Shown as the title when the hostname was generated (docs/adr/0031).
+                'vm_name' => $server->vm_name,
                 'status' => $server->status,
                 // In error, or stuck in a busy status after its task ended (Server::isStranded()).
                 'can_retry' => $server->status === ServerStatus::Error || $server->isStranded(),

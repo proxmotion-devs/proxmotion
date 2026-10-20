@@ -478,6 +478,22 @@ const topics = [
                     $t('Open Billing systems')
                 }}</Link>
             </HelpQuestion>
+
+            <HelpQuestion
+                id="billing-hostnames"
+                title="Can servers be named automatically, e.g. ip-203-0-113-5.example.com?"
+            >
+                <p>
+                    {{
+                        $t(
+                            'Give the location a hostname template such as ip-{ip}.example.com. A server ordered there without a hostname (or a WHMCS or WISECP order without a valid domain) is named from its primary address, and that name becomes the PTR of its primary addresses. Your DNS should resolve these names too. Without a template a hostname is required, and the modules send vps followed by the service id.',
+                        )
+                    }}
+                </p>
+                <Link :href="locations()" class="self-start underline">{{
+                    $t('Open Locations')
+                }}</Link>
+            </HelpQuestion>
         </section>
 
         <!-- Troubleshooting -->

@@ -7,6 +7,8 @@ export type Location = LocationOption & {
     code: string;
     country_code: string | null;
     description: string | null;
+    /** Names servers ordered without a hostname (docs/adr/0031). */
+    hostname_template: string | null;
     clusters_count: number;
     ip_pools_count: number;
 };
@@ -238,6 +240,8 @@ export type Option<T extends string | number = string> = {
 export type ServerListItem = {
     uuid: string;
     hostname: string;
+    /** The Proxmox VM name (its address) when the hostname was generated (docs/adr/0031). */
+    vm_name: string | null;
     status: ServerStatus;
     vmid: number;
     billing_system: string | null;

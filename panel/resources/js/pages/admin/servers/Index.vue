@@ -91,8 +91,14 @@ const toggleTerminated = (value: boolean | 'indeterminate') => {
                                 :href="show(server.uuid)"
                                 class="font-medium hover:underline"
                             >
-                                {{ server.hostname }}
+                                {{ server.vm_name ?? server.hostname }}
                             </Link>
+                            <div
+                                v-if="server.vm_name"
+                                class="text-xs text-muted-foreground"
+                            >
+                                {{ server.hostname }}
+                            </div>
                             <div
                                 class="font-mono text-xs text-muted-foreground"
                             >

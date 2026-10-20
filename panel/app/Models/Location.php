@@ -19,10 +19,11 @@ use Illuminate\Support\Carbon;
  * @property string $code
  * @property string|null $country_code
  * @property string|null $description
+ * @property string|null $hostname_template hostnames of servers ordered without one, e.g. "ip-{ip}.example.com" (docs/adr/0031)
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  */
-#[Fillable(['name', 'code', 'country_code', 'description'])]
+#[Fillable(['name', 'code', 'country_code', 'description', 'hostname_template'])]
 class Location extends Model
 {
     /** @use HasFactory<LocationFactory> */

@@ -65,7 +65,7 @@ Product requirements (questions on the order form) can be mapped to the module:
 |---|---|
 | `os_template` | Selection whose option values are OS template ids from Proxmotion |
 | `location` | Selection whose option values are location ids |
-| `hostname` | Text: the server's hostname (otherwise the service's, or `vps<service id>`) |
+| `hostname` | Text: the server's hostname (otherwise the service's; without a valid one, a location with a hostname template in Proxmotion names the server, e.g. `ip-203-0-113-10.example.com`, and the service takes that name, otherwise `vps<service id>`) |
 | `ssh_key` | Text area: an SSH public key installed for root |
 | `root_password` | Password: 12 to 128 characters |
 | `app` | Selection whose option values are app ids from Proxmotion (and `none`): installed once the server has booted (see *Apps at order time*) |

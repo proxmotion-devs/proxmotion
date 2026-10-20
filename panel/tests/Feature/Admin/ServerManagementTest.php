@@ -106,6 +106,37 @@ class ServerManagementTest extends AdminTestCase
                 ->has('tasks', 1));
     }
 
+    public function test_without_a_hostname_the_location_template_names_the_server()
+    {
+        // docs/adr/0031: no template, so a hostname is required.
+        $this->post(route('admin.servers.store'), $this->payload(['hostname' => '']))
+            ->assertSessionHasErrors(['hostname' => "Enter a hostname: the location {$this->location->name} has no hostname template."]);
+        $this->assertSame(0, Server::query()->count());
+
+        $this->location->update(['hostname_template' => 'ip-{ip}.example.com']);
+
+        $this->get(route('admin.servers.create'))
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('locations.0.code', 'ist1')
+                ->where('locations.0.hostname_template', 'ip-{ip}.example.com'));
+
+        $this->post(route('admin.servers.store'), $this->payload(['hostname' => '']))->assertSessionHasNoErrors();
+
+        $server = Server::query()->sole();
+        $this->assertSame('ip-203-0-113-2.example.com', $server->hostname);
+        $this->assertSame('203.0.113.2', $this->proxmox->vms[$server->vmid]['config']['name']);
+
+        // The pages title it by its address, with the hostname below.
+        $this->get(route('admin.servers.index'))
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('servers.data.0.vm_name', '203.0.113.2')
+                ->where('servers.data.0.hostname', 'ip-203-0-113-2.example.com'));
+        $this->get(route('admin.servers.show', $server))
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('server.vm_name', '203.0.113.2')
+                ->where('server.hostname', 'ip-203-0-113-2.example.com'));
+    }
+
     public function test_an_inactive_template_can_be_tried_on_a_server_before_customers_see_it()
     {
         // docs/adr/0024 §8: the OS template check links here with the template preselected.

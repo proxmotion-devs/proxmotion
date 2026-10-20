@@ -7,6 +7,9 @@ namespace App\Provisioning\Pipelines;
 use App\Domain\Apps\AppStarter;
 use App\Domain\Servers\GuestScripts;
 use App\Enums\CloneMode;
+use App\Enums\GuestScriptEvent;
+use App\Enums\OsPlatform;
+use App\Enums\PowerAction;
 use App\Enums\ServerStatus;
 use App\Models\Server;
 use App\Models\Task;
@@ -33,6 +36,7 @@ final readonly class CreateServerPipeline
         private GuestScripts $guestScripts,
         private AppStarter $apps,
         private LinkedClones $linkedClones,
+        private PowerPipeline $power,
     ) {}
 
     public function run(Task $task): void
@@ -46,6 +50,9 @@ final readonly class CreateServerPipeline
         // setup has finished (or the wait times out, ADR 0004).
         $this->guestScripts->waitForAgentStep($task, $server, setup: true);
 
+        // A server named from its location's template: its hostname inside the guest (ADR 0031).
+        $this->nameGuest($task, $server);
+
         // Additional addresses and the template's script (ADR 0009, 0010).
         $this->guestScripts->afterInstall($task, $server);
 
@@ -53,6 +60,27 @@ final readonly class CreateServerPipeline
 
         // The app it was ordered with (ADR 0004): never fails the server.
         $this->apps->startOrdered($task, $server);
+    }
+
+    /**
+     * A server named from its location's template has its address as VM name
+     * (docs/adr/0031), from which cloud-init and Cloudbase-Init took the
+     * hostname inside the guest: the hostname script sets the real one. Windows
+     * applies it at its next restart, done here. A failing script leaves a note.
+     */
+    public function nameGuest(Task $task, Server $server): void
+    {
+        if ($server->vm_name === null || $server->vm_name === $server->hostname) {
+            return;
+        }
+
+        if (! $this->guestScripts->run($task, $server, GuestScriptEvent::HostnameChanged)
+            || $this->guestScripts->platform($server) !== OsPlatform::Windows) {
+            return;
+        }
+
+        $this->power->power($task, PowerAction::Reboot);
+        $this->guestScripts->waitForAgent($server);
     }
 
     /**
@@ -99,7 +127,7 @@ final readonly class CreateServerPipeline
         $clone = fn (bool $full) => $source->clone(
             templateVmid: $template->vmid,
             newVmid: $server->vmid,
-            name: $server->hostname,
+            name: $server->vmName(),
             storage: $server->storage?->name,
             pool: $server->cluster->resource_pool,
             targetNode: $server->node->name,
@@ -139,7 +167,7 @@ final readonly class CreateServerPipeline
         $net0 = $previousNet0 ?? (is_string($current['net0'] ?? null) ? $current['net0'] : null);
 
         $params = [
-            'name' => $server->hostname,
+            'name' => $server->vmName(),
             'description' => "Managed by Proxmotion. Server {$server->uuid}",
             'cores' => $server->cpu_cores,
             'sockets' => 1,

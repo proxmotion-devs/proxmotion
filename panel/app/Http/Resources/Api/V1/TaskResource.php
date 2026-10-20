@@ -28,6 +28,8 @@ class TaskResource extends JsonResource
             'server' => [
                 'id' => $this->server->uuid,
                 'external_id' => $this->server->external_id,
+                // Also the name generated for a server ordered without one (docs/adr/0031).
+                'hostname' => $this->server->hostname,
                 'status' => $this->server->status->value,
             ],
             'steps' => array_map(fn (array $step) => [

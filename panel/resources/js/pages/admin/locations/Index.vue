@@ -1,13 +1,14 @@
 <script setup lang="ts">
 import { Head, useForm } from '@inertiajs/vue3';
 import { Pencil, Plus } from '@lucide/vue';
-import { ref } from 'vue';
+import { computed, ref } from 'vue';
 import ConfirmDelete from '@/components/admin/ConfirmDelete.vue';
 import FormDialog from '@/components/admin/FormDialog.vue';
 import FormField from '@/components/admin/FormField.vue';
 import Heading from '@/components/Heading.vue';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { hostnameExample } from '@/lib/hostnames';
 import { destroy, index, store, update } from '@/routes/admin/locations';
 import type { Location } from '@/types/admin';
 
@@ -25,7 +26,14 @@ const form = useForm({
     code: '',
     country_code: '',
     description: '',
+    hostname_template: '',
 });
+
+const templateExample = computed(() =>
+    form.hostname_template.trim() === ''
+        ? ''
+        : hostnameExample(form.hostname_template, form.code),
+);
 
 const openForm = (location: Location | null) => {
     editing.value = location;
@@ -35,6 +43,7 @@ const openForm = (location: Location | null) => {
         code: location?.code ?? '',
         country_code: location?.country_code ?? '',
         description: location?.description ?? '',
+        hostname_template: location?.hostname_template ?? '',
     });
     form.reset();
     dialogOpen.value = true;
@@ -185,6 +194,22 @@ const submit = () => {
             :error="form.errors.description"
         >
             <Input id="description" v-model="form.description" />
+        </FormField>
+        <FormField
+            label="Hostname template"
+            for="hostname_template"
+            :error="form.errors.hostname_template"
+            hint="Names servers ordered without a hostname, and becomes the PTR of their primary addresses; their Proxmox VM is named after the address. {ip} is the primary IPv4 address with dashes, {vmid} the VMID, {location} the location code. Empty: a hostname is required."
+        >
+            <Input
+                id="hostname_template"
+                v-model="form.hostname_template"
+                class="font-mono"
+                placeholder="ip-{ip}.example.com"
+            />
+            <p v-if="templateExample" class="text-xs text-muted-foreground">
+                {{ $t('Example: :hostname', { hostname: templateExample }) }}
+            </p>
         </FormField>
     </FormDialog>
 </template>

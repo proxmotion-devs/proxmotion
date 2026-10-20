@@ -153,11 +153,41 @@ class ProvisioningTest extends ModuleTestCase
     public function test_an_invalid_domain_becomes_a_generated_hostname()
     {
         $this->serviceHas(null);
+        $this->api->on('GET /locations', 200, ['data' => [['id' => 'location-uuid', 'name' => 'Istanbul', 'generates_hostnames' => false]]]);
         $this->api->on('POST /servers', 202, $this->task('create'));
 
         $this->module(['domain' => 'my_site!'])->create();
 
         $this->assertSame('vps42', $this->api->last('POST /servers')['body']['hostname']);
+        $this->assertSame([], $this->localApiCalls());
+    }
+
+    public function test_without_a_domain_a_location_with_a_hostname_template_names_the_server()
+    {
+        $this->serviceHas(null);
+        $this->api->on('GET /locations', 200, ['data' => [
+            ['id' => 'other-uuid', 'name' => 'Frankfurt', 'generates_hostnames' => false],
+            ['id' => 'location-uuid', 'name' => 'Istanbul', 'generates_hostnames' => true],
+        ]]);
+        $this->api->on('POST /servers', 202, $this->task('create', 'queued', [
+            'server' => ['id' => self::SERVER_ID, 'external_id' => '42', 'hostname' => 'ip-203-0-113-10.example.com', 'status' => 'pending'],
+        ]));
+
+        $this->module(['domain' => ''])->create();
+
+        $this->assertArrayNotHasKey('hostname', $this->api->last('POST /servers')['body']);
+        $this->assertSame([['command' => 'UpdateClientProduct', 'values' => ['serviceid' => 42, 'domain' => 'ip-203-0-113-10.example.com']]], $this->localApiCalls());
+    }
+
+    public function test_a_valid_domain_is_sent_without_asking_for_locations()
+    {
+        $this->serviceHas(null);
+        $this->api->on('POST /servers', 202, $this->task('create'));
+
+        $this->module()->create();
+
+        $this->assertSame('web1.example.com', $this->api->last('POST /servers')['body']['hostname']);
+        $this->assertNotContains('GET /locations', $this->api->sent());
     }
 
     public function test_creating_a_service_that_already_has_a_server_changes_nothing()

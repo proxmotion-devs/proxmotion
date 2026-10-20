@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace App\Http\Requests\Admin;
 
 use App\Models\Location;
+use App\Provisioning\HostnameGenerator;
+use Closure;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -26,6 +28,14 @@ class LocationRequest extends FormRequest
             ],
             'country_code' => ['nullable', 'string', 'size:2', 'alpha'],
             'description' => ['nullable', 'string', 'max:255'],
+            // Names servers ordered without a hostname (docs/adr/0031).
+            'hostname_template' => ['nullable', 'string', 'max:200', function (string $attribute, mixed $value, Closure $fail) {
+                $problem = HostnameGenerator::problem(strtolower(trim((string) $value)), $this->string('code')->toString());
+
+                if ($problem !== null) {
+                    $fail(__($problem));
+                }
+            }],
         ];
     }
 
@@ -36,6 +46,7 @@ class LocationRequest extends FormRequest
     {
         $data = $this->validated();
         $data['country_code'] = isset($data['country_code']) ? strtoupper((string) $data['country_code']) : null;
+        $data['hostname_template'] = isset($data['hostname_template']) ? strtolower(trim((string) $data['hostname_template'])) : null;
 
         return $data;
     }

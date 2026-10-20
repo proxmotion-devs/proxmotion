@@ -118,7 +118,7 @@ class Module
         }
 
         $order = new ServerOrder($this->params);
-        $payload = $order->payload($this->packageFor($order));
+        $payload = $order->payload($this->packageFor($order), $order->domain() === null && $this->locationNamesServers($order->location()));
         $app = $order->app();
 
         if ($app !== null) {
@@ -138,7 +138,26 @@ class Module
             $this->storePassword($this->client->fetchPassword((string) $task['server']['id']));
         }
 
+        // Named by the location's template (docs/adr/0031): the service's domain follows.
+        if (!isset($payload['hostname']) && isset($task['server']['hostname']) && function_exists('localAPI')) {
+            localAPI('UpdateClientProduct', ['serviceid' => $this->params['serviceid'], 'domain' => (string) $task['server']['hostname']]);
+        }
+
         return 'success';
+    }
+
+    /**
+     * Whether the location names servers ordered without a hostname (docs/adr/0031).
+     */
+    private function locationNamesServers(string $location): bool
+    {
+        foreach ($this->client->locations() as $candidate) {
+            if (($candidate['id'] ?? null) === $location) {
+                return !empty($candidate['generates_hostnames']);
+            }
+        }
+
+        return false;
     }
 
     public function suspend(): string

@@ -37,6 +37,17 @@ final class ReverseDns
     }
 
     /**
+     * The PTR of a hostname generated for a new server (docs/adr/0031). The
+     * location's template is the administrators' own, so the pool's forward
+     * check for requested names does not apply.
+     */
+    public function setGenerated(IpAddress $address, string $hostname): void
+    {
+        $address->forceFill(['ptr' => $hostname, 'ptr_synced_at' => null])->save();
+        PublishPtr::dispatch($address->id)->afterCommit();
+    }
+
+    /**
      * Before a server's addresses are released: drop their PTRs, so the next
      * customer does not inherit a name.
      */

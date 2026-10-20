@@ -62,6 +62,9 @@ final readonly class ReinstallServerPipeline
         // and the reinstall succeeds.
         $this->guestScripts->waitForAgentStep($task, $server, setup: true);
 
+        // A server named from its location's template: its hostname inside the guest (ADR 0031).
+        $this->create->nameGuest($task, $server);
+
         // Additional addresses and the template's script (ADR 0009, 0010).
         $this->guestScripts->afterInstall($task, $server);
 

@@ -170,6 +170,8 @@ Per node, administrators set:
 
 ## 5. Locations, placement groups and placement
 
+Each location may have a **hostname template** ([ADR 0031](../adr/0031-generated-hostnames.md)), e.g. `ip-{ip}.example.com`. A server ordered there without a hostname (admin form, API, or a WHMCS/WISECP order without a valid domain) is named from its primary address (`ip-203-0-113-5.example.com`; `{vmid}` and `{location}` work too), and that name becomes the PTR of its primary IPv4 and IPv6 addresses. Its Proxmox VM is named after the address (`203.0.113.5`), which is also its title in the panel (the hostname below it), and the panel sets the hostname inside the server after the first boot (Windows restarts once for it). Without a template a hostname is required, and the billing modules fall back to `vps<service id>`.
+
 ### 5.1 Placement groups
 
 A **placement group** ([ADR 0020](../adr/0020-placement-groups.md)) is a named set of nodes of one location, optionally with the storages disks may go to (otherwise the nodes' *Use for servers* storages). Typical uses: keep a plan on one CPU generation, or on NVMe nodes only.
@@ -252,6 +254,7 @@ The server's address counts follow the change; the package keeps its own. This i
   - `powerdns` — PTRs are published to a PowerDNS reverse zone through its API (connection test included).
 - Optional **forward confirmation**: the hostname must resolve to the address before the PTR is accepted.
 - PTRs are removed when an address is released, and PTRs equal to the old hostname follow a hostname change.
+- A hostname generated from the location's template is set as the PTR of the primary addresses at creation (no forward check: the template is the administrators' own domain).
 
 ---
 
@@ -356,7 +359,7 @@ From the **billing API** (`POST /servers`) or the **admin create wizard** (*Serv
    - *Custom*: resources typed by hand; choose a **placement group** (best node inside it) or a **single node** (even one in maintenance) and optionally its storage. A capacity note warns when the server does not fit.
 3. **Operating system & app** — template (inactive ones listed last for testing) and optionally an app to install after the first boot.
 4. **Network & IPs** — IPv4 pool and hand-picked addresses (optional).
-5. **Access & billing** — hostname, root password, SSH keys, billing system and service ids.
+5. **Access & billing** — hostname (optional when the location has a hostname template), root password, SSH keys, billing system and service ids.
 6. **Review**.
 
 The **create pipeline**: full clone (or a linked clone when the OS template asks for one and the storage allows it, ADR 0027) → VM config + cloud-init (`ciuser`, password, SSH keys, network, nameservers, guest agent) → grow disk → anti-spoofing firewall → start → wait for the guest agent → guest scripts → optional app install.

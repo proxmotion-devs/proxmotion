@@ -1119,12 +1119,13 @@ components:
         network_models: { type: array, items: { $ref: '#/components/schemas/NetworkModel' } }
     Location:
       type: object
-      required: [id, name, code, country_code]
+      required: [id, name, code, country_code, generates_hostnames]
       properties:
         id: { type: string, format: uuid }
         name: { type: string }
         code: { type: string }
         country_code: { type: [string, 'null'] }
+        generates_hostnames: { type: boolean, description: 'Whether servers of this location may be ordered without a `hostname`: the location''s template then names them from their primary address and sets that name as the PTR of their primary addresses (docs/adr/0031).' }
     OsTemplate:
       type: object
       required: [id, name, family, version, distribution, distribution_version, os_family]
@@ -1151,7 +1152,7 @@ components:
       additionalProperties: true
     CreateServer:
       type: object
-      required: [external_id, location, os_template, hostname]
+      required: [external_id, location, os_template]
       properties:
         external_id: { type: string, maxLength: 191, description: Service id in the billing system; unique within the token's billing system }
         external_client_id: { type: [string, 'null'], maxLength: 191, description: Customer id in the billing system }
@@ -1159,7 +1160,7 @@ components:
         location: { type: string, format: uuid }
         os_template: { type: string, format: uuid }
         network_model: { description: 'Default: the first model the package allows. Required without a package.', oneOf: [{ $ref: '#/components/schemas/NetworkModel' }, { type: 'null' }] }
-        hostname: { type: string, maxLength: 253, examples: [web1.example.com] }
+        hostname: { type: [string, 'null'], maxLength: 253, examples: [web1.example.com], description: 'Empty: named from the location''s hostname template, e.g. `ip-203-0-113-5.example.com`, which also becomes the PTR of the primary address of each version (docs/adr/0031). `422` under `hostname` when the location has none (`generates_hostnames: false`).' }
         primary_ipv4: { type: [string, 'null'], format: ipv4, description: 'A free address of the location''s pools to use as the primary IPv4 address (the other IPv4 addresses come from its pool). Empty: the next free one. `422` when it is not free.' }
         root_password: { type: [string, 'null'], minLength: 12, maxLength: 128, description: 'Empty: a random password.' }
         ssh_keys: { $ref: '#/components/schemas/SshKeys' }
@@ -1234,10 +1235,11 @@ components:
         status: { type: string, enum: [queued, running, succeeded, failed] }
         server:
           type: object
-          required: [id, external_id, status]
+          required: [id, external_id, hostname, status]
           properties:
             id: { type: string, format: uuid }
             external_id: { type: [string, 'null'] }
+            hostname: { type: string, description: 'Also the name generated for a server ordered without one (docs/adr/0031).' }
             status: { $ref: '#/components/schemas/ServerStatus' }
         steps:
           type: array

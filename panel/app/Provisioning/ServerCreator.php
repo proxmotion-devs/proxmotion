@@ -6,6 +6,7 @@ namespace App\Provisioning;
 
 use App\Domain\Apps\AppInstaller;
 use App\Domain\Apps\AppNotEligible;
+use App\Domain\Networking\ReverseDns\ReverseDns;
 use App\Enums\IpVersion;
 use App\Enums\NetworkModel;
 use App\Enums\ServerOrigin;
@@ -13,6 +14,7 @@ use App\Enums\ServerStatus;
 use App\Enums\TaskType;
 use App\Models\ApiToken;
 use App\Models\Cluster;
+use App\Models\IpAddress;
 use App\Models\PlacementGroup;
 use App\Models\Server;
 use App\Models\User;
@@ -40,6 +42,8 @@ final readonly class ServerCreator
         private ProxmoxClientFactory $clients,
         private TaskRunner $tasks,
         private AppInstaller $apps,
+        private HostnameGenerator $hostnames,
+        private ReverseDns $reverseDns,
     ) {}
 
     /**
@@ -56,6 +60,10 @@ final readonly class ServerCreator
         // An inactive template is not offered to customers yet: administrators try it on a test server (docs/adr/0024 §8).
         if (! $order->osTemplate->is_active && $order->billingSystem !== null) {
             throw new ProvisioningException(self::INACTIVE_TEMPLATE);
+        }
+
+        if ($order->hostname === null && ($order->location->hostname_template ?? '') === '') {
+            throw new ProvisioningException('Enter a hostname: the location :location has no hostname template.', ['location' => $order->location->name]);
         }
 
         $spec = $order->spec;
@@ -137,6 +145,10 @@ final readonly class ServerCreator
                 $chosen = ($primary !== null ? 1 : 0) + count($additional);
                 $this->ips->assign($server, $ipv4Pool, $spec->ipv4Count - $chosen, $ipv6Pool, $spec->ipv6Count);
 
+                if ($order->hostname === null) {
+                    $this->nameServer($server, $order);
+                }
+
                 if ($order->app !== null) {
                     $this->apps->queueOrdered($server, $order->app, $appInputs, $actor, null);
                 }
@@ -189,6 +201,28 @@ final readonly class ServerCreator
         return $inLocation;
     }
 
+    /**
+     * The hostname from the location's template (docs/adr/0031), which also
+     * becomes the PTR of the primary address of each version. The Proxmox VM
+     * is named after the primary address; the pipelines set the hostname
+     * inside the guest.
+     *
+     * @throws ProvisioningException
+     */
+    private function nameServer(Server $server, NewServer $order): void
+    {
+        $hostname = $this->hostnames->generate($server, $order->location);
+        $primary = $this->hostnames->primaryAddress($server) ?? throw ProvisioningException::noAddresses('IPv4');
+        $server->forceFill(['hostname' => $hostname, 'vm_name' => HostnameGenerator::vmName($primary)])->save();
+
+        // Primary first within each version (Server::ipAddresses()).
+        $byVersion = $server->ipAddresses()->with('pool')->get()->groupBy(fn (IpAddress $address) => $address->pool->version->value);
+
+        foreach ($byVersion as $addresses) {
+            $this->reverseDns->setGenerated($addresses->firstOrFail(), $hostname);
+        }
+    }
+
     private function insertServer(NewServer $order, Placement\Placement $placement, Cluster $cluster, int $vmid): Server
     {
         $server = new Server;
@@ -200,7 +234,8 @@ final readonly class ServerCreator
             'storage_id' => $placement->storage->id,
             'os_template_id' => $order->osTemplate->id,
             'vmid' => $vmid,
-            'hostname' => strtolower($order->hostname),
+            // Without one, named from its addresses once they are assigned (nameServer()).
+            'hostname' => strtolower($order->hostname ?? ''),
             'status' => ServerStatus::Pending,
             'origin' => ServerOrigin::Provisioned,
             'network_model' => $order->networkModel,

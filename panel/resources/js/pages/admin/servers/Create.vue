@@ -18,6 +18,7 @@ import { Input } from '@/components/ui/input';
 import { Spinner } from '@/components/ui/spinner';
 import { formatMib } from '@/lib/format';
 import { optionalNumber } from '@/lib/forms';
+import { hostnameExample } from '@/lib/hostnames';
 import {
     firstStepWithError,
     makesTestServer,
@@ -47,7 +48,8 @@ defineOptions({
 
 const props = defineProps<{
     billingSystems: Option[];
-    locations: Option[];
+    /** With a hostname template, the hostname may stay empty (docs/adr/0031). */
+    locations: (Option & { code: string; hostname_template: string | null })[];
     packages: PackageOption[];
     placementGroups: PlacementGroupOption[];
     ipv4Pools: Ipv4PoolOption[];
@@ -113,6 +115,24 @@ const modes = computed(() => [
         label: trans('Custom (enter resources, choose a group or node)'),
     },
 ]);
+
+const chosenLocation = computed(() =>
+    props.locations.find((location) => location.value === form.location),
+);
+
+// Without a hostname, the server is named from its location's template (docs/adr/0031).
+const hostnameTemplate = computed(
+    () => chosenLocation.value?.hostname_template ?? '',
+);
+
+const generatedHostname = computed(() =>
+    hostnameTemplate.value === ''
+        ? ''
+        : hostnameExample(
+              hostnameTemplate.value,
+              chosenLocation.value?.code ?? '',
+          ),
+);
 
 const chosenPackage = computed(() =>
     custom.value
@@ -203,7 +223,7 @@ const complete = computed<boolean[]>(() => [
         : chosenPackage.value !== undefined,
     form.os_template !== null,
     form.network_model !== null,
-    form.hostname.trim() !== '',
+    form.hostname.trim() !== '' || hostnameTemplate.value !== '',
     true,
 ]);
 
@@ -263,7 +283,14 @@ const summary = computed(() => {
                     ? ` · ${form.ipv4_addresses.join(', ')}`
                     : ''),
         ],
-        [trans('Hostname'), form.hostname],
+        [
+            trans('Hostname'),
+            form.hostname.trim() !== ''
+                ? form.hostname
+                : trans('From the location template: :template', {
+                      template: hostnameTemplate.value,
+                  }),
+        ],
         [
             trans('Billing system'),
             testServer.value
@@ -475,10 +502,24 @@ const submit = () => {
                     <Input
                         id="hostname"
                         v-model="form.hostname"
-                        required
+                        :required="hostnameTemplate === ''"
                         class="font-mono"
-                        placeholder="web1.example.com"
+                        :placeholder="generatedHostname || 'web1.example.com'"
                     />
+                    <p
+                        v-if="hostnameTemplate !== ''"
+                        class="text-xs text-muted-foreground"
+                    >
+                        {{
+                            $t(
+                                'Leave empty to name the server from the location template :template, e.g. :example. Its primary addresses then get this name as PTR.',
+                                {
+                                    template: hostnameTemplate,
+                                    example: generatedHostname,
+                                },
+                            )
+                        }}
+                    </p>
                 </FormField>
                 <FormField
                     label="Root password"

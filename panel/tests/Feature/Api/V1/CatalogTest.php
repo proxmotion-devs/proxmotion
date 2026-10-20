@@ -37,6 +37,7 @@ class CatalogTest extends ApiTestCase
                 'name' => $this->location->name,
                 'code' => 'ist1',
                 'country_code' => $this->location->country_code,
+                'generates_hostnames' => false,
             ]]]);
     }
 

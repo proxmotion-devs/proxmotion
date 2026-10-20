@@ -68,6 +68,19 @@ final class ProvisioningTest extends ModuleTestCase
         $this->assertSame('the-customers-password', $body['root_password']);
     }
 
+    public function test_without_a_hostname_a_location_with_a_hostname_template_names_the_server(): void
+    {
+        $this->serviceHas(null);
+        $this->api->on('GET /locations', 200, ['data' => [['id' => 'location-uuid', 'name' => 'Istanbul', 'generates_hostnames' => true]]]);
+        $this->api->on('POST /servers', 202, $this->task('create'));
+        $this->api->on('GET /servers/' . self::SERVER_ID, 200, ['data' => $this->server(['hostname' => 'ip-203-0-113-10.example.com'])]);
+
+        $result = $this->module(['hostname' => '', 'login' => ['password' => 'encrypted:a-long-wisecp-password']])->create();
+
+        $this->assertArrayNotHasKey('hostname', $this->api->body('POST /servers'));
+        $this->assertSame('ip-203-0-113-10.example.com', $result['hostname']);
+    }
+
     public function test_add_ons_add_to_the_packages_values(): void
     {
         $this->serviceHas(null);
@@ -135,6 +148,7 @@ final class ProvisioningTest extends ModuleTestCase
     public function test_an_invalid_hostname_falls_back_to_the_service_id(): void
     {
         $this->serviceHas(null);
+        $this->api->on('GET /locations', 200, ['data' => [['id' => 'location-uuid', 'name' => 'Istanbul', 'generates_hostnames' => false]]]);
         $this->api->on('POST /servers', 202, $this->task('create'));
         $this->api->on('GET /servers/' . self::SERVER_ID, 200, ['data' => $this->server()]);
 

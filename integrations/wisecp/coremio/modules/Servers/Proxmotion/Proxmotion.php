@@ -240,7 +240,8 @@ class Proxmotion extends ServerModule
             return $this->created((string) $existing['id'], null);
         }
 
-        $payload = $order->payload($this->packageFor($order));
+        // The service gets the hostname Proxmotion generated through created() (docs/adr/0031).
+        $payload = $order->payload($this->packageFor($order), $order->givenHostname() === null && $this->locationNamesServers($order->location()));
         $app = $order->app();
 
         if ($app !== null) {
@@ -1077,6 +1078,20 @@ class Proxmotion extends ServerModule
         }
 
         return null;
+    }
+
+    /**
+     * Whether the location names servers ordered without a hostname (docs/adr/0031).
+     */
+    private function locationNamesServers(string $location): bool
+    {
+        foreach ($this->api->locations() as $candidate) {
+            if (($candidate['id'] ?? null) === $location) {
+                return ! empty($candidate['generates_hostnames']);
+            }
+        }
+
+        return false;
     }
 
     /**
