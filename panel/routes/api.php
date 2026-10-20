@@ -47,6 +47,8 @@ Route::middleware(['api.scope:servers:write', 'api.idempotent'])->group(function
     Route::post('servers/{server}/rdns', ServerRdnsController::class)->name('servers.rdns');
     Route::post('servers/{server}/apps', [AppController::class, 'store'])->name('servers.apps.store');
     Route::post('servers/{server}/apps/{installation}/retry', [AppController::class, 'retry'])->name('servers.apps.retry');
+    Route::post('servers/{server}/apps/{installation}/cancel', [AppController::class, 'cancel'])->name('servers.apps.cancel');
+    Route::post('servers/{server}/apps/{installation}/runs/{run}/cancel', [AppController::class, 'cancelRun'])->name('servers.apps.runs.cancel');
     Route::delete('servers/{server}/apps/{installation}', [AppController::class, 'uninstall'])->name('servers.apps.uninstall');
     Route::post('servers/{server}/apps/{installation}/upgrade', [AppController::class, 'upgrade'])->name('servers.apps.upgrade');
     Route::post('servers/{server}/apps/{installation}/actions/{action}', [AppController::class, 'action'])->where('action', '[a-z][a-z0-9_]{0,39}')->name('servers.apps.action');

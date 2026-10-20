@@ -86,6 +86,8 @@ return [
     'app_upgrade_to' => ':version sürümüne yükselt',
     'app_upgrade_confirm' => 'Bu uygulama yükseltilsin mi? Verileri ve ayarları korunur. Yükseltme başarısız olursa uygulama mevcut sürümünde kalır.',
     'app_uninstall' => 'Kaldır',
+    'app_cancel' => 'İptal et',
+    'app_cancel_confirm' => 'Bu betik durdurulsun mu? Olduğu yerde durdurulur ve yaptıkları geri alınmaz; uygulama yarım kurulu kalabilir. Ardından tekrar deneyebilir veya uygulamayı kaldırabilirsiniz.',
     'app_uninstall_confirm' => 'Bu uygulama kaldırılsın mı? Verileri ve çıktıları (VPN profilleri vb.) sunucunuzdan silinir. Bu işlem geri alınamaz.',
     'app_action_required' => 'Lütfen bir işlem seçin.',
     'app_run_submit' => 'Çalıştır',

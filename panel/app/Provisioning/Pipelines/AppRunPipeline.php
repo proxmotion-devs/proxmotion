@@ -7,6 +7,7 @@ namespace App\Provisioning\Pipelines;
 use App\Domain\Apps\AppGuest;
 use App\Domain\Apps\AppLogs;
 use App\Domain\Apps\AppRuns;
+use App\Domain\Apps\AppStopper;
 use App\Domain\Apps\GuestPackage;
 use App\Domain\Servers\GuestScriptFailed;
 use App\Enums\AppRunKind;
@@ -34,6 +35,7 @@ final readonly class AppRunPipeline
         private GuestPackage $package,
         private AppRuns $runs,
         private AppLogs $logs,
+        private AppStopper $stopper,
     ) {}
 
     public function run(Task $task): void
@@ -78,6 +80,9 @@ final readonly class AppRunPipeline
             throw new GuestScriptFailed('The guest agent did not answer: is the server running with qemu-guest-agent?');
         }
 
+        // An install attempt or run past its timeout must not run next to this one (docs/adr/0030 §3).
+        $this->stopper->stopEarlier($agent, $server->vmid, $installation, $run);
+
         // An upgrade writes the version it upgrades to, with the install inputs for it (docs/adr/0016 §4).
         $upgrade = $run->kind === AppRunKind::Upgrade;
         $this->package->upload($agent, $server, $installation, $upgrade ? $run->runVersion() : null, $upgrade ? $run->inputs : null);
@@ -88,7 +93,7 @@ final readonly class AppRunPipeline
         $task->completeStep('app_upload');
         $task->startStep('app_start');
 
-        $result = $agent->run($server->vmid, AppGuest::startCommand($installation->platform(), $installation->guestDirectory(), 'proxmotion-app-run-'.$run->uuid, $script, $directory));
+        $result = $agent->run($server->vmid, AppGuest::startCommand($installation->platform(), $installation->guestDirectory(), AppGuest::runName($run->uuid), $script, $directory));
 
         if (! $result->succeeded()) {
             $reason = trim(strtok($result->stderr."\n", "\n") ?: 'exit code '.$result->exitCode);

@@ -84,7 +84,7 @@ class Proxmotion extends ServerModule
             'icon' => 'bi bi-grid',
             'page' => 'apps',
             'type' => 'page-loader',
-            'capabilities' => ['list', 'install', 'retry', 'download', 'uninstall', 'upgrade', 'action'],
+            'capabilities' => ['list', 'install', 'retry', 'cancel', 'download', 'uninstall', 'upgrade', 'action'],
         ]);
     }
 
@@ -528,6 +528,7 @@ class Proxmotion extends ServerModule
             'apps' => match ($action) {
                 'install' => $this->installApp($id, trim((string) ($data['app'] ?? '')), (string) ($data['secret_inputs'] ?? '')),
                 'retry' => $this->retryApp($id, trim((string) ($data['installation'] ?? ''))),
+                'cancel' => $this->cancelApp($id, trim((string) ($data['installation'] ?? '')), trim((string) ($data['run'] ?? ''))),
                 // Reinstall with an app (ADR 0016 §5): WISECP's own reinstall tool has no place for one.
                 'reinstall' => empty($data['confirm'])
                     ? throw new Exception($this->text('reinstall_confirm_required'))
@@ -696,6 +697,24 @@ class Proxmotion extends ServerModule
     /**
      * Run the app's uninstall script (ADR 0016).
      *
+     * @return array<string, mixed>
+     */
+    private function cancelApp(string $id, string $installation, string $run): array
+    {
+        if ($installation === '') {
+            throw new Exception($this->text('app_not_found'));
+        }
+
+        if ($run === '') {
+            $this->api->cancelApp($id, $installation, $this->idempotencyKey('app-cancel'));
+        } else {
+            $this->api->cancelAppRun($id, $installation, $run, $this->idempotencyKey('app-run-cancel'));
+        }
+
+        return ['status' => 'successful', 'message' => $this->text('app_cancelled'), 'successToast' => true];
+    }
+
+    /**
      * @return array<string, mixed>
      */
     private function uninstallApp(string $id, string $installation): array
@@ -902,6 +921,7 @@ class Proxmotion extends ServerModule
             'status_label' => $this->text('app_status_' . $status),
             'busy' => in_array($status, self::APP_BUSY, true),
             'failed' => $status === 'failed',
+            'can_cancel' => $status === 'installing',
             'danger' => in_array($status, ['failed', 'uninstall_failed', 'upgrade_failed'], true),
             'progress' => (int) ($installation['progress'] ?? 0),
             'step' => is_string($installation['step'] ?? null) ? $installation['step'] : null,
@@ -969,6 +989,7 @@ class Proxmotion extends ServerModule
             'status_label' => $this->text('app_run_status_' . $status),
             'busy' => in_array($status, ['queued', 'running'], true),
             'failed' => $status === 'failed',
+            'can_cancel' => $status === 'running',
             'error' => is_string($run['error'] ?? null) ? $run['error'] : null,
             'outputs' => $this->presentOutputs($run),
         ];

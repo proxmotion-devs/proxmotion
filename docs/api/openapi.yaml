@@ -885,6 +885,72 @@ paths:
         '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/ValidationError' }
 
+  /servers/{server}/apps/{installation}/cancel:
+    parameters:
+      - $ref: '#/components/parameters/Server'
+      - $ref: '#/components/parameters/Installation'
+    post:
+      tags: [Apps]
+      summary: Cancel a running installation
+      description: |
+        Scope: `servers:write`. Stops an `installing` installation (docs/adr/0030): it becomes `failed`
+        at once with the error "Cancelled by the billing system." (`app.failed` is sent) and its installer
+        is stopped inside the server in the background. Nothing the installer did is undone; the
+        installation can be retried or uninstalled. `409` for other statuses, also a `queued` one.
+      operationId: cancelServerApp
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '202':
+          description: The installation was cancelled.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: { $ref: '#/components/schemas/AppInstallation' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /servers/{server}/apps/{installation}/runs/{run}/cancel:
+    parameters:
+      - $ref: '#/components/parameters/Server'
+      - $ref: '#/components/parameters/Installation'
+      - name: run
+        in: path
+        required: true
+        description: The run's `id` (UUID).
+        schema: { type: string, format: uuid }
+    post:
+      tags: [Apps]
+      summary: Cancel a running uninstall, upgrade or action
+      description: |
+        Scope: `servers:write`. Stops a `running` run (docs/adr/0030): it becomes `failed` at once with the
+        error "Cancelled by the billing system." and the script is stopped inside the server in the
+        background. A cancelled uninstall leaves the installation `uninstall_failed`, a cancelled upgrade
+        `upgrade_failed` on its old version; the usual `app.*_failed` webhook is sent. `409` for other
+        statuses, also a `queued` run.
+      operationId: cancelServerAppRun
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '202':
+          description: The run was cancelled.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: { $ref: '#/components/schemas/AppRun' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
   /servers/{server}/app-entitlements:
     parameters:
       - $ref: '#/components/parameters/Server'

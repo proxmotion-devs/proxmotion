@@ -171,6 +171,13 @@
                                             {/if}
                                         </div>
                                     {/foreach}
+                                    {if $installation.canCancel}
+                                        <form method="post" action="{$pmxAction}CancelApp" class="form-inline" onsubmit="return confirm('{$pmx.lang.app_cancel_confirm|escape:'javascript'|escape}');">
+                                            <input type="hidden" name="token" value="{$token}">
+                                            <input type="hidden" name="installation" value="{$installation.id|escape}">
+                                            <button type="submit" class="btn btn-default btn-sm">{$pmx.lang.app_cancel|escape}</button>
+                                        </form>
+                                    {/if}
                                     {if $installation.failed}
                                         <form method="post" action="{$pmxAction}RetryApp" class="form-inline">
                                             <input type="hidden" name="token" value="{$token}">
@@ -255,6 +262,14 @@
                                                     {$run.label|escape}:
                                                     <span class="label {if $run.status == 'succeeded'}label-success{elseif $run.failed}label-danger{elseif $run.busy}label-warning{else}label-default{/if}">{$run.statusLabel|escape}</span>
                                                     {if $run.error}<span class="text-danger">{$run.error|escape}</span>{/if}
+                                                    {if $run.canCancel}
+                                                        <form method="post" action="{$pmxAction}CancelApp" style="display: inline" onsubmit="return confirm('{$pmx.lang.app_cancel_confirm|escape:'javascript'|escape}');">
+                                                            <input type="hidden" name="token" value="{$token}">
+                                                            <input type="hidden" name="installation" value="{$installation.id|escape}">
+                                                            <input type="hidden" name="run" value="{$run.id|escape}">
+                                                            <button type="submit" class="btn btn-link btn-xs">{$pmx.lang.app_cancel|escape}</button>
+                                                        </form>
+                                                    {/if}
                                                     {foreach from=$run.outputs item=output}
                                                         <span class="text-muted">{$output.label|escape}:</span>
                                                         {if $output.file}

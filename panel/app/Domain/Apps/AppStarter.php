@@ -34,6 +34,7 @@ final readonly class AppStarter
         private GuestPackage $package,
         private AppInstallations $installations,
         private AppLogs $logs,
+        private AppStopper $stopper,
     ) {}
 
     /**
@@ -96,6 +97,8 @@ final readonly class AppStarter
             throw new GuestScriptFailed('The guest agent did not answer: is the server running with qemu-guest-agent?');
         }
 
+        // An earlier attempt or run past its timeout must not run next to this one (docs/adr/0030 §3).
+        $this->stopper->stopEarlier($agent, $server->vmid, $installation);
         $this->package->upload($agent, $server, $installation);
         $agent->writeFile($server->vmid, $directory.'/status.json', GuestPackage::startingStatus());
 
@@ -105,7 +108,7 @@ final readonly class AppStarter
         $attempt = $installation->attempts + 1;
         $platform = $installation->platform();
         $script = $installation->version->recipe()->lifecycleScript('install') ?? ($platform === OsPlatform::Windows ? 'install.ps1' : 'install.sh');
-        $result = $agent->run($server->vmid, AppGuest::startCommand($platform, $directory, 'proxmotion-app-'.$installation->uuid.'-'.$attempt, $script));
+        $result = $agent->run($server->vmid, AppGuest::startCommand($platform, $directory, AppGuest::installName($installation->uuid, $attempt), $script));
 
         if (! $result->succeeded()) {
             $reason = trim(strtok($result->stderr."\n", "\n") ?: 'exit code '.$result->exitCode);

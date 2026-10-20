@@ -328,6 +328,27 @@ final class ApiClient
     }
 
     /**
+     * Cancel a running installation (ADR 0030 in the Proxmotion repository):
+     * it fails at once and its installer is stopped inside the server.
+     *
+     * @return array<string, mixed> the installation
+     */
+    public function cancelApp(string $id, string $installation, string $idempotencyKey): array
+    {
+        return $this->dataOf($this->request('POST', '/servers/' . rawurlencode($id) . '/apps/' . rawurlencode($installation) . '/cancel', null, $idempotencyKey));
+    }
+
+    /**
+     * Cancel a running uninstall, upgrade or action (ADR 0030).
+     *
+     * @return array<string, mixed> the run
+     */
+    public function cancelAppRun(string $id, string $installation, string $run, string $idempotencyKey): array
+    {
+        return $this->dataOf($this->request('POST', '/servers/' . rawurlencode($id) . '/apps/' . rawurlencode($installation) . '/runs/' . rawurlencode($run) . '/cancel', null, $idempotencyKey));
+    }
+
+    /**
      * Run the app's uninstall script (ADR 0016 in the Proxmotion repository).
      *
      * @return array<string, mixed> the queued run

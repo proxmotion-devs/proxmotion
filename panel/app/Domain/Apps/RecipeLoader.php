@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Domain\Apps;
 
+use App\Enums\OsPlatform;
 use App\Proxmox\Resources\GuestAgentResource;
 use Closure;
 use Opis\JsonSchema\Errors\ErrorFormatter;
@@ -176,6 +177,14 @@ final class RecipeLoader
         }
 
         return $files;
+    }
+
+    /**
+     * The script that stops runners of a platform (docs/adr/0030).
+     */
+    public function stopScript(OsPlatform $platform): string
+    {
+        return (string) file_get_contents($this->directory().'/_lib/'.AppGuest::STOP_FILES[$platform->value]);
     }
 
     /**

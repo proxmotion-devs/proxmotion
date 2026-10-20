@@ -384,7 +384,7 @@ All of these are available on the admin server page; the ones marked ✓ are als
 | **Edit IP addresses**, **Apply again** | — | Add, remove, choose the primary; apply the addresses again (see 6.5.1) |
 | **rDNS** | ✓ | Per public address |
 | **Console** | ✓ (link) | See [Browser console](#10-browser-console) |
-| **Apps** | ✓ | Install, retry, uninstall, upgrade, actions, entitlements |
+| **Apps** | ✓ | Install, cancel, retry, uninstall, upgrade, actions, entitlements |
 | **Retry** a failed task | — | Continues the idempotent pipeline |
 | **Mark task as failed** | — | For stuck tasks |
 | **Test server flag** | — | Lets app drafts be tried on it; never for a server of a billing system |
@@ -464,6 +464,8 @@ None of the bundled recipes has run on a real guest yet; see [Verification statu
 | **With a reinstall** | Choose an app while reinstalling. |
 
 Installation states: `queued → installing → installed`; `failed` is retryable; `uninstalling`, `upgrading`, `uninstall_failed`, `upgrade_failed`; `removed` when uninstalled or the server is reinstalled or terminated.
+
+**Cancel and timeouts** ([ADR 0030](../adr/0030-stopping-and-cancelling-app-scripts.md)): administrators (server page) and billing systems (API, WHMCS client area, WISECP Apps tool) can cancel an installing app or a running uninstall, upgrade or action. It fails at once (*Cancelled by …*, the usual `app.*` failure webhook) and the script is stopped inside the server (`systemctl kill` of its unit on Linux, its scheduled task and processes on Windows). A script past its timeout is stopped the same way, and a retry, uninstall, upgrade or action first stops the app's earlier script. Nothing the script did is undone: retry, uninstall or reinstall afterwards.
 
 ### 11.3 Uninstall, upgrade, actions
 
@@ -548,7 +550,7 @@ Every change is audited with a version diff. A custom recipe can never override 
 | **Lifecycle** | `POST /servers/{id}/suspend`, `/unsuspend`, `/power`, `/reinstall`, `/package` |
 | **Identity & network** | `POST /servers/{id}/hostname`, `/primary-address`, `/rdns` |
 | **Secrets** | `POST` + `GET /servers/{id}/password`, `POST /servers/{id}/console` |
-| **Apps** | `POST`/`GET /servers/{id}/apps`, `GET /servers/{id}/apps/{installation}`, `POST …/retry`, `DELETE …` (uninstall), `POST …/upgrade`, `POST …/actions/{key}`, `GET …/runs`, `GET …/runs/{run}` |
+| **Apps** | `POST`/`GET /servers/{id}/apps`, `GET /servers/{id}/apps/{installation}`, `POST …/retry`, `POST …/cancel`, `DELETE …` (uninstall), `POST …/upgrade`, `POST …/actions/{key}`, `GET …/runs`, `GET …/runs/{run}`, `POST …/runs/{run}/cancel` |
 | **Entitlements** | `POST`/`GET /servers/{id}/app-entitlements`, `DELETE /servers/{id}/app-entitlements/{app}` |
 | **Tasks** | `GET /tasks/{id}` |
 | **Usage** | `GET /servers/{id}/usage` **(planned, Phase 6)** |
@@ -589,7 +591,7 @@ Both modules are thin clients of the API: business logic stays in the panel, and
 
 - **Provisioning**: Create, Suspend, Unsuspend, Terminate, ChangePackage (with optional restart after upgrades), ChangePassword, TestConnection. The WHMCS password becomes the root password when it has 12+ characters; otherwise Proxmotion's is stored on the service.
 - **Configurable options**: OS, location, extra IPs, extra RAM and other resources, **app** (`app` option plus `app_<key>` custom fields for inputs; the option can be generated from the panel's app list).
-- **Client area**: power, console link, reinstall (optionally with an app), password reset, hostname, rDNS, **apps** (install with an input form, status and progress, retry, outputs and file downloads, uninstall, upgrade, actions, recent runs, *Buy* for paid apps).
+- **Client area**: power, console link, reinstall (optionally with an app), password reset, hostname, rDNS, **apps** (install with an input form, status and progress, cancel, retry, outputs and file downloads, uninstall, upgrade, actions, recent runs, *Buy* for paid apps).
 - **Paid apps**: module setting *Paid app addons* maps WHMCS addons to apps; `hooks.php` grants on `AddonActivation` and revokes on `AddonCancelled` / `AddonTerminated`.
 - **Admin**: services tab fields and custom buttons.
 - **Webhook receiver** (`webhook.php`): verifies signature and timestamp, drops repeats, sets a pending service *Active* on `server.provisioned`, keeps *Active* ⇄ *Suspended* in step, notifies administrators on terminations and failures. The signing secret goes into the WHMCS server's **Access Hash**.
@@ -603,7 +605,7 @@ Both modules are thin clients of the API: business logic stays in the panel, and
 - **Server form**: panel address, API token (in the password field), webhook secret.
 - **Product Module tab**: package, location, OS template, network model, restart after upgrades, resource values. Order answers set OS, location, hostname, SSH key, root password, app and app inputs; add-on values `extra_*` add resources and `paid_app` grants paid apps.
 - **Functions**: create, suspend, unsuspend, cancel (terminate), upgrade, change password.
-- **Client area tools**: power, root password reset, reinstall, VNC console, hostname, reverse DNS, and an added **Apps** tool (install, retry, outputs, uninstall, upgrade, actions, *Reinstall with an app*).
+- **Client area tools**: power, root password reset, reinstall, VNC console, hostname, reverse DNS, and an added **Apps** tool (install, cancel, retry, outputs, uninstall, upgrade, actions, *Reinstall with an app*).
 - **Webhook receiver** through a public route of WISECP's API.
 - Module listing, server form, Test Connection and the product Module tab were checked in a real WISECP 5 beta; everything else is **not run in a real WISECP yet**.
 

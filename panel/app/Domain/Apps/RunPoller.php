@@ -6,6 +6,7 @@ namespace App\Domain\Apps;
 
 use App\Enums\AppRunKind;
 use App\Enums\AppRunStatus;
+use App\Jobs\StopAppScript;
 use App\Models\AppInstallation;
 use App\Models\AppRun;
 use App\Proxmox\Exceptions\ProxmoxException;
@@ -18,7 +19,7 @@ use Illuminate\Support\Facades\Cache;
  * status.json in runs/<run>/. A finished action keeps its declared outputs
  * (encrypted); a finished uninstall removes the installation's directory,
  * which holds its inputs and outputs. Past its timeout the run fails, also
- * when the agent stopped answering.
+ * when the agent stopped answering, and the script is stopped (docs/adr/0030).
  */
 final readonly class RunPoller
 {
@@ -108,5 +109,6 @@ final readonly class RunPoller
     {
         $this->logs->finish($run->log);
         $this->runs->failed($run, __('The script did not finish within :minutes minutes.', ['minutes' => (string) $run->timeoutMinutes()]));
+        StopAppScript::dispatch($run->installation->id, AppGuest::runName($run->uuid));
     }
 }

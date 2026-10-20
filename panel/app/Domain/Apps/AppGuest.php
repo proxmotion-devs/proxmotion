@@ -11,9 +11,9 @@ use App\Proxmox\Resources\GuestAgentResource;
 /**
  * What differs between Linux and Windows inside the server when apps run
  * (docs/adr/0029): where apps live, the shared files written next to a
- * recipe, and the commands that make directories, start the runner, read a
- * log chunk and remove an app's directory. Everything else (status.json,
- * outputs, run.log) is the same on both.
+ * recipe, and the commands that make directories, start and stop the runner
+ * (docs/adr/0030), read a log chunk and remove an app's directory.
+ * Everything else (status.json, outputs, run.log) is the same on both.
  */
 final class AppGuest
 {
@@ -27,6 +27,9 @@ final class AppGuest
         'linux' => ['proxmotion.sh', 'run.sh'],
         'windows' => ['proxmotion.ps1', 'run.ps1', 'start.ps1', 'read-log.ps1'],
     ];
+
+    /** The script that stops runners (recipes/_lib, docs/adr/0030), written only when something is stopped. */
+    public const array STOP_FILES = ['linux' => 'stop.sh', 'windows' => 'stop.ps1'];
 
     /** Full control for SYSTEM and Administrators only, by SID (names are localized). */
     private const array WINDOWS_ACL = ['/inheritance:r', '/grant:r', '*S-1-5-18:(OI)(CI)F', '*S-1-5-32-544:(OI)(CI)F', '/Q'];
@@ -81,6 +84,37 @@ final class AppGuest
             '-Task', $name, '-Script', $script, '-RunDir', $runDirectory ?? $appDirectory,
             ...($runDirectory === null ? ['-Install'] : []),
         ];
+    }
+
+    /**
+     * The systemd unit or scheduled task an install attempt runs as.
+     */
+    public static function installName(string $installation, int $attempt): string
+    {
+        return 'proxmotion-app-'.$installation.'-'.$attempt;
+    }
+
+    /**
+     * The systemd unit or scheduled task an uninstall, upgrade or action runs as.
+     */
+    public static function runName(string $run): string
+    {
+        return 'proxmotion-app-run-'.$run;
+    }
+
+    /**
+     * The command that stops the runners started as $names (docs/adr/0030).
+     * On Linux the script is part of the command; on Windows it must have
+     * been written into $appDirectory first.
+     *
+     * @param  non-empty-list<string>  $names
+     * @return non-empty-list<string>
+     */
+    public static function stopCommand(OsPlatform $platform, string $appDirectory, string $script, array $names): array
+    {
+        return $platform === OsPlatform::Linux
+            ? ['/bin/bash', '-c', $script, 'proxmotion-stop', ...$names]
+            : [...self::POWERSHELL, $appDirectory.'/'.self::STOP_FILES['windows'], ...$names];
     }
 
     /**

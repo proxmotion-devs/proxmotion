@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Admin;
 
+use App\Domain\Apps\AppCanceller;
 use App\Domain\Apps\AppInstallConflict;
 use App\Domain\Apps\AppInstaller;
 use App\Domain\Apps\AppRunner;
@@ -268,6 +269,36 @@ class AppController extends Controller
             'outputs' => $installed ? AppInstallationResource::outputsOf($recipe->outputs, $appInstallation->outputs ?? []) : [],
             'runs' => $runs,
         ]);
+    }
+
+    /**
+     * Stop a running installer (docs/adr/0030): the installation fails at once.
+     */
+    public function cancel(Request $request, AppInstallation $appInstallation, #[CurrentUser] User $admin, AppCanceller $canceller): RedirectResponse
+    {
+        try {
+            $canceller->cancelInstallation($appInstallation, $admin, $request->ip());
+            $this->toast('info', 'The installation was cancelled. Its installer is being stopped inside the server.');
+        } catch (ProvisioningException $e) {
+            $this->toast('error', $e->translatedMessage());
+        }
+
+        return back();
+    }
+
+    /**
+     * Stop a running uninstall, upgrade or action (docs/adr/0030).
+     */
+    public function cancelRun(Request $request, AppRun $appRun, #[CurrentUser] User $admin, AppCanceller $canceller): RedirectResponse
+    {
+        try {
+            $canceller->cancelRun($appRun, $admin, $request->ip());
+            $this->toast('info', 'The script was cancelled and is being stopped inside the server.');
+        } catch (ProvisioningException $e) {
+            $this->toast('error', $e->translatedMessage());
+        }
+
+        return back();
     }
 
     public function retry(Request $request, AppInstallation $appInstallation, #[CurrentUser] User $admin, AppInstaller $installer): RedirectResponse

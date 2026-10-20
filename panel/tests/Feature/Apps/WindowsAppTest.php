@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Apps;
 
+use App\Domain\Apps\AppCanceller;
 use App\Domain\Apps\AppEligibility;
 use App\Domain\Apps\AppGuest;
 use App\Domain\Apps\AppInstaller;
@@ -208,6 +209,21 @@ class WindowsAppTest extends TestCase
 
         $this->assertSame(AppRunStatus::Succeeded, $run->refresh()->status);
         $this->assertSame('New1password', $run->outputs['password']['value'] ?? null);
+    }
+
+    public function test_a_cancel_writes_the_powershell_stopper_and_runs_it()
+    {
+        $installation = $this->install();
+        $directory = 'C:/ProgramData/Proxmotion/apps/'.$installation->uuid;
+
+        app(AppCanceller::class)->cancelInstallation($installation, $this->admin, '127.0.0.1');
+
+        $this->assertSame(AppInstallationStatus::Failed, $installation->refresh()->status);
+        $this->assertSame("\u{FEFF}".file_get_contents(base_path('recipes/_lib/stop.ps1')), $this->proxmox->guestFiles[$this->server->vmid][$directory.'/stop.ps1']);
+        $this->assertSame(
+            ['powershell.exe', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', $directory.'/stop.ps1', 'proxmotion-app-'.$installation->uuid.'-1'],
+            end($this->proxmox->guestCommands)['command'],
+        );
     }
 
     public function test_a_finished_uninstall_removes_the_directory_with_rmdir()

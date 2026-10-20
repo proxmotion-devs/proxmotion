@@ -86,6 +86,8 @@ return [
     'app_upgrade_to' => 'Upgrade to :version',
     'app_upgrade_confirm' => 'Upgrade this app? Its data and settings are kept. If the upgrade fails, the app keeps its current version.',
     'app_uninstall' => 'Uninstall',
+    'app_cancel' => 'Cancel',
+    'app_cancel_confirm' => 'Stop this script? It is stopped where it is and nothing it did is undone, so the app may be left half installed. You can try again or uninstall the app afterwards.',
     'app_uninstall_confirm' => 'Uninstall this app? Its data and outputs (VPN profiles and the like) are removed from your server. This cannot be undone.',
     'app_action_required' => 'Please choose an action.',
     'app_run_submit' => 'Run',

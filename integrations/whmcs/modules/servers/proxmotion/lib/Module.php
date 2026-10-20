@@ -422,6 +422,28 @@ class Module
     }
 
     /**
+     * Cancel a running installation, or with a run one of its uninstalls,
+     * upgrades or actions (docs/adr/0030). Possible in any server status: it
+     * only stops a script.
+     *
+     * @param array<string, mixed> $input installation, run (from the form)
+     */
+    public function cancelApp(array $input): string
+    {
+        $server = $this->requireServer();
+        $installation = isset($input['installation']) ? (string) $input['installation'] : '';
+        $run = isset($input['run']) ? trim((string) $input['run']) : '';
+
+        if ($run === '') {
+            $this->client->cancelApp((string) $server['id'], $installation, $this->idempotencyKey('app-cancel'));
+        } else {
+            $this->client->cancelAppRun((string) $server['id'], $installation, $run, $this->idempotencyKey('app-run-cancel'));
+        }
+
+        return 'success';
+    }
+
+    /**
      * Uninstall an app (docs/adr/0016): its recipe's uninstall script runs in the server.
      *
      * @param array<string, mixed> $input installation (from the form)
@@ -879,6 +901,7 @@ class Module
             'statusLabel' => $this->lang->get('app_status_' . $status),
             'busy' => in_array($status, ['queued', 'installing', 'uninstalling', 'upgrading'], true),
             'failed' => $status === 'failed',
+            'canCancel' => $status === 'installing',
             'danger' => in_array($status, ['failed', 'uninstall_failed', 'upgrade_failed'], true),
             'progress' => isset($installation['progress']) ? (int) $installation['progress'] : 0,
             'error' => isset($installation['error']) && is_string($installation['error']) ? $installation['error'] : null,
@@ -947,6 +970,7 @@ class Module
             'statusLabel' => $this->lang->get('app_run_status_' . $status),
             'busy' => in_array($status, ['queued', 'running'], true),
             'failed' => $status === 'failed',
+            'canCancel' => $status === 'running',
             'error' => isset($run['error']) && is_string($run['error']) ? $run['error'] : null,
             'outputs' => $this->presentOutputs($run),
         ];

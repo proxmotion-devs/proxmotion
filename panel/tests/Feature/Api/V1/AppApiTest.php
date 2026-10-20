@@ -375,6 +375,48 @@ class AppApiTest extends ApiTestCase
         $this->assertSame(0, AppRun::query()->where('app_installation_id', $installation->id)->count());
     }
 
+    public function test_cancelling_answers_202_with_the_failed_installation_and_sends_a_webhook()
+    {
+        Queue::fake([DeliverWebhook::class]);
+        WebhookEndpoint::factory()->for($this->billingSystem)->create();
+        $installation = AppInstallation::query()->where('uuid', $this->api('POST', "/api/v1/servers/{$this->server->uuid}/apps", ['app' => 'wireguard'])->json('data.id'))->sole();
+
+        $this->api('POST', "/api/v1/servers/{$this->server->uuid}/apps/{$installation->uuid}/cancel")
+            ->assertAccepted()
+            ->assertJsonPath('data.status', 'failed')
+            ->assertJsonPath('data.error', 'Cancelled by the billing system.');
+
+        $this->assertSame('failed', json_decode(WebhookDelivery::query()->where('event', 'app.failed')->sole()->payload, true)['data']['installation']['status']);
+        $this->api('POST', "/api/v1/servers/{$this->server->uuid}/apps/{$installation->uuid}/cancel")
+            ->assertConflict()
+            ->assertExactJson(['message' => 'Only a running installation can be cancelled.']);
+    }
+
+    public function test_cancelling_a_run_answers_202_with_the_run()
+    {
+        $installation = $this->installed();
+        $run = $this->api('POST', "/api/v1/servers/{$this->server->uuid}/apps/{$installation->uuid}/actions/list_clients")->assertAccepted()->json('data.id');
+
+        $this->api('POST', "/api/v1/servers/{$this->server->uuid}/apps/{$installation->uuid}/runs/{$run}/cancel")
+            ->assertAccepted()
+            ->assertJsonPath('data.status', 'failed')
+            ->assertJsonPath('data.error', 'Cancelled by the billing system.');
+        $this->api('POST', "/api/v1/servers/{$this->server->uuid}/apps/{$installation->uuid}/runs/{$run}/cancel")->assertConflict();
+    }
+
+    public function test_installations_and_runs_of_other_servers_cannot_be_cancelled()
+    {
+        $installation = $this->installed();
+        $other = $this->provisionedServer('whmcs-1002');
+        $foreign = AppInstallation::factory()->for($other)->create(['status' => AppInstallationStatus::Installing]);
+        $foreignRun = AppRun::query()->forceCreate(['uuid' => (string) Str::uuid(), 'app_installation_id' => $foreign->id, 'kind' => 'action', 'action' => 'add_client', 'status' => 'running', 'inputs' => []]);
+
+        $this->api('POST', "/api/v1/servers/{$this->server->uuid}/apps/{$foreign->uuid}/cancel")->assertNotFound();
+        $this->api('POST', "/api/v1/servers/{$this->server->uuid}/apps/{$installation->uuid}/runs/{$foreignRun->uuid}/cancel")->assertNotFound();
+        $this->assertSame(AppInstallationStatus::Installing, $foreign->refresh()->status);
+        $this->assertSame('running', $foreignRun->refresh()->status->value);
+    }
+
     public function test_a_finished_installation_is_sent_as_a_webhook_without_outputs()
     {
         Queue::fake([DeliverWebhook::class]);

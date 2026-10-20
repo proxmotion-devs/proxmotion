@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Domain\Apps;
 
 use App\Enums\AppInstallationStatus;
+use App\Jobs\StopAppScript;
 use App\Models\AppInstallation;
 use App\Proxmox\Exceptions\ProxmoxException;
 use App\Proxmox\ProxmoxClientFactory;
@@ -15,7 +16,7 @@ use Illuminate\Support\Facades\Cache;
  * through the guest agent, and copies what the installer printed (docs/adr/0021).
  * When it reports "installed", the declared outputs are read and stored
  * encrypted; past the recipe's timeout the installation fails, also when the
- * agent stopped answering.
+ * agent stopped answering, and the installer is stopped (docs/adr/0030).
  */
 final readonly class InstallationPoller
 {
@@ -94,5 +95,6 @@ final readonly class InstallationPoller
     {
         $this->logs->finish($this->logs->current($installation));
         $this->installations->failed($installation, __('The installation did not finish within :minutes minutes.', ['minutes' => (string) $installation->timeoutMinutes()]));
+        StopAppScript::dispatch($installation->id, AppGuest::installName($installation->uuid, $installation->attempts));
     }
 }
