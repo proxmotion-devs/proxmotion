@@ -59,6 +59,7 @@ const taskTypeLabels: Record<TaskType, string> = {
     change_resources: 'Change resources',
     guest_script: 'Run template script',
     change_primary_address: 'Change primary address',
+    change_addresses: 'Update IP addresses',
     change_hostname: 'Change hostname',
     install_app: 'Install app',
     app_run: 'App action or uninstall',
@@ -104,6 +105,7 @@ const stepLabels: Record<string, string> = {
 const plannedSteps: Partial<Record<TaskType, string[]>> = {
     change_resources: ['configure', 'resize', 'addresses', 'apply'],
     change_primary_address: ['addresses', 'guest_addresses'],
+    change_addresses: ['addresses', 'guest_addresses'],
     create: ['clone', 'configure', 'resize', 'firewall', 'start', 'wait_agent'],
     unsuspend: ['start', 'wait_agent'],
     terminate: ['stop', 'destroy', 'release_ips'],

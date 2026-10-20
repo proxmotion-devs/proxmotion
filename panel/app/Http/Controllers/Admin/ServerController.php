@@ -28,6 +28,7 @@ use App\Enums\PowerAction;
 use App\Enums\ServerStatus;
 use App\Enums\TaskType;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Admin\AddressChangeRequest;
 use App\Http\Requests\Admin\ChangeResourcesRequest;
 use App\Http\Requests\Admin\ServerRequest;
 use App\Http\Requests\HostnameRequest;
@@ -51,6 +52,7 @@ use App\Models\ServerDrift;
 use App\Models\Storage;
 use App\Models\Task;
 use App\Models\User;
+use App\Provisioning\AddressChanger;
 use App\Provisioning\Exceptions\ProvisioningException;
 use App\Provisioning\Exceptions\TaskAlreadyRunning;
 use App\Provisioning\IpAllocator;
@@ -207,9 +209,9 @@ class ServerController extends Controller
         return to_route('admin.servers.show', $server);
     }
 
-    public function show(Request $request, Server $server, GuestAgentProbe $agent, AppEligibility $eligibility, AppUpgrades $upgrades, TaskFailer $failer, LiveAppPolls $live): Response
+    public function show(Request $request, Server $server, GuestAgentProbe $agent, AppEligibility $eligibility, AppUpgrades $upgrades, TaskFailer $failer, LiveAppPolls $live, IpAllocator $ips): Response
     {
-        $server->load(['node:id,uuid,name', 'cluster:id,uuid,name', 'location:id,name', 'package:id,name', 'billingSystem:id,name', 'osTemplate:id,operating_system_version_id,name,distribution,version,family,platform', 'storage:id,name', 'ipAddresses.pool:id,uuid,name,version']);
+        $server->load(['node:id,uuid,name', 'cluster:id,uuid,name', 'location:id,name', 'package:id,name', 'billingSystem:id,name', 'osTemplate:id,operating_system_version_id,name,distribution,version,family,platform', 'storage:id,name', 'ipAddresses.pool:id,uuid,name,version,bridge,vlan_tag']);
 
         // The page's refreshes while an app script runs ask the guest, so step and progress show live (docs/adr/0021).
         if (in_array('apps', explode(',', (string) $request->header('X-Inertia-Partial-Data')), true)) {
@@ -274,6 +276,18 @@ class ServerController extends Controller
             'power' => Inertia::defer(fn () => $server->status === ServerStatus::Active ? $this->power->state($server) : null),
             'reinstallOptions' => fn () => ReinstallOptions::for($server),
             'resourceOptions' => fn () => ResourceOptions::for($server),
+            // Pools addresses may be added from: same location, network model, bridge and VLAN (docs/adr/0028).
+            'addressPools' => fn () => collect(IpVersion::cases())
+                ->flatMap(fn (IpVersion $version) => $ips->sameNetworkPools($server->location, $server->network_model, $version, $server->ipAddresses->first()?->pool))
+                ->map(fn (IpPool $pool) => [
+                    'value' => $pool->uuid,
+                    'label' => "{$pool->name} ({$pool->network})",
+                    'version' => $pool->version,
+                    // IPv6 pools make new addresses inside their network on demand.
+                    'free' => $pool->version === IpVersion::V4 ? $ips->freeIpv4Count($pool) : null,
+                    'addresses' => $pool->version === IpVersion::V4 ? $ips->freeIpv4Addresses($pool, self::CHOOSABLE_ADDRESSES) : [],
+                ])
+                ->values(),
             'drifts' => $server->drifts()->visible()->with(['cluster:id,uuid,name', 'server:id,uuid,hostname,status'])->get()
                 ->map(fn (ServerDrift $drift) => DriftController::present($drift)),
             'agent' => Inertia::defer(fn () => $server->status === ServerStatus::Active ? $agent->reachable($server) : null),
@@ -473,6 +487,40 @@ class ServerController extends Controller
         }
 
         $this->toast('info', 'Changing the primary address…');
+
+        return back();
+    }
+
+    public function changeAddresses(AddressChangeRequest $request, Server $server, #[CurrentUser] User $admin, AddressChanger $changer): RedirectResponse
+    {
+        try {
+            $changer->request($server, $request->toChange(), $admin, $request->ip());
+        } catch (ProvisioningException $e) {
+            if (! $e instanceof TaskAlreadyRunning && $server->status === ServerStatus::Active) {
+                throw ValidationException::withMessages(['addresses' => $e->translatedMessage()]);
+            }
+
+            $this->toast('error', $e->translatedMessage());
+
+            return back();
+        }
+
+        $this->toast('info', 'Updating the IP addresses…');
+
+        return back();
+    }
+
+    public function reapplyAddresses(Request $request, Server $server, #[CurrentUser] User $admin, AddressChanger $changer): RedirectResponse
+    {
+        try {
+            $changer->reapply($server, $admin, $request->ip());
+        } catch (ProvisioningException $e) {
+            $this->toast('error', $e->translatedMessage());
+
+            return back();
+        }
+
+        $this->toast('info', 'Applying the IP addresses again…');
 
         return back();
     }

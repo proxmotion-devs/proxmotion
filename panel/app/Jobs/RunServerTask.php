@@ -9,13 +9,13 @@ use App\Enums\PowerAction;
 use App\Enums\TaskStatus;
 use App\Enums\TaskType;
 use App\Models\Task;
+use App\Provisioning\Pipelines\AddressesPipeline;
 use App\Provisioning\Pipelines\AppRunPipeline;
 use App\Provisioning\Pipelines\ChangeResourcesPipeline;
 use App\Provisioning\Pipelines\CreateServerPipeline;
 use App\Provisioning\Pipelines\HostnamePipeline;
 use App\Provisioning\Pipelines\InstallAppPipeline;
 use App\Provisioning\Pipelines\PowerPipeline;
-use App\Provisioning\Pipelines\PrimaryAddressPipeline;
 use App\Provisioning\Pipelines\ReinstallServerPipeline;
 use App\Provisioning\Pipelines\ResetPasswordPipeline;
 use App\Provisioning\Pipelines\TerminateServerPipeline;
@@ -42,7 +42,7 @@ class RunServerTask implements ShouldQueue
 
     public function __construct(public Task $task) {}
 
-    public function handle(CreateServerPipeline $create, PowerPipeline $power, TerminateServerPipeline $terminate, ResetPasswordPipeline $resetPassword, ReinstallServerPipeline $reinstall, ChangeResourcesPipeline $changeResources, GuestScripts $guestScripts, PrimaryAddressPipeline $primaryAddress, HostnamePipeline $hostname, InstallAppPipeline $installApp, AppRunPipeline $appRun, TaskFailer $failer): void
+    public function handle(CreateServerPipeline $create, PowerPipeline $power, TerminateServerPipeline $terminate, ResetPasswordPipeline $resetPassword, ReinstallServerPipeline $reinstall, ChangeResourcesPipeline $changeResources, GuestScripts $guestScripts, AddressesPipeline $addresses, HostnamePipeline $hostname, InstallAppPipeline $installApp, AppRunPipeline $appRun, TaskFailer $failer): void
     {
         $task = $this->task;
 
@@ -64,7 +64,7 @@ class RunServerTask implements ShouldQueue
                 TaskType::Reinstall => $reinstall->run($task),
                 TaskType::ChangeResources => $changeResources->run($task),
                 TaskType::GuestScript => $guestScripts->runOnce($task),
-                TaskType::ChangePrimaryAddress => $primaryAddress->run($task),
+                TaskType::ChangePrimaryAddress, TaskType::ChangeAddresses => $addresses->run($task),
                 TaskType::ChangeHostname => $hostname->run($task),
                 TaskType::InstallApp => $installApp->run($task),
                 TaskType::AppRun => $appRun->run($task),

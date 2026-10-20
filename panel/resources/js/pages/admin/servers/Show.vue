@@ -9,12 +9,15 @@ import ServerStatusBadge from '@/components/admin/ServerStatusBadge.vue';
 import StatusBadge from '@/components/admin/StatusBadge.vue';
 import Heading from '@/components/Heading.vue';
 import AppEntitlementList from '@/components/servers/AppEntitlementList.vue';
+import AddressesDialog from '@/components/servers/AddressesDialog.vue';
 import AppList from '@/components/servers/AppList.vue';
 import PowerControls from '@/components/servers/PowerControls.vue';
 import HostnameDialog from '@/components/servers/HostnameDialog.vue';
 import PrimaryAddressDialog from '@/components/servers/PrimaryAddressDialog.vue';
 import RdnsDialog from '@/components/servers/RdnsDialog.vue';
+import ReapplyAddressesButton from '@/components/servers/ReapplyAddressesButton.vue';
 import ReinstallDialog from '@/components/servers/ReinstallDialog.vue';
+import RemoveAddressButton from '@/components/servers/RemoveAddressButton.vue';
 import ResourcesDialog from '@/components/servers/ResourcesDialog.vue';
 import ResetPasswordButton from '@/components/servers/ResetPasswordButton.vue';
 import TaskList from '@/components/servers/TaskList.vue';
@@ -24,6 +27,7 @@ import { formatMib, formatTraffic } from '@/lib/format';
 import { show as showCluster } from '@/routes/admin/clusters';
 import { show as showPool } from '@/routes/admin/ip-pools';
 import {
+    addresses as changeAddresses,
     appEntitlements as grantEntitlement,
     apps as installApp,
     console as openConsole,
@@ -34,6 +38,7 @@ import {
     power as powerRoute,
     primaryAddress,
     rdns,
+    reapplyAddresses,
     reinstall,
     resetPassword,
     resources,
@@ -46,6 +51,7 @@ import {
 } from '@/routes/admin/servers';
 import { NETWORK_MODELS } from '@/types/admin';
 import type {
+    AddressPoolOption,
     AppEntitlement,
     AppInstallation,
     AppOption,
@@ -56,6 +62,7 @@ import type {
     Drift,
     ReinstallOptions,
     ResourceOptions,
+    ServerAddress,
     RevealedAppOutputs,
     ServerStatus,
     Task,
@@ -93,15 +100,7 @@ const props = withDefaults(
             package: string | null;
             os_template: string | null;
             platform: OsPlatform;
-            addresses: {
-                address: string;
-                version: 4 | 6;
-                /** The primary address of its version (listed first). */
-                primary: boolean;
-                pool: { uuid: string; name: string };
-                ptr: string | null;
-                ptr_pending: boolean;
-            }[];
+            addresses: ServerAddress[];
             provisioned_at: string | null;
             created_at: string | null;
         };
@@ -110,6 +109,8 @@ const props = withDefaults(
         revealedAppOutputs: RevealedAppOutputs | null;
         reinstallOptions: ReinstallOptions;
         resourceOptions: ResourceOptions;
+        /** Pools addresses may be added from (docs/adr/0028). */
+        addressPools: AddressPoolOption[];
         drifts: Drift[];
         /** Deferred: undefined until loaded, null when unknown. */
         power?: string | null;
@@ -540,12 +541,23 @@ const resetAfterTrial = () => {
                             >· {{ $t(modelLabel) }}</span
                         >
                     </h3>
-                    <PrimaryAddressDialog
-                        v-if="active"
-                        :action="primaryAddress(server.uuid)"
-                        :addresses="server.addresses"
-                        :disabled="busy"
-                    />
+                    <div v-if="active" class="flex flex-wrap gap-2">
+                        <ReapplyAddressesButton
+                            :action="reapplyAddresses(server.uuid)"
+                            :disabled="busy || server.addresses.length === 0"
+                        />
+                        <AddressesDialog
+                            :action="changeAddresses(server.uuid)"
+                            :addresses="server.addresses"
+                            :pools="addressPools"
+                            :disabled="busy"
+                        />
+                        <PrimaryAddressDialog
+                            :action="primaryAddress(server.uuid)"
+                            :addresses="server.addresses"
+                            :disabled="busy"
+                        />
+                    </div>
                 </div>
                 <ul class="flex flex-col gap-1">
                     <li
@@ -578,6 +590,12 @@ const resetAfterTrial = () => {
                             :action="rdns(server.uuid)"
                             :address="address.address"
                             :ptr="address.ptr"
+                        />
+                        <RemoveAddressButton
+                            v-if="active && !address.primary"
+                            :action="changeAddresses(server.uuid)"
+                            :address="address.address"
+                            :disabled="busy"
                         />
                     </li>
                     <li v-if="server.addresses.length === 0">—</li>

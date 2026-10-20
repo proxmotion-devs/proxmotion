@@ -218,6 +218,7 @@ export type TaskType =
     | 'change_resources'
     | 'guest_script'
     | 'change_primary_address'
+    | 'change_addresses'
     | 'change_hostname'
     | 'install_app'
     | 'app_run'
@@ -295,6 +296,26 @@ export type ResourceValues = {
 export type ResourceOptions = {
     packages: (ResourceValues & Option)[];
     current: ResourceValues & { package: string };
+};
+
+/** One address on the server page. */
+export type ServerAddress = {
+    address: string;
+    version: 4 | 6;
+    /** The primary address of its version (listed first). */
+    primary: boolean;
+    pool: { uuid: string; name: string };
+    ptr: string | null;
+    ptr_pending: boolean;
+};
+
+/** A pool addresses may be added from (same location, network model, bridge and VLAN; docs/adr/0028). */
+export type AddressPoolOption = Option & {
+    version: 4 | 6;
+    /** Free IPv4 addresses; null for IPv6 pools, which make new addresses on demand. */
+    free: number | null;
+    /** The first free IPv4 addresses, for choosing one. */
+    addresses: string[];
 };
 
 /** Choices for ReinstallDialog: OS templates of the server's cluster and the apps that can come with them. */

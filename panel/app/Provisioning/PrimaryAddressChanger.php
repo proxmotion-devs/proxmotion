@@ -104,7 +104,7 @@ final readonly class PrimaryAddressChanger
     /**
      * The canonical text form, so "2001:db8:0::5" finds "2001:db8::5".
      */
-    private static function normalize(string $address): string
+    public static function normalize(string $address): string
     {
         $packed = @inet_pton($address);
 

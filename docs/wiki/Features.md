@@ -232,6 +232,16 @@ Every VPS gets the Proxmox firewall with **`ipfilter` and `macfilter`** enabled 
 
 The change is applied inside the guest (new default route; the new primary becomes the first address so `hostname -I` reports it). The cloud-init `ipconfig0` is deliberately left unchanged, because changing it would give cloud-init a new instance id and regenerate SSH host keys.
 
+### 6.5.1 Editing a server's addresses
+
+([ADR 0028](../adr/0028-editing-server-addresses.md)) On the admin server page, *IP addresses* offers:
+
+- **Edit IP addresses**: in one change, add the next free or a specific address of a pool on the server's bridge and VLAN, remove chosen addresses, and choose the primary of each IP version. The server keeps at least one address of each version it has; a removed primary needs a new one in the same change.
+- **Remove** next to each additional address.
+- **Apply again**: sets the firewall IP set to exactly the server's addresses and configures them inside the guest again, changing nothing in the panel (for a guest that lost an address).
+
+The server's address counts follow the change; the package keeps its own. This is admin-only: billing systems change the number of addresses through *Change resources*.
+
 ### 6.6 Reverse DNS
 
 ([ADR 0003](../adr/0003-reverse-dns-drivers.md))
@@ -368,6 +378,7 @@ All of these are available on the admin server page; the ones marked ✓ are als
 | **Change resources** (upgrade / downgrade) | ✓ | Disk only grows (and is grown inside the guest at once); CPU and memory of a running VM apply at the next restart unless `reboot` is sent; the newest extra addresses are released on a downgrade; the server stays on its node |
 | **Change hostname** | ✓ | Renamed inside the guest; PTRs that matched the old name follow; the Proxmox VM name stays ([ADR 0012](../adr/0012-changing-the-hostname.md)) |
 | **Change primary address** | ✓ | Swap or replace (see 6.5) |
+| **Edit IP addresses**, **Apply again** | — | Add, remove, choose the primary; apply the addresses again (see 6.5.1) |
 | **rDNS** | ✓ | Per public address |
 | **Console** | ✓ (link) | See [Browser console](#10-browser-console) |
 | **Apps** | ✓ | Install, retry, uninstall, upgrade, actions, entitlements |

@@ -170,6 +170,19 @@ final readonly class QemuResource
     }
 
     /**
+     * The addresses in the anti-spoofing IP set, without a prefix.
+     *
+     * @return list<string>
+     */
+    public function antiSpoofingAddresses(int $vmid): array
+    {
+        return array_values(array_filter(array_map(
+            fn (string $cidr) => explode('/', $cidr)[0],
+            $this->antiSpoofingEntries($vmid),
+        ), fn (string $address) => $address !== ''));
+    }
+
+    /**
      * Remove addresses from the anti-spoofing IP set (e.g. released ones).
      *
      * @param  list<string>  $addresses
@@ -177,12 +190,8 @@ final readonly class QemuResource
     public function removeFromAntiSpoofing(int $vmid, array $addresses): void
     {
         $base = $this->path($vmid, 'firewall/ipset/ipfilter-net0');
-        $current = array_map(
-            fn (array $entry) => is_string($entry['cidr'] ?? null) ? $entry['cidr'] : '',
-            ClusterResource::listOfArrays($this->client->get($base)),
-        );
 
-        foreach ($current as $cidr) {
+        foreach ($this->antiSpoofingEntries($vmid) as $cidr) {
             // Entries may carry a prefix ("203.0.113.10/32"); compare the address.
             if (in_array(explode('/', $cidr)[0], $addresses, true)) {
                 $this->client->delete("{$base}/".rawurlencode($cidr));
@@ -207,6 +216,19 @@ final readonly class QemuResource
         }
 
         return $pending;
+    }
+
+    /**
+     * The entries of the anti-spoofing IP set as Proxmox lists them ("203.0.113.10" or "203.0.113.10/32").
+     *
+     * @return list<string>
+     */
+    private function antiSpoofingEntries(int $vmid): array
+    {
+        return array_map(
+            fn (array $entry) => is_string($entry['cidr'] ?? null) ? $entry['cidr'] : '',
+            ClusterResource::listOfArrays($this->client->get($this->path($vmid, 'firewall/ipset/ipfilter-net0'))),
+        );
     }
 
     private function path(int $vmid, string $suffix = ''): string

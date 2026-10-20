@@ -13,13 +13,15 @@ use App\Provisioning\Network\NetworkConfig;
 use App\Proxmox\ProxmoxClientFactory;
 
 /**
- * Applies a new primary address (recorded by PrimaryAddressChanger, docs/adr/0011):
- * anti-spoofing (new address in, released one out) → release → the address
- * guest script, which moves the primary and the default route inside the
+ * Applies the server's addresses as the panel records them: a new primary
+ * (PrimaryAddressChanger, docs/adr/0011), an edit or "apply again"
+ * (AddressChanger, docs/adr/0028). Anti-spoofing (the server's addresses in,
+ * released ones out) → release → the address guest script, which configures
+ * the primary, the default route and the additional addresses inside the
  * guest. cloud-init's ipconfig0 is deliberately left alone: changing it makes
  * cloud-init treat the next boot as a new instance. Safe to run again.
  */
-final readonly class PrimaryAddressPipeline
+final readonly class AddressesPipeline
 {
     public function __construct(
         private ProxmoxClientFactory $clients,
@@ -39,7 +41,12 @@ final readonly class PrimaryAddressPipeline
         $keep = array_values(array_diff($this->network->allowedAddresses($server), $released));
 
         $qemu->enableAntiSpoofing($server->vmid, $keep);
-        $qemu->removeFromAntiSpoofing($server->vmid, $released);
+
+        // "Apply again" makes the IP set exactly the server's addresses (docs/adr/0028 §3).
+        $remove = ($task->input['reapply'] ?? false) === true
+            ? array_values(array_diff($qemu->antiSpoofingAddresses($server->vmid), $keep))
+            : $released;
+        $qemu->removeFromAntiSpoofing($server->vmid, $remove);
 
         // Only now, out of the firewall, may another server get it.
         $this->ips->releaseAddresses($releasing);

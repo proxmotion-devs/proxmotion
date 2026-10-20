@@ -103,14 +103,15 @@ final class IpAllocator
      * (a free, unreserved address of one of those pools; an IPv6 address
      * inside a pool's network may be new), else the next free one. Caller
      * holds the allocation lock and assigns it. With $sameNetworkAs, only pools
-     * on the same bridge and VLAN qualify (the VM's net0 stays as it is).
+     * on the same bridge and VLAN qualify (the VM's net0 stays as it is); with
+     * $pool, only that one.
      *
      * @throws ProvisioningException
      */
-    public function freeAddress(Location $location, NetworkModel $model, IpVersion $version, ?string $address = null, ?IpPool $sameNetworkAs = null): IpAddress
+    public function freeAddress(Location $location, NetworkModel $model, IpVersion $version, ?string $address = null, ?IpPool $sameNetworkAs = null, ?IpPool $pool = null): IpAddress
     {
-        $pools = $this->pools($location, $model, $version)->filter(fn (IpPool $pool) => $sameNetworkAs === null
-            || ($pool->bridge === $sameNetworkAs->bridge && $pool->vlan_tag === $sameNetworkAs->vlan_tag));
+        $pools = $this->sameNetworkPools($location, $model, $version, $sameNetworkAs)
+            ->filter(fn (IpPool $candidate) => $pool === null || $candidate->id === $pool->id);
         $label = $version === IpVersion::V4 ? 'IPv4' : 'IPv6';
 
         if ($address === null) {
@@ -144,6 +145,19 @@ final class IpAllocator
         }
 
         throw new ProvisioningException(':address is not a free address of the pools this server can use.', ['address' => $address]);
+    }
+
+    /**
+     * The active pools of the location, network model and version a server
+     * may take addresses from, optionally only those on the bridge and VLAN
+     * of $sameNetworkAs.
+     *
+     * @return Collection<int, IpPool>
+     */
+    public function sameNetworkPools(Location $location, NetworkModel $model, IpVersion $version, ?IpPool $sameNetworkAs = null): Collection
+    {
+        return $this->pools($location, $model, $version)->filter(fn (IpPool $pool) => $sameNetworkAs === null
+            || ($pool->bridge === $sameNetworkAs->bridge && $pool->vlan_tag === $sameNetworkAs->vlan_tag))->values();
     }
 
     public function freeIpv4Count(IpPool $pool): int
