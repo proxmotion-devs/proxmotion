@@ -36,6 +36,9 @@ class FakeProxmoxCluster
     /** When set, clone tasks of this VMID fail with this exit status. */
     public ?string $failClone = null;
 
+    /** When set, linked clone requests (full=0) are refused with this message. */
+    public ?string $refuseLinkedClone = null;
+
     /** @var array<int, list<string>> UPIDs reported as running per VMID; they finish once polled */
     public array $activeTasks = [];
 
@@ -188,6 +191,16 @@ class FakeProxmoxCluster
 
         if ($suffix === '/clone' && $method === 'POST') {
             $newId = (int) $data['newid'];
+            $linked = (string) ($data['full'] ?? '1') === '0';
+
+            if ($linked && isset($data['storage'])) {
+                return Create::promiseFor(new Psr7Response(400, ['Content-Type' => 'application/json'], '{"data":null}', '1.1', "Parameter verification failed. storage: parameter 'storage' not allowed for linked clones"));
+            }
+
+            if ($linked && $this->refuseLinkedClone !== null) {
+                return Create::promiseFor(new Psr7Response(500, ['Content-Type' => 'application/json'], '{"data":null}', '1.1', $this->refuseLinkedClone));
+            }
+
             $this->vms[$newId] = [
                 ...$this->vms[$vmid],
                 'node' => (string) ($data['target'] ?? $node),
@@ -196,7 +209,10 @@ class FakeProxmoxCluster
                 'status' => 'stopped',
             ];
             $this->vms[$newId]['config']['name'] = $data['name'];
-            $this->vms[$newId]['config']['scsi0'] = str_replace("base-{$vmid}", "vm-{$newId}", (string) $this->vms[$vmid]['config']['scsi0']);
+            // A linked clone's volume names its base volume, as on thin LVM and ZFS.
+            $this->vms[$newId]['config']['scsi0'] = $linked
+                ? (string) preg_replace('/^([^:]+):(base-\d+-disk-\d+)/', "\$1:\$2/vm-{$newId}-disk-0", (string) $this->vms[$vmid]['config']['scsi0'])
+                : str_replace("base-{$vmid}", "vm-{$newId}", (string) $this->vms[$vmid]['config']['scsi0']);
 
             return $this->upid($node, $this->failClone !== null ? 'qmclone-fail' : 'qmclone', $newId);
         }

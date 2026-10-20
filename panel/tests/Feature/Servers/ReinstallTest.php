@@ -5,6 +5,7 @@ namespace Tests\Feature\Servers;
 use App\Domain\Apps\RecipeSynchronizer;
 use App\Enums\AppInstallationStatus;
 use App\Enums\AppInstallMode;
+use App\Enums\CloneMode;
 use App\Enums\ServerStatus;
 use App\Enums\TaskStatus;
 use App\Enums\TaskType;
@@ -109,6 +110,23 @@ class ReinstallTest extends TestCase
         $this->assertSame($server->root_password, $config['cipassword']);
         $this->assertSame(rawurlencode(PublicKeyTest::ED25519), $config['sshkeys']);
         $this->assertContains('POST /nodes/pve1/qemu/9001/clone', $this->proxmox->writePaths());
+    }
+
+    public function test_a_reinstall_onto_a_linked_clone_template_makes_a_linked_clone()
+    {
+        $this->debian->update(['clone_mode' => CloneMode::Linked]);
+        $vmid = $this->server->vmid;
+
+        $this->reinstall()->assertSessionHasNoErrors();
+
+        $clone = collect($this->proxmox->writes)->last(fn (array $write) => $write['path'] === '/nodes/pve1/qemu/9001/clone');
+        $this->assertSame('0', (string) $clone['data']['full']);
+        $this->assertArrayNotHasKey('storage', $clone['data']);
+        $task = Task::query()->where('type', TaskType::Reinstall)->sole();
+        $this->assertSame(TaskStatus::Succeeded, $task->status);
+        $this->assertSame('Linked clone of template 9001.', collect($task->steps)->firstWhere('key', 'clone')['message']);
+        $this->assertStringStartsWith("local-lvm:base-9001-disk-0/vm-{$vmid}-disk-0,", (string) $this->proxmox->vms[$vmid]['config']['scsi0']);
+        $this->assertStringContainsString('BC:24:11:AA:BB:CC', (string) $this->proxmox->vms[$vmid]['config']['net0'], 'The MAC address is kept.');
     }
 
     public function test_reinstalls_are_audited_without_secrets()

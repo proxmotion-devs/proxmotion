@@ -112,9 +112,13 @@ export type OsTemplate = {
     version: string;
     platform: OsPlatform;
     is_active: boolean;
+    /** How its servers are cloned (docs/adr/0027). */
+    clone_mode: CloneMode;
     sort_order: number;
     proxmox_template_ids: number[];
 };
+
+export type CloneMode = 'full' | 'linked';
 
 export type OsPlatform = 'linux' | 'windows';
 

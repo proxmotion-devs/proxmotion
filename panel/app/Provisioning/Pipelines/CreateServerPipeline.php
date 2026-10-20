@@ -6,11 +6,14 @@ namespace App\Provisioning\Pipelines;
 
 use App\Domain\Apps\AppStarter;
 use App\Domain\Servers\GuestScripts;
+use App\Enums\CloneMode;
 use App\Enums\ServerStatus;
 use App\Models\Server;
 use App\Models\Task;
+use App\Provisioning\LinkedClones;
 use App\Provisioning\Network\NetworkConfig;
 use App\Proxmox\Data\BootDisk;
+use App\Proxmox\Exceptions\ProxmoxRequestFailed;
 use App\Proxmox\ProxmoxClient;
 use App\Proxmox\ProxmoxClientFactory;
 use App\Proxmox\Resources\QemuResource;
@@ -29,6 +32,7 @@ final readonly class CreateServerPipeline
         private NetworkConfig $network,
         private GuestScripts $guestScripts,
         private AppStarter $apps,
+        private LinkedClones $linkedClones,
     ) {}
 
     public function run(Task $task): void
@@ -91,17 +95,39 @@ final readonly class CreateServerPipeline
             ->with('node')
             ->first() ?? throw new RuntimeException('The OS template has no Proxmox template on this cluster.');
 
-        $upid = $client->qemu($template->node->name)->clone(
+        $source = $client->qemu($template->node->name);
+        $clone = fn (bool $full) => $source->clone(
             templateVmid: $template->vmid,
             newVmid: $server->vmid,
             name: $server->hostname,
             storage: $server->storage?->name,
             pool: $server->cluster->resource_pool,
             targetNode: $server->node->name,
+            full: $full,
         );
 
-        $client->taskWaiter()->wait($upid, timeoutSeconds: 1800);
-        $task->completeStep('clone');
+        // Linked clones when the template asks for them and the storage allows it,
+        // otherwise a full clone with the reason on the step (docs/adr/0027).
+        $message = null;
+        $upid = null;
+
+        if ($server->osTemplate->clone_mode === CloneMode::Linked) {
+            $reason = $this->linkedClones->unavailableReason($server, $template, $source->config($template->vmid) ?? []);
+
+            if ($reason === null) {
+                try {
+                    $upid = $clone(false);
+                    $message = "Linked clone of template {$template->vmid}.";
+                } catch (ProxmoxRequestFailed $e) {
+                    $reason = "Proxmox refused a linked clone: {$e->getMessage()}";
+                }
+            }
+
+            $message ??= "Full clone: {$reason}";
+        }
+
+        $client->taskWaiter()->wait($upid ?? $clone(true), timeoutSeconds: 1800);
+        $task->completeStep('clone', $message);
     }
 
     /**

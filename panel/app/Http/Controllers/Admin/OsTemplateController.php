@@ -11,11 +11,14 @@ use App\Domain\Infrastructure\TemplateNameGuess;
 use App\Enums\OsPlatform;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\OsTemplateRequest;
+use App\Models\AuditLog;
 use App\Models\OperatingSystem;
 use App\Models\OperatingSystemVersion;
 use App\Models\OsTemplate;
 use App\Models\ProxmoxTemplate;
 use App\Models\Server;
+use App\Models\User;
+use Illuminate\Container\Attributes\CurrentUser;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -50,6 +53,7 @@ class OsTemplateController extends Controller
                     'version' => $template->version,
                     'platform' => $template->platform->value,
                     'is_active' => $template->is_active,
+                    'clone_mode' => $template->clone_mode->value,
                     'sort_order' => $template->sort_order,
                     'proxmox_template_ids' => $template->proxmoxTemplates->pluck('id'),
                 ]),
@@ -168,12 +172,23 @@ class OsTemplateController extends Controller
         return to_route('admin.os-templates.index');
     }
 
-    public function update(OsTemplateRequest $request, OsTemplate $osTemplate): RedirectResponse
+    public function update(OsTemplateRequest $request, OsTemplate $osTemplate, #[CurrentUser] User $admin): RedirectResponse
     {
+        $cloneMode = $osTemplate->clone_mode;
+
         DB::transaction(function () use ($request, $osTemplate) {
             $osTemplate->update($request->templateData());
             $osTemplate->proxmoxTemplates()->sync($request->array('proxmox_template_ids'));
         });
+
+        // How new servers are cloned (docs/adr/0027).
+        if ($osTemplate->clone_mode !== $cloneMode) {
+            AuditLog::record('os_template.clone_mode_changed', $admin, $osTemplate, [
+                'name' => $osTemplate->name,
+                'before' => $cloneMode->value,
+                'after' => $osTemplate->clone_mode->value,
+            ], $request->ip());
+        }
 
         $this->toast('success', 'OS template updated.');
 

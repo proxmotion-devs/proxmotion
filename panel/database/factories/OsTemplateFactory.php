@@ -2,6 +2,7 @@
 
 namespace Database\Factories;
 
+use App\Enums\CloneMode;
 use App\Models\OsTemplate;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
@@ -22,6 +23,7 @@ class OsTemplateFactory extends Factory
             'distribution' => 'ubuntu',
             'version' => '24.04',
             'is_active' => true,
+            'clone_mode' => CloneMode::Full,
             'sort_order' => 0,
         ];
     }

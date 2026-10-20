@@ -79,6 +79,9 @@ rm -f /etc/ssh/ssh_host_*`,
 exit                 # leave sudo, then log out and log in as root on the console`,
     finish: `userdel -r setup                  # Ubuntu and Debian
 passwd -l root                    # no installer password in the template
+rm -rf /tmp/* /var/tmp/*
+journalctl --rotate && journalctl --vacuum-time=1s
+fstrim -av                        # free blocks: smaller, faster clones
 history -c && rm -f /root/.bash_history
 poweroff`,
     unattend: `[DEFAULT]
@@ -109,7 +112,7 @@ ntp_use_dhcp_config=false
 log_dir=C:\\Program Files\\Cloudbase Solutions\\Cloudbase-Init\\log\\
 log_file=cloudbase-init.log
 local_scripts_path=C:\\Program Files\\Cloudbase Solutions\\Cloudbase-Init\\LocalScripts\\
-plugins=cloudbaseinit.plugins.windows.createuser.CreateUserPlugin,cloudbaseinit.plugins.common.networkconfig.NetworkConfigPlugin,cloudbaseinit.plugins.common.sshpublickeys.SetUserSSHPublicKeysPlugin,cloudbaseinit.plugins.windows.extendvolumes.ExtendVolumesPlugin,cloudbaseinit.plugins.common.setuserpassword.SetUserPasswordPlugin,cloudbaseinit.plugins.common.localscripts.LocalScriptsPlugin
+plugins=cloudbaseinit.plugins.common.networkconfig.NetworkConfigPlugin,cloudbaseinit.plugins.common.sshpublickeys.SetUserSSHPublicKeysPlugin,cloudbaseinit.plugins.common.setuserpassword.SetUserPasswordPlugin,cloudbaseinit.plugins.common.localscripts.LocalScriptsPlugin
 allow_reboot=true
 stop_service_on_exit=true
 
@@ -122,7 +125,29 @@ locations=cdrom`,
   <Description>Run Cloudbase-Init to set the hostname</Description>
   <WillReboot>Never</WillReboot>
 </RunSynchronousCommand>`,
-    edge: `Get-AppxPackage -AllUsers *MicrosoftEdge.Stable* | Remove-AppxPackage -AllUsers`,
+    generalizeXml: `<settings pass="generalize">
+  <component name="Microsoft-Windows-PnpSysprep" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+    <PersistAllDeviceInstalls>true</PersistAllDeviceInstalls>
+  </component>
+</settings>`,
+    windowsPrepare: `# Remote Desktop and its firewall rules (any display language)
+Set-ItemProperty 'HKLM:\\System\\CurrentControlSet\\Control\\Terminal Server' -Name fDenyTSConnections -Value 0
+Enable-NetFirewallRule -Group '@FirewallAPI.dll,-28752'
+# Answer ping (IPv4 and IPv6)
+Enable-NetFirewallRule -Name FPS-ICMP4-ERQ-In, FPS-ICMP6-ERQ-In
+# No Server Manager at logon, no hibernation file, high-performance power plan
+Get-ScheduledTask -TaskName ServerManager | Disable-ScheduledTask
+powercfg /hibernate off
+powercfg /setactive SCHEME_MIN`,
+    windowsShrink: `# Edge's per-user package, or Sysprep stops (Edge itself stays installed)
+Get-AppxPackage -AllUsers *MicrosoftEdge.Stable* | Remove-AppxPackage -AllUsers
+# Superseded update files
+Dism.exe /Online /Cleanup-Image /StartComponentCleanup /ResetBase
+# Temporary files and the update download cache
+Remove-Item "$env:TEMP\\*", 'C:\\Windows\\Temp\\*' -Recurse -Force -ErrorAction SilentlyContinue
+Stop-Service wuauserv; Remove-Item 'C:\\Windows\\SoftwareDistribution\\Download\\*' -Recurse -Force -ErrorAction SilentlyContinue
+# Tell the storage which blocks are free (needs Discard on the disk)
+Optimize-Volume -DriveLetter C -ReTrim -Verbose`,
     sysprep: `C:\\Windows\\System32\\Sysprep\\sysprep.exe /generalize /oobe /shutdown /unattend:"C:\\Program Files\\Cloudbase Solutions\\Cloudbase-Init\\conf\\Unattend.xml"`,
     checksum: `shasum -a 256 ~/Downloads/<file>.iso`,
 };
@@ -469,6 +494,13 @@ const cloudbaseUrl = 'https://cloudbase.it/cloudbase-init/';
                         )
                     }}
                 </p>
+                <p>
+                    {{
+                        $t(
+                            'Measured on Windows Server 2022 with 2 vCPUs: a full clone took 2 minutes and Windows setup with its one restart another 2. A linked clone (clone method of the OS template), a small template and more vCPUs make new servers ready sooner.',
+                        )
+                    }}
+                </p>
 
                 <section>
                     <h4>{{ $t('1. Download the ISOs') }}</h4>
@@ -511,7 +543,7 @@ const cloudbaseUrl = 'https://cloudbase.it/cloudbase-init/';
                         <li>
                             {{
                                 $t(
-                                    'OS: the Windows Server ISO; type Microsoft Windows with the matching version. Tick Add additional drive for VirtIO drivers and choose virtio-win.iso.',
+                                    'OS: the Windows Server ISO; type Microsoft Windows with the matching version (Proxmox passes the password to Cloudbase-Init only for a Windows OS type). Tick Add additional drive for VirtIO drivers and choose virtio-win.iso.',
                                 )
                             }}
                         </li>
@@ -525,14 +557,14 @@ const cloudbaseUrl = 'https://cloudbase.it/cloudbase-init/';
                         <li>
                             {{
                                 $t(
-                                    'Disks: bus SCSI, 40 GiB or more, Discard and SSD emulation on.',
+                                    'Disks: bus SCSI, 40 GiB (Windows Server needs at least 32; the panel grows the disk per package), Discard and SSD emulation on.',
                                 )
                             }}
                         </li>
                         <li>
                             {{
                                 $t(
-                                    'CPU and memory: 2 cores, 4096 MiB. Network: model VirtIO.',
+                                    'CPU: 4 cores while you build, so updates install faster (the panel sets the count of each server); type x86-64-v2-AES, not host. Memory: 4096 MiB, ballooning off. Network: model VirtIO.',
                                 )
                             }}
                         </li>
@@ -583,7 +615,23 @@ const cloudbaseUrl = 'https://cloudbase.it/cloudbase-init/';
                                 )
                             }}
                         </li>
-                        <li>{{ $t('Install the Windows updates.') }}</li>
+                        <li>
+                            {{
+                                $t(
+                                    'Install all Windows updates and restart until none is pending: updates still pending when you generalize finish on every new server, with extra restarts.',
+                                )
+                            }}
+                        </li>
+                        <li>
+                            {{
+                                $t(
+                                    'In PowerShell as Administrator, turn on Remote Desktop (off by default on Windows Server) and ping, and turn off what only slows a server down:',
+                                )
+                            }}
+                        </li>
+                    </ol>
+                    <pre>{{ commands.windowsPrepare }}</pre>
+                    <ol start="4">
                         <li>
                             {{
                                 $t(
@@ -595,7 +643,7 @@ const cloudbaseUrl = 'https://cloudbase.it/cloudbase-init/';
                         <li>
                             {{
                                 $t(
-                                    'Replace both files in C:\\Program Files\\Cloudbase Solutions\\Cloudbase-Init\\conf\\ with the contents below, and in Unattend.xml in the same folder replace the Cloudbase-Init command of the specialize pass with the one below (keep &amp; as it is). Together they save two restarts on every new server: it restarts only once during its setup.',
+                                    'Replace both files in C:\\Program Files\\Cloudbase Solutions\\Cloudbase-Init\\conf\\ with the contents below. In Unattend.xml in the same folder, replace the Cloudbase-Init command of the specialize pass with the one below (keep &amp; as it is). With them a new server restarts only once and skips work it does not need. Optionally add the generalize pass too, a Windows Setup setting that keeps the installed drivers: Microsoft allows it only on identical hardware, so use it only while every server keeps the virtual hardware of the template (disk bus, network model, machine type).',
                                 )
                             }}
                         </li>
@@ -606,14 +654,20 @@ const cloudbaseUrl = 'https://cloudbase.it/cloudbase-init/';
                     <pre>{{ commands.service }}</pre>
                     <h5>Unattend.xml (specialize)</h5>
                     <pre>{{ commands.unattendXml }}</pre>
+                    <h5>Unattend.xml (generalize, optional)</h5>
+                    <pre>{{ commands.generalizeXml }}</pre>
+                </section>
+
+                <section>
+                    <h4>{{ $t('5. Shrink and generalize') }}</h4>
                     <p>
                         {{
                             $t(
-                                'Right before Sysprep, remove the per-user package of Edge in PowerShell as Administrator: Edge updates itself while the VM is online, and Sysprep then stops with "was installed for a user, but not provisioned for all users". Edge itself stays installed.',
+                                'Every GB still used on the template disk is copied for every new server. In PowerShell as Administrator, remove the per-user package of Edge (Sysprep stops otherwise), superseded update files and temporary files, and tell the storage which blocks are free:',
                             )
                         }}
                     </p>
-                    <pre>{{ commands.edge }}</pre>
+                    <pre>{{ commands.windowsShrink }}</pre>
                     <p>
                         {{
                             $t(
@@ -624,7 +678,7 @@ const cloudbaseUrl = 'https://cloudbase.it/cloudbase-init/';
                 </section>
 
                 <section>
-                    <h4>{{ $t('5. Turn the VM into a template') }}</h4>
+                    <h4>{{ $t('6. Turn the VM into a template') }}</h4>
                     <ol>
                         <li>
                             {{ $t('Hardware: remove both CD/DVD drives.') }}
@@ -648,7 +702,7 @@ const cloudbaseUrl = 'https://cloudbase.it/cloudbase-init/';
                 </section>
 
                 <section>
-                    <h4>{{ $t('6. Add it to the panel') }}</h4>
+                    <h4>{{ $t('7. Add it to the panel') }}</h4>
                     <ol>
                         <li>
                             {{
@@ -674,7 +728,14 @@ const cloudbaseUrl = 'https://cloudbase.it/cloudbase-init/';
                         <li>
                             {{
                                 $t(
-                                    'Create a test server: log in as Administrator with the password the panel shows, and check the IP address, the computer name and that the C: drive has the package size.',
+                                    'Choose its clone method: a linked clone saves about 2 minutes per server but ties the servers to the template, which then cannot be deleted while they use it.',
+                                )
+                            }}
+                        </li>
+                        <li>
+                            {{
+                                $t(
+                                    'Create a test server: it should become Active about when the console shows the logon screen, restart only once, and accept a Remote Desktop login as Administrator with the password the panel shows. Check the IP address, the computer name and that the C: drive has the package size.',
                                 )
                             }}
                         </li>
@@ -686,11 +747,10 @@ const cloudbaseUrl = 'https://cloudbase.it/cloudbase-init/';
                     <p>
                         {{
                             $t(
-                                'Make a full clone of the template, start it, install the updates, remove the per-user package of Edge and generalize it again with these commands; then convert it to a template with a new name.',
+                                'Make a full clone of the template, start it, install the updates until none is pending, run the commands of step 5 and generalize it again with this command; then convert it to a template with a new name.',
                             )
                         }}
                     </p>
-                    <pre>{{ commands.edge }}</pre>
                     <pre>{{ commands.sysprep }}</pre>
                     <p>
                         {{

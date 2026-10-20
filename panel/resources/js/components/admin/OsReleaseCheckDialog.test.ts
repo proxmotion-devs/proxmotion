@@ -14,6 +14,7 @@ const template: OsTemplate = {
     version: '12',
     platform: 'linux',
     is_active: true,
+    clone_mode: 'full',
     sort_order: 0,
     proxmox_template_ids: [],
 };

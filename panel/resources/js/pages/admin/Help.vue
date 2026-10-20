@@ -169,7 +169,7 @@ const topics = [
             <Heading
                 variant="small"
                 title="OS templates"
-                description="Servers are full clones of a Proxmox VM template. You build each template once, from the installer ISO of the operating system, in the Proxmox web interface."
+                description="Servers are clones of a Proxmox VM template: full copies, or linked clones when the OS template asks for them. You build each template once, from the installer ISO of the operating system, in the Proxmox web interface."
             />
 
             <TemplateGuide />
@@ -253,7 +253,7 @@ const topics = [
                     <li>
                         {{
                             $t(
-                                'Delete the old template. Existing servers are full clones and do not depend on it.',
+                                'Delete the old template. Full clones do not depend on it; while linked clones use it, Proxmox refuses to delete it, so keep it until they are reinstalled or terminated.',
                             )
                         }}
                     </li>

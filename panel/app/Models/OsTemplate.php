@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Models;
 
 use App\Domain\Infrastructure\Distributions;
+use App\Enums\CloneMode;
 use App\Enums\OsFamily;
 use App\Enums\OsPlatform;
 use App\Models\Concerns\HasPublicUuid;
@@ -35,12 +36,13 @@ use Illuminate\Support\Carbon;
  * @property OsFamily $family
  * @property OsPlatform $platform
  * @property bool $is_active
+ * @property CloneMode $clone_mode linked clones when the storage allows them (docs/adr/0027)
  * @property int $sort_order
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  * @property-read OperatingSystemVersion|null $osVersion
  */
-#[Fillable(['name', 'operating_system_version_id', 'distribution', 'version', 'is_active', 'sort_order'])]
+#[Fillable(['name', 'operating_system_version_id', 'distribution', 'version', 'is_active', 'clone_mode', 'sort_order'])]
 class OsTemplate extends Model
 {
     /** @use HasFactory<OsTemplateFactory> */
@@ -74,6 +76,7 @@ class OsTemplate extends Model
             'family' => OsFamily::class,
             'platform' => OsPlatform::class,
             'is_active' => 'boolean',
+            'clone_mode' => CloneMode::class,
             'sort_order' => 'integer',
         ];
     }

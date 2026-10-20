@@ -25,7 +25,8 @@ control over the installation. For Ubuntu and Debian, the cloud-image path in
 
 ## What a Proxmotion template needs
 
-When the panel creates a server it makes a full clone of the template, sets CPU, memory and
+When the panel creates a server it clones the template (a full clone, or a linked clone when the
+OS template's *Clone method* says so, see [ADR 0027](../adr/0027-linked-clones.md)), sets CPU, memory and
 network, grows the disk, and passes the hostname, root password and SSH keys through the
 Proxmox **cloud-init drive** (with `ciuser=root`). For that to work, the template must have:
 
@@ -181,9 +182,15 @@ As root:
 ```bash
 userdel -r setup                  # Ubuntu and Debian
 passwd -l root                    # no installer password in the template; cloud-init sets the real one
+rm -rf /tmp/* /var/tmp/*
+journalctl --rotate && journalctl --vacuum-time=1s
+fstrim -av                        # tell the storage which blocks are free: smaller, faster clones
 history -c && rm -f /root/.bash_history
 poweroff
 ```
+
+A full clone copies only the used blocks of a thin disk (LVM-thin, ZFS, Ceph, qcow2), so the
+cleanup and `fstrim` (which needs *Discard* on the disk) make every new server faster to create.
 
 ## 5. Turn the VM into a template
 
@@ -217,77 +224,25 @@ On a cluster with **local** storage, create the template on every node that shou
 
 ## Windows Server
 
-Choose the operating system **Windows** for the OS template in the panel. How the panel handles Windows
-servers, and a Cloudbase-Init configuration that avoids an extra restart on the first boot, are in
-[windows-templates.md](windows-templates.md).
-
-You need two ISOs on the storage: the **Windows Server** ISO and the **VirtIO drivers** ISO
-(`virtio-win.iso`, stable release from the Fedora project:
-`https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/stable-virtio/virtio-win.iso`).
-
-**Create the VM** as in step 2, with these differences:
-
-| Tab | Setting |
-|---|---|
-| OS | Windows Server ISO; *Type* Microsoft Windows, the matching version. Tick **Add additional drive for VirtIO drivers** and choose `virtio-win.iso` |
-| System | *Machine* q35, *BIOS* **OVMF (UEFI)**, *Add EFI Disk* on (pre-enrolled keys), *SCSI Controller* VirtIO SCSI single, **QEMU Agent: on**. A TPM is not needed for Windows Server |
-| Disks | SCSI, **40 GiB** or more, *Discard* and *SSD emulation* on |
-| CPU / Memory | 2 cores, 4096 MiB |
-| Network | VirtIO |
-
-**Install:**
-
-1. Press a key when the console shows *Press any key to boot from CD or DVD*.
-2. Choose the *Desktop Experience* or *Core* edition you are licensed for.
-3. At *Where do you want to install Windows?* no disk is listed: *Load driver* → browse the
-   VirtIO CD → `vioscsi\<your Windows version>\amd64` → install. The disk appears; install to
-   it (Windows creates its own partitions; that is fine).
-4. Set a temporary Administrator password and log in.
-
-**Prepare:**
-
-1. On the VirtIO CD run **`virtio-win-guest-tools.exe`**: it installs all VirtIO drivers and
-   the QEMU guest agent.
-2. Install Windows updates.
-3. Download and install **Cloudbase-Init** (the Windows counterpart of cloud-init, from
-   `https://cloudbase.it/cloudbase-init/`). In the installer: user name `Administrator`, tick
-   *Run Cloudbase-Init service as LocalSystem*.
-4. Before finishing, edit both
-   `C:\Program Files\Cloudbase Solutions\Cloudbase-Init\conf\cloudbase-init.conf` and
-   `cloudbase-init-unattend.conf` so they contain:
-
-   ```ini
-   metadata_services=cloudbaseinit.metadata.services.configdrive.ConfigDriveService
-   ```
-
-   See also the *Cloud-Init on Windows* section of the Proxmox VE documentation, and the
-   recommended configuration of both files in [windows-templates.md](windows-templates.md#recommended-configuration).
-   Change the Cloudbase-Init command in `Unattend.xml` as shown there too: with all three files a
-   new server restarts only once during its setup.
-5. Right before Sysprep, remove Edge's per-user package (PowerShell as Administrator), or Sysprep
-   stops because Edge updated itself:
-   `Get-AppxPackage -AllUsers *MicrosoftEdge.Stable* | Remove-AppxPackage -AllUsers`
-6. On the last installer page tick **Run Sysprep to create a generalized image** and
-   **Shutdown when Sysprep terminates**, then *Finish*. The VM generalizes and powers off. Do
-   not start it again.
-
-**Turn it into a template** as in step 5: remove **both** CD drives, add a CloudInit drive,
-boot order only the disk, *Convert to template*.
-
-Licensing and activation (SPLA, AVMA, KMS) are your responsibility; the template contains no
-product key unless you add one.
+Windows templates are built differently (VirtIO drivers, Cloudbase-Init, Sysprep) and have their
+own guide: [windows-templates.md](windows-templates.md). It also covers updating them and how to
+make a new Windows server ready quickly.
 
 ## Updating a template
 
 A template should be refreshed now and then for security updates:
 
+Windows templates: see [windows-templates.md](windows-templates.md#updating-a-template).
+
 1. *Clone* the template (mode **Full clone**). In the clone's *Cloud-Init* tab set *User*
-   `root` and a temporary *Password* (Windows: just start it), start the clone and log in on
-   the console.
+   `root` and a temporary *Password*, start the clone and log in on the console.
 2. Install updates, then repeat the **All Linux** block of step 4 and the final block
-   (`passwd -l root`, history, `poweroff`). In *Cloud-Init*, clear the user and password again. For Windows, remove Edge's per-user package (step *Prepare* 5) and run Sysprep again (step *Prepare* 6, using the
-   `Unattend.xml` that Cloudbase-Init installed:
-   `C:\Windows\System32\Sysprep\sysprep.exe /generalize /oobe /shutdown /unattend:"C:\Program Files\Cloudbase Solutions\Cloudbase-Init\conf\Unattend.xml"`).
+   (`passwd -l root`, cleanup, `fstrim`, `poweroff`). In *Cloud-Init*, clear the user and
+   password again.
 3. Convert the clone to a template with a new dated name, sync the panel and map the OS template
    to it.
-4. Delete the old template. Servers are full clones and do not depend on it.
+4. Delete the old template once nothing uses it. Full clones do not depend on it. Servers that
+   are **linked clones** (OS template *Clone method* "Linked clone") share its base disk:
+   Proxmox refuses to delete a template whose base volume a linked clone still uses, so keep
+   the old template until those servers are reinstalled (onto the new template) or terminated.
+   Old templates therefore pile up while linked clones are in use; plan the storage for it.

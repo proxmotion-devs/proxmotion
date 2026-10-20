@@ -10,8 +10,9 @@ Building them takes two steps:
 
 Nothing is installed on the hypervisor, and the node never needs internet access.
 
-To build a template from an installer ISO by hand instead (other distributions, Windows
-Server, or a custom installation), see [iso-templates.md](iso-templates.md).
+To build a template from an installer ISO by hand instead (other distributions or a custom
+installation), see [iso-templates.md](iso-templates.md); Windows Server templates have their own
+guide, [windows-templates.md](windows-templates.md).
 
 > **Status:** this procedure has not yet been tested end to end against a real Proxmox VE
 > node, and the container path (Windows without WSL, macOS) has not been tested at all.
@@ -261,8 +262,10 @@ monthly):
 3. On the node: `REFRESH=1 ./build-templates.sh` (optionally with `ONLY=…`). This builds a new
    dated template next to the old one; the old one is not touched.
 4. In the panel, sync the cluster and map the OS template to the new Proxmox template.
-5. Delete the old template in Proxmox. Servers are full clones, so existing servers do not
-   depend on it.
+5. Delete the old template in Proxmox once nothing uses it. Full clones do not depend on it;
+   while **linked clones** (OS template *Clone method*, [ADR 0027](../adr/0027-linked-clones.md))
+   use its base disk, Proxmox refuses to delete it, so keep it until those servers are
+   reinstalled or terminated.
 
 ---
 

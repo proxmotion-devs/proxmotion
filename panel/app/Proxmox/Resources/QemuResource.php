@@ -20,15 +20,17 @@ final readonly class QemuResource
     ) {}
 
     /**
-     * Full-clone a template into a new VM.
+     * Clone a template into a new VM: a full copy of its disks, or with
+     * `full: false` a linked clone on the template's own storage (Proxmox
+     * takes `storage` for full clones only, docs/adr/0027).
      */
-    public function clone(int $templateVmid, int $newVmid, string $name, ?string $storage, ?string $pool, ?string $targetNode = null): Upid
+    public function clone(int $templateVmid, int $newVmid, string $name, ?string $storage, ?string $pool, ?string $targetNode = null, bool $full = true): Upid
     {
         $params = array_filter([
             'newid' => $newVmid,
             'name' => $name,
-            'full' => 1,
-            'storage' => $storage,
+            'full' => $full ? 1 : 0,
+            'storage' => $full ? $storage : null,
             'pool' => $pool,
             'target' => $targetNode !== $this->node ? $targetNode : null,
         ], fn ($value) => $value !== null);

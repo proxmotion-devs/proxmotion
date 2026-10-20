@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Head, Link, useForm } from '@inertiajs/vue3';
 import { FileCode, Pencil, Plus, ScanSearch } from '@lucide/vue';
+import { trans } from 'laravel-vue-i18n';
 import { computed, ref, watch } from 'vue';
 import ConfirmDelete from '@/components/admin/ConfirmDelete.vue';
 import FormDialog from '@/components/admin/FormDialog.vue';
@@ -30,7 +31,7 @@ import {
     store,
     update,
 } from '@/routes/admin/os-templates';
-import type { OsTemplate, ProxmoxTemplate } from '@/types/admin';
+import type { CloneMode, OsTemplate, ProxmoxTemplate } from '@/types/admin';
 
 defineOptions({
     layout: { breadcrumbs: [{ title: 'OS templates', href: index() }] },
@@ -91,6 +92,18 @@ const systemOf = (template: OsTemplate) => {
 
 const osOptions = computed(() => versionOptions(props.systems));
 
+// docs/adr/0027: linked clones are faster but depend on the template.
+const cloneModeOptions = computed(() => [
+    {
+        value: 'full' as CloneMode,
+        label: trans('Full clone (independent copy)'),
+    },
+    {
+        value: 'linked' as CloneMode,
+        label: trans('Linked clone (faster, shares the template disk)'),
+    },
+]);
+
 const dialogOpen = ref(false);
 const editing = ref<OsTemplate | null>(null);
 
@@ -98,6 +111,7 @@ const form = useForm({
     name: '',
     operating_system_version_id: null as number | null,
     is_active: true,
+    clone_mode: 'full' as CloneMode,
     sort_order: 0,
     proxmox_template_ids: [] as number[],
 });
@@ -136,6 +150,7 @@ const openForm = (
             found?.guess.operating_system_version_id ??
             null,
         is_active: template?.is_active ?? true,
+        clone_mode: template?.clone_mode ?? 'full',
         sort_order: template?.sort_order ?? 0,
         proxmox_template_ids: [
             ...(template?.proxmox_template_ids ??
@@ -334,6 +349,12 @@ const submit = () => {
                                 label="Inactive"
                                 class="ml-2"
                             />
+                            <StatusBadge
+                                v-if="template.clone_mode === 'linked'"
+                                tone="neutral"
+                                label="Linked clones"
+                                class="ml-2"
+                            />
                         </td>
                         <td class="px-4 py-3">
                             {{ systemOf(template) }}
@@ -517,6 +538,18 @@ const submit = () => {
                 />
             </FormField>
         </div>
+        <FormField
+            label="Clone method"
+            for="clone_mode"
+            :error="form.errors.clone_mode"
+            hint="How new and reinstalled servers are copied from the Proxmox template. A linked clone is made only when the server goes on the storage the template disk is on and that storage supports it (thin LVM, ZFS, Ceph RBD, qcow2 files); otherwise a full clone is made and the task says why. While linked clones use a Proxmox template, it cannot be deleted."
+        >
+            <NativeSelect
+                id="clone_mode"
+                v-model="form.clone_mode"
+                :options="cloneModeOptions"
+            />
+        </FormField>
     </FormDialog>
     <OsReleaseCheckDialog
         v-if="checking"

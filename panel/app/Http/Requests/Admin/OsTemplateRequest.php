@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Requests\Admin;
 
+use App\Enums\CloneMode;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -24,6 +25,7 @@ class OsTemplateRequest extends FormRequest
             'name' => ['required', 'string', 'max:100'],
             'operating_system_version_id' => ['required', 'integer', Rule::exists('operating_system_versions', 'id')],
             'is_active' => ['required', 'boolean'],
+            'clone_mode' => ['sometimes', Rule::enum(CloneMode::class)],
             'sort_order' => ['sometimes', 'integer', 'between:0,65535'],
             'proxmox_template_ids' => ['array'],
             'proxmox_template_ids.*' => ['integer', 'distinct', Rule::exists('proxmox_templates', 'id')],
