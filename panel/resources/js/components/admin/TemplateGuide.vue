@@ -95,8 +95,8 @@ allow_reboot=false
 stop_service_on_exit=false
 
 [config_drive]
-types=iso,vfat
-locations=cdrom,hdd`,
+types=iso
+locations=cdrom`,
     service: `[DEFAULT]
 username=Administrator
 groups=Administrators
@@ -114,8 +114,15 @@ allow_reboot=true
 stop_service_on_exit=true
 
 [config_drive]
-types=iso,vfat
-locations=cdrom,hdd`,
+types=iso
+locations=cdrom`,
+    unattendXml: `<RunSynchronousCommand wcm:action="add">
+  <Order>1</Order>
+  <Path>cmd.exe /c ""C:\\Program Files\\Cloudbase Solutions\\Cloudbase-Init\\Python\\Scripts\\cloudbase-init.exe" --config-file "C:\\Program Files\\Cloudbase Solutions\\Cloudbase-Init\\conf\\cloudbase-init-unattend.conf" &amp; exit 0"</Path>
+  <Description>Run Cloudbase-Init to set the hostname</Description>
+  <WillReboot>Never</WillReboot>
+</RunSynchronousCommand>`,
+    edge: `Get-AppxPackage -AllUsers *MicrosoftEdge.Stable* | Remove-AppxPackage -AllUsers`,
     sysprep: `C:\\Windows\\System32\\Sysprep\\sysprep.exe /generalize /oobe /shutdown /unattend:"C:\\Program Files\\Cloudbase Solutions\\Cloudbase-Init\\conf\\Unattend.xml"`,
     checksum: `shasum -a 256 ~/Downloads/<file>.iso`,
 };
@@ -588,7 +595,7 @@ const cloudbaseUrl = 'https://cloudbase.it/cloudbase-init/';
                         <li>
                             {{
                                 $t(
-                                    'Replace both files in C:\\Program Files\\Cloudbase Solutions\\Cloudbase-Init\\conf\\ with the contents below. This setting saves a restart on every new server.',
+                                    'Replace both files in C:\\Program Files\\Cloudbase Solutions\\Cloudbase-Init\\conf\\ with the contents below, and in Unattend.xml in the same folder replace the Cloudbase-Init command of the specialize pass with the one below (keep &amp; as it is). Together they save two restarts on every new server: it restarts only once during its setup.',
                                 )
                             }}
                         </li>
@@ -597,6 +604,16 @@ const cloudbaseUrl = 'https://cloudbase.it/cloudbase-init/';
                     <pre>{{ commands.unattend }}</pre>
                     <h5>cloudbase-init.conf</h5>
                     <pre>{{ commands.service }}</pre>
+                    <h5>Unattend.xml (specialize)</h5>
+                    <pre>{{ commands.unattendXml }}</pre>
+                    <p>
+                        {{
+                            $t(
+                                'Right before Sysprep, remove the per-user package of Edge in PowerShell as Administrator: Edge updates itself while the VM is online, and Sysprep then stops with "was installed for a user, but not provisioned for all users". Edge itself stays installed.',
+                            )
+                        }}
+                    </p>
+                    <pre>{{ commands.edge }}</pre>
                     <p>
                         {{
                             $t(
@@ -669,10 +686,11 @@ const cloudbaseUrl = 'https://cloudbase.it/cloudbase-init/';
                     <p>
                         {{
                             $t(
-                                'Make a full clone of the template, start it, install the updates, and generalize it again with this command; then convert it to a template with a new name.',
+                                'Make a full clone of the template, start it, install the updates, remove the per-user package of Edge and generalize it again with these commands; then convert it to a template with a new name.',
                             )
                         }}
                     </p>
+                    <pre>{{ commands.edge }}</pre>
                     <pre>{{ commands.sysprep }}</pre>
                     <p>
                         {{

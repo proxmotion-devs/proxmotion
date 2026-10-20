@@ -53,30 +53,34 @@ Askıdan çıkarılan bir sunucuda yalnızca agent beklenir.
 
 ## Yeni bir Windows sunucusu neden yeniden başlar
 
-ISO rehberindeki gibi hazırlanmış bir şablonda Cloudbase-Init logu
-(`C:\Program Files\Cloudbase Solutions\Cloudbase-Init\log\cloudbase-init.log`) ve System olay
-günlüğü (olay kimliği **1074**) iki yeniden başlatma gösterir:
+Sysprep ile genelleştirilmiş bir şablondan klonlanan sunucu **en az bir kez** yeniden başlar:
+Windows kurulumu *specialize* aşamasını OOBE'ye geçmeden önce bir yeniden başlatmayla bitirir
+(`C:\Windows\Panther\UnattendGC` altındaki `setupact.log`: *Reboot required after setup.exe and
+PostSysprep commands, before launching OOBE*). Bunu kaldıran bir ayar yoktur.
 
-| # | Kim | Neden | Önlenebilir mi |
-|---|---|---|---|
-| 1 | `winlogon.exe` (Sysprep) | *specialize* aşamasının sonu, OOBE'ye geçiş | Hayır: Sysprep ile genelleştirilmiş her imajda bir kez olur |
-| 2 | Cloudbase-Init (`python.exe`) | `UserDataPlugin`, hostname'i user-data'dan ayarlar (`Changing hostname to '…'`, ardından `Rebooting`) | **Evet** |
+İki yeniden başlatma daha Cloudbase-Init'in varsayılanlarından gelir ve kaldırılabilir:
 
-İkincisinin nedeni: Proxmox hostname'i **sadece user-data'ya** yazar (`#cloud-config`,
-`hostname: …`). `meta_data.json` içinde yalnızca `uuid` ve `admin_pass` vardır. Bu yüzden
-metadata'yı okuyan `SetHostNamePlugin` bir isim bulamaz ve hiçbir şey yapmaz. İsmi en sonda
-user-data eklentisi ayarlar. Windows'ta isim değişikliği yeniden başlatma ister ve servis
-yapılandırması buna izin verir (`allow_reboot=true`).
+| Yeniden başlatma | Neden | Çözüm |
+|---|---|---|
+| İlk açılışta Cloudbase-Init servisi (1074 olayında `python.exe`) | `UserDataPlugin` hostname'i en sonda user-data'dan ayarlar (`Changing hostname to '…'`, ardından `Rebooting`) ve servisin yeniden başlatmasına izin vardır (`allow_reboot=true`) | `UserDataPlugin`'i specialize aşamasında çalıştırın (aşağıdaki `cloudbase-init-unattend.conf`): isim değişikliği Windows kurulumunun kendi yeniden başlatmasıyla uygulanır |
+| specialize aşamasının ortasında `winlogon.exe` (`C:\Windows\Panther\setupact.log` içinde `Unattend action requested immediate reboot and recall`) | Cloudbase-Init'in `Unattend.xml` dosyası onu specialize aşamasında `<WillReboot>OnRequest</WillReboot>` ve `&& exit 1 \|\| exit 2` ile çalıştırır: çıkış kodu 1, Windows kurulumundan yeniden başlatma ister; yani Cloudbase-Init başarılı olsa da yeniden başlar | `<WillReboot>Never</WillReboot>` ve `& exit 0` (aşağıdaki `Unattend.xml`) |
+
+Hostname için neden user-data eklentisi gerekiyor: Proxmox hostname'i **sadece user-data'ya**
+yazar (`#cloud-config`, `hostname: …`). `meta_data.json` içinde yalnızca `uuid`, `admin_pass` ve
+SSH anahtarları vardır. Bu yüzden metadata'yı okuyan `SetHostNamePlugin` bir isim bulamaz ve
+hiçbir şey yapmaz.
+
+Windows Server 2022'de ölçüldü (2026-10-20): üç düzeltmeyle yeni bir sunucu bir kez yeniden
+başladı. `Unattend.xml` düzeltmesinden önce iki kez yeniden başlıyordu (ikisi de `winlogon.exe`) ve
+kurulum, ilk açılıştan Cloudbase-Init servisinin ağı ve şifreyi ayarlamasına kadar yaklaşık 2,5
+dakika sürdü. Yeni bir Windows sunucusunun hazır olması bundan çok daha uzun sürüyorsa görevin
+*clone* adımına bakın: büyük bir Windows diskinin tam klonu yavaş depolamada dakikalar sürebilir.
 
 ## Önerilen yapılandırma
 
-İki dosya da `C:\Program Files\Cloudbase Solutions\Cloudbase-Init\conf\` içindedir.
+Üç dosya da `C:\Program Files\Cloudbase Solutions\Cloudbase-Init\conf\` içindedir.
 
-**Fikir:** `UserDataPlugin`'i *specialize* aşamasında (`cloudbase-init-unattend.conf`) çalıştırmak.
-Orada yapılan isim değişikliği, Sysprep'in zaten yaptığı yeniden başlatmayla uygulanır. Böylece
-ikinci yeniden başlatma ortadan kalkar. Servis (`cloudbase-init.conf`) artık onu çalıştırmaz.
-
-`cloudbase-init-unattend.conf` (Sysprep'in specialize aşamasında çalışır, kendi başına asla
+`cloudbase-init-unattend.conf` (Sysprep'in specialize aşamasında çalışır; kendiliğinden asla
 yeniden başlatmaz):
 
 ```ini
@@ -94,8 +98,8 @@ allow_reboot=false
 stop_service_on_exit=false
 
 [config_drive]
-types=iso,vfat
-locations=cdrom,hdd
+types=iso
+locations=cdrom
 ```
 
 `cloudbase-init.conf` (servis, her açılışta):
@@ -118,44 +122,70 @@ allow_reboot=true
 stop_service_on_exit=true
 
 [config_drive]
-types=iso,vfat
-locations=cdrom,hdd
+types=iso
+locations=cdrom
+```
+
+`Unattend.xml`: `specialize` aşamasında yalnızca Cloudbase-Init komutunu değiştirin, böylece hiç
+yeniden başlatma istemez (`&amp;` olduğu gibi kalmalı: düz `&` XML'i bozar):
+
+```xml
+<RunSynchronousCommand wcm:action="add">
+  <Order>1</Order>
+  <Path>cmd.exe /c ""C:\Program Files\Cloudbase Solutions\Cloudbase-Init\Python\Scripts\cloudbase-init.exe" --config-file "C:\Program Files\Cloudbase Solutions\Cloudbase-Init\conf\cloudbase-init-unattend.conf" &amp; exit 0"</Path>
+  <Description>Run Cloudbase-Init to set the hostname</Description>
+  <WillReboot>Never</WillReboot>
+</RunSynchronousCommand>
 ```
 
 Notlar:
 
 - `UserDataPlugin`'i taşımak bir şey kaybettirmez: Proxmox'un user-data'sından Windows'ta yalnızca
-  `hostname` çalışır. `user`, `password`, `chpasswd`, `fqdn` ve `manage_etc_hosts` logda *not
-  supported* olarak geçer. Şifre metadata'dan (`CreateUserPlugin`, `SetUserPasswordPlugin`), ağ
-  `NetworkConfigPlugin`'den gelir.
+  `hostname` çalışır. `user`, `password`, `chpasswd`, `fqdn`, `disable_root` ve `manage_etc_hosts`
+  logda *not supported* olarak geçer. Şifre metadata'dan (`CreateUserPlugin`,
+  `SetUserPasswordPlugin`), ağ `NetworkConfigPlugin`'den gelir.
 - `metadata_services` içinde yalnızca `ConfigDriveService` olması, Cloudbase-Init'in Proxmox'ta
-  zaten zaman aşımına düşecek ağ metadata servislerini (EC2, OpenStack HTTP) denemesini önler.
-- `[config_drive] types` / `locations`, logun eskimiş (*deprecated*) dediği `config_drive_cdrom`,
-  `config_drive_vfat` ve `config_drive_raw_hdd` seçeneklerinin yerine geçer.
+  zaten zaman aşımına düşecek ağ metadata servislerini (EC2, OpenStack HTTP) denemesini önler
+  (yaklaşık iki dakika).
+- Proxmox'un CloudInit sürücüsü bir CD sürücüsündeki ISO'dur, bu yüzden `[config_drive]` yalnızca
+  orada arar; `hdd` üzerinde `vfat` sadece *"mtools_path" needs to be provided* uyarısı yazar. Bu
+  seçenekler, logun eskimiş (*deprecated*) dediği `config_drive_cdrom`, `config_drive_vfat` ve
+  `config_drive_raw_hdd` seçeneklerinin yerine geçer.
 - Unattend dosyasında `allow_reboot=false` kalmalı: orada bir yeniden başlatma Sysprep'i bozar.
+- `WillReboot` `Never` olunca, specialize aşamasında başarısız olan bir Cloudbase-Init çalışması
+  artık yeniden başlatılıp tekrarlanmaz; o zaman yalnızca hostname atlanır (şifre ve ağ ilk
+  açılışta servisten gelir). Logu `cloudbase-init-unattend.log` dosyasıdır.
 - `LocalScripts\` içindeki kendi scriptleriniz ilk açılışta çalışır ve kendinden sonraki her şeyi
   geciktirir. Logda her birinin ne kadar sürdüğü görünür (`Script "…" ended with exit code`).
   Orada sabit beklemelerden kaçının.
-
-**Durum:** ikinci yeniden başlatmanın nedeni gerçek bir Windows sunucusunun loglarından okundu
-(2026-10-17). Yukarıdaki yapılandırma önerilen çözümdür; **etkisi henüz ölçülmedi**. Şablonu
-yeniden hazırladıktan sonra bir sunucu oluşturup System günlüğünde `winlogon.exe`'den tek bir 1074
-olayı olduğunu, Cloudbase-Init'ten hiç olmadığını kontrol edin.
 
 ## Yapılandırmayı şablona uygulamak
 
 Dosyalar şablon imajının içinde durur:
 
 1. Şablonun tam bir klonunu oluşturun (ya da şablonun yapıldığı VM'i başlatın) ve oturum açın.
-2. İki dosyayı yukarıdaki gibi düzenleyin.
-3. Cloudbase-Init'in yanıt dosyasıyla yeniden genelleştirin ve kapanmasını bekleyin:
+2. Üç dosyayı yukarıdaki gibi düzenleyin.
+3. Sysprep'ten hemen önce Edge'in kullanıcıya özel paketini kaldırın. VM internete çıkar çıkmaz
+   Edge kendini günceller ve Sysprep *Package Microsoft.MicrosoftEdge.Stable_… was installed for a
+   user, but not provisioned for all users* hatasıyla durur
+   (`C:\Windows\System32\Sysprep\Panther\setuperr.log` içinde `0x80073cf2`). Edge'in kendisi
+   kurulu kalır:
+
+   ```powershell
+   Get-AppxPackage -AllUsers *MicrosoftEdge.Stable* | Remove-AppxPackage -AllUsers
+   ```
+
+4. Cloudbase-Init'in yanıt dosyasıyla yeniden genelleştirin ve kapanmasını bekleyin:
 
    ```bat
    C:\Windows\System32\Sysprep\sysprep.exe /generalize /oobe /shutdown /unattend:"C:\Program Files\Cloudbase Solutions\Cloudbase-Init\conf\Unattend.xml"
    ```
 
-4. Proxmox'ta VM'i şablona çevirin (bkz. [iso-templates.md](../iso-templates.md#updating-a-template)).
+5. Proxmox'ta VM'i şablona çevirin (bkz. [iso-templates.md](../iso-templates.md#updating-a-template)).
    Yeni bir VMID ise panelde cluster'ı senkronlayıp OS şablonunu ona eşleyin.
+6. Bir test sunucusu oluşturun ve System günlüğünde `winlogon.exe`'den tek bir 1074 olayı olduğunu
+   (şablonun kendi Sysprep kapanışı hariç), Cloudbase-Init'ten hiç olmadığını ve `hostname`
+   komutunun sunucunun adını yazdığını kontrol edin.
 
 ## Sorun giderme
 
@@ -164,8 +194,10 @@ Dosyalar şablon imajının içinde durur:
 | Görev adımında *The additional addresses could not be configured inside the server: QEMU guest agent is not running* | Script çalışırken Windows yeniden başladı ve üç denemede de geri gelmedi. Olay günlüğüne (1074) bakın. Zamanlanmış görev adresleri bir sonraki açılışta uygular; ya da Scripts sayfasında *Sunucuda çalıştır*'ı kullanın |
 | *Get-NetAdapter : Critical error* | Windows hâlâ kuruluyordu, ağ komutları hazır değildi. Güncel scriptler bunu bekler; varsayılanın yerine kendi scriptini kullanan şablonları güncelleyin |
 | *Proxmotion addresses* zamanlanmış görevi yok | Adres scripti o noktaya hiç gelemedi. PowerShell'de: `Get-ScheduledTask -TaskName 'Proxmotion addresses'` |
-| Hostname hâlâ `WIN-…` | User-data eklentisi çalışmadı ya da yeniden başlatmasına izin verilmedi. `cloudbase-init*.log` içinde `Changing hostname` arayın |
+| Hostname hâlâ `WIN-…` | User-data eklentisi çalışmadı. `cloudbase-init-unattend.log` (eski yapılandırmada `cloudbase-init.log`) içinde `Changing hostname` arayın |
 | Şifre ayarlanmadı | `cloudbase-init.log` içinde `Using admin_pass metadata user password` görünmeli; Proxmox VM'inde CloudInit sürücüsü olmalı |
+| İki yeniden başlatma, ikisi de `winlogon.exe` | `Unattend.xml` Cloudbase-Init'ten sonra hâlâ yeniden başlatma istiyor (`<WillReboot>OnRequest</WillReboot>`, `exit 1`): *Önerilen yapılandırma*'ya bakın |
+| Sysprep duruyor: *Package Microsoft.MicrosoftEdge.Stable_… was installed for a user, but not provisioned for all users* | Edge klonda kendini güncelledi. Kullanıcıya özel paketini kaldırıp Sysprep'i yeniden çalıştırın (*Yapılandırmayı şablona uygulamak*, 3. adım). Store uygulamaları da aynı şekilde durdurabilir; paketin adı `C:\Windows\System32\Sysprep\Panther\setuperr.log` içinde yazar |
 
 Sunucunun içinde işe yarayan komutlar (Yönetici olarak PowerShell):
 
@@ -181,5 +213,6 @@ Get-ChildItem C:\ProgramData\Proxmotion
 - Windows varsayılan scriptleri tek bir Windows Server imajında çalıştı (2026-10-17): iki kurulum
   yeniden başlatmasıyla birlikte, yeniden kurulumdan sonra ek adresler. Birincil adres
   değişikliği, `disk.ps1`, IPv6 ve diğer Windows sürümleri denenmedi.
-- Yukarıdaki yapılandırmayla hazırlanan bir şablonun yalnızca bir kez yeniden başlayıp
-  başlamadığı (yukarıdaki *Durum* notuna bakın).
+- Yukarıdaki yapılandırmayla tek yeniden başlatma bir Windows Server 2022 şablonunda görüldü
+  (2026-10-20); hostname'in bununla uygulanması, Windows Server 2019 ve 2025, ve farklı bir
+  `Unattend.xml` yazan bir Cloudbase-Init sürümüyle hazırlanmış şablon denenmedi.

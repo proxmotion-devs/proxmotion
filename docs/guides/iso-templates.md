@@ -262,7 +262,12 @@ You need two ISOs on the storage: the **Windows Server** ISO and the **VirtIO dr
 
    See also the *Cloud-Init on Windows* section of the Proxmox VE documentation, and the
    recommended configuration of both files in [windows-templates.md](windows-templates.md#recommended-configuration).
-5. On the last installer page tick **Run Sysprep to create a generalized image** and
+   Change the Cloudbase-Init command in `Unattend.xml` as shown there too: with all three files a
+   new server restarts only once during its setup.
+5. Right before Sysprep, remove Edge's per-user package (PowerShell as Administrator), or Sysprep
+   stops because Edge updated itself:
+   `Get-AppxPackage -AllUsers *MicrosoftEdge.Stable* | Remove-AppxPackage -AllUsers`
+6. On the last installer page tick **Run Sysprep to create a generalized image** and
    **Shutdown when Sysprep terminates**, then *Finish*. The VM generalizes and powers off. Do
    not start it again.
 
@@ -280,7 +285,7 @@ A template should be refreshed now and then for security updates:
    `root` and a temporary *Password* (Windows: just start it), start the clone and log in on
    the console.
 2. Install updates, then repeat the **All Linux** block of step 4 and the final block
-   (`passwd -l root`, history, `poweroff`). In *Cloud-Init*, clear the user and password again. For Windows, run Sysprep again (step *Prepare* 5, using the
+   (`passwd -l root`, history, `poweroff`). In *Cloud-Init*, clear the user and password again. For Windows, remove Edge's per-user package (step *Prepare* 5) and run Sysprep again (step *Prepare* 6, using the
    `Unattend.xml` that Cloudbase-Init installed:
    `C:\Windows\System32\Sysprep\sysprep.exe /generalize /oobe /shutdown /unattend:"C:\Program Files\Cloudbase Solutions\Cloudbase-Init\conf\Unattend.xml"`).
 3. Convert the clone to a template with a new dated name, sync the panel and map the OS template

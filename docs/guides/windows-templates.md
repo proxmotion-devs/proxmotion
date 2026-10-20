@@ -51,28 +51,31 @@ the agent.
 
 ## Why a new Windows server restarts
 
-On a template built as in the ISO guide, Cloudbase-Init's log
-(`C:\Program Files\Cloudbase Solutions\Cloudbase-Init\log\cloudbase-init.log`) and the System event
-log (event ID **1074**) show two restarts:
+A server cloned from a Sysprep-generalized template restarts **at least once**: Windows Setup
+ends the *specialize* pass with a restart before it starts OOBE (`setupact.log` under
+`C:\Windows\Panther\UnattendGC`: *Reboot required after setup.exe and PostSysprep commands, before
+launching OOBE*). No setting removes it.
 
-| # | Who | Why | Avoidable |
-|---|---|---|---|
-| 1 | `winlogon.exe` (Sysprep) | End of the *specialize* pass, on the way to OOBE | No: once per Sysprep-generalized image |
-| 2 | Cloudbase-Init (`python.exe`) | `UserDataPlugin` sets the hostname from the user-data (`Changing hostname to '…'`, then `Rebooting`) | **Yes** |
+Two more restarts come from Cloudbase-Init's defaults and can be removed:
 
-Why the second one: Proxmox writes the hostname **only into the user-data** (`#cloud-config`,
-`hostname: …`); `meta_data.json` holds only `uuid` and `admin_pass`. So `SetHostNamePlugin`, which
-reads the metadata, finds no name and does nothing. The name is set at the very end by the user-data
-plugin, a Windows rename needs a restart, and the service configuration allows restarts
-(`allow_reboot=true`).
+| Restart | Cause | Fix |
+|---|---|---|
+| Cloudbase-Init's service (`python.exe` in event 1074) at the first boot | `UserDataPlugin` sets the hostname from the user-data at the very end (`Changing hostname to '…'`, then `Rebooting`), and the service may restart (`allow_reboot=true`) | Run `UserDataPlugin` in the specialize pass instead (`cloudbase-init-unattend.conf` below): the rename then takes effect with Windows Setup's own restart |
+| `winlogon.exe` in the middle of the specialize pass (`Unattend action requested immediate reboot and recall` in `C:\Windows\Panther\setupact.log`) | Cloudbase-Init's `Unattend.xml` runs it in the specialize pass with `<WillReboot>OnRequest</WillReboot>` and `&& exit 1 \|\| exit 2`: exit code 1 asks Windows Setup to restart, so it restarts even when Cloudbase-Init succeeded | `<WillReboot>Never</WillReboot>` and `& exit 0` (`Unattend.xml` below) |
+
+Why the hostname needs the user-data plugin at all: Proxmox writes the hostname **only into the
+user-data** (`#cloud-config`, `hostname: …`); `meta_data.json` holds only `uuid`, `admin_pass` and
+the SSH keys. So `SetHostNamePlugin`, which reads the metadata, finds no name and does nothing.
+
+Measured on Windows Server 2022 (2026-10-20): with all three fixes a new server restarted once.
+Before the `Unattend.xml` fix it restarted twice (both `winlogon.exe`), and setup took about
+2.5 minutes from the first boot until Cloudbase-Init's service had set the network and the
+password. If a new Windows server still takes much longer to become ready, look at the task's
+*clone* step: a full clone of a large Windows disk can take minutes on slow storage.
 
 ## Recommended configuration
 
-Both files are in `C:\Program Files\Cloudbase Solutions\Cloudbase-Init\conf\`.
-
-**The idea:** run `UserDataPlugin` in the *specialize* pass (`cloudbase-init-unattend.conf`). A
-rename there takes effect with the restart Sysprep does anyway, so the second restart disappears.
-The service (`cloudbase-init.conf`) no longer runs it.
+All three files are in `C:\Program Files\Cloudbase Solutions\Cloudbase-Init\conf\`.
 
 `cloudbase-init-unattend.conf` (runs during Sysprep's specialize pass; never restarts by itself):
 
@@ -91,8 +94,8 @@ allow_reboot=false
 stop_service_on_exit=false
 
 [config_drive]
-types=iso,vfat
-locations=cdrom,hdd
+types=iso
+locations=cdrom
 ```
 
 `cloudbase-init.conf` (the service, at every boot):
@@ -115,43 +118,67 @@ allow_reboot=true
 stop_service_on_exit=true
 
 [config_drive]
-types=iso,vfat
-locations=cdrom,hdd
+types=iso
+locations=cdrom
+```
+
+`Unattend.xml`: in the `specialize` pass, change only the Cloudbase-Init command so it never asks
+for a restart (keep `&amp;` as it is: a bare `&` breaks the XML):
+
+```xml
+<RunSynchronousCommand wcm:action="add">
+  <Order>1</Order>
+  <Path>cmd.exe /c ""C:\Program Files\Cloudbase Solutions\Cloudbase-Init\Python\Scripts\cloudbase-init.exe" --config-file "C:\Program Files\Cloudbase Solutions\Cloudbase-Init\conf\cloudbase-init-unattend.conf" &amp; exit 0"</Path>
+  <Description>Run Cloudbase-Init to set the hostname</Description>
+  <WillReboot>Never</WillReboot>
+</RunSynchronousCommand>
 ```
 
 Notes:
 
 - Nothing is lost by moving `UserDataPlugin`: of Proxmox's user-data only `hostname` works on
-  Windows; `user`, `password`, `chpasswd`, `fqdn` and `manage_etc_hosts` are reported as *not
-  supported* in the log. The password comes from the metadata (`CreateUserPlugin`,
-  `SetUserPasswordPlugin`), the network from `NetworkConfigPlugin`.
+  Windows; `user`, `password`, `chpasswd`, `fqdn`, `disable_root` and `manage_etc_hosts` are
+  reported as *not supported* in the log. The password comes from the metadata
+  (`CreateUserPlugin`, `SetUserPasswordPlugin`), the network from `NetworkConfigPlugin`.
 - `metadata_services` with only `ConfigDriveService` keeps Cloudbase-Init from trying network
-  metadata services (EC2, OpenStack HTTP), which only time out on Proxmox.
-- `[config_drive] types` / `locations` replace the old `config_drive_cdrom`, `config_drive_vfat`
-  and `config_drive_raw_hdd` options, which the log reports as deprecated.
+  metadata services (EC2, OpenStack HTTP), which only time out on Proxmox (about two minutes).
+- Proxmox's CloudInit drive is an ISO on a CD drive, so `[config_drive]` looks only there;
+  `vfat` on `hdd` only logs *"mtools_path" needs to be provided*. These options replace the old
+  `config_drive_cdrom`, `config_drive_vfat` and `config_drive_raw_hdd`, which the log reports as
+  deprecated.
 - Keep `allow_reboot=false` in the unattend file: a restart there would break Sysprep.
+- With `WillReboot` set to `Never`, a failed Cloudbase-Init run in the specialize pass is no
+  longer restarted and repeated; only the hostname is skipped then (password and network come from
+  the service at the first boot). Its log is `cloudbase-init-unattend.log`.
 - Your own scripts in `LocalScripts\` run at the first boot and delay everything after them: the
   log shows how long each took (`Script "…" ended with exit code`). Avoid fixed waits there.
-
-**Status:** the cause of the second restart was read from the logs of a real Windows server
-(2026-10-17). The configuration above is the recommended fix; **its effect has not been measured
-yet**. After rebuilding the template, create a server and check that the System log shows a single
-1074 event from `winlogon.exe` and none from Cloudbase-Init.
 
 ## Applying the configuration to a template
 
 The files live inside the template image:
 
 1. Create a full clone of the template (or start the VM the template was made from) and log in.
-2. Edit the two files as above.
-3. Generalize it again with Cloudbase-Init's answer file and let it shut down:
+2. Edit the three files as above.
+3. Right before Sysprep, remove Edge's per-user package. Edge updates itself as soon as the VM is
+   online, and Sysprep then stops with *Package Microsoft.MicrosoftEdge.Stable_… was installed for a
+   user, but not provisioned for all users* (`0x80073cf2` in
+   `C:\Windows\System32\Sysprep\Panther\setuperr.log`). Edge itself stays installed:
+
+   ```powershell
+   Get-AppxPackage -AllUsers *MicrosoftEdge.Stable* | Remove-AppxPackage -AllUsers
+   ```
+
+4. Generalize it again with Cloudbase-Init's answer file and let it shut down:
 
    ```bat
    C:\Windows\System32\Sysprep\sysprep.exe /generalize /oobe /shutdown /unattend:"C:\Program Files\Cloudbase Solutions\Cloudbase-Init\conf\Unattend.xml"
    ```
 
-4. Convert the VM to a template in Proxmox (see [iso-templates.md](iso-templates.md#updating-a-template)).
+5. Convert the VM to a template in Proxmox (see [iso-templates.md](iso-templates.md#updating-a-template)).
    If it is a new VMID, sync the cluster in the panel and map the OS template to it.
+6. Create a test server and check that the System log shows a single 1074 event from
+   `winlogon.exe` (besides the template's own Sysprep shutdown) and none from Cloudbase-Init, and
+   that `hostname` prints the server's name.
 
 ## Troubleshooting
 
@@ -160,8 +187,10 @@ The files live inside the template image:
 | Task step *The additional addresses could not be configured inside the server: QEMU guest agent is not running* | Windows restarted while the script ran and did not come back three times. Check the event log (1074). The scheduled task applies the addresses at the next startup; or use *Run on server* on the Scripts page |
 | *Get-NetAdapter : Critical error* | Windows was still in its setup; the network cmdlets were not ready. Current scripts wait for that; update the template's override if it replaced the default |
 | No scheduled task *Proxmotion addresses* | The address script never got far enough. In PowerShell: `Get-ScheduledTask -TaskName 'Proxmotion addresses'` |
-| Hostname still `WIN-…` | The user-data plugin did not run, or it was not allowed to restart. Check `cloudbase-init*.log` for `Changing hostname` |
+| Hostname still `WIN-…` | The user-data plugin did not run. Check `cloudbase-init-unattend.log` (or `cloudbase-init.log` with the old configuration) for `Changing hostname` |
 | Password not set | `Using admin_pass metadata user password` should appear in `cloudbase-init.log`; the Proxmox VM needs a CloudInit drive |
+| Two restarts, both `winlogon.exe` | `Unattend.xml` still asks for a restart after Cloudbase-Init (`<WillReboot>OnRequest</WillReboot>`, `exit 1`): see *Recommended configuration* |
+| Sysprep stops: *Package Microsoft.MicrosoftEdge.Stable_… was installed for a user, but not provisioned for all users* | Edge updated itself on the clone. Remove its per-user package and run Sysprep again (step 3 of *Applying the configuration to a template*). Store apps can stop it the same way; `C:\Windows\System32\Sysprep\Panther\setuperr.log` names the package |
 
 Useful commands inside the server (PowerShell as Administrator):
 
@@ -177,4 +206,6 @@ Get-ChildItem C:\ProgramData\Proxmotion
 - The Windows default scripts ran on one Windows Server image (2026-10-17): additional addresses
   after a reinstall with two setup restarts. Primary address changes, `disk.ps1`, IPv6 and other
   Windows versions have not been checked.
-- Whether a template with the configuration above restarts only once (see *Status* above).
+- The single restart with the configuration above was seen on one Windows Server 2022 template
+  (2026-10-20); that the hostname is applied with it, Windows Server 2019 and 2025, and the
+  configuration on a template whose Cloudbase-Init version writes a different `Unattend.xml`.
