@@ -38,8 +38,9 @@ final readonly class CreateServerPipeline
 
         $this->build($task);
 
-        // Active only once the new system's guest agent answers (or the wait times out, ADR 0004).
-        $this->guestScripts->waitForAgentStep($task, $server);
+        // Active only once the new system's guest agent answers, and on Windows once
+        // setup has finished (or the wait times out, ADR 0004).
+        $this->guestScripts->waitForAgentStep($task, $server, setup: true);
 
         // Additional addresses and the template's script (ADR 0009, 0010).
         $this->guestScripts->afterInstall($task, $server);

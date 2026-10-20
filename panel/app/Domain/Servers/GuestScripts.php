@@ -34,6 +34,26 @@ final readonly class GuestScripts
     /** How long a freshly booted server may take until its guest agent answers. */
     public const AGENT_TIMEOUT_SECONDS = 600;
 
+    /**
+     * How long a new Windows server may take until its setup has finished
+     * (sysprep's specialize pass, the restart into OOBE, Cloudbase-Init),
+     * counted from the start of the wait. It stays well inside the task's
+     * job timeout (RunServerTask::TIMEOUT), which also covers the clone.
+     */
+    public const WINDOWS_SETUP_TIMEOUT_SECONDS = 900;
+
+    /**
+     * Prints Windows' image state and the state of the Cloudbase-Init service
+     * (empty when there is none), one per line. A fixed command: nothing in
+     * it comes from the server or a customer.
+     */
+    public const WINDOWS_SETUP_COMMAND = [
+        'powershell.exe', '-NoProfile', '-NonInteractive', '-Command',
+        "\$state = Get-ItemProperty -Path 'HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Setup\\State' -Name ImageState -ErrorAction SilentlyContinue; "
+        .'$service = Get-Service -Name cloudbase-init -ErrorAction SilentlyContinue; '
+        .'Write-Output ([string]$state.ImageState); Write-Output ([string]$service.Status)',
+    ];
+
     /** Runs of a script when the guest restarts while it runs. */
     private const ATTEMPTS = 3;
 
@@ -199,13 +219,23 @@ final readonly class GuestScripts
      * once its guest agent answers (password resets, scripts and apps need
      * it). When the agent does not answer in time the server still runs, so
      * the step records that and the operation goes on (docs/adr/0004).
+     *
+     * With $setup (a new or reinstalled system), a Windows server is ready
+     * only once Windows setup has finished: its agent already answers during
+     * sysprep's specialize pass, before Windows restarts into OOBE and before
+     * Cloudbase-Init runs. If setup does not finish in time, the step records
+     * that and the operation goes on as well.
      */
-    public function waitForAgentStep(Task $task, Server $server, int $timeoutSeconds = self::AGENT_TIMEOUT_SECONDS): bool
+    public function waitForAgentStep(Task $task, Server $server, int $timeoutSeconds = self::AGENT_TIMEOUT_SECONDS, bool $setup = false): bool
     {
         $task->startStep('wait_agent');
 
+        if ($setup && $this->platform($server) === OsPlatform::Windows) {
+            return $this->waitForWindowsSetup($task, $server, $timeoutSeconds);
+        }
+
         if (! $this->waitForAgent($server, $timeoutSeconds)) {
-            $task->completeStep('wait_agent', 'The guest agent did not answer within '.intdiv($timeoutSeconds, 60).' minutes.');
+            $task->completeStep('wait_agent', self::agentTimeoutNote($timeoutSeconds));
 
             return false;
         }
@@ -213,6 +243,75 @@ final readonly class GuestScripts
         $task->completeStep('wait_agent');
 
         return true;
+    }
+
+    /**
+     * Poll until Windows reports IMAGE_STATE_COMPLETE and Cloudbase-Init no
+     * longer runs. The agent goes away while Windows restarts during setup:
+     * that is waited out like a check that has not passed yet. The agent must
+     * still answer for the first time within $agentTimeoutSeconds (a template
+     * without one).
+     *
+     * @return bool whether the agent answered
+     */
+    private function waitForWindowsSetup(Task $task, Server $server, int $agentTimeoutSeconds): bool
+    {
+        $agent = $this->clients->forCluster($server->cluster)->guestAgent($server->node->name);
+        $timeoutSeconds = max($agentTimeoutSeconds, self::WINDOWS_SETUP_TIMEOUT_SECONDS);
+        $agentDeadline = Carbon::now()->addSeconds($agentTimeoutSeconds);
+        $deadline = Carbon::now()->addSeconds($timeoutSeconds);
+        $answered = false;
+
+        while (true) {
+            if ($agent->ping($server->vmid)) {
+                $answered = true;
+
+                if ($this->windowsSetupFinished($agent, $server->vmid)) {
+                    $task->completeStep('wait_agent');
+
+                    return true;
+                }
+            }
+
+            if (! $answered && Carbon::now()->greaterThanOrEqualTo($agentDeadline)) {
+                $task->completeStep('wait_agent', self::agentTimeoutNote($agentTimeoutSeconds));
+
+                return false;
+            }
+
+            if (Carbon::now()->greaterThanOrEqualTo($deadline)) {
+                $task->completeStep('wait_agent', 'Windows setup did not finish within '.intdiv($timeoutSeconds, 60).' minutes: the server may still be setting itself up.');
+
+                return true;
+            }
+
+            Sleep::for(5)->seconds();
+        }
+    }
+
+    private function windowsSetupFinished(GuestAgentResource $agent, int $vmid): bool
+    {
+        try {
+            $result = $agent->run($vmid, self::WINDOWS_SETUP_COMMAND, timeoutSeconds: 60);
+        } catch (ProxmoxException) {
+            // Windows restarted while the check ran.
+            return false;
+        }
+
+        if (! $result->succeeded()) {
+            return false;
+        }
+
+        $lines = array_map(trim(...), explode("\n", $result->stdout));
+
+        // No image state: a template that was never generalized, so no setup to wait for.
+        return in_array($lines[0], ['', 'IMAGE_STATE_COMPLETE'], true)
+            && in_array($lines[1] ?? '', ['', 'Stopped'], true);
+    }
+
+    private static function agentTimeoutNote(int $timeoutSeconds): string
+    {
+        return 'The guest agent did not answer within '.intdiv($timeoutSeconds, 60).' minutes.';
     }
 
     /**

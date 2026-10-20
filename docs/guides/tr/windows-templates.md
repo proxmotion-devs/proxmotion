@@ -25,10 +25,30 @@ göre belirlenir (diğer tüm aileler Linux'tur). Platform şunları belirler:
 Scriptler şablon bazında *OS templates → Scripts* sayfasından değiştirilebilir.
 
 Kurulumdan hemen sonra guest agent, **Windows kurulumunu bitirmeden** cevap vermeye başlar:
-Sysprep ve Cloudbase-Init sunucuyu hâlâ yeniden başlatır. Panel bununla başa çıkar. Bir script
-çalışırken agent kaybolursa geri gelmesini bekler ve scripti yeniden çalıştırır (en fazla üç kez).
-Windows scriptleri de ağa dokunmadan önce Cloudbase-Init'in bitmesini bekler. Yani şablondan
-çıkardığınız her yeniden başlatma, yeni sunucunun daha erken hazır olması demektir.
+Sysprep'in *specialize* aşamasında zaten çalışır, Sysprep ve Cloudbase-Init ise sunucuyu sonrasında
+hâlâ yeniden başlatır. Bu yüzden yeni kurulan ya da yeniden kurulan bir Windows sunucusunda görevin
+*guest agent'ı bekleme* adımı, agent ilk cevap verdiğinde bitmez. Panel agent üzerinden birkaç
+saniyede bir şunları kontrol eder:
+
+- `HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Setup\State` altındaki `ImageState` değeri
+  `IMAGE_STATE_COMPLETE` mi (bu değeri hiç olmayan bir şablon tamamlanmış sayılır),
+- `cloudbase-init` servisi artık çalışmıyor mu (`Stopped` ya da kurulu değil).
+
+Aradaki yeniden başlatmalar, agent yokken, sadece beklenir. Sunucu ancak bundan sonra *Active*
+olur; adres scripti ve şablonun kendi scripti de ancak o zaman çalışır. Agent 10 dakika içinde hiç
+cevap vermezse (agent'ı olmayan bir şablon) adım, Linux'taki gibi bu notla biter; kurulum 15 dakika
+içinde bitmezse adım *Windows setup did not finish within 15 minutes* notunu düşer ve görev yine de
+devam eder (sunucu kurulumunu hâlâ sürdürüyor olabilir).
+
+Scriptler geç gelen bir yeniden başlatmayla da başa çıkar: bir script çalışırken agent kaybolursa
+panel geri gelmesini bekler ve scripti yeniden çalıştırır (en fazla üç kez); Windows scriptleri de
+ağa dokunmadan önce Cloudbase-Init'in bitmesini bekler. Şablondan çıkardığınız her yeniden
+başlatma, yeni sunucunun daha erken hazır olması demektir.
+
+**Henüz gerçek bir Windows sunucusunda doğrulanmadı:** yukarıdaki kontrol ve agent'ın bir yeniden
+başlatma ile Cloudbase-Init servisinin başlaması arasındaki kısa sürede cevap verip veremeyeceği
+(bu, kontrolün erken geçmesine yol açardı; o durumu scriptlerin yeniden denemeleri karşılar).
+Askıdan çıkarılan bir sunucuda yalnızca agent beklenir.
 
 ## Yeni bir Windows sunucusu neden yeniden başlar
 

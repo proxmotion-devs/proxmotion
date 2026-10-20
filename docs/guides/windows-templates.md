@@ -22,11 +22,31 @@ follows the family (every other family is Linux). The platform decides:
 
 Scripts can be replaced per template under *OS templates → Scripts*.
 
-Right after an install, the guest agent answers **before Windows has finished its setup**: Sysprep
-and Cloudbase-Init still restart the server. The panel copes with that. When the agent goes away
-while a script runs, it waits for it and runs the script again (up to three times). The Windows
-scripts also wait for Cloudbase-Init to finish before they touch the network. So every restart you
-remove from the template makes a new server ready sooner.
+Right after an install, the guest agent answers **before Windows has finished its setup**: it
+already runs during Sysprep's *specialize* pass, and Sysprep and Cloudbase-Init still restart the
+server afterwards. So for a new or reinstalled Windows server, the task's *wait for the guest
+agent* step does not end when the agent first answers. Through the agent, the panel checks every
+few seconds until
+
+- `ImageState` under `HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Setup\State` is
+  `IMAGE_STATE_COMPLETE` (a template that has no such value counts as complete), and
+- the `cloudbase-init` service is no longer running (`Stopped`, or not installed).
+
+Restarts in between, while the agent is away, are simply waited out. Only then is the server
+*Active* and do the address script and the template's own script run. When the agent has not
+answered at all after 10 minutes (a template without an agent), the step ends with that note as on
+Linux; when setup has not finished after 15 minutes, the step notes *Windows setup did not finish
+within 15 minutes* and the task goes on anyway (the server may still be setting itself up).
+
+The scripts still cope with a late restart: when the agent goes away while a script runs, the
+panel waits for it and runs the script again (up to three times), and the Windows scripts wait for
+Cloudbase-Init to finish before they touch the network. Every restart you remove from the template
+makes a new server ready sooner.
+
+**Not verified on a real Windows guest yet:** the check above, and whether the agent can answer in
+the short time between a restart and the start of the Cloudbase-Init service (which would let the
+check pass too early; the scripts' retries cover that case). Unsuspending a server only waits for
+the agent.
 
 ## Why a new Windows server restarts
 
