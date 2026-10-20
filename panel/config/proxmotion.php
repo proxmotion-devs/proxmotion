@@ -48,10 +48,14 @@ return [
     | New servers get the first free VMID from min_vmid upwards (0: from
     | Proxmox's next free ID), e.g. to keep them apart from VMs managed by hand.
     |
+    | Creating or reinstalling a server must finish within deadline_minutes
+    | of its start, all its waits included (docs/adr/0032).
+    |
     */
 
     'provisioning' => [
         'min_vmid' => (int) env('PROXMOTION_MIN_VMID', 0),
+        'deadline_minutes' => (int) env('PROXMOTION_PROVISIONING_DEADLINE_MINUTES', 120),
     ],
 
     /*

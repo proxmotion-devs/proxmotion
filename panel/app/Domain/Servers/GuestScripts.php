@@ -17,6 +17,7 @@ use App\Proxmox\Exceptions\GuestCommandDisabled;
 use App\Proxmox\Exceptions\ProxmoxException;
 use App\Proxmox\ProxmoxClientFactory;
 use App\Proxmox\Resources\GuestAgentResource;
+use Closure;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Sleep;
 use Throwable;
@@ -274,106 +275,139 @@ final readonly class GuestScripts
      * sysprep's specialize pass, before Windows restarts into OOBE and before
      * Cloudbase-Init runs. If setup does not finish in time, the step records
      * that and the operation goes on as well. A Linux server is ready once
-     * cloud-init has finished (waitForCloudInit()), so that it does not undo
+     * cloud-init has finished (checkCloudInit()), so that it does not undo
      * what the guest scripts set (the hostname, /etc/hosts).
      */
     public function waitForAgentStep(Task $task, Server $server, int $timeoutSeconds = self::AGENT_TIMEOUT_SECONDS, bool $setup = false): bool
     {
-        $task->startStep('wait_agent');
+        $state = [];
+
+        while (($delay = $this->checkReady($task, $server, $state, $setup, $timeoutSeconds)) !== null) {
+            Sleep::for($delay)->seconds();
+        }
+
+        return ($state['answered'] ?? false) === true;
+    }
+
+    /**
+     * One check of the wait that waitForAgentStep() describes, for staged
+     * tasks that wait between runs instead of in place (docs/adr/0032).
+     * $state carries what the wait remembers from one check to the next
+     * (plain values only, kept on the task between runs); 'answered' says
+     * whether the agent answered. Without a $step the wait records nothing.
+     *
+     * @param  array<string, mixed>  $state
+     * @return int|null null once the wait is over (the step is complete), else the seconds until the next check
+     */
+    public function checkReady(Task $task, Server $server, array &$state, bool $setup = false, int $timeoutSeconds = self::AGENT_TIMEOUT_SECONDS, ?string $step = 'wait_agent'): ?int
+    {
+        $now = Carbon::now()->getTimestamp();
+
+        if (! is_int($state['since'] ?? null)) {
+            $state['since'] = $now;
+
+            if ($step !== null) {
+                $task->startStep($step);
+            }
+        }
+
+        $agent = $this->clients->forCluster($server->cluster)->guestAgent($server->node->name);
+        $done = function (?string $note) use ($task, $step): null {
+            if ($step !== null) {
+                $task->completeStep($step, $note);
+            }
+
+            return null;
+        };
 
         if ($setup && $this->platform($server) === OsPlatform::Windows) {
-            return $this->waitForWindowsSetup($task, $server, $timeoutSeconds);
+            return $this->checkWindowsSetup($agent, $server, $state, $timeoutSeconds, $done);
         }
 
-        if (! $this->waitForAgent($server, $timeoutSeconds)) {
-            $task->completeStep('wait_agent', self::agentTimeoutNote($timeoutSeconds));
+        if (($state['answered'] ?? false) !== true) {
+            if (! $agent->ping($server->vmid)) {
+                return $now >= $state['since'] + $timeoutSeconds ? $done(self::agentTimeoutNote($timeoutSeconds)) : 5;
+            }
 
-            return false;
+            $state['answered'] = true;
+
+            if (! $setup) {
+                return $done(null);
+            }
+
+            $state['cloud_init_since'] = $now;
         }
 
-        $task->completeStep('wait_agent', $setup ? $this->waitForCloudInit($server) : null);
-
-        return true;
+        return $this->checkCloudInit($agent, $server, $state, $done);
     }
 
     /**
-     * Poll until cloud-init no longer runs (done, error, disabled, or not
-     * installed). The agent going away meanwhile (cloud-init restarting the
-     * guest) is waited out like a check that has not passed yet.
+     * One check whether cloud-init still runs (done, error, disabled, or not
+     * installed end the wait). The agent going away meanwhile (cloud-init
+     * restarting the guest) counts as a check that has not passed yet.
      *
-     * @return string|null a note for the step when it was not waited out cleanly
+     * @param  array<string, mixed>  $state
+     * @param  Closure(?string): null  $done
      */
-    private function waitForCloudInit(Server $server): ?string
+    private function checkCloudInit(GuestAgentResource $agent, Server $server, array $state, Closure $done): ?int
     {
-        $agent = $this->clients->forCluster($server->cluster)->guestAgent($server->node->name);
-        $deadline = Carbon::now()->addSeconds(self::CLOUD_INIT_TIMEOUT_SECONDS);
+        try {
+            $result = $agent->run($server->vmid, self::CLOUD_INIT_STATUS_COMMAND, timeoutSeconds: 60);
+            $status = preg_match('/^status:\s*(.+)$/m', $result->stdout, $match) === 1 ? trim($match[1]) : '';
 
-        while (true) {
-            try {
-                $result = $agent->run($server->vmid, self::CLOUD_INIT_STATUS_COMMAND, timeoutSeconds: 60);
-                $status = preg_match('/^status:\s*(.+)$/m', $result->stdout, $match) === 1 ? trim($match[1]) : '';
-
-                if (! in_array($status, ['running', 'not started'], true)) {
-                    return in_array($status, ['error', 'degraded', 'degraded done'], true)
-                        ? "cloud-init finished with status {$status}: check /var/log/cloud-init.log inside the server."
-                        : null;
-                }
-            } catch (GuestCommandDisabled $e) {
-                return 'Could not check whether cloud-init has finished: '.$e->getMessage();
-            } catch (ProxmoxException) {
-                // The guest restarted while the check ran: check again once it is back.
+            if (! in_array($status, ['running', 'not started'], true)) {
+                return $done(in_array($status, ['error', 'degraded', 'degraded done'], true)
+                    ? "cloud-init finished with status {$status}: check /var/log/cloud-init.log inside the server."
+                    : null);
             }
-
-            if (Carbon::now()->greaterThanOrEqualTo($deadline)) {
-                return 'cloud-init was still running after '.intdiv(self::CLOUD_INIT_TIMEOUT_SECONDS, 60).' minutes: the server may still be setting itself up.';
-            }
-
-            Sleep::for(5)->seconds();
+        } catch (GuestCommandDisabled $e) {
+            return $done('Could not check whether cloud-init has finished: '.$e->getMessage());
+        } catch (ProxmoxException) {
+            // The guest restarted while the check ran: check again once it is back.
         }
+
+        $since = is_int($state['cloud_init_since'] ?? null) ? $state['cloud_init_since'] : $state['since'];
+
+        if (Carbon::now()->getTimestamp() >= $since + self::CLOUD_INIT_TIMEOUT_SECONDS) {
+            return $done('cloud-init was still running after '.intdiv(self::CLOUD_INIT_TIMEOUT_SECONDS, 60).' minutes: the server may still be setting itself up.');
+        }
+
+        return 5;
     }
 
     /**
-     * Poll until Windows reports IMAGE_STATE_COMPLETE and Cloudbase-Init no
-     * longer runs. The agent goes away while Windows restarts during setup:
-     * that is waited out like a check that has not passed yet. The agent must
-     * still answer for the first time within $agentTimeoutSeconds (a template
-     * without one).
+     * One check whether Windows reports IMAGE_STATE_COMPLETE and
+     * Cloudbase-Init no longer runs. The agent goes away while Windows
+     * restarts during setup: that counts as a check that has not passed yet.
+     * The agent must still answer for the first time within $agentTimeoutSeconds
+     * (a template without one).
      *
-     * @return bool whether the agent answered
+     * @param  array<string, mixed>  $state
+     * @param  Closure(?string): null  $done
      */
-    private function waitForWindowsSetup(Task $task, Server $server, int $agentTimeoutSeconds): bool
+    private function checkWindowsSetup(GuestAgentResource $agent, Server $server, array &$state, int $agentTimeoutSeconds, Closure $done): ?int
     {
-        $agent = $this->clients->forCluster($server->cluster)->guestAgent($server->node->name);
         $timeoutSeconds = max($agentTimeoutSeconds, self::WINDOWS_SETUP_TIMEOUT_SECONDS);
-        $agentDeadline = Carbon::now()->addSeconds($agentTimeoutSeconds);
-        $deadline = Carbon::now()->addSeconds($timeoutSeconds);
-        $answered = false;
 
-        while (true) {
-            if ($agent->ping($server->vmid)) {
-                $answered = true;
+        if ($agent->ping($server->vmid)) {
+            $state['answered'] = true;
 
-                if ($this->windowsSetupFinished($agent, $server->vmid)) {
-                    $task->completeStep('wait_agent');
-
-                    return true;
-                }
+            if ($this->windowsSetupFinished($agent, $server->vmid)) {
+                return $done(null);
             }
-
-            if (! $answered && Carbon::now()->greaterThanOrEqualTo($agentDeadline)) {
-                $task->completeStep('wait_agent', self::agentTimeoutNote($agentTimeoutSeconds));
-
-                return false;
-            }
-
-            if (Carbon::now()->greaterThanOrEqualTo($deadline)) {
-                $task->completeStep('wait_agent', 'Windows setup did not finish within '.intdiv($timeoutSeconds, 60).' minutes: the server may still be setting itself up.');
-
-                return true;
-            }
-
-            Sleep::for(5)->seconds();
         }
+
+        $now = Carbon::now()->getTimestamp();
+
+        if (($state['answered'] ?? false) !== true && $now >= $state['since'] + $agentTimeoutSeconds) {
+            return $done(self::agentTimeoutNote($agentTimeoutSeconds));
+        }
+
+        if ($now >= $state['since'] + $timeoutSeconds) {
+            return $done('Windows setup did not finish within '.intdiv($timeoutSeconds, 60).' minutes: the server may still be setting itself up.');
+        }
+
+        return 5;
     }
 
     private function windowsSetupFinished(GuestAgentResource $agent, int $vmid): bool

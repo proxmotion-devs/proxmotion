@@ -346,8 +346,9 @@ A new, reinstalled or unsuspended server becomes `active` once its guest agent a
 - One **Task** per operation; it records each pipeline step and its progress.
 - Only **one task at a time per server**; a second request gets `409`.
 - Pipelines are **idempotent**: a failed or interrupted task can be **retried** and continues where it stopped.
-- A stuck task (queued, or running past its timeout) can be ended with **Mark as failed**.
+- A stuck task (queued, or running without progress for longer than a queue job may run, or past its deadline) can be ended with **Mark as failed**.
 - Long Proxmox operations return a UPID; the task waiter follows it until it finishes and handles failures and timeouts explicitly.
+- **Creating and reinstalling run in stages** (ADR 0032): while they wait for a clone, the guest agent, Windows setup or cloud-init, the queue worker is free and the task picks up again a few seconds later. Such a task must finish within 120 minutes (`PROXMOTION_PROVISIONING_DEADLINE_MINUTES`).
 
 ### 9.3 Creating a server
 

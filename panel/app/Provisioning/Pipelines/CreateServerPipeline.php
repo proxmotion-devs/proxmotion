@@ -15,21 +15,28 @@ use App\Models\Server;
 use App\Models\Task;
 use App\Provisioning\LinkedClones;
 use App\Provisioning\Network\NetworkConfig;
+use App\Provisioning\Stages\StagedPipeline;
+use App\Provisioning\Stages\StageRunner;
 use App\Proxmox\Data\BootDisk;
+use App\Proxmox\Data\Upid;
 use App\Proxmox\Exceptions\ProxmoxRequestFailed;
-use App\Proxmox\ProxmoxClient;
 use App\Proxmox\ProxmoxClientFactory;
-use App\Proxmox\Resources\QemuResource;
 use RuntimeException;
 
 /**
- * Clone → configure → grow disk → anti-spoofing → start → wait for the guest agent.
+ * Clone → configure → grow disk → anti-spoofing → start → wait for the guest
+ * agent → name the guest → guest scripts → active → ordered app.
  *
- * Every step checks Proxmox's actual state first, so running the pipeline
- * again after a failure continues where it stopped instead of starting over.
+ * Runs in stages (docs/adr/0032): waits for Proxmox tasks and the guest end
+ * a run, and the next run continues there. Every stage checks Proxmox's actual
+ * state first, so running the pipeline again after a failure continues where
+ * it stopped instead of starting over.
  */
-final readonly class CreateServerPipeline
+final readonly class CreateServerPipeline implements StagedPipeline
 {
+    /** The stages that build and set up a server; reinstalling runs them too. */
+    public const BUILD_STAGES = ['clone', 'configure', 'resize', 'firewall', 'start', 'wait_agent', 'name_guest', 'name_guest_wait', 'guest_scripts'];
+
     public function __construct(
         private ProxmoxClientFactory $clients,
         private NetworkConfig $network,
@@ -37,86 +44,106 @@ final readonly class CreateServerPipeline
         private AppStarter $apps,
         private LinkedClones $linkedClones,
         private PowerPipeline $power,
+        private StageRunner $stages,
     ) {}
 
-    public function run(Task $task): void
+    public function stages(): array
+    {
+        return ['provision', ...self::BUILD_STAGES, 'finish'];
+    }
+
+    public function runStage(Task $task, string $stage): ?int
     {
         $server = $task->server;
+
+        return match ($stage) {
+            'provision' => $this->provision($server),
+            'finish' => $this->finish($task, $server),
+            default => $this->runBuildStage($task, $stage),
+        };
+    }
+
+    private function provision(Server $server): null
+    {
         $server->forceFill(['status' => ServerStatus::Provisioning])->save();
 
-        $this->build($task);
+        return null;
+    }
 
-        // Active only once the new system's guest agent answers, and on Windows once
-        // setup has finished (or the wait times out, ADR 0004).
-        $this->guestScripts->waitForAgentStep($task, $server, setup: true);
-
-        // A server named from its location's template: its hostname inside the guest (ADR 0031).
-        $this->nameGuest($task, $server);
-
-        // Additional addresses and the template's script (ADR 0009, 0010).
-        $this->guestScripts->afterInstall($task, $server);
-
+    private function finish(Task $task, Server $server): null
+    {
         $server->forceFill(['status' => ServerStatus::Active, 'provisioned_at' => now()])->save();
 
         // The app it was ordered with (ADR 0004): never fails the server.
         $this->apps->startOrdered($task, $server);
+
+        return null;
     }
 
     /**
-     * A server named from its location's template has its address as VM name
-     * (docs/adr/0031), from which cloud-init and Cloudbase-Init took the
-     * hostname inside the guest: the hostname script sets the real one. Windows
-     * applies it at its next restart, done here. A failing script leaves a note.
-     */
-    public function nameGuest(Task $task, Server $server): void
-    {
-        if ($server->vm_name === null || $server->vm_name === $server->hostname) {
-            return;
-        }
-
-        if (! $this->guestScripts->run($task, $server, GuestScriptEvent::HostnameChanged)
-            || $this->guestScripts->platform($server) !== OsPlatform::Windows) {
-            return;
-        }
-
-        $this->power->power($task, PowerAction::Reboot);
-        $this->guestScripts->waitForAgent($server);
-    }
-
-    /**
-     * Build the VM from the server's OS template and start it. Reinstalling
-     * runs this too, after deleting the old VM.
+     * One of BUILD_STAGES. A reinstall keeps the MAC address of the VM it
+     * deleted through the task input previous_net0.
      *
-     * @param  string|null  $previousNet0  net0 of a deleted VM, to keep its MAC address
+     * @return int|null null once the stage is done, else the seconds until it should run again
      */
-    public function build(Task $task, ?string $previousNet0 = null): void
+    public function runBuildStage(Task $task, string $stage): ?int
     {
         $server = $task->server;
-        $client = $this->clients->forCluster($server->cluster);
-        $qemu = $client->qemu($server->node->name);
 
-        $this->cloneVm($task, $server, $client, $qemu);
-        $config = $this->configure($task, $server, $qemu, $previousNet0);
-        $this->growDisk($task, $server, $client, $qemu, $config);
-
-        $qemu->enableAntiSpoofing($server->vmid, $this->network->allowedAddresses($server));
-        $task->completeStep('firewall');
-
-        if ($qemu->status($server->vmid)['status'] !== 'running') {
-            $client->taskWaiter()->wait($qemu->power($server->vmid, 'start'), timeoutSeconds: 300);
-        }
-
-        $task->completeStep('start');
+        return match ($stage) {
+            'clone' => $this->cloneVm($task, $server),
+            'configure' => $this->configure($task, $server),
+            'resize' => $this->growDisk($task, $server),
+            'firewall' => $this->firewall($task, $server),
+            'start' => $this->start($task, $server),
+            // Active only once the new system's guest agent answers, and on Windows once
+            // setup has finished, on Linux once cloud-init has (or the wait times out, ADR 0004).
+            'wait_agent' => $this->waitForAgent($task, $server, setup: true, step: 'wait_agent'),
+            // A server named from its location's template: its hostname inside the guest (ADR 0031).
+            'name_guest' => $this->nameGuest($task, $server),
+            'name_guest_wait' => ($task->input['renamed_with_restart'] ?? false) === true
+                ? $this->waitForAgent($task, $server, setup: false, step: null)
+                : null,
+            // Additional addresses and the template's script (ADR 0009, 0010).
+            'guest_scripts' => $this->afterInstall($task, $server),
+            default => throw new RuntimeException("Unknown stage {$stage}."),
+        };
     }
 
-    private function cloneVm(Task $task, Server $server, ProxmoxClient $client, QemuResource $qemu): void
+    private function afterInstall(Task $task, Server $server): null
     {
-        if ($qemu->config($server->vmid) !== null) {
+        $this->guestScripts->afterInstall($task, $server);
+
+        return null;
+    }
+
+    private function cloneVm(Task $task, Server $server): ?int
+    {
+        $client = $this->clients->forCluster($server->cluster);
+
+        if ($task->stageValue('upid') === null && $client->qemu($server->node->name)->config($server->vmid) !== null) {
             $task->completeStep('clone', 'VM already exists.');
 
-            return;
+            return null;
         }
 
+        $delay = $this->stages->proxmoxTask($task, $client, fn () => $this->startClone($task, $server), timeoutSeconds: 1800);
+
+        if ($delay === null) {
+            $message = $task->stageValue('message');
+            $task->completeStep('clone', is_string($message) ? $message : null);
+        }
+
+        return $delay;
+    }
+
+    /**
+     * Linked clones when the template asks for them and the storage allows it,
+     * otherwise a full clone with the reason on the step (docs/adr/0027).
+     */
+    private function startClone(Task $task, Server $server): Upid
+    {
+        $client = $this->clients->forCluster($server->cluster);
         $template = $server->osTemplate?->proxmoxTemplates()
             ->where('cluster_id', $server->cluster_id)
             ->orderByRaw('node_id = ? desc', [$server->node_id])
@@ -134,8 +161,6 @@ final readonly class CreateServerPipeline
             full: $full,
         );
 
-        // Linked clones when the template asks for them and the storage allows it,
-        // otherwise a full clone with the reason on the step (docs/adr/0027).
         $message = null;
         $upid = null;
 
@@ -154,16 +179,17 @@ final readonly class CreateServerPipeline
             $message ??= "Full clone: {$reason}";
         }
 
-        $client->taskWaiter()->wait($upid ?? $clone(true), timeoutSeconds: 1800);
-        $task->completeStep('clone', $message);
+        $upid ??= $clone(true);
+        $task->rememberForStage(['message' => $message]);
+
+        return $upid;
     }
 
-    /**
-     * @return array<string, mixed> the configuration after the update
-     */
-    private function configure(Task $task, Server $server, QemuResource $qemu, ?string $previousNet0): array
+    private function configure(Task $task, Server $server): null
     {
+        $qemu = $this->clients->forCluster($server->cluster)->qemu($server->node->name);
         $current = $qemu->config($server->vmid) ?? [];
+        $previousNet0 = is_string($task->input['previous_net0'] ?? null) ? $task->input['previous_net0'] : null;
         $net0 = $previousNet0 ?? (is_string($current['net0'] ?? null) ? $current['net0'] : null);
 
         $params = [
@@ -195,24 +221,91 @@ final readonly class CreateServerPipeline
         $server->forceFill(['mac_address' => $this->network->macAddress($config)])->save();
         $task->completeStep('configure');
 
-        return $config;
+        return null;
+    }
+
+    private function growDisk(Task $task, Server $server): ?int
+    {
+        $client = $this->clients->forCluster($server->cluster);
+        $qemu = $client->qemu($server->node->name);
+
+        $delay = $this->stages->proxmoxTask($task, $client, function () use ($server, $qemu): ?Upid {
+            $disk = BootDisk::fromConfig($qemu->config($server->vmid) ?? []) ?? throw new RuntimeException('Could not find the boot disk of the VM.');
+
+            return $disk->sizeMib < $server->disk_mib ? $qemu->resize($server->vmid, $disk->key, $server->disk_mib) : null;
+        }, timeoutSeconds: 600);
+
+        if ($delay === null) {
+            $task->completeStep('resize');
+        }
+
+        return $delay;
+    }
+
+    private function firewall(Task $task, Server $server): null
+    {
+        $qemu = $this->clients->forCluster($server->cluster)->qemu($server->node->name);
+        $qemu->enableAntiSpoofing($server->vmid, $this->network->allowedAddresses($server));
+        $task->completeStep('firewall');
+
+        return null;
+    }
+
+    private function start(Task $task, Server $server): ?int
+    {
+        $client = $this->clients->forCluster($server->cluster);
+        $qemu = $client->qemu($server->node->name);
+
+        $delay = $this->stages->proxmoxTask(
+            $task,
+            $client,
+            fn () => $qemu->status($server->vmid)['status'] !== 'running' ? $qemu->power($server->vmid, 'start') : null,
+            timeoutSeconds: 300,
+        );
+
+        if ($delay === null) {
+            $task->completeStep('start');
+        }
+
+        return $delay;
     }
 
     /**
-     * @param  array<string, mixed>  $config
+     * One check of the guest agent (GuestScripts::checkReady()); what the
+     * wait remembers is kept on the task between runs.
      */
-    private function growDisk(Task $task, Server $server, ProxmoxClient $client, QemuResource $qemu, array $config): void
+    private function waitForAgent(Task $task, Server $server, bool $setup, ?string $step): ?int
     {
-        $disk = BootDisk::fromConfig($config) ?? throw new RuntimeException('Could not find the boot disk of the VM.');
+        $state = $task->stage_state ?? [];
+        $delay = $this->guestScripts->checkReady($task, $server, $state, $setup, step: $step);
+        $task->rememberForStage($state);
 
-        if ($disk->sizeMib < $server->disk_mib) {
-            $upid = $qemu->resize($server->vmid, $disk->key, $server->disk_mib);
+        return $delay;
+    }
 
-            if ($upid !== null) {
-                $client->taskWaiter()->wait($upid, timeoutSeconds: 600);
-            }
+    /**
+     * A server named from its location's template has its address as VM name
+     * (docs/adr/0031), from which cloud-init and Cloudbase-Init took the
+     * hostname inside the guest: the hostname script sets the real one. Windows
+     * applies it at its next restart, done here; the next stage waits for its
+     * agent again. A failing script leaves a note.
+     */
+    private function nameGuest(Task $task, Server $server): null
+    {
+        $task->rememberInput('renamed_with_restart', null);
+
+        if ($server->vm_name === null || $server->vm_name === $server->hostname) {
+            return null;
         }
 
-        $task->completeStep('resize');
+        if (! $this->guestScripts->run($task, $server, GuestScriptEvent::HostnameChanged)
+            || $this->guestScripts->platform($server) !== OsPlatform::Windows) {
+            return null;
+        }
+
+        $this->power->power($task, PowerAction::Reboot);
+        $task->rememberInput('renamed_with_restart', true);
+
+        return null;
     }
 }

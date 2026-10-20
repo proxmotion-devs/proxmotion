@@ -46,6 +46,9 @@ class FakeProxmoxCluster
     /** @var list<string> UPIDs whose status was requested, in order */
     public array $polledTasks = [];
 
+    /** @var array<string, int> per task type (qmclone, qmdestroy, qmstart…): status checks that still report it running */
+    public array $runningPolls = [];
+
     /**
      * @var array<int, array<string, mixed>> per VMID: changes of a running VM that wait for its next start,
      *                                       like Proxmox without CPU/memory hotplug
@@ -383,6 +386,13 @@ class FakeProxmoxCluster
     {
         $failed = str_contains($upid, ':qmclone-fail:');
         $this->polledTasks[] = $upid;
+        $type = explode(':', $upid)[5] ?? '';
+
+        if (($this->runningPolls[$type] ?? 0) > 0) {
+            $this->runningPolls[$type]--;
+
+            return $this->ok(['status' => 'running']);
+        }
 
         foreach ($this->activeTasks as $vmid => $upids) {
             $this->activeTasks[$vmid] = array_values(array_diff($upids, [$upid]));

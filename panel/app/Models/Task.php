@@ -26,8 +26,13 @@ use Illuminate\Support\Carbon;
  * @property list<array{key: string, status: string, message: string|null, finished_at: string|null}> $steps
  * @property array<string, mixed>|null $input plain inputs of the task, e.g. addresses to release
  * @property string|null $secret encrypted input of the task (a chosen root password); cleared once used
+ * @property string|null $stage the stage a staged task (create, reinstall) is in (docs/adr/0032)
+ * @property array<string, mixed>|null $stage_state what the current stage remembers between runs
+ * @property int $dispatch how often the task was queued again; older jobs of it do nothing
  * @property string|null $error
  * @property Carbon|null $started_at
+ * @property Carbon|null $heartbeat_at when a run of the task last made progress
+ * @property Carbon|null $deadline_at when a staged task fails if it has not finished
  * @property Carbon|null $finished_at
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
@@ -50,7 +55,10 @@ class Task extends Model
             'steps' => 'array',
             'secret' => 'encrypted',
             'input' => 'array',
+            'stage_state' => 'array',
             'started_at' => 'datetime',
+            'heartbeat_at' => 'datetime',
+            'deadline_at' => 'datetime',
             'finished_at' => 'datetime',
         ];
     }
@@ -87,6 +95,42 @@ class Task extends Model
         }
 
         return false;
+    }
+
+    /**
+     * Something the current stage remembers between runs (docs/adr/0032).
+     */
+    public function stageValue(string $key): mixed
+    {
+        return $this->stage_state[$key] ?? null;
+    }
+
+    /**
+     * Remember values for the current stage (null forgets one) and save.
+     *
+     * @param  array<string, mixed>  $values
+     */
+    public function rememberForStage(array $values): void
+    {
+        $state = array_filter([...$this->stage_state ?? [], ...$values], fn (mixed $value) => $value !== null);
+
+        $this->forceFill(['stage_state' => $state === [] ? null : $state])->save();
+    }
+
+    /**
+     * Keep a plain input for later stages (null removes it) and save.
+     */
+    public function rememberInput(string $key, mixed $value): void
+    {
+        $input = $this->input ?? [];
+
+        if ($value === null) {
+            unset($input[$key]);
+        } else {
+            $input[$key] = $value;
+        }
+
+        $this->forceFill(['input' => $input === [] ? null : $input])->save();
     }
 
     /**

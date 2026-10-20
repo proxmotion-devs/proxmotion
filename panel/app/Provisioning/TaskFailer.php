@@ -57,15 +57,25 @@ final class TaskFailer
     }
 
     /**
-     * An administrator may end a task that is queued, or running for longer
-     * than its job may run (the worker died or lost it).
+     * An administrator may end a task that is queued, or running without
+     * progress for longer than a job may run (the worker died or lost it), or
+     * past its deadline (a staged task, docs/adr/0032). Each run of a task
+     * records a heartbeat, a staged task also after each stage.
      */
     public function canAbandon(Task $task): bool
     {
-        return match ($task->status) {
-            TaskStatus::Queued => true,
-            TaskStatus::Running => $task->started_at === null || $task->started_at->lt(now()->subSeconds(RunServerTask::TIMEOUT)),
-            default => false,
-        };
+        if ($task->status === TaskStatus::Queued) {
+            return true;
+        }
+
+        if ($task->status !== TaskStatus::Running) {
+            return false;
+        }
+
+        $progress = $task->heartbeat_at ?? $task->started_at;
+
+        return $progress === null
+            || $progress->lt(now()->subSeconds(RunServerTask::TIMEOUT))
+            || ($task->deadline_at !== null && $task->deadline_at->isPast());
     }
 }
