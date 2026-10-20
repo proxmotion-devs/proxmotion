@@ -1,7 +1,7 @@
 format: 2
 slug: cyberpanel
 name: CyberPanel
-version: 1.0.1
+version: 1.0.2
 category: control-panel
 description:
     en: The free CyberPanel hosting control panel on OpenLiteSpeed with MariaDB and, optionally, mail, DNS and FTP. Needs a freshly installed server.

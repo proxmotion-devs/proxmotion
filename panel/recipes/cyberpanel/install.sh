@@ -42,7 +42,17 @@ else
     done
 
     pm_step 10 "Downloading the CyberPanel installer"
-    command -v curl >/dev/null 2>&1 || pm_pkg_install curl
+    # The installer puts acme.sh into $HOME/.acme.sh but then runs
+    # /root/.acme.sh/acme.sh, and systemd-run sets no HOME. acme.sh refuses
+    # to install without crontab, which minimal cloud images lack, and the
+    # installer ignores that and retries the missing acme.sh 50 times.
+    export HOME=/root
+    if command -v apt-get >/dev/null 2>&1; then
+        pm_pkg_install curl git cron
+    else
+        pm_pkg_install curl git cronie
+    fi
+    systemctl enable --now cron 2>/dev/null || systemctl enable --now crond 2>/dev/null || true
     # The installer downloads the actual installer into the current directory.
     workdir=$(mktemp -d)
     cd "$workdir"
