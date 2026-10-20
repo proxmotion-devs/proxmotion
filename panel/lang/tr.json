@@ -1705,5 +1705,11 @@
     "The hostname template must give a valid hostname, such as ip-{ip}.example.com.": "Hostname şablonu geçerli bir hostname vermeli, örneğin ip-{ip}.example.com.",
     "Can servers be named automatically, e.g. ip-203-0-113-5.example.com?": "Sunuculara otomatik ad verilebilir mi, örn. ip-203-0-113-5.example.com?",
     "Give the location a hostname template such as ip-{ip}.example.com. A server ordered there without a hostname (or a WHMCS or WISECP order without a valid domain) is named from its primary address, and that name becomes the PTR of its primary addresses. Your DNS should resolve these names too. Without a template a hostname is required, and the modules send vps followed by the service id.": "Lokasyona ip-{ip}.example.com gibi bir hostname şablonu verin. Orada hostname'siz sipariş edilen bir sunucu (ya da geçerli alan adı olmayan bir WHMCS veya WISECP siparişi) ana adresinden adlandırılır ve bu ad ana adreslerinin PTR kaydı olur. DNS'iniz de bu adları çözmelidir. Şablon yoksa hostname zorunludur ve modüller vps ile servis numarasını gönderir.",
-    "Open Locations": "Lokasyonları aç"
+    "Open Locations": "Lokasyonları aç",
+    ":seconds s": ":seconds sn",
+    ":minutes min": ":minutes dk",
+    ":minutes min :seconds s": ":minutes dk :seconds sn",
+    "About :time left": "Yaklaşık :time kaldı",
+    "Less than a minute left": "Bir dakikadan az kaldı",
+    "Estimated from the last :count runs with this OS template.": "Bu OS şablonuyla yapılan son :count çalıştırmadan tahmin edildi."
 }

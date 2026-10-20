@@ -21,9 +21,10 @@ use Illuminate\Support\Carbon;
  * @property int $server_id
  * @property int|null $user_id
  * @property int|null $api_token_id
+ * @property int|null $os_template_id the OS template a create or reinstall installs (TaskEstimates)
  * @property TaskType $type
  * @property TaskStatus $status
- * @property list<array{key: string, status: string, message: string|null, finished_at: string|null}> $steps
+ * @property list<array{key: string, status: string, message: string|null, started_at?: string|null, finished_at: string|null}> $steps started_at is missing on steps recorded before 2026-10-20
  * @property array<string, mixed>|null $input plain inputs of the task, e.g. addresses to release
  * @property string|null $secret encrypted input of the task (a chosen root password); cleared once used
  * @property string|null $stage the stage a staged task (create, reinstall) is in (docs/adr/0032)
@@ -70,18 +71,37 @@ class Task extends Model
     public function startStep(string $key): void
     {
         $steps = array_values(array_filter($this->steps, fn (array $step) => $step['key'] !== $key));
-        $steps[] = ['key' => $key, 'status' => 'running', 'message' => null, 'finished_at' => null];
+        $steps[] = ['key' => $key, 'status' => 'running', 'message' => null, 'started_at' => now()->toIso8601String(), 'finished_at' => null];
 
         $this->forceFill(['steps' => $steps])->save();
     }
 
     /**
      * Record that a step finished (or was skipped because it was already done).
+     * A step that was not started with startStep() began when the step before
+     * it finished, or when the task started.
      */
     public function completeStep(string $key, ?string $message = null): void
     {
+        $started = null;
+        $previous = null;
+
+        foreach ($this->steps as $step) {
+            if ($step['key'] === $key && $step['status'] === 'running') {
+                $started = $step['started_at'] ?? null;
+            } elseif (($step['finished_at'] ?? null) !== null && ($previous === null || $step['finished_at'] > $previous)) {
+                $previous = $step['finished_at'];
+            }
+        }
+
         $steps = array_values(array_filter($this->steps, fn (array $step) => $step['key'] !== $key));
-        $steps[] = ['key' => $key, 'status' => 'done', 'message' => $message, 'finished_at' => now()->toIso8601String()];
+        $steps[] = [
+            'key' => $key,
+            'status' => 'done',
+            'message' => $message,
+            'started_at' => $started ?? $previous ?? $this->started_at?->toIso8601String() ?? now()->toIso8601String(),
+            'finished_at' => now()->toIso8601String(),
+        ];
 
         $this->forceFill(['steps' => $steps])->save();
     }

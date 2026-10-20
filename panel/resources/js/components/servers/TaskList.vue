@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { router } from '@inertiajs/vue3';
 import { CircleCheck, CircleDashed, CircleX, LoaderCircle } from '@lucide/vue';
+import { trans } from 'laravel-vue-i18n';
 import { ref } from 'vue';
 import StatusBadge from '@/components/admin/StatusBadge.vue';
 import { Button } from '@/components/ui/button';
@@ -102,35 +103,65 @@ const stepLabels: Record<string, string> = {
     app_upload: 'Upload the app installer to the server',
     app_start: 'Start the app installer',
 };
-const plannedSteps: Partial<Record<TaskType, string[]>> = {
-    change_resources: ['configure', 'resize', 'addresses', 'apply'],
-    change_primary_address: ['addresses', 'guest_addresses'],
-    change_addresses: ['addresses', 'guest_addresses'],
-    create: ['clone', 'configure', 'resize', 'firewall', 'start', 'wait_agent'],
-    unsuspend: ['start', 'wait_agent'],
-    terminate: ['stop', 'destroy', 'release_ips'],
-    reinstall: [
-        'stop',
-        'destroy',
-        'clone',
-        'configure',
-        'resize',
-        'firewall',
-        'start',
-        'wait_agent',
-    ],
+// "1 min 52 s", from whole seconds.
+const formatDuration = (seconds: number): string => {
+    const total = Math.max(0, Math.round(seconds));
+    const minutes = Math.floor(total / 60);
+    const rest = total % 60;
+
+    if (minutes === 0) {
+        return trans(':seconds s', { seconds: String(rest) });
+    }
+
+    return rest === 0 || minutes >= 10
+        ? trans(':minutes min', { minutes: String(minutes) })
+        : trans(':minutes min :seconds s', {
+              minutes: String(minutes),
+              seconds: String(rest),
+          });
+};
+
+// How long a finished step took; null for steps recorded without times.
+const stepDuration = (step: TaskProgress['steps'][number] | null) => {
+    if (!step?.started_at || !step.finished_at || step.status !== 'done') {
+        return null;
+    }
+
+    const ms = Date.parse(step.finished_at) - Date.parse(step.started_at);
+
+    return Number.isNaN(ms) ? null : formatDuration(ms / 1000);
+};
+
+// The remaining time rounded up to whole minutes, which is as exact as an estimate gets.
+const remaining = (task: TaskProgress) => {
+    const seconds = task.estimate?.remaining_seconds;
+
+    if (
+        seconds === undefined ||
+        task.status === 'succeeded' ||
+        task.status === 'failed'
+    ) {
+        return null;
+    }
+
+    return seconds < 60
+        ? trans('Less than a minute left')
+        : trans('About :time left', {
+              time: formatDuration(Math.ceil(seconds / 60) * 60),
+          });
 };
 
 const stepRows = (task: TaskProgress) => {
     const done = new Map(task.steps.map((step) => [step.key, step]));
     const keys = [
-        ...(plannedSteps[task.type] ?? []),
+        ...(task.planned_steps ?? []),
         ...task.steps.map((step) => step.key),
     ];
 
     const rows = [...new Set(keys)].map((key) => ({
         key,
         step: done.get(key) ?? null,
+        duration: stepDuration(done.get(key) ?? null),
         active: false,
     }));
 
@@ -167,6 +198,18 @@ const stepRows = (task: TaskProgress) => {
                     />
                 </div>
                 <div class="flex items-center gap-2">
+                    <span
+                        v-if="remaining(task)"
+                        class="text-xs text-muted-foreground"
+                        data-test="task-estimate"
+                        :title="
+                            $t(
+                                'Estimated from the last :count runs with this OS template.',
+                                { count: String(task.estimate?.based_on ?? 0) },
+                            )
+                        "
+                        >{{ remaining(task) }}</span
+                    >
                     <Button
                         v-if="task.can_fail"
                         variant="outline"
@@ -213,6 +256,12 @@ const stepRows = (task: TaskProgress) => {
                     >
                         {{ $t(stepLabels[row.key] ?? row.key) }}
                     </span>
+                    <span
+                        v-if="row.duration"
+                        class="text-xs text-muted-foreground tabular-nums"
+                        data-test="step-duration"
+                        >{{ row.duration }}</span
+                    >
                     <span
                         v-if="row.step?.message"
                         class="text-xs text-muted-foreground"

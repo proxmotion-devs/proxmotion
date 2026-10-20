@@ -45,7 +45,17 @@ Every time the task is queued again, `tasks.dispatch` is incremented and the job
 - Each run of a task records a **heartbeat** (`tasks.heartbeat_at`), also after each stage. *Mark as failed* is offered for a running task without a heartbeat for longer than a job may run (`RunServerTask::TIMEOUT`), or past its deadline. Tasks that are not staged record their heartbeat when they start, which keeps the old rule for them.
 - The queue's **`retry_after`** defaults to 1860 seconds for the database, Redis and Beanstalkd connections (`DB_QUEUE_RETRY_AFTER`, `REDIS_QUEUE_RETRY_AFTER`, `BEANSTALKD_QUEUE_RETRY_AFTER`), longer than `RunServerTask::TIMEOUT`, as Laravel requires. Jobs whose worker died are therefore retried only after 31 minutes; none of the panel's jobs depends on a quicker retry.
 
-### 5. What does not change
+### 5. Steps still to come, step times and an estimate
+
+The server page used to list a fixed set of steps per task type, kept in the frontend, so steps that depend on the server (the hostname script, the Windows restart, additional addresses, the template's script, an ordered app) only showed up once they ran, and nothing said how long a step took or how long the task would still run.
+
+- **`TaskPlan`** lists the steps a task is expected to record, in order, from the server's state: the build steps, `guest_hostname` (and `reboot` on Windows) for a server named from its location's template, `guest_addresses` when it has additional addresses, `guest_provisioned` when its template has that script, `app_upload` and `app_start` when an app was ordered with it. The other task types keep their fixed lists, now on the server side. The plan is computed when the page is shown, for tasks that have not succeeded; nothing is written to the task, so `steps` still holds only what happened.
+- **Step times:** `startStep()` and `completeStep()` record `started_at` next to `finished_at`. A step that was not started explicitly began when the step before it finished, or when the task started. Steps recorded earlier have no `started_at` and show no time.
+- **`TaskEstimates`:** for a queued or running create or reinstall, the median time of each step not done yet in the latest 20 successful tasks of the same type with the same OS template (`tasks.os_template_id`, set by `TaskRunner`), less the time the current step has already run. With fewer than 3 such tasks there is no estimate. The page shows it rounded up to whole minutes ("About 3 min left").
+
+API v1 is unchanged: its task resource keeps `key`, `status` and `message` per step and does not carry the plan or the estimate.
+
+### 6. What does not change
 
 Other task types still run as one job. The API, its task resource and the webhooks are unchanged: a staged task is `running` from its first stage to its last, and its steps look as before. Retry after a failure still starts a new task that continues from what Proxmox shows.
 
@@ -54,4 +64,5 @@ Other task types still run as one job. The API, its task resource and the webhoo
 - A worker is busy only while a stage works, so more servers can be created at the same time with the same workers.
 - A long clone or a slow Windows setup no longer puts a healthy server in `error`; the deadline is the one limit for the whole task.
 - Delayed jobs need a queue that supports delays (database, Redis); the `sync` queue sleeps instead.
+- Administrators see every step a provisioning will go through, how long each took and roughly how long is left; a step that takes much longer than usual stands out. Estimates start once a template has three timed successful runs, and they only know what happened before (a busier node or a slower mirror is not foreseen).
 - Nothing of this has run on a real queue or against a real Proxmox server yet: delayed dispatches on Redis with Horizon and on the database queue, and a Windows server whose setup outlasts one job, are on the verification list in `AGENTS.md`.

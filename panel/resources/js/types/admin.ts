@@ -337,7 +337,18 @@ export type TaskProgress = {
     uuid: string;
     type: TaskType;
     status: TaskStatus;
-    steps: { key: string; status: string; message?: string | null }[];
+    steps: {
+        key: string;
+        status: string;
+        message?: string | null;
+        /** Missing on steps recorded before step times were kept. */
+        started_at?: string | null;
+        finished_at?: string | null;
+    }[];
+    /** Steps the task is expected to record, in order (TaskPlan); empty once it succeeded. */
+    planned_steps?: string[];
+    /** How long a running create or reinstall still takes, from earlier runs with its OS template. */
+    estimate?: { remaining_seconds: number; based_on: number } | null;
     error?: string | null;
     created_at: string | null;
     /** Stuck (queued, or running past its time limit): an administrator may end it. */

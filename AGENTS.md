@@ -123,6 +123,8 @@ proxmotion/
 │   │   │   ├── TaskRunner.php            # one Task per operation, refuses parallel tasks per server
 │   │   │   ├── TaskFailer.php            # ends a task as failed (pipeline error, RunServerTask::failed(), admin "Mark as failed" for stuck tasks)
 │   │   │   ├── Stages/                   # StagedPipeline, StageRunner (stages until one waits, Proxmox tasks checked once per run, deadline, run budget), TaskDeadlineExceeded (ADR 0032)
+│   │   │   ├── TaskPlan.php              # the steps a task is expected to record, from the server's state (shown as still to come)
+│   │   │   ├── TaskEstimates.php         # remaining time of a create/reinstall: per-step medians of the last 20 successful runs with its OS template (ADR 0032 §5)
 │   │   │   ├── Placement/                # NodePlacer (least memory used after placement), Placement, PlacementRules (placement groups, chosen node/storage)
 │   │   │   ├── Network/                  # NetworkConfig: net0, ipconfig0, nameserver, anti-spoofing addresses
 │   │   │   └── Pipelines/                # CreateServer, ReinstallServer (staged, ADR 0032), Power (suspend/unsuspend, power actions), ResetPassword, ChangeResources, Addresses (primary address changes, address edits, apply again), TerminateServer, InstallApp, AppRun (uninstalls, upgrades and actions) — idempotent

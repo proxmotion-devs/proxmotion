@@ -26,6 +26,7 @@ use App\Enums\IpVersion;
 use App\Enums\NodeStatus;
 use App\Enums\PowerAction;
 use App\Enums\ServerStatus;
+use App\Enums\TaskStatus;
 use App\Enums\TaskType;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\AddressChangeRequest;
@@ -58,7 +59,9 @@ use App\Provisioning\IpAllocator;
 use App\Provisioning\Placement\NodePlacer;
 use App\Provisioning\ResourceChanger;
 use App\Provisioning\ServerCreator;
+use App\Provisioning\TaskEstimates;
 use App\Provisioning\TaskFailer;
+use App\Provisioning\TaskPlan;
 use App\Provisioning\TaskRunner;
 use App\Proxmox\Exceptions\ProxmoxException;
 use Illuminate\Container\Attributes\CurrentUser;
@@ -210,7 +213,7 @@ class ServerController extends Controller
         return to_route('admin.servers.show', $server);
     }
 
-    public function show(Request $request, Server $server, GuestAgentProbe $agent, AppEligibility $eligibility, AppUpgrades $upgrades, TaskFailer $failer, LiveAppPolls $live, IpAllocator $ips): Response
+    public function show(Request $request, Server $server, GuestAgentProbe $agent, AppEligibility $eligibility, AppUpgrades $upgrades, TaskFailer $failer, LiveAppPolls $live, IpAllocator $ips, TaskPlan $plan, TaskEstimates $estimates): Response
     {
         $server->load(['node:id,uuid,name', 'cluster:id,uuid,name', 'location:id,name', 'package:id,name', 'billingSystem:id,name', 'osTemplate:id,operating_system_version_id,name,distribution,version,family,platform', 'storage:id,name', 'ipAddresses.pool:id,uuid,name,version,bridge,vlan_tag']);
 
@@ -262,16 +265,25 @@ class ServerController extends Controller
                 'provisioned_at' => $server->provisioned_at?->toIso8601String(),
                 'created_at' => $server->created_at?->toIso8601String(),
             ],
-            'tasks' => $server->tasks()->latest('id')->limit(10)->get()->map(fn (Task $task) => [
-                'uuid' => $task->uuid,
-                'type' => $task->type,
-                'status' => $task->status,
-                'steps' => $task->steps,
-                'error' => $task->error,
-                'created_at' => $task->created_at?->toIso8601String(),
-                'finished_at' => $task->finished_at?->toIso8601String(),
-                'can_fail' => $failer->canAbandon($task),
-            ]),
+            'tasks' => $server->tasks()->latest('id')->limit(10)->get()->map(function (Task $task) use ($server, $failer, $plan, $estimates) {
+                $task->setRelation('server', $server);
+                // Steps still to come (docs/adr/0032 §5); a succeeded task shows what it did.
+                $planned = $task->status === TaskStatus::Succeeded ? [] : $plan->steps($task);
+
+                return [
+                    'uuid' => $task->uuid,
+                    'type' => $task->type,
+                    'status' => $task->status,
+                    'steps' => $task->steps,
+                    'planned_steps' => $planned,
+                    'estimate' => $estimates->remaining($task, $planned),
+                    'error' => $task->error,
+                    'created_at' => $task->created_at?->toIso8601String(),
+                    'started_at' => $task->started_at?->toIso8601String(),
+                    'finished_at' => $task->finished_at?->toIso8601String(),
+                    'can_fail' => $failer->canAbandon($task),
+                ];
+            }),
             'revealedPassword' => session('revealed_password'),
             // Outputs of one installed app, after Show details (AppController::outputs()).
             'revealedAppOutputs' => session('revealed_app_outputs'),

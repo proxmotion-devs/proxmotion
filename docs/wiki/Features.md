@@ -349,6 +349,7 @@ A new, reinstalled or unsuspended server becomes `active` once its guest agent a
 - A stuck task (queued, or running without progress for longer than a queue job may run, or past its deadline) can be ended with **Mark as failed**.
 - Long Proxmox operations return a UPID; the task waiter follows it until it finishes and handles failures and timeouts explicitly.
 - **Creating and reinstalling run in stages** (ADR 0032): while they wait for a clone, the guest agent, Windows setup or cloud-init, the queue worker is free and the task picks up again a few seconds later. Such a task must finish within 120 minutes (`PROXMOTION_PROVISIONING_DEADLINE_MINUTES`).
+- The server page lists **every step a task will go through**, including those that depend on the server (hostname script, Windows restart, additional addresses, the template's script, an ordered app), shows **how long each finished step took**, and for a running create or reinstall **roughly how long is left**, from earlier runs with the same OS template (after three of them).
 
 ### 9.3 Creating a server
 
