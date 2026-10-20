@@ -90,7 +90,7 @@ class TaskProgressTest extends TestCase
         $task = $this->server->tasks()->sole();
         $plan = app(TaskPlan::class);
 
-        $this->assertSame(['clone', 'configure', 'resize', 'firewall', 'start', 'wait_agent'], $plan->steps($task));
+        $this->assertSame(['clone', 'configure', 'resize', 'firewall', 'start', 'wait_agent', 'verify'], $plan->steps($task));
 
         // Named from its location's template, on Windows: renamed and restarted.
         $this->server->forceFill(['vm_name' => '203.0.113.5'])->save();
@@ -98,7 +98,7 @@ class TaskProgressTest extends TestCase
         $task->setRelation('server', $this->server);
 
         $this->assertSame(
-            ['clone', 'configure', 'resize', 'firewall', 'start', 'wait_agent', 'guest_hostname', 'reboot'],
+            ['clone', 'configure', 'resize', 'firewall', 'start', 'wait_agent', 'guest_hostname', 'reboot', 'verify'],
             $plan->steps($task),
         );
 
@@ -167,7 +167,7 @@ class TaskProgressTest extends TestCase
             ->get(route('admin.servers.show', $this->server))
             ->assertInertia(fn (Assert $page) => $page
                 ->where('tasks.0.status', 'running')
-                ->where('tasks.0.planned_steps', ['clone', 'configure', 'resize', 'firewall', 'start', 'wait_agent'])
+                ->where('tasks.0.planned_steps', ['clone', 'configure', 'resize', 'firewall', 'start', 'wait_agent', 'verify'])
                 ->where('tasks.0.estimate', ['remaining_seconds' => 70, 'based_on' => 3])
                 ->where('tasks.1.status', 'succeeded')
                 ->where('tasks.1.planned_steps', [])

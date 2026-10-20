@@ -51,11 +51,16 @@ return [
     | Creating or reinstalling a server must finish within deadline_minutes
     | of its start, all its waits included (docs/adr/0032).
     |
+    | After that, the server checks from inside that verify_dns_name resolves
+    | (empty: DNS is not checked). example.com is reserved by IANA and
+    | resolves everywhere.
+    |
     */
 
     'provisioning' => [
         'min_vmid' => (int) env('PROXMOTION_MIN_VMID', 0),
         'deadline_minutes' => (int) env('PROXMOTION_PROVISIONING_DEADLINE_MINUTES', 120),
+        'verify_dns_name' => (string) env('PROXMOTION_VERIFY_DNS_NAME', 'example.com'),
     ],
 
     /*

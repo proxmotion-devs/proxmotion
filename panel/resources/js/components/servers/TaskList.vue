@@ -64,6 +64,7 @@ const taskTypeLabels: Record<TaskType, string> = {
     change_hostname: 'Change hostname',
     install_app: 'Install app',
     app_run: 'App action or uninstall',
+    verify: 'Check the server',
 };
 const taskStatusTone: Record<
     TaskStatus,
@@ -102,6 +103,7 @@ const stepLabels: Record<string, string> = {
     guest_hostname: 'Change the hostname in the server',
     app_upload: 'Upload the app installer to the server',
     app_start: 'Start the app installer',
+    verify: 'Check addresses, gateway, DNS, hostname and disk',
 };
 // "1 min 52 s", from whole seconds.
 const formatDuration = (seconds: number): string => {

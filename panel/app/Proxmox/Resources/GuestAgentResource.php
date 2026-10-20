@@ -6,6 +6,7 @@ namespace App\Proxmox\Resources;
 
 use App\Proxmox\Data\GuestExecStatus;
 use App\Proxmox\Data\GuestFile;
+use App\Proxmox\Data\GuestNetworkInterface;
 use App\Proxmox\Exceptions\GuestAgentException;
 use App\Proxmox\Exceptions\ProxmoxRequestFailed;
 use App\Proxmox\ProxmoxClient;
@@ -155,6 +156,23 @@ final readonly class GuestAgentResource
         }
 
         return $status;
+    }
+
+    /**
+     * The guest's network interfaces with their MAC and IP addresses, as the
+     * agent reports them (guest-network-get-interfaces).
+     *
+     * @return list<GuestNetworkInterface>
+     */
+    public function networkInterfaces(int $vmid): array
+    {
+        $data = $this->get($vmid, 'network-get-interfaces', []);
+        $interfaces = is_array($data) && is_array($data['result'] ?? null) ? $data['result'] : [];
+
+        return array_values(array_map(
+            fn (array $interface) => GuestNetworkInterface::fromApi($interface),
+            array_filter($interfaces, is_array(...)),
+        ));
     }
 
     /**

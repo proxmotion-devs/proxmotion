@@ -24,4 +24,5 @@ enum TaskType: string
     case ChangeHostname = 'change_hostname';
     case InstallApp = 'install_app';
     case AppRun = 'app_run';
+    case Verify = 'verify';
 }

@@ -350,6 +350,7 @@ A new, reinstalled or unsuspended server becomes `active` once its guest agent a
 - Long Proxmox operations return a UPID; the task waiter follows it until it finishes and handles failures and timeouts explicitly.
 - **Creating and reinstalling run in stages** (ADR 0032): while they wait for a clone, the guest agent, Windows setup or cloud-init, the queue worker is free and the task picks up again a few seconds later. Such a task must finish within 120 minutes (`PROXMOTION_PROVISIONING_DEADLINE_MINUTES`).
 - The server page lists **every step a task will go through**, including those that depend on the server (hostname script, Windows restart, additional addresses, the template's script, an ordered app), shows **how long each finished step took**, and for a running create or reinstall **roughly how long is left**, from earlier runs with the same OS template (after three of them).
+- After every create and reinstall the server is **checked from inside** (ADR 0032 §6): its IP addresses are on its network interface, its gateways answer, DNS resolves (`PROXMOTION_VERIFY_DNS_NAME`), its hostname is right and its root file system has the disk's size. The result is a checklist on the server page with **Check again**; a failed check only warns.
 
 ### 9.3 Creating a server
 
@@ -364,7 +365,7 @@ From the **billing API** (`POST /servers`) or the **admin create wizard** (*Serv
 5. **Access & billing** — hostname (optional when the location has a hostname template), root password, SSH keys, billing system and service ids.
 6. **Review**.
 
-The **create pipeline**: full clone (or a linked clone when the OS template asks for one and the storage allows it, ADR 0027) → VM config + cloud-init (`ciuser`, password, SSH keys, network, nameservers, guest agent) → grow disk → anti-spoofing firewall → start → wait for the guest agent (Linux: until cloud-init has finished; Windows: until setup has finished) → guest scripts → optional app install.
+The **create pipeline**: full clone (or a linked clone when the OS template asks for one and the storage allows it, ADR 0027) → VM config + cloud-init (`ciuser`, password, SSH keys, network, nameservers, guest agent) → grow disk → anti-spoofing firewall → start → wait for the guest agent (Linux: until cloud-init has finished; Windows: until setup has finished) → guest scripts → checks from inside (addresses, gateways, DNS, hostname, disk; only a warning when one fails) → optional app install.
 
 **SSH keys** are validated: ed25519, ECDSA, RSA ≥ 2048 bits; DSA is refused.
 

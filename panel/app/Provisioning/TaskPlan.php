@@ -42,6 +42,7 @@ final readonly class TaskPlan
             TaskType::ChangePrimaryAddress, TaskType::ChangeAddresses => ['addresses', 'guest_addresses'],
             TaskType::Unsuspend => ['start', 'wait_agent'],
             TaskType::Terminate => ['stop', 'destroy', 'release_ips'],
+            TaskType::Verify => ['verify'],
             default => [],
         };
     }
@@ -70,6 +71,8 @@ final readonly class TaskPlan
         if ($this->guestScripts->has($server, GuestScriptEvent::Provisioned)) {
             $steps[] = GuestScriptEvent::Provisioned->step();
         }
+
+        $steps[] = 'verify';
 
         $orderedApp = $server->appInstallations()
             ->where('mode', AppInstallMode::Order)

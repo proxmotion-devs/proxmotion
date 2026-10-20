@@ -20,7 +20,7 @@ Create and reinstall tasks run in **stages** (`App\Provisioning\Stages`). A pipe
 
 | Pipeline | Stages |
 |---|---|
-| Create | `provision`, `clone`, `configure`, `resize`, `firewall`, `start`, `wait_agent`, `name_guest`, `name_guest_wait`, `guest_scripts`, `finish` |
+| Create | `provision`, `clone`, `configure`, `resize`, `firewall`, `start`, `wait_agent`, `name_guest`, `name_guest_wait`, `guest_scripts`, `verify` (§6), `finish` |
 | Reinstall | `prepare`, `destroy`, then the same as create from `clone` |
 
 The stage a task is in and what the stage needs to remember (the UPID of a running Proxmox task, when a wait began) are stored on the task (`tasks.stage`, `tasks.stage_state`, cleared when the next stage begins). What later stages need, such as the `net0` of the deleted VM whose MAC address a reinstall keeps, goes into `tasks.input`. Task steps (`completeStep()`) stay as they were: stages are how the work is split up, steps are what administrators and billing systems see.
@@ -55,7 +55,22 @@ The server page used to list a fixed set of steps per task type, kept in the fro
 
 API v1 is unchanged: its task resource keeps `key`, `status` and `message` per step and does not carry the plan or the estimate.
 
-### 6. What does not change
+### 6. Checks from inside the server
+
+A server became `active` once its guest agent answered and cloud-init or Windows setup had finished; nothing looked at whether the network the panel set up actually works inside. A wrong gateway on a pool, for example, left an `active` server nobody could reach until a customer complained.
+
+- **`ServerVerifier`** runs after the guest scripts of every create and reinstall (stage and step `verify`) and on *Check again* on the server page (a task of type `verify`, active servers only, admin only). It checks:
+  - **addresses:** every address of the server is on the interface with the server's MAC address, read with the agent's `network-get-interfaces` (`GuestAgentResource::networkInterfaces()`);
+  - **gateway:** the gateway of the pool of each IP version's first address answers three pings;
+  - **dns:** `PROXMOTION_VERIFY_DNS_NAME` (default `example.com`, reserved by IANA; empty for no check) resolves;
+  - **hostname:** the guest's hostname is the server's, or its first label (on Windows also its first 15 characters, the NetBIOS limit);
+  - **disk:** the root file system (`/`, Windows `C:`) has at least 90 % of the disk's size.
+- Everything runs as **one fixed command** through the agent: on Linux `sh -c <script> proxmotion-verify <IPv4 gateway> <IPv6 gateway> <DNS name>` (`-` for none), on Windows a fixed PowerShell script in which only the gateways and the DNS name are filled in. Both are validated first (`FILTER_VALIDATE_IP`, a plain host name), so no quote or shell character ever reaches the guest.
+- The result is kept on the server (`servers.verification`: when, and per check `key`, `status` `passed`, `failed` or `skipped`, `params` and an English `detail` key) and shown as a checklist on the server page.
+- **A failed check only warns.** The server becomes `active` as before; the step names the failed checks. A check the guest cannot answer (an agent that refuses `guest-exec` or `guest-network-get-interfaces`, `df` without `--output`) is `skipped`, not failed. An agent that does not answer at all leaves a note on the step during a create or reinstall and fails a *Check again* task.
+- Billing systems see `verify` tasks admins start like any other task (`task.succeeded`, `task.failed`); the checks themselves are not in API v1.
+
+### 7. What does not change
 
 Other task types still run as one job. The API, its task resource and the webhooks are unchanged: a staged task is `running` from its first stage to its last, and its steps look as before. Retry after a failure still starts a new task that continues from what Proxmox shows.
 
@@ -64,5 +79,6 @@ Other task types still run as one job. The API, its task resource and the webhoo
 - A worker is busy only while a stage works, so more servers can be created at the same time with the same workers.
 - A long clone or a slow Windows setup no longer puts a healthy server in `error`; the deadline is the one limit for the whole task.
 - Delayed jobs need a queue that supports delays (database, Redis); the `sync` queue sleeps instead.
+- A server that came up without working networking, the wrong hostname or a disk that was not grown is noticed by an administrator right after it was built, not by its customer. Pings to a gateway that drops ICMP fail although the server works; that is why checks only warn.
 - Administrators see every step a provisioning will go through, how long each took and roughly how long is left; a step that takes much longer than usual stands out. Estimates start once a template has three timed successful runs, and they only know what happened before (a busier node or a slower mirror is not foreseen).
 - Nothing of this has run on a real queue or against a real Proxmox server yet: delayed dispatches on Redis with Horizon and on the database queue, and a Windows server whose setup outlasts one job, are on the verification list in `AGENTS.md`.

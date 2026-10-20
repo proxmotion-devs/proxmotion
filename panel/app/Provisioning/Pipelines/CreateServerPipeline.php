@@ -6,6 +6,7 @@ namespace App\Provisioning\Pipelines;
 
 use App\Domain\Apps\AppStarter;
 use App\Domain\Servers\GuestScripts;
+use App\Domain\Servers\ServerVerifier;
 use App\Enums\CloneMode;
 use App\Enums\GuestScriptEvent;
 use App\Enums\OsPlatform;
@@ -25,7 +26,8 @@ use RuntimeException;
 
 /**
  * Clone → configure → grow disk → anti-spoofing → start → wait for the guest
- * agent → name the guest → guest scripts → active → ordered app.
+ * agent → name the guest → guest scripts → checks from inside → active →
+ * ordered app.
  *
  * Runs in stages (docs/adr/0032): waits for Proxmox tasks and the guest end
  * a run, and the next run continues there. Every stage checks Proxmox's actual
@@ -35,7 +37,7 @@ use RuntimeException;
 final readonly class CreateServerPipeline implements StagedPipeline
 {
     /** The stages that build and set up a server; reinstalling runs them too. */
-    public const BUILD_STAGES = ['clone', 'configure', 'resize', 'firewall', 'start', 'wait_agent', 'name_guest', 'name_guest_wait', 'guest_scripts'];
+    public const BUILD_STAGES = ['clone', 'configure', 'resize', 'firewall', 'start', 'wait_agent', 'name_guest', 'name_guest_wait', 'guest_scripts', 'verify'];
 
     public function __construct(
         private ProxmoxClientFactory $clients,
@@ -45,6 +47,7 @@ final readonly class CreateServerPipeline implements StagedPipeline
         private LinkedClones $linkedClones,
         private PowerPipeline $power,
         private StageRunner $stages,
+        private ServerVerifier $verifier,
     ) {}
 
     public function stages(): array
@@ -106,6 +109,8 @@ final readonly class CreateServerPipeline implements StagedPipeline
                 : null,
             // Additional addresses and the template's script (ADR 0009, 0010).
             'guest_scripts' => $this->afterInstall($task, $server),
+            // Addresses, gateways, DNS, hostname and disk from inside: a failed check only warns (docs/adr/0032 §6).
+            'verify' => $this->verify($task, $server),
             default => throw new RuntimeException("Unknown stage {$stage}."),
         };
     }
@@ -113,6 +118,13 @@ final readonly class CreateServerPipeline implements StagedPipeline
     private function afterInstall(Task $task, Server $server): null
     {
         $this->guestScripts->afterInstall($task, $server);
+
+        return null;
+    }
+
+    private function verify(Task $task, Server $server): null
+    {
+        $this->verifier->verifyStep($task, $server);
 
         return null;
     }

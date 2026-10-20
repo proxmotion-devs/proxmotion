@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Jobs;
 
 use App\Domain\Servers\GuestScripts;
+use App\Domain\Servers\ServerVerifier;
 use App\Enums\PowerAction;
 use App\Enums\TaskStatus;
 use App\Enums\TaskType;
@@ -54,7 +55,7 @@ class RunServerTask implements ShouldQueue
      */
     public function __construct(public Task $task, public int $dispatch = 0) {}
 
-    public function handle(CreateServerPipeline $create, PowerPipeline $power, TerminateServerPipeline $terminate, ResetPasswordPipeline $resetPassword, ReinstallServerPipeline $reinstall, ChangeResourcesPipeline $changeResources, GuestScripts $guestScripts, AddressesPipeline $addresses, HostnamePipeline $hostname, InstallAppPipeline $installApp, AppRunPipeline $appRun, StageRunner $stages, TaskFailer $failer): void
+    public function handle(CreateServerPipeline $create, PowerPipeline $power, TerminateServerPipeline $terminate, ResetPasswordPipeline $resetPassword, ReinstallServerPipeline $reinstall, ChangeResourcesPipeline $changeResources, GuestScripts $guestScripts, AddressesPipeline $addresses, HostnamePipeline $hostname, InstallAppPipeline $installApp, AppRunPipeline $appRun, ServerVerifier $verifier, StageRunner $stages, TaskFailer $failer): void
     {
         $task = $this->task;
 
@@ -93,6 +94,7 @@ class RunServerTask implements ShouldQueue
                     TaskType::ChangeHostname => $hostname->run($task),
                     TaskType::InstallApp => $installApp->run($task),
                     TaskType::AppRun => $appRun->run($task),
+                    TaskType::Verify => $verifier->runTask($task),
                 };
             }
         } catch (Throwable $e) {

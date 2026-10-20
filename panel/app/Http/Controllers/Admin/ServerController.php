@@ -263,6 +263,8 @@ class ServerController extends Controller
                     'ptr_pending' => $address->ptr !== null && $address->ptr_synced_at === null,
                 ]),
                 'provisioned_at' => $server->provisioned_at?->toIso8601String(),
+                // The latest checks from inside the server (docs/adr/0032 §6).
+                'verification' => $server->verification,
                 'created_at' => $server->created_at?->toIso8601String(),
             ],
             'tasks' => $server->tasks()->latest('id')->limit(10)->get()->map(function (Task $task) use ($server, $failer, $plan, $estimates) {
@@ -421,6 +423,14 @@ class ServerController extends Controller
         $this->toast('info', $action->startedMessage());
 
         return back();
+    }
+
+    /**
+     * Run the checks from inside the server again (docs/adr/0032 §6).
+     */
+    public function verify(Server $server, #[CurrentUser] User $admin): RedirectResponse
+    {
+        return $this->startTask($server, TaskType::Verify, $admin, [ServerStatus::Active], 'Checking the server…');
     }
 
     public function retry(Server $server, #[CurrentUser] User $admin): RedirectResponse

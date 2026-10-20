@@ -19,6 +19,7 @@ import ReinstallDialog from '@/components/servers/ReinstallDialog.vue';
 import RemoveAddressButton from '@/components/servers/RemoveAddressButton.vue';
 import ResourcesDialog from '@/components/servers/ResourcesDialog.vue';
 import ResetPasswordButton from '@/components/servers/ResetPasswordButton.vue';
+import ServerChecks from '@/components/servers/ServerChecks.vue';
 import TaskList from '@/components/servers/TaskList.vue';
 import { Button } from '@/components/ui/button';
 import { useDateTime } from '@/composables/useDateTime';
@@ -46,6 +47,7 @@ import {
     test as testServer,
     trialReset,
     unsuspend,
+    verify,
 } from '@/routes/admin/servers';
 import { NETWORK_MODELS } from '@/types/admin';
 import type {
@@ -57,6 +59,7 @@ import type {
     Option,
     OsPlatform,
     PowerAction,
+    ServerVerification,
     Drift,
     ReinstallOptions,
     ResourceOptions,
@@ -102,6 +105,7 @@ const props = withDefaults(
             platform: OsPlatform;
             addresses: ServerAddress[];
             provisioned_at: string | null;
+            verification: ServerVerification | null;
             created_at: string | null;
         };
         tasks: Task[];
@@ -599,6 +603,13 @@ const resetAfterTrial = () => {
                     <li v-if="server.addresses.length === 0">—</li>
                 </ul>
             </section>
+
+            <ServerChecks
+                v-if="active || server.verification"
+                :verification="server.verification"
+                :action="active ? verify(server.uuid) : undefined"
+                :disabled="busy"
+            />
 
             <!-- Operations that interrupt or remove the server. -->
             <section

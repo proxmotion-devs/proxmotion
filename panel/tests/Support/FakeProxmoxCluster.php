@@ -4,6 +4,8 @@ namespace Tests\Support;
 
 use App\Domain\Apps\AppLogs;
 use App\Domain\Servers\GuestScripts;
+use App\Domain\Servers\ServerVerifier;
+use App\Proxmox\Data\BootDisk;
 use GuzzleHttp\Promise\Create;
 use GuzzleHttp\Promise\PromiseInterface;
 use GuzzleHttp\Psr7\Response as Psr7Response;
@@ -48,6 +50,18 @@ class FakeProxmoxCluster
 
     /** @var array<string, int> per task type (qmclone, qmdestroy, qmstart…): status checks that still report it running */
     public array $runningPolls = [];
+
+    /**
+     * @var array<int, list<array<string, mixed>>> per VMID: what network-get-interfaces answers; by default
+     *                                             loopback and eth0 with net0's MAC and the firewall IP set's addresses
+     */
+    public array $guestInterfaces = [];
+
+    /** @var array<int, string> per VMID: what the ServerVerifier script prints; by default every check passes */
+    public array $verifyOutput = [];
+
+    /** @var array<int, list<list<string>>> per VMID: commands of the ServerVerifier checks (kept out of guestCommands) */
+    public array $verifyCommands = [];
 
     /**
      * @var array<int, array<string, mixed>> per VMID: changes of a running VM that wait for its next start,
@@ -319,7 +333,11 @@ class FakeProxmoxCluster
                     default => null,
                 };
 
-                if ($commandLine === GuestScripts::CLOUD_INIT_STATUS_COMMAND) {
+                if (($commandLine[3] ?? null) === ServerVerifier::SCRIPT_NAME || str_contains($commandLine[4] ?? '', 'Resolve-DnsName')) {
+                    // The checks after a create or reinstall (kept out of guestCommands).
+                    $this->verifyCommands[$vmid][] = $commandLine;
+                    [$exitCode, $out, $err] = [0, $this->verifyOutput[$vmid] ?? $this->passingChecks($vmid, $commandLine), ''];
+                } elseif ($commandLine === GuestScripts::CLOUD_INIT_STATUS_COMMAND) {
                     // The cloud-init check of a new Linux system (kept out of guestCommands).
                     $answers = $this->cloudInitStatus[$vmid] ?? ['status: done'];
                     [$exitCode, $out, $err] = [0, $answers[min($this->cloudInitChecks[$vmid] ?? 0, count($answers) - 1)]."\n", ''];
@@ -352,6 +370,8 @@ class FakeProxmoxCluster
                     'out-data' => $process['out'],
                     'err-data' => $process['err'],
                 ], fn ($value) => $value !== ''));
+            case 'network-get-interfaces':
+                return $this->ok(['result' => $this->guestInterfaces[$vmid] ?? $this->defaultInterfaces($vmid)]);
             case 'set-user-password':
                 $this->guestPasswords[$vmid][(string) $data['username']] = (string) $data['password'];
 
@@ -359,6 +379,52 @@ class FakeProxmoxCluster
             default:
                 return Http::response(['data' => null], 501);
         }
+    }
+
+    /**
+     * Loopback and eth0 with net0's MAC address and every address of the firewall IP set.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function defaultInterfaces(int $vmid): array
+    {
+        $config = $this->vms[$vmid]['config'];
+        $mac = preg_match('/=([0-9A-F]{2}(:[0-9A-F]{2}){5})/i', (string) ($config['net0'] ?? ''), $match) === 1 ? strtolower($match[1]) : '';
+        $addresses = array_map(fn (string $cidr) => [
+            'ip-address' => explode('/', $cidr)[0],
+            'ip-address-type' => str_contains($cidr, ':') ? 'ipv6' : 'ipv4',
+        ], $this->vms[$vmid]['ipset'] ?? []);
+
+        return [
+            ['name' => 'lo', 'hardware-address' => '00:00:00:00:00:00', 'ip-addresses' => [['ip-address' => '127.0.0.1', 'ip-address-type' => 'ipv4']]],
+            ['name' => 'eth0', 'hardware-address' => $mac, 'ip-addresses' => $addresses],
+        ];
+    }
+
+    /**
+     * What the ServerVerifier script prints when everything is as the panel
+     * set it up: the VM name as hostname, the boot disk's size, every gateway
+     * answering and DNS resolving.
+     *
+     * @param  list<string>  $command
+     */
+    private function passingChecks(int $vmid, array $command): string
+    {
+        $config = $this->vms[$vmid]['config'];
+        $disk = BootDisk::fromConfig($config);
+        $gateways = ($command[3] ?? null) === ServerVerifier::SCRIPT_NAME
+            ? array_filter([$command[4] ?? '-', $command[5] ?? '-'], fn (string $gateway) => $gateway !== '-')
+            : (preg_match_all("/'([0-9a-f.:]+)'/i", explode('$name', $command[4] ?? '')[0], $matches) > 0 ? $matches[1] : []);
+
+        $lines = ['hostname='.($config['name'] ?? ''), 'disk='.($disk === null ? '' : $disk->sizeMib * 1024 * 1024)];
+
+        foreach ($gateways as $gateway) {
+            $lines[] = "gateway={$gateway} ok";
+        }
+
+        $lines[] = 'dns=ok';
+
+        return implode("\n", $lines)."\n";
     }
 
     private function vncProxy(string $node, int $vmid): PromiseInterface

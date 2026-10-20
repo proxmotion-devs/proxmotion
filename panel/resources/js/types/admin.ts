@@ -228,6 +228,7 @@ export type TaskType =
     | 'change_hostname'
     | 'install_app'
     | 'app_run'
+    | 'verify'
     | PowerAction;
 
 export type PowerAction = 'start' | 'shutdown' | 'stop' | 'reboot';
@@ -330,6 +331,19 @@ export type AddressPoolOption = Option & {
 export type ReinstallOptions = {
     osTemplates: Option[];
     apps: OrderedAppOption[];
+};
+
+/** The latest checks from inside a server (ServerVerifier, docs/adr/0032 §6). */
+export type ServerVerification = {
+    checked_at: string;
+    checks: {
+        /** addresses, gateway, dns, hostname or disk. */
+        key: string;
+        status: 'passed' | 'failed' | 'skipped';
+        params: Record<string, string>;
+        /** English key with :placeholders from params. */
+        detail: string | null;
+    }[];
 };
 
 /** What TaskList needs. */

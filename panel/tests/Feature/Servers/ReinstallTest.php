@@ -94,7 +94,7 @@ class ReinstallTest extends TestCase
         $server = $this->server->refresh();
         $task = Task::query()->where('type', TaskType::Reinstall)->sole();
         $this->assertSame(TaskStatus::Succeeded, $task->status);
-        $this->assertSame(['stop', 'destroy', 'clone', 'configure', 'resize', 'firewall', 'start', 'wait_agent'], array_column($task->steps, 'key'));
+        $this->assertSame(['stop', 'destroy', 'clone', 'configure', 'resize', 'firewall', 'start', 'wait_agent', 'verify'], array_column($task->steps, 'key'));
 
         $this->assertSame(ServerStatus::Active, $server->status);
         $this->assertSame($vmid, $server->vmid);

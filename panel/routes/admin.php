@@ -135,6 +135,7 @@ Route::post('servers/{server}/suspend', [ServerController::class, 'suspend'])->n
 Route::post('servers/{server}/unsuspend', [ServerController::class, 'unsuspend'])->name('servers.unsuspend');
 Route::post('servers/{server}/power/{action}', [ServerController::class, 'power'])->middleware('throttle:20,1')->name('servers.power');
 Route::post('servers/{server}/retry', [ServerController::class, 'retry'])->name('servers.retry');
+Route::post('servers/{server}/verify', [ServerController::class, 'verify'])->middleware('throttle:10,1')->name('servers.verify');
 Route::post('tasks/{task}/fail', [TaskController::class, 'fail'])->name('tasks.fail');
 Route::post('servers/{server}/password', [ServerController::class, 'revealPassword'])->middleware('throttle:20,1')->name('servers.password');
 Route::post('servers/{server}/rdns', RdnsController::class)->middleware('throttle:30,1')->name('servers.rdns');

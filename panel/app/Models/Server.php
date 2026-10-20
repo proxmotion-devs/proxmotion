@@ -57,6 +57,7 @@ use Illuminate\Support\Carbon;
  * @property string|null $external_id billing service id, unique within the billing system
  * @property string|null $external_client_id billing customer id
  * @property Carbon|null $provisioned_at
+ * @property array{checked_at: string, checks: list<array{key: string, status: string, params: array<string, string>, detail: string|null}>}|null $verification the latest checks from inside the server (ServerVerifier)
  * @property Carbon|null $terminated_at
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
@@ -94,6 +95,7 @@ class Server extends Model
             'reboot_required' => 'boolean',
             'is_test' => 'boolean',
             'provisioned_at' => 'datetime',
+            'verification' => 'array',
             'terminated_at' => 'datetime',
         ];
     }
