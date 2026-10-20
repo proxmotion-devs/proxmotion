@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use App\Domain\Apps\AppGuest;
 use App\Enums\AppInstallationStatus;
 use App\Enums\AppInstallMode;
+use App\Enums\OsPlatform;
 use App\Models\Concerns\HasPublicUuid;
 use Carbon\CarbonInterface;
 use Database\Factories\AppInstallationFactory;
@@ -122,11 +124,21 @@ class AppInstallation extends Model
     }
 
     /**
+     * The platform the installed version was written for (docs/adr/0029):
+     * eligibility made it the server's, and it decides where the app lives
+     * and how its scripts start.
+     */
+    public function platform(): OsPlatform
+    {
+        return OsPlatform::tryFrom($this->version->recipe()->platform) ?? OsPlatform::Linux;
+    }
+
+    /**
      * The directory of this installation inside the server.
      */
     public function guestDirectory(): string
     {
-        return '/var/lib/proxmotion/apps/'.$this->uuid;
+        return AppGuest::directory($this->platform(), $this->uuid);
     }
 
     /**

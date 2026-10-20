@@ -41,10 +41,10 @@ final readonly class RecipeEditor
      *
      * @throws ValidationException for an unusable slug or name
      */
-    public function create(string $slug, string $name, User $admin, ?string $ipAddress): AppRecipe
+    public function create(string $slug, string $name, User $admin, ?string $ipAddress, string $platform = 'linux'): AppRecipe
     {
         $this->ensureFree($slug, $name);
-        $skeleton = RecipeSkeleton::files($slug, $name);
+        $skeleton = RecipeSkeleton::files($slug, $name, $platform);
         /** @var array<string, mixed> $definition */
         $definition = (array) Yaml::parse($skeleton['recipe.yaml']);
         $files = array_filter($skeleton, fn (string $path) => preg_match(self::FILE_PATH, $path) === 1, ARRAY_FILTER_USE_KEY);

@@ -322,6 +322,7 @@ decides:
 | Disk grown by an upgrade | The default `disk.ps1` extends the `C:` partition |
 | Password reset | The guest agent sets the password of **`Administrator`** (or the template's own `password_reset` script) |
 | Hostname change | The default `hostname.ps1` renames the computer to the first label of the hostname (at most 15 characters). Windows applies it at the next restart: the panel restarts the server when asked, otherwise it shows *restart required* (ADR 0012) |
+| Apps | Windows apps only (IIS, SQL Server Express, Chocolatey and recipes with `platform: windows`): the recipe is written to `C:\ProgramData\Proxmotion\apps\<installation>` (SYSTEM and Administrators only) and run by `run.ps1`, a **scheduled task under `\Proxmotion\`** running as SYSTEM, which restarts Windows when a script asks for it and runs the script again afterwards (ADR 0029). Windows PowerShell 5.1 is needed (Windows Server 2016 and later, Windows 10/11) |
 
 Scripts can be replaced per template under *OS templates → Scripts*.
 
@@ -383,6 +384,9 @@ long each plugin took, and `ImageState` when setup finished.
 
 ## Not verified yet
 
+- Windows apps (ADR 0029) have only run against the panel's fake Proxmox: the scheduled task, the
+  restart and resume, the log reader and the three bundled Windows recipes are untested on a real
+  Windows guest.
 - Measured once, on Windows Server 2022 (2026-10-20): a single restart with the `Unattend.xml`
   change, and the panel's setup check making the server *Active* a few seconds after the
   Cloudbase-Init service stopped. Not checked: that the hostname is applied with the single

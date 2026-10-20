@@ -326,6 +326,7 @@ belirler:
 | Yükseltmeyle büyüyen disk | Varsayılan `disk.ps1`, `C:` bölümünü genişletir |
 | Şifre sıfırlama | Guest agent **`Administrator`** kullanıcısının şifresini ayarlar (ya da şablonun kendi `password_reset` scripti) |
 | Hostname değişikliği | Varsayılan `hostname.ps1`, bilgisayarı hostname'in ilk kısmıyla (en fazla 15 karakter) yeniden adlandırır. Windows bunu bir sonraki yeniden başlatmada uygular: istenirse panel sunucuyu yeniden başlatır, yoksa *restart required* gösterir (ADR 0012) |
+| Uygulamalar | Yalnızca Windows uygulamaları (IIS, SQL Server Express, Chocolatey ve `platform: windows` olan tarifler): tarif `C:\ProgramData\Proxmotion\apps\<kurulum>` klasörüne yazılır (yalnızca SYSTEM ve Administrators okuyabilir) ve SYSTEM olarak çalışan, **`\Proxmotion\` altındaki bir zamanlanmış görev** olan `run.ps1` ile çalıştırılır; betik isterse Windows'u yeniden başlatır ve betiği sonra yeniden çalıştırır (ADR 0029). Windows PowerShell 5.1 gerekir (Windows Server 2016 ve sonrası, Windows 10/11) |
 
 Scriptler şablon başına *OS templates → Scripts* altında değiştirilebilir.
 
@@ -390,6 +391,9 @@ bittiğini gösterir.
 
 ## Henüz doğrulanmayanlar
 
+- Windows uygulamaları (ADR 0029) yalnızca panelin sahte Proxmox'unda çalıştı: zamanlanmış görev,
+  yeniden başlatıp devam etme, günlük okuyucu ve paketle gelen üç Windows tarifi gerçek bir Windows
+  konuğunda denenmedi.
 - Bir kez, Windows Server 2022'de ölçüldü (2026-10-20): `Unattend.xml` değişikliğiyle tek yeniden
   başlatma, ve panelin kurulum kontrolünün sunucuyu Cloudbase-Init servisi durduktan birkaç saniye
   sonra *Active* yapması. Denenmedi: hostname'in tek yeniden başlatmayla uygulanması, Windows

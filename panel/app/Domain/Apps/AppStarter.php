@@ -7,6 +7,7 @@ namespace App\Domain\Apps;
 use App\Domain\Servers\GuestScriptFailed;
 use App\Enums\AppInstallationStatus;
 use App\Enums\AppInstallMode;
+use App\Enums\OsPlatform;
 use App\Models\AppInstallation;
 use App\Models\Server;
 use App\Models\Task;
@@ -18,7 +19,8 @@ use Throwable;
  * Starts an app installer inside the server (docs/adr/0015): writes the
  * installation's recipe version, the shared helpers and runner, inputs.json
  * and server.json to /var/lib/proxmotion/apps/<installation>/ through the
- * guest agent, then starts the runner detached with systemd-run. apps:poll
+ * guest agent, then starts the runner detached with systemd-run (on Windows
+ * a scheduled task, C:/ProgramData/Proxmotion/apps; docs/adr/0029). apps:poll
  * follows status.json until the app is installed.
  *
  * The install_app task starts apps installed later; the create and
@@ -101,10 +103,9 @@ final readonly class AppStarter
         $task->startStep('app_start');
 
         $attempt = $installation->attempts + 1;
-        $result = $agent->run($server->vmid, [
-            'systemd-run', '--unit=proxmotion-app-'.$installation->uuid.'-'.$attempt, '--collect', '--quiet',
-            '/bin/bash', $directory.'/run.sh',
-        ]);
+        $platform = $installation->platform();
+        $script = $installation->version->recipe()->lifecycleScript('install') ?? ($platform === OsPlatform::Windows ? 'install.ps1' : 'install.sh');
+        $result = $agent->run($server->vmid, AppGuest::startCommand($platform, $directory, 'proxmotion-app-'.$installation->uuid.'-'.$attempt, $script));
 
         if (! $result->succeeded()) {
             $reason = trim(strtok($result->stderr."\n", "\n") ?: 'exit code '.$result->exitCode);

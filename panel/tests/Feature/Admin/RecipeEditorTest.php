@@ -73,7 +73,22 @@ class RecipeEditorTest extends AdminTestCase
         $this->post(route('admin.apps.store'), ['slug' => 'Bad_Slug', 'name' => 'Mine'])->assertSessionHasErrors('slug');
         $this->post(route('admin.apps.copy', $this->app('docker')), ['slug' => 'openvpn', 'name' => 'Mine'])->assertSessionHasErrors('slug');
 
-        $this->assertSame(16, AppRecipe::query()->count());
+        $this->post(route('admin.apps.store'), ['slug' => 'mine', 'name' => 'Mine', 'platform' => 'macos'])->assertSessionHasErrors('platform');
+
+        $this->assertSame(19, AppRecipe::query()->count());
+    }
+
+    public function test_a_new_windows_app_starts_from_the_powershell_skeleton()
+    {
+        $this->post(route('admin.apps.store'), ['slug' => 'file-server', 'name' => 'File Server', 'platform' => 'windows'])->assertSessionHasNoErrors();
+
+        $draft = $this->app('file-server')->draft();
+
+        $this->assertNotNull($draft);
+        $this->assertSame(['install.ps1', 'uninstall.ps1'], array_keys($draft->files));
+        $this->assertSame('windows', $draft->definition['requires']['platform']);
+        $this->get(route('admin.apps.edit', 'file-server'))->assertInertia(fn ($page) => $page
+            ->where('library', fn ($library) => array_keys(collect($library)->all()) === ['proxmotion.ps1', 'run.ps1', 'start.ps1', 'read-log.ps1']));
     }
 
     public function test_a_copy_of_a_bundled_app_is_an_editable_draft_and_the_original_stays()
@@ -189,12 +204,12 @@ class RecipeEditorTest extends AdminTestCase
         $this->post(route('admin.apps.store'), ['slug' => 'uptime-kuma', 'name' => 'Uptime Kuma']);
 
         $this->get(route('admin.apps.index'))->assertInertia(fn ($page) => $page
-            ->has('apps', 17)
-            ->where('apps.11.slug', 'uptime-kuma')
-            ->where('apps.11.source', 'custom')
-            ->where('apps.11.published', false)
-            ->where('apps.11.draft_version', '1.0.0')
-            ->where('apps.11.version', null));
+            ->has('apps', 20)
+            ->where('apps.14.slug', 'uptime-kuma')
+            ->where('apps.14.source', 'custom')
+            ->where('apps.14.published', false)
+            ->where('apps.14.draft_version', '1.0.0')
+            ->where('apps.14.version', null));
     }
 
     public function test_the_editor_opens_bundled_apps_for_editing_and_custom_drafts_with_their_errors()

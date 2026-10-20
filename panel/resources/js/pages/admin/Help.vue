@@ -313,7 +313,7 @@ const topics = [
                     <li>
                         {{
                             $t(
-                                'New app: choose a slug and a name. The app starts as a draft made from a working skeleton.',
+                                'New app: choose a slug, a name and the platform (Linux or Windows). The app starts as a draft made from a working skeleton.',
                             )
                         }}
                     </li>
@@ -395,6 +395,13 @@ const topics = [
                         {{
                             $t(
                                 'Install packages with pm_pkg_install; it works on Debian, Ubuntu and RHEL-family servers.',
+                            )
+                        }}
+                    </li>
+                    <li>
+                        {{
+                            $t(
+                                'Windows apps use PowerShell scripts (.ps1) run as SYSTEM: start with $ErrorActionPreference = Stop, load proxmotion.ps1 and use Pm-Input, Pm-Step, Pm-Output and Pm-Fail. When Windows needs a restart, call Pm-RequestRestart: the server restarts and the script runs again from the start.',
                             )
                         }}
                     </li>

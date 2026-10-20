@@ -14,6 +14,7 @@ use App\Domain\Apps\RecipeEditRefused;
 use App\Domain\Apps\RecipeInput;
 use App\Domain\Apps\RecipeInvalid;
 use App\Domain\Apps\RecipeLoader;
+use App\Domain\Apps\RecipeSkeleton;
 use App\Enums\AppRecipeVersionStatus;
 use App\Http\Controllers\Controller;
 use App\Models\AppRecipe;
@@ -109,7 +110,7 @@ class AppRecipeController extends Controller
                 'published_at' => $version->reviewed_at?->toIso8601String(),
                 'created_at' => $version->created_at?->toIso8601String(),
             ]),
-            'library' => $loader->library(),
+            'library' => $loader->library($recipe === null ? 'linux' : $recipe->platform),
             // The operating system versions the app is offered on: ticked here
             // and saved at once, not part of the recipe (docs/adr/0026).
             'osVersions' => AppSystems::options($versions),
@@ -203,9 +204,10 @@ class AppRecipeController extends Controller
         $data = $request->validate([
             'slug' => ['required', 'string'],
             'name' => ['required', 'string'],
+            'platform' => ['sometimes', Rule::in(RecipeSkeleton::PLATFORMS)],
         ]);
 
-        $this->editor->create($data['slug'], $data['name'], $admin, $request->ip());
+        $this->editor->create($data['slug'], $data['name'], $admin, $request->ip(), $data['platform'] ?? 'linux');
         $this->toast('success', 'App created as a draft.');
 
         return back();

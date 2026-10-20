@@ -6,6 +6,7 @@ namespace App\Domain\Apps;
 
 use App\Enums\AppRunKind;
 use App\Enums\AppRunStatus;
+use App\Models\AppInstallation;
 use App\Models\AppRun;
 use App\Proxmox\Exceptions\ProxmoxException;
 use App\Proxmox\ProxmoxClientFactory;
@@ -75,7 +76,7 @@ final readonly class RunPoller
             $this->runs->succeeded($run, $outputs, $status['step']);
 
             if ($run->kind === AppRunKind::Uninstall) {
-                $this->removeDirectory($agent, $server->vmid, $run->installation->guestDirectory());
+                $this->removeDirectory($agent, $server->vmid, $run->installation);
             }
 
             return;
@@ -94,10 +95,10 @@ final readonly class RunPoller
     /**
      * Best effort: a directory left behind is harmless to the panel.
      */
-    private function removeDirectory(GuestAgentResource $agent, int $vmid, string $directory): void
+    private function removeDirectory(GuestAgentResource $agent, int $vmid, AppInstallation $installation): void
     {
         try {
-            $agent->run($vmid, ['rm', '-rf', '--one-file-system', $directory]);
+            $agent->run($vmid, AppGuest::removeCommand($installation->platform(), $installation->guestDirectory()));
         } catch (ProxmoxException $e) {
             report($e);
         }

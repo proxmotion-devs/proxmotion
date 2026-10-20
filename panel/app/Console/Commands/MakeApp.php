@@ -10,7 +10,7 @@ use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
 
-#[Signature('apps:make {slug : lower-case letters, digits and dashes, e.g. uptime-kuma} {--name= : display name}')]
+#[Signature('apps:make {slug : lower-case letters, digits and dashes, e.g. uptime-kuma} {--name= : display name} {--platform=linux : linux or windows (docs/adr/0029)}')]
 #[Description('Create a format 2 app recipe skeleton in panel/recipes (docs/adr/0016)')]
 class MakeApp extends Command
 {
@@ -21,6 +21,14 @@ class MakeApp extends Command
 
         if (preg_match('/^[a-z0-9][a-z0-9-]{1,48}[a-z0-9]$/', $slug) !== 1) {
             $this->components->error('The slug must have 3 to 50 lower-case letters, digits and dashes, and start and end with a letter or digit.');
+
+            return self::FAILURE;
+        }
+
+        $platform = $this->option('platform');
+
+        if (! in_array($platform, RecipeSkeleton::PLATFORMS, true)) {
+            $this->components->error('The platform must be linux or windows.');
 
             return self::FAILURE;
         }
@@ -38,17 +46,17 @@ class MakeApp extends Command
 
         mkdir($directory, 0755, true);
 
-        foreach (RecipeSkeleton::files($slug, $name) as $file => $content) {
+        foreach (RecipeSkeleton::files($slug, $name, $platform) as $file => $content) {
             file_put_contents($directory.'/'.$file, $content);
         }
 
         $this->components->info("Created {$directory}.");
-        $this->components->bulletList([
+        $this->components->bulletList(array_values(array_filter([
             'Edit recipe.yaml (requirements, inputs, outputs) and the scripts.',
             'php artisan apps:validate',
-            'shellcheck recipes/'.$slug.'/*.sh',
+            $platform === 'linux' ? 'shellcheck recipes/'.$slug.'/*.sh' : null,
             'php artisan apps:sync',
-        ]);
+        ])));
 
         return self::SUCCESS;
     }

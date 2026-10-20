@@ -1,0 +1,66 @@
+format: 2
+slug: chocolatey
+name: Chocolatey
+version: 1.0.0
+category: container
+description:
+    en: The Chocolatey package manager for Windows, with actions to install, remove and list packages from its community repository.
+    tr: Windows için Chocolatey paket yöneticisi; topluluk deposundan paket kurma, kaldırma ve listeleme işlemleriyle.
+maintainers: [{ name: Proxmotion }]
+homepage: https://chocolatey.org/
+requires:
+    platform: windows
+resources: { min_memory_mib: 2048, min_disk_mib: 32768, min_cores: 1 }
+network_models: [bridged, routed, nat]
+install_modes: [order, post]
+billing: free
+license: none
+outputs:
+    - key: version
+      type: text
+      label: { en: Chocolatey version, tr: Chocolatey sürümü }
+includes: [lib.ps1]
+lifecycle:
+    install: { script: install.ps1, timeout_minutes: 30 }
+    uninstall: { script: uninstall.ps1, timeout_minutes: 5 }
+actions:
+    - key: install_package
+      label: { en: Install a package, tr: Paket kur }
+      script: actions/install-package.ps1
+      inputs:
+          - key: package
+            type: string
+            required: true
+            max_length: 100
+            label: { en: Package id (e.g. 7zip), tr: Paket kimliği (ör. 7zip) }
+          - key: version
+            type: string
+            max_length: 50
+            label:
+                {
+                    en: Version (empty for the newest),
+                    tr: Sürüm (en yenisi için boş),
+                }
+      outputs:
+          - key: installed
+            type: text
+            label: { en: Installed, tr: Kurulan }
+      timeout_minutes: 30
+    - key: remove_package
+      label: { en: Remove a package, tr: Paketi kaldır }
+      script: actions/remove-package.ps1
+      inputs:
+          - key: package
+            type: string
+            required: true
+            max_length: 100
+            label: { en: Package id, tr: Paket kimliği }
+      timeout_minutes: 15
+    - key: list_packages
+      label: { en: List packages, tr: Paketleri listele }
+      script: actions/list-packages.ps1
+      outputs:
+          - key: packages
+            type: text
+            label: { en: Packages, tr: Paketler }
+      timeout_minutes: 2

@@ -298,13 +298,19 @@ class FakeProxmoxCluster
                 $commandLine = array_values((array) $data['command']);
                 $input = isset($data['input-data']) ? (string) $data['input-data'] : null;
 
-                // Reading an app log (AppLogs::READ_SCRIPT): a byte range of a guest file, base64-encoded.
-                if (($commandLine[2] ?? null) === AppLogs::READ_SCRIPT) {
+                // Reading an app log (AppGuest::readCommand(), Linux and Windows): a byte range of a guest file, base64-encoded.
+                $read = match (true) {
+                    ($commandLine[2] ?? null) === AppLogs::READ_SCRIPT => 4,
+                    str_ends_with($commandLine[6] ?? '', '/read-log.ps1') => 7,
+                    default => null,
+                };
+
+                if ($read !== null) {
                     $this->guestLogReads++;
-                    $file = $this->guestFiles[$vmid][$commandLine[4]] ?? null;
+                    $file = $this->guestFiles[$vmid][$commandLine[$read]] ?? null;
                     [$exitCode, $out, $err] = $file === null
-                        ? [1, '', 'dd: failed to open: No such file or directory']
-                        : [0, base64_encode(substr($file, (int) $commandLine[5], (int) $commandLine[6])), ''];
+                        ? [1, '', 'No such file or directory']
+                        : [0, base64_encode(substr($file, (int) $commandLine[$read + 1], (int) $commandLine[$read + 2])), ''];
                 } else {
                     $this->guestCommands[] = ['vmid' => $vmid, 'command' => $commandLine, 'input' => $input];
                     [$exitCode, $out, $err] = $this->execHandler !== null ? ($this->execHandler)($commandLine, $input) : [0, '', ''];

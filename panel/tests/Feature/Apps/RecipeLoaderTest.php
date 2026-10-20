@@ -72,7 +72,8 @@ class RecipeLoaderTest extends TestCase
     {
         $recipes = (new RecipeLoader)->all();
 
-        $this->assertSame(['aapanel', 'coolify', 'cpanel', 'cyberpanel', 'docker', 'fastpanel', 'hestiacp', 'lamp', 'lemp', 'nodejs', 'openvpn', 'plesk', 'portainer', 'whmcs', 'wireguard', 'wordpress'], array_keys($recipes));
+        $this->assertSame(['aapanel', 'chocolatey', 'coolify', 'cpanel', 'cyberpanel', 'docker', 'fastpanel', 'hestiacp', 'iis', 'lamp', 'lemp', 'nodejs', 'openvpn', 'plesk', 'portainer', 'sqlserver-express', 'whmcs', 'wireguard', 'wordpress'], array_keys($recipes));
+        $this->assertSame(['install.ps1', 'uninstall.ps1', 'actions/reset-password.ps1', 'lib.ps1'], array_keys($recipes['sqlserver-express']['files']));
         $this->assertSame(['install.sh', 'uninstall.sh', 'upgrade.sh', 'actions/add-client.sh', 'actions/revoke-client.sh', 'actions/list-clients.sh', 'lib.sh'], array_keys($recipes['wireguard']['files']));
         $this->artisan('apps:validate')->assertSuccessful();
     }
@@ -286,6 +287,36 @@ class RecipeLoaderTest extends TestCase
 
         $this->artisan('apps:make', ['slug' => 'uptime-kuma'])->assertFailed();
         $this->artisan('apps:make', ['slug' => 'Bad_Slug'])->assertFailed();
+    }
+
+    public function test_apps_make_writes_a_valid_windows_skeleton()
+    {
+        $this->app->instance(RecipeLoader::class, $this->loader());
+
+        $this->artisan('apps:make', ['slug' => 'file-server', '--platform' => 'windows'])->assertSuccessful();
+
+        ['recipe' => $recipe, 'files' => $files] = $this->loader()->load('file-server');
+        $this->assertSame('windows', $recipe->platform);
+        $this->assertSame(['install.ps1', 'uninstall.ps1'], array_keys($files));
+        $this->assertStringContainsString('proxmotion.ps1', $files['install.ps1']);
+
+        $this->artisan('apps:make', ['slug' => 'other-app', '--platform' => 'macos'])->assertFailed();
+    }
+
+    public function test_windows_recipes_use_powershell_scripts_only()
+    {
+        $this->app->instance(RecipeLoader::class, $this->loader());
+        $this->artisan('apps:make', ['slug' => 'file-server', '--platform' => 'windows']);
+        $yaml = $this->directory.'/file-server/recipe.yaml';
+        file_put_contents($yaml, str_replace('script: uninstall.ps1', 'script: uninstall.sh', (string) file_get_contents($yaml)));
+        touch($this->directory.'/file-server/uninstall.sh');
+
+        try {
+            $this->loader()->load('file-server');
+            $this->fail('A shell script was accepted in a Windows recipe.');
+        } catch (RecipeInvalid $e) {
+            $this->assertContains('uninstall.sh: Windows recipes use .ps1 scripts.', $e->errors);
+        }
     }
 
     public function test_an_invalid_recipe_stops_the_sync_before_anything_is_written()

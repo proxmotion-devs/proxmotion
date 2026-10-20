@@ -43,11 +43,11 @@ class AppManagementTest extends AdminTestCase
             ->assertOk()
             ->assertInertia(fn (Assert $page) => $page
                 ->component('admin/apps/Index')
-                ->has('apps', 16)
-                ->where('apps.2.slug', 'docker')
-                ->where('apps.2.is_active', true)
-                ->where('apps.2.recipe_os', ['linux: debian family', 'ubuntu ≥ 22.04', 'debian ≥ 12'])
-                ->where('apps.2.os_version_ids', [$this->server->osTemplate->operating_system_version_id])
+                ->has('apps', 19)
+                ->where('apps.3.slug', 'docker')
+                ->where('apps.3.is_active', true)
+                ->where('apps.3.recipe_os', ['linux: debian family', 'ubuntu ≥ 22.04', 'debian ≥ 12'])
+                ->where('apps.3.os_version_ids', [$this->server->osTemplate->operating_system_version_id])
                 ->has('osVersions', 1));
     }
 

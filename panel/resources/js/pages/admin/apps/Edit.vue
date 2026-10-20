@@ -218,9 +218,13 @@ const switchTab = (next: Tab) => {
 
 // Files
 const fileNames = computed(() => Object.keys(files.value).sort());
+const windows = computed(
+    () => definition.value.requires?.platform === 'windows',
+);
+const installScript = definition.value.lifecycle?.install?.script;
 const selectedFile = ref<string | null>(
-    fileNames.value.includes('install.sh')
-        ? 'install.sh'
+    installScript !== undefined && fileNames.value.includes(installScript)
+        ? installScript
         : (fileNames.value[0] ?? null),
 );
 const newFile = ref('');
@@ -242,7 +246,7 @@ const addFile = () => {
     files.value = {
         ...files.value,
         [name]: name.endsWith('.ps1')
-            ? '$ErrorActionPreference = "Stop"\n'
+            ? '$ErrorActionPreference = \'Stop\'\nSet-StrictMode -Version 3.0\n. "$env:PROXMOTION_APP_DIR\\proxmotion.ps1"\n'
             : '#!/bin/bash\nset -euo pipefail\n# shellcheck source=/dev/null\n. "$PROXMOTION_APP_DIR/proxmotion.sh"\n',
     };
     selectedFile.value = name;
@@ -1095,7 +1099,11 @@ const statusLabels = {
                         <Input
                             v-model="newFile"
                             class="h-8 font-mono text-xs"
-                            placeholder="actions/add-user.sh"
+                            :placeholder="
+                                windows
+                                    ? 'actions/add-user.ps1'
+                                    : 'actions/add-user.sh'
+                            "
                             @keydown.enter.prevent="addFile"
                         />
                         <Button

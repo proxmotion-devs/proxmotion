@@ -6,6 +6,7 @@ import FormDialog from '@/components/admin/FormDialog.vue';
 import AppSystemsDialog from '@/components/admin/AppSystemsDialog.vue';
 import type { AppOsVersion } from '@/components/admin/AppSystemsPicker.vue';
 import FormField from '@/components/admin/FormField.vue';
+import NativeSelect from '@/components/admin/NativeSelect.vue';
 import GuideBox from '@/components/admin/GuideBox.vue';
 import StatusBadge from '@/components/admin/StatusBadge.vue';
 import Heading from '@/components/Heading.vue';
@@ -97,7 +98,12 @@ const toggle = (slug: string, active: boolean) =>
     });
 
 const createOpen = ref(false);
-const createForm = useForm({ slug: '', name: '' });
+const createForm = useForm({ slug: '', name: '', platform: 'linux' });
+// Windows apps run PowerShell scripts (docs/adr/0029).
+const platformOptions = [
+    { value: 'linux', label: 'Linux' },
+    { value: 'windows', label: 'Windows' },
+];
 
 // Import a recipe zip as a new custom app (docs/adr/0018 §5); the panel opens its editor.
 const importOpen = ref(false);
@@ -334,6 +340,18 @@ const submitCreate = () =>
         </FormField>
         <FormField label="Name" for="new_name" :error="createForm.errors.name">
             <Input id="new_name" v-model="createForm.name" />
+        </FormField>
+        <FormField
+            label="Platform"
+            for="new_platform"
+            hint="Linux apps run shell scripts, Windows apps PowerShell scripts."
+            :error="createForm.errors.platform"
+        >
+            <NativeSelect
+                id="new_platform"
+                v-model="createForm.platform"
+                :options="platformOptions"
+            />
         </FormField>
     </FormDialog>
 

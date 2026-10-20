@@ -79,7 +79,7 @@ actions:
 - **Checked again inside the server:** the panel writes the accepted os-release IDs to `server.json` (`os_release`); `run.sh` compares them with `ID` and `ID_LIKE` of `/etc/os-release` before any script runs and fails with "This app does not support <PRETTY_NAME>" instead of half-installing on a mislabelled template.
 - Linux recipes may rely on systemd and bash (every supported family has them). Recipes written with the first version keep loading: `families` is read as `os`, package-manager capabilities as groups (`apt` → debian, `dnf` → rhel, `zypper` → suse, `pacman` → arch); the editor converts them when the recipe is saved.
 - Helpers in `recipes/_lib` have a package-manager-neutral `pm_pkg_install` so one script covers `apt` and `dnf` when the recipe wants to.
-- **Windows** (later phase): a PowerShell runner (`_lib/run.ps1`, started detached with a scheduled task) writing the same `status.json`; `.ps1` scripts are allowed only for `platform: windows`. The format is ready for it now; the runner is built when Windows recipes are.
+- **Windows** (later phase; *built 2026-10-20, ADR 0029*): a PowerShell runner (`_lib/run.ps1`, started detached with a scheduled task) writing the same `status.json`; `.ps1` scripts are allowed only for `platform: windows`. The format is ready for it now; the runner is built when Windows recipes are.
 
 ### 4. Lifecycle operations
 
@@ -122,7 +122,7 @@ All run like the install of ADR 0015: a short `app_run` server task writes the p
 2. **Uninstall and actions:** runner operations, API, webhooks, admin UI, WHMCS and WISECP; WireGuard/OpenVPN client actions. *Built 2026-10-17 in the panel:* `app_runs` (`AppRun`, `AppRunner`, `AppRunPipeline`, `RunPoller`), `app_run` task, uninstall statuses `uninstalling` and `uninstall_failed`, API (`DELETE /servers/{id}/apps/{installation}`, `POST .../actions/{key}`, `GET .../runs/{run}`), the four webhooks, admin buttons and dialogs; a finished uninstall deletes the installation's directory in the guest. WireGuard and OpenVPN 1.2.0: several clients (add, revoke, list), uninstall; Docker 1.2.0: uninstall (images and volumes kept). The WHMCS client area and the WISECP Apps tool show action forms, uninstall and the latest runs (`GET .../runs`) with downloads of run outputs. **Not done yet:** runs against a real Proxmox, WHMCS or WISECP.
 3. **Upgrade:** version ranges, API, billing modules. *Built 2026-10-18:* see "Upgrades" below; the bundled WireGuard, OpenVPN and Docker recipes are 1.3.0 with an `upgrade.sh` for 1.1.x and 1.2.x (newer packages, configuration and keys kept). **Not done yet:** runs against a real Proxmox, WHMCS or WISECP.
 4. **Order-time and reinstall installs (5b).** *Built 2026-10-18:* `app_installations.mode`, `AppStarter` (shared by `install_app` and the post-boot step), order eligibility (`AppEligibility::forOrder`), `ServerCreator`/`ServerReinstaller` with an app, admin create form and reinstall dialog (`OrderedAppOptions`), API fields and `mode=order`, WHMCS (`app` option, `app_<key>` fields, reinstall form) and WISECP (order answers, *Reinstall with an app* in the Apps tool); paid apps and entitlements with ADR 0019. **Not done yet:** runs against a real Proxmox, WHMCS or WISECP.
-5. **Windows runner** when the first Windows recipe is written.
+5. **Windows runner** when the first Windows recipe is written. *Built 2026-10-20:* ADR 0029 (`run.ps1` as a scheduled task, restarts, IIS, SQL Server Express, Chocolatey).
 
 ## Upgrades (phase 3, added 2026-10-18)
 

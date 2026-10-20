@@ -62,7 +62,7 @@ class AppApiTest extends ApiTestCase
 
     public function test_the_catalog_lists_active_apps_with_their_inputs()
     {
-        AppRecipe::query()->whereIn('slug', ['aapanel', 'coolify', 'cpanel', 'cyberpanel', 'docker', 'fastpanel', 'hestiacp', 'lamp', 'lemp', 'nodejs', 'plesk', 'portainer', 'whmcs', 'wordpress'])->update(['is_active' => false]);
+        AppRecipe::query()->whereIn('slug', ['aapanel', 'chocolatey', 'coolify', 'cpanel', 'cyberpanel', 'docker', 'fastpanel', 'hestiacp', 'iis', 'lamp', 'lemp', 'nodejs', 'plesk', 'portainer', 'sqlserver-express', 'whmcs', 'wordpress'])->update(['is_active' => false]);
 
         $response = $this->api('GET', '/api/v1/apps')->assertOk();
 

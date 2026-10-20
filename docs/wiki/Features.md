@@ -433,6 +433,11 @@ The App Marketplace is the equivalent of OVH's "install with an application": on
 | **WordPress** | Web | nginx site, WP-CLI, optional Let's Encrypt; action: reset password |
 | **Node.js** | Web | Node.js 22 or 24 from NodeSource, optionally PM2 |
 | **WHMCS** | Billing / web | `license: external`; the customer supplies their download address and licence key |
+| **IIS** | Web (Windows) | IIS with ASP.NET 4.x and IIS Manager, optionally the ASP.NET Core Hosting Bundle 8.0 or 10.0; uninstall |
+| **SQL Server Express** | Web (Windows) | SQL Server 2022 Express, `sa` password, fixed TCP port; action: reset password; uninstall |
+| **Chocolatey** | Container (Windows) | Package manager; actions: install, remove and list packages; uninstall |
+
+The last three are Windows apps (Windows Server 2016 and later, Windows 10/11): PowerShell scripts run by the Windows runner ([ADR 0029](../adr/0029-windows-app-runner.md)); they are offered on Windows templates only, and Linux apps on Linux templates only.
 
 None of the bundled recipes has run on a real guest yet; see [Verification status](#17-verification-status).
 
@@ -442,7 +447,7 @@ None of the bundled recipes has run on a real guest yet; see [Verification statu
 
 1. **Eligibility.** The panel checks that the server's operating system version is ticked for the app, its resources (memory, disk, cores) and network model. Apps that do not fit are **not offered** to customers and requests for them are rejected with `422`. The admin server page lists them greyed out with the reason.
 2. **Inputs** declared by the recipe (port, enum, slug, email, domain, password, HTTPS URL, …) are **validated by type** and written into the VPS as `inputs.json`. They are **never interpolated into a script**.
-3. A short `install_app` task uses the **guest agent** to write the recipe into the VPS and start the runner (`run.sh`) detached with `systemd-run`.
+3. A short `install_app` task uses the **guest agent** to write the recipe into the VPS and start the runner (`run.sh`) detached with `systemd-run`. On Windows the recipe goes to `C:\ProgramData\Proxmotion\apps` (readable by SYSTEM and Administrators only) and `run.ps1` runs as a scheduled task as SYSTEM; a script that needs a restart asks for one, and the runner restarts Windows and runs the script again (ADR 0029).
 4. The script reports progress to `status.json`; every minute `apps:poll` reads it through the guest agent. **There is no phone-home**: the VPS needs no network path to the panel and no panel token is ever placed on it.
 5. **Outputs** (panel URL, usernames, passwords, `.ovpn`/`.conf` files) are read from `outputs.json` / `outputs/` and **stored encrypted**. Billing systems fetch them with the `apps:secrets` scope; administrators see them with *Show details* (audited).
 6. The **firewall** ports the recipe declares are opened.

@@ -70,11 +70,12 @@ final readonly class AppEligibility
     {
         $recipe = $version->recipe();
 
-        if (! $app->is_active || $recipe->platform !== 'linux') {
+        if (! $app->is_active) {
             return new AppNotEligible('This app is not available.');
         }
 
-        return $this->os($app, $server->osTemplate)
+        return $this->platform($recipe, $server->osTemplate)
+            ?? $this->os($app, $server->osTemplate)
             ?? $this->resources($recipe, $server->cpu_cores, $server->memory_mib, $server->disk_mib)
             ?? ($recipe->supportsNetworkModel($server->network_model) ? null : new AppNotEligible('This app does not support the server\'s network model.'));
     }
@@ -102,6 +103,7 @@ final readonly class AppEligibility
 
         $recipe = $app->latestVersion->recipe();
         $problem = $this->common($app, $recipe, $mode)
+            ?? $this->platform($recipe, $osTemplate)
             ?? ($osTemplate === null ? null : $this->os($app, $osTemplate))
             ?? ($package === null ? null : $this->resources($recipe, $package->cpu_cores, $package->memory_mib, $package->disk_mib));
 
@@ -129,6 +131,7 @@ final readonly class AppEligibility
         $recipe = $version->recipe();
 
         return $this->common($app, $recipe, $mode, requireActive: ! $trial)
+            ?? $this->platform($recipe, $osTemplate)
             ?? ($trial ? null : $this->os($app, $osTemplate))
             ?? $this->resources($recipe, $cores, $memoryMib, $diskMib)
             ?? ($recipe->supportsNetworkModel($networkModel) ? null : new AppNotEligible('This app does not support the server\'s network model.'));
@@ -146,12 +149,18 @@ final readonly class AppEligibility
                 : 'This app can only be installed on a running server.');
         }
 
-        // Windows recipes need the PowerShell runner (docs/adr/0016 §3), not built yet.
-        if ($recipe->platform !== 'linux') {
-            return new AppNotEligible('This app does not support the operating system.');
-        }
-
         return null;
+    }
+
+    /**
+     * Linux recipes on Linux templates, Windows recipes on Windows ones
+     * (docs/adr/0029 §5). The ticks below already keep them apart, but trials skip those.
+     */
+    private function platform(Recipe $recipe, ?OsTemplate $template): ?AppNotEligible
+    {
+        return $template === null || $template->platform->value === $recipe->platform
+            ? null
+            : new AppNotEligible('This app does not support the operating system.');
     }
 
     /** Administrators tick the operating system versions an app is offered on (docs/adr/0026). */

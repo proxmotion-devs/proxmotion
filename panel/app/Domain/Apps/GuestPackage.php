@@ -16,7 +16,8 @@ use stdClass;
 /**
  * Writes an installation's recipe version into its directory inside the
  * server (docs/adr/0015, 0016): every script and include of the version, the
- * shared helpers and runner, the install inputs and server.json. Writing it
+ * shared helpers and runner of its platform (docs/adr/0029), the install
+ * inputs and server.json. Writing it
  * again is harmless, so every install, uninstall and action does.
  */
 final readonly class GuestPackage
@@ -34,8 +35,9 @@ final readonly class GuestPackage
     {
         $version ??= $installation->version;
         $inputs ??= $installation->inputs;
+        $platform = $installation->platform();
         $directory = $installation->guestDirectory();
-        $files = $this->recipes->library() + $version->files + [
+        $files = $this->recipes->library($platform->value) + $version->files + [
             'inputs.json' => self::json($inputs === [] ? new stdClass : $inputs),
             // No os_release list: administrators chose the systems the app is
             // offered on (docs/adr/0026), so run.sh checks none inside the server.
@@ -50,10 +52,10 @@ final readonly class GuestPackage
             }
         }
 
-        $agent->runOrFail($server->vmid, ['mkdir', '-p', '-m', '700', ...array_values(array_unique($directories))]);
+        AppGuest::makeDirectories($agent, $server->vmid, $platform, array_values(array_unique($directories)));
 
         foreach ($files as $path => $content) {
-            $agent->writeFile($server->vmid, $directory.'/'.$path, $content);
+            $agent->writeFile($server->vmid, $directory.'/'.$path, AppGuest::content($path, $content));
         }
     }
 
