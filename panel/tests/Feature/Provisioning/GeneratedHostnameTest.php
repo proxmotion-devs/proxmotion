@@ -2,10 +2,12 @@
 
 namespace Tests\Feature\Provisioning;
 
+use App\Domain\Servers\ServerReinstaller;
 use App\Enums\TaskStatus;
 use App\Enums\TaskType;
 use App\Models\IpAddress;
 use App\Models\Server;
+use App\Models\User;
 use App\Provisioning\Exceptions\ProvisioningException;
 use App\Provisioning\HostnameGenerator;
 use App\Provisioning\ServerCreator;
@@ -42,18 +44,37 @@ class GeneratedHostnameTest extends TestCase
         $this->assertSame('ip-203-0-113-2.example.com', $server->refresh()->hostname);
         $this->assertSame('ip-203-0-113-2.example.com', IpAddress::query()->where('address', '203.0.113.2')->value('ptr'));
 
-        // The VM is named after the address; the hostname is set inside the guest.
-        $this->assertSame('203.0.113.2', $server->vm_name);
-        $this->assertSame('203.0.113.2', $this->proxmox->vms[$server->vmid]['config']['name']);
-        $this->assertStringContainsString("hostname=ip-203-0-113-2.example.com\n", $this->proxmox->guestFiles[$server->vmid]['/etc/proxmotion/hostname.vars']);
+        // The VM is named after the hostname, which cloud-init sets; notes and a tag carry the address.
+        $config = $this->proxmox->vms[$server->vmid]['config'];
+        $this->assertNull($server->vm_name);
+        $this->assertSame('ip-203-0-113-2.example.com', $config['name']);
+        $this->assertSame("Managed by Proxmotion. Server {$server->uuid}\n\nPrimary address: 203.0.113.2", $config['description']);
+        $this->assertSame('203.0.113.2', $config['tags']);
         $task = $server->tasks()->sole();
         $this->assertSame(TaskStatus::Succeeded, $task->status, (string) $task->error);
-        $this->assertTrue($task->hasCompleted('guest_hostname'));
+        $this->assertFalse($task->hasCompleted('guest_hostname'), 'cloud-init sets it from the VM name.');
+        $this->assertArrayNotHasKey('/etc/proxmotion/hostname.vars', $this->proxmox->guestFiles[$server->vmid] ?? []);
     }
 
-    public function test_a_reinstall_keeps_the_vm_name_and_sets_the_hostname_inside_again()
+    public function test_a_reinstall_names_a_vm_named_after_its_address_after_the_hostname()
+    {
+        // Servers named from a template before 2026-10-20 have their address as VM name.
+        $server = app(ServerCreator::class)->create($this->order(['hostname' => null]))->refresh();
+        $server->forceFill(['vm_name' => '203.0.113.2'])->save();
+        $this->proxmox->vms[$server->vmid]['config']['name'] = '203.0.113.2';
+
+        $task = app(ServerReinstaller::class)->request($server, $this->osTemplate, [], User::factory()->create(), null)->refresh();
+
+        $this->assertSame(TaskStatus::Succeeded, $task->status, (string) $task->error);
+        $this->assertNull($server->refresh()->vm_name);
+        $this->assertSame('ip-203-0-113-2.example.com', $this->proxmox->vms[$server->vmid]['config']['name']);
+        $this->assertFalse($task->hasCompleted('guest_hostname'));
+    }
+
+    public function test_a_vm_named_after_its_address_gets_the_hostname_inside()
     {
         $server = app(ServerCreator::class)->create($this->order(['hostname' => null]))->refresh();
+        $server->forceFill(['vm_name' => '203.0.113.2'])->save();
         unset($this->proxmox->guestFiles[$server->vmid]);
 
         $task = app(TaskRunner::class)->start($server, TaskType::Reinstall)->refresh();
@@ -63,7 +84,7 @@ class GeneratedHostnameTest extends TestCase
         $this->assertStringContainsString("hostname=ip-203-0-113-2.example.com\n", $this->proxmox->guestFiles[$server->vmid]['/etc/proxmotion/hostname.vars']);
     }
 
-    public function test_windows_is_restarted_once_to_take_the_name()
+    public function test_windows_takes_the_name_without_a_restart()
     {
         $this->osTemplate->forceFill(['distribution' => 'windows'])->save();
 
@@ -71,9 +92,22 @@ class GeneratedHostnameTest extends TestCase
 
         $task = $server->tasks()->sole();
         $this->assertSame(TaskStatus::Succeeded, $task->status, (string) $task->error);
-        $this->assertArrayHasKey('C:\\ProgramData\\Proxmotion\\hostname.json', $this->proxmox->guestFiles[$server->vmid]);
-        $this->assertTrue($task->hasCompleted('reboot'));
-        $this->assertFalse($server->refresh()->reboot_required);
+        $this->assertSame('ip-203-0-113-2.example.com', $this->proxmox->vms[$server->vmid]['config']['name']);
+        $this->assertArrayNotHasKey('C:\\ProgramData\\Proxmotion\\hostname.json', $this->proxmox->guestFiles[$server->vmid] ?? []);
+        $this->assertFalse($task->hasCompleted('reboot'));
+    }
+
+    public function test_refused_tags_leave_a_note_and_the_server_is_built()
+    {
+        $this->proxmox->refuseTags = 'Permission check failed (/, Sys.Modify)';
+
+        $server = app(ServerCreator::class)->create($this->order(['hostname' => null]));
+
+        $task = $server->tasks()->sole();
+        $this->assertSame(TaskStatus::Succeeded, $task->status, (string) $task->error);
+        $this->assertStringContainsString('Primary address: 203.0.113.2', $this->proxmox->vms[$server->vmid]['config']['description']);
+        $this->assertArrayNotHasKey('tags', $this->proxmox->vms[$server->vmid]['config']);
+        $this->assertSame('The address tags were not set: Permission check failed (/, Sys.Modify)', collect($task->steps)->firstWhere('key', 'configure')['message']);
     }
 
     public function test_only_the_primary_address_of_each_version_gets_a_ptr()
@@ -101,8 +135,9 @@ class GeneratedHostnameTest extends TestCase
         $label = implode('-', str_split(bin2hex((string) inet_pton($address)), 4));
         $this->assertStringStartsWith('2001-0db8-0100-0000-', $label);
         $this->assertSame("ip-{$label}.example.com", $server->refresh()->hostname);
-        // A VM name has no colons.
-        $this->assertSame($label, $this->proxmox->vms[$server->vmid]['config']['name']);
+        $this->assertSame("ip-{$label}.example.com", $this->proxmox->vms[$server->vmid]['config']['name']);
+        // A tag has no colons.
+        $this->assertSame($label, $this->proxmox->vms[$server->vmid]['config']['tags']);
     }
 
     public function test_vmid_and_location_placeholders()

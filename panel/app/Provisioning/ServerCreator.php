@@ -204,16 +204,14 @@ final readonly class ServerCreator
     /**
      * The hostname from the location's template (docs/adr/0031), which also
      * becomes the PTR of the primary address of each version. The Proxmox VM
-     * is named after the primary address; the pipelines set the hostname
-     * inside the guest.
+     * is named after it, so cloud-init sets it at the first boot.
      *
      * @throws ProvisioningException
      */
     private function nameServer(Server $server, NewServer $order): void
     {
         $hostname = $this->hostnames->generate($server, $order->location);
-        $primary = $this->hostnames->primaryAddress($server) ?? throw ProvisioningException::noAddresses('IPv4');
-        $server->forceFill(['hostname' => $hostname, 'vm_name' => HostnameGenerator::vmName($primary)])->save();
+        $server->forceFill(['hostname' => $hostname])->save();
 
         // Primary first within each version (Server::ipAddresses()).
         $byVersion = $server->ipAddresses()->with('pool')->get()->groupBy(fn (IpAddress $address) => $address->pool->version->value);

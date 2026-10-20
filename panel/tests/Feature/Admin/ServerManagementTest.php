@@ -124,13 +124,16 @@ class ServerManagementTest extends AdminTestCase
 
         $server = Server::query()->sole();
         $this->assertSame('ip-203-0-113-2.example.com', $server->hostname);
-        $this->assertSame('203.0.113.2', $this->proxmox->vms[$server->vmid]['config']['name']);
+        $this->assertSame('ip-203-0-113-2.example.com', $this->proxmox->vms[$server->vmid]['config']['name']);
 
-        // The pages title it by its address, with the hostname below.
+        // The VM is named after the hostname (docs/adr/0031 §2a); the pages title it so.
         $this->get(route('admin.servers.index'))
             ->assertInertia(fn (Assert $page) => $page
-                ->where('servers.data.0.vm_name', '203.0.113.2')
+                ->where('servers.data.0.vm_name', null)
                 ->where('servers.data.0.hostname', 'ip-203-0-113-2.example.com'));
+
+        // A server named after its address before 2026-10-20 is titled by it, with the hostname below.
+        $server->forceFill(['vm_name' => '203.0.113.2'])->save();
         $this->get(route('admin.servers.show', $server))
             ->assertInertia(fn (Assert $page) => $page
                 ->where('server.vm_name', '203.0.113.2')

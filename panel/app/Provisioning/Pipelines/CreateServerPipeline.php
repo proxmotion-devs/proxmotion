@@ -19,6 +19,7 @@ use App\Provisioning\LinkedClones;
 use App\Provisioning\Network\NetworkConfig;
 use App\Provisioning\Stages\StagedPipeline;
 use App\Provisioning\Stages\StageRunner;
+use App\Provisioning\VmLabels;
 use App\Proxmox\Data\BootDisk;
 use App\Proxmox\Data\Upid;
 use App\Proxmox\Exceptions\ProxmoxRequestFailed;
@@ -181,7 +182,7 @@ final readonly class CreateServerPipeline implements StagedPipeline
             // Active only once the new system's guest agent answers, and on Windows once
             // setup has finished, on Linux once cloud-init has (or the wait times out, ADR 0004).
             'wait_agent' => $this->waitForAgent($task, $server, setup: true, step: 'wait_agent'),
-            // A server named from its location's template: its hostname inside the guest (ADR 0031).
+            // A VM named after its address (servers named from a template before docs/adr/0031 §2a changed): the hostname inside the guest.
             'name_guest' => $this->nameGuest($task, $server),
             'name_guest_wait' => ($task->input['renamed_with_restart'] ?? false) === true
                 ? $this->waitForAgent($task, $server, setup: false, step: null)
@@ -285,7 +286,7 @@ final readonly class CreateServerPipeline implements StagedPipeline
 
         $params = [
             'name' => $server->vmName(),
-            'description' => "Managed by Proxmotion. Server {$server->uuid}",
+            'description' => VmLabels::description($server),
             'cores' => $server->cpu_cores,
             'sockets' => 1,
             'memory' => $server->memory_mib,
@@ -310,7 +311,7 @@ final readonly class CreateServerPipeline implements StagedPipeline
         // Proxmox generates the MAC address on clone; record the one the VM really has.
         $config = $qemu->config($server->vmid) ?? [];
         $server->forceFill(['mac_address' => $this->network->macAddress($config)])->save();
-        $task->completeStep('configure');
+        $task->completeStep('configure', VmLabels::applyTags($qemu, $server));
 
         return null;
     }
@@ -375,9 +376,11 @@ final readonly class CreateServerPipeline implements StagedPipeline
     }
 
     /**
-     * A server named from its location's template has its address as VM name
-     * (docs/adr/0031), from which cloud-init and Cloudbase-Init took the
-     * hostname inside the guest: the hostname script sets the real one. Windows
+     * A server named from its location's template before 2026-10-20 may have
+     * its address as VM name (docs/adr/0031 §2a), from which cloud-init and
+     * Cloudbase-Init took the hostname inside the guest: the hostname script
+     * sets the real one. Every other VM is named after the hostname, which
+     * cloud-init and Cloudbase-Init set themselves, so this does nothing. Windows
      * applies it at its next restart, done here; the next stage waits for its
      * agent again. A failing script leaves a note.
      */

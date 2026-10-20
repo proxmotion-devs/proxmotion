@@ -16,7 +16,8 @@ use App\Rules\Hostname;
  * location's template: {ip} is the primary IPv4 address with dashes
  * (203-0-113-5), or the primary IPv6 address written out in full with dashes
  * on a server without IPv4; {vmid} the VMID; {location} the location's code.
- * Such a server's Proxmox VM name is its primary address (vmName()).
+ * Its Proxmox VM is named after the hostname like any other (VmLabels tags it
+ * with its addresses).
  */
 final class HostnameGenerator
 {
@@ -103,16 +104,6 @@ final class HostnameGenerator
     }
 
     /**
-     * The Proxmox VM name of a server named by its template: its primary
-     * address, an IPv6 address written out with dashes (a VM name is a DNS
-     * name, without colons).
-     */
-    public static function vmName(IpAddress $address): string
-    {
-        return str_contains($address->address, ':') ? self::addressLabel($address->address) : $address->address;
-    }
-
-    /**
      * The primary IPv4 address, else the primary IPv6 address.
      */
     public function primaryAddress(Server $server): ?IpAddress
@@ -124,7 +115,11 @@ final class HostnameGenerator
             ?? $addresses->first(fn (IpAddress $address) => $address->pool->version === IpVersion::V6);
     }
 
-    private static function addressLabel(string $address): string
+    /**
+     * An address with dashes: 203-0-113-5, or an IPv6 address written out in
+     * full (2001-0db8-0000-…), for names and tags that take no colons.
+     */
+    public static function addressLabel(string $address): string
     {
         $binary = inet_pton($address);
 

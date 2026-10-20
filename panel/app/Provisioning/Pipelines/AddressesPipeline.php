@@ -10,6 +10,7 @@ use App\Models\IpAddress;
 use App\Models\Task;
 use App\Provisioning\IpAllocator;
 use App\Provisioning\Network\NetworkConfig;
+use App\Provisioning\VmLabels;
 use App\Proxmox\ProxmoxClientFactory;
 
 /**
@@ -18,8 +19,9 @@ use App\Proxmox\ProxmoxClientFactory;
  * (AddressChanger, docs/adr/0028). Anti-spoofing (the server's addresses in,
  * released ones out) → release → the address guest script, which configures
  * the primary, the default route and the additional addresses inside the
- * guest. cloud-init's ipconfig0 is deliberately left alone: changing it makes
- * cloud-init treat the next boot as a new instance. Safe to run again.
+ * guest; the VM's notes and address tags follow (VmLabels). cloud-init's
+ * ipconfig0 is deliberately left alone: changing it makes cloud-init treat the
+ * next boot as a new instance. Safe to run again.
  */
 final readonly class AddressesPipeline
 {
@@ -50,7 +52,7 @@ final readonly class AddressesPipeline
 
         // Only now, out of the firewall, may another server get it.
         $this->ips->releaseAddresses($releasing);
-        $task->completeStep('addresses');
+        $task->completeStep('addresses', VmLabels::apply($qemu, $server));
 
         $this->guestScripts->run($task, $server, GuestScriptEvent::AddressesChanged);
     }

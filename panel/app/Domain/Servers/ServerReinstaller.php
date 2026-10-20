@@ -80,6 +80,8 @@ final readonly class ServerReinstaller
                 'root_password' => Str::password(20, symbols: false),
                 'root_password_unrevealed' => true,
                 'ssh_keys' => PublicKey::implode($sshKeys),
+                // The new VM is named after the hostname, which cloud-init then sets (docs/adr/0031 §2a).
+                'vm_name' => null,
                 // Trying an inactive template makes it a test server, as when one is created from it.
                 'is_test' => $server->is_test || ! $osTemplate->is_active,
             ])->save();

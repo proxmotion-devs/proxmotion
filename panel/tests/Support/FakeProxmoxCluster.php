@@ -42,6 +42,9 @@ class FakeProxmoxCluster
     /** When set, linked clone requests (full=0) are refused with this message. */
     public ?string $refuseLinkedClone = null;
 
+    /** When set, config changes with tags are refused with this message (limited user tag access). */
+    public ?string $refuseTags = null;
+
     /** @var array<int, list<string>> UPIDs reported as running per VMID; they finish once polled */
     public array $activeTasks = [];
 
@@ -472,6 +475,10 @@ class FakeProxmoxCluster
      */
     private function updateConfig(int $vmid, array $data): PromiseInterface
     {
+        if ($this->refuseTags !== null && array_key_exists('tags', $data)) {
+            return Create::promiseFor(new Psr7Response(403, ['Content-Type' => 'application/json'], '{"data":null}', '1.1', $this->refuseTags));
+        }
+
         foreach ($data as $key => $value) {
             // Without hotplug, Proxmox keeps CPU and memory changes of a running VM for its next start.
             if ($this->vms[$vmid]['status'] === 'running' && in_array($key, ['cores', 'sockets', 'memory'], true) && (string) ($this->vms[$vmid]['config'][$key] ?? '') !== (string) $value) {

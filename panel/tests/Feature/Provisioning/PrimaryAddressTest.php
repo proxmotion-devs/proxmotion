@@ -100,6 +100,21 @@ class PrimaryAddressTest extends TestCase
         $this->assertSame([$first, $second, false], [$audit->properties['before'], $audit->properties['after'], $audit->properties['released']]);
     }
 
+    public function test_the_vm_notes_and_address_tag_follow_the_primary()
+    {
+        $server = $this->server(ipv4: 2);
+        [$first, $second] = $this->addresses($server);
+        $this->assertSame($first, $this->proxmox->vms[$server->vmid]['config']['tags']);
+        // Tags of the administrators stay.
+        $this->proxmox->vms[$server->vmid]['config']['tags'] = "customer-a;{$first}";
+
+        $this->change($server, $second);
+
+        $config = $this->proxmox->vms[$server->vmid]['config'];
+        $this->assertSame("customer-a;{$second}", $config['tags']);
+        $this->assertSame("Managed by Proxmotion. Server {$server->uuid}\n\nPrimary address: {$second}", $config['description']);
+    }
+
     public function test_a_free_address_replaces_the_primary_and_the_old_one_is_released()
     {
         $server = $this->server();

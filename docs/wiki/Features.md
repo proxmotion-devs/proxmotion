@@ -170,7 +170,7 @@ Per node, administrators set:
 
 ## 5. Locations, placement groups and placement
 
-Each location may have a **hostname template** ([ADR 0031](../adr/0031-generated-hostnames.md)), e.g. `ip-{ip}.example.com`. A server ordered there without a hostname (admin form, API, or a WHMCS/WISECP order without a valid domain) is named from its primary address (`ip-203-0-113-5.example.com`; `{vmid}` and `{location}` work too), and that name becomes the PTR of its primary IPv4 and IPv6 addresses. Its Proxmox VM is named after the address (`203.0.113.5`), which is also its title in the panel (the hostname below it), and the panel sets the hostname inside the server after the first boot (Windows restarts once for it). Without a template a hostname is required, and the billing modules fall back to `vps<service id>`.
+Each location may have a **hostname template** ([ADR 0031](../adr/0031-generated-hostnames.md)), e.g. `ip-{ip}.example.com`. A server ordered there without a hostname (admin form, API, or a WHMCS/WISECP order without a valid domain) is named from its primary address (`ip-203-0-113-5.example.com`; `{vmid}` and `{location}` work too), and that name becomes the PTR of its primary IPv4 and IPv6 addresses. Its Proxmox VM is named after that hostname, so cloud-init (or Cloudbase-Init on Windows) sets it at the first boot; the VM's notes and tags carry its primary addresses, so it can still be found by address in Proxmox. Without a template a hostname is required, and the billing modules fall back to `vps<service id>`.
 
 ### 5.1 Placement groups
 
