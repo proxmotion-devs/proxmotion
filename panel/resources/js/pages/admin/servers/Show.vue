@@ -16,6 +16,7 @@ import HostnameDialog from '@/components/servers/HostnameDialog.vue';
 import RdnsDialog from '@/components/servers/RdnsDialog.vue';
 import RebuildDialog from '@/components/servers/RebuildDialog.vue';
 import AntiSpoofingButton from '@/components/servers/AntiSpoofingButton.vue';
+import FirewallSection from '@/components/servers/FirewallSection.vue';
 import ReapplyAddressesButton from '@/components/servers/ReapplyAddressesButton.vue';
 import ReinstallDialog from '@/components/servers/ReinstallDialog.vue';
 import RemoveAddressButton from '@/components/servers/RemoveAddressButton.vue';
@@ -67,6 +68,7 @@ import type {
     Drift,
     ReinstallOptions,
     ResourceOptions,
+    ServerFirewall,
     ServerAddress,
     RevealedAppOutputs,
     ServerStatus,
@@ -120,6 +122,8 @@ const props = withDefaults(
         revealedAppOutputs: RevealedAppOutputs | null;
         reinstallOptions: ReinstallOptions;
         resourceOptions: ResourceOptions;
+        /** docs/adr/0035 */
+        firewall: ServerFirewall;
         /** Pools addresses may be added from (docs/adr/0028). */
         addressPools: AddressPoolOption[];
         drifts: Drift[];
@@ -664,6 +668,13 @@ const resetAfterTrial = () => {
                     <li v-if="server.addresses.length === 0">—</li>
                 </ul>
             </section>
+
+            <FirewallSection
+                v-if="['active', 'suspended'].includes(server.status)"
+                :server="server.uuid"
+                :firewall="firewall"
+                :disabled="busy"
+            />
 
             <ServerChecks
                 v-if="active || server.verification"

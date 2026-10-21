@@ -63,6 +63,7 @@ use Illuminate\Support\Carbon;
  * @property Carbon|null $provisioned_at
  * @property array{checked_at: string, checks: list<array{key: string, status: string, params: array<string, string>, detail: string|null}>}|null $verification the latest checks from inside the server (ServerVerifier)
  * @property Carbon|null $firewall_checked_at when FirewallChecker last compared its VM firewall (docs/adr/0033)
+ * @property bool $firewall_enabled its firewall lets in only what its rules allow (docs/adr/0035)
  * @property Carbon|null $terminated_at
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
@@ -106,6 +107,7 @@ class Server extends Model
             'provisioned_at' => 'datetime',
             'verification' => 'array',
             'firewall_checked_at' => 'datetime',
+            'firewall_enabled' => 'boolean',
             'terminated_at' => 'datetime',
         ];
     }
@@ -181,6 +183,16 @@ class Server extends Model
     {
         // The primary address of each version first (docs/adr/0011); without one, the oldest.
         return $this->hasMany(IpAddress::class)->orderByDesc('is_primary')->orderBy('id');
+    }
+
+    /**
+     * The inbound rules of its firewall, in order (docs/adr/0035).
+     *
+     * @return HasMany<ServerFirewallRule, $this>
+     */
+    public function firewallRules(): HasMany
+    {
+        return $this->hasMany(ServerFirewallRule::class)->orderBy('position');
     }
 
     /**

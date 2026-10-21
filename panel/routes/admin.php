@@ -11,6 +11,7 @@ use App\Http\Controllers\Admin\ClusterController;
 use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Admin\DnsProviderController;
 use App\Http\Controllers\Admin\DriftController;
+use App\Http\Controllers\Admin\FirewallRulesetController;
 use App\Http\Controllers\Admin\GuestScriptController;
 use App\Http\Controllers\Admin\HelpController;
 use App\Http\Controllers\Admin\IpAddressController;
@@ -23,6 +24,7 @@ use App\Http\Controllers\Admin\OsTemplateController;
 use App\Http\Controllers\Admin\PackageController;
 use App\Http\Controllers\Admin\PlacementGroupController;
 use App\Http\Controllers\Admin\ServerController;
+use App\Http\Controllers\Admin\ServerFirewallController;
 use App\Http\Controllers\Admin\StorageController;
 use App\Http\Controllers\Admin\TaskController;
 use App\Http\Controllers\Admin\UserController;
@@ -87,6 +89,9 @@ Route::get('guest-script-logs/{guestScriptLog}', [GuestScriptController::class, 
 Route::resource('packages', PackageController::class)->only(['index', 'store', 'update', 'destroy']);
 Route::resource('placement-groups', PlacementGroupController::class)->only(['index', 'store', 'update', 'destroy'])
     ->parameters(['placement-groups' => 'placementGroup']);
+// docs/adr/0035 §3
+Route::resource('firewall-rulesets', FirewallRulesetController::class)->only(['index', 'store', 'update', 'destroy'])
+    ->parameters(['firewall-rulesets' => 'firewallRuleset']);
 
 Route::get('apps', [AppController::class, 'index'])->name('apps.index');
 Route::patch('apps/{appRecipe}', [AppController::class, 'update'])->name('apps.update');
@@ -137,6 +142,8 @@ Route::post('servers/{server}/power/{action}', [ServerController::class, 'power'
 Route::post('servers/{server}/retry', [ServerController::class, 'retry'])->name('servers.retry');
 Route::post('servers/{server}/rebuild', [ServerController::class, 'rebuild'])->middleware('throttle:10,1')->name('servers.rebuild');
 Route::post('servers/{server}/verify', [ServerController::class, 'verify'])->middleware('throttle:10,1')->name('servers.verify');
+Route::put('servers/{server}/firewall', [ServerFirewallController::class, 'update'])->middleware('throttle:20,1')->name('servers.firewall');
+Route::post('servers/{server}/firewall/ruleset', [ServerFirewallController::class, 'ruleset'])->middleware('throttle:20,1')->name('servers.firewall.ruleset');
 Route::post('servers/{server}/anti-spoofing', [ServerController::class, 'enableAntiSpoofing'])->middleware('throttle:10,1')->name('servers.enable-anti-spoofing');
 Route::post('tasks/{task}/fail', [TaskController::class, 'fail'])->name('tasks.fail');
 Route::post('servers/{server}/password', [ServerController::class, 'revealPassword'])->middleware('throttle:20,1')->name('servers.password');

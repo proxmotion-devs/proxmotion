@@ -155,33 +155,28 @@ final readonly class QemuResource
      * VM's own address as source, so without them such replies pass.
      */
     public const DHCP_SERVER_RULES = [
-        ['type' => 'out', 'action' => 'DROP', 'proto' => 'udp', 'sport' => '67', 'dport' => '68', 'enable' => 1, 'comment' => 'Proxmotion: no DHCP server'],
         ['type' => 'out', 'action' => 'DROP', 'proto' => 'udp', 'sport' => '547', 'dport' => '546', 'enable' => 1, 'comment' => 'Proxmotion: no DHCPv6 server'],
+        ['type' => 'out', 'action' => 'DROP', 'proto' => 'udp', 'sport' => '67', 'dport' => '68', 'enable' => 1, 'comment' => 'Proxmotion: no DHCP server'],
     ];
 
+    /** Every rule the panel writes has a comment starting with this (docs/adr/0035 §2). */
+    public const PANEL_RULE_PREFIX = 'Proxmotion';
+
+    /** The rule fields the panel sets and compares. */
+    private const RULE_FIELDS = ['type', 'action', 'proto', 'dport', 'sport', 'source', 'dest', 'enable', 'comment'];
+
     /**
-     * Enable the VM firewall with IP and MAC filtering (anti-spoofing).
-     * Both policies become ACCEPT unless $setPolicies is false (adopted VMs
-     * keep theirs: only the filters are the panel's business there).
+     * Enable the VM firewall with IP and MAC filtering (anti-spoofing) and
+     * an IP set holding at least $addresses. The policies and the rules are
+     * the business of applyRules() and setInputPolicy().
      *
      * @param  list<string>  $addresses  IPs the VM may use on net0
      */
-    public function enableAntiSpoofing(int $vmid, array $addresses, bool $setPolicies = true): void
+    public function enableAntiSpoofing(int $vmid, array $addresses): void
     {
         $base = $this->path($vmid, 'firewall');
 
-        $this->client->put("{$base}/options", [
-            ...self::ANTI_SPOOFING_OPTIONS,
-            ...($setPolicies ? ['policy_in' => 'ACCEPT', 'policy_out' => 'ACCEPT'] : []),
-        ]);
-
-        $comments = array_map(fn (array $rule) => $rule['comment'] ?? null, $this->firewallRules($vmid));
-
-        foreach (self::DHCP_SERVER_RULES as $rule) {
-            if (! in_array($rule['comment'], $comments, true)) {
-                $this->client->post("{$base}/rules", $rule);
-            }
-        }
+        $this->client->put("{$base}/options", self::ANTI_SPOOFING_OPTIONS);
 
         // Proxmox uses the IP set "ipfilter-net0" to decide which addresses net0 may use.
         if (! $this->hasAntiSpoofingSet($vmid)) {
@@ -224,56 +219,124 @@ final readonly class QemuResource
     ];
 
     /**
-     * Make the VM firewall isolate the server as $sets say (docs/adr/0034):
-     * only the rules whose IP set has entries (isolationRulesFor()), on top
-     * and in order, with exactly those sets. Rules and sets no longer needed
-     * — a pool that stopped isolating, no protected networks left — are
-     * removed. When a rule is missing, extra, disabled, changed or out of
-     * order, all of ours are replaced; other rules stay as they are.
+     * Create the isolation IP sets the rules of $sets need (isolationRulesFor())
+     * and make their entries exactly $sets (docs/adr/0034). Run before
+     * applyRules(): rules refer to them.
      *
      * @param  array<string, list<string>>  $sets  IP set name => entries (addresses or CIDRs)
      */
-    public function applyIsolation(int $vmid, array $sets): void
+    public function applyIsolationSets(int $vmid, array $sets): void
     {
         $base = $this->path($vmid, 'firewall');
-        $wantedRules = self::isolationRulesFor($sets);
-        $wantedSets = self::setsOf($wantedRules);
         $existing = $this->ipsetNames($vmid);
 
-        // The sets first: rules refer to them.
-        foreach ($wantedSets as $name) {
+        foreach (self::setsOf(self::isolationRulesFor($sets)) as $name) {
             if (! in_array($name, $existing, true)) {
                 $this->client->post("{$base}/ipset", ['name' => $name, 'comment' => 'Managed by Proxmotion']);
             }
 
             $this->syncIpset($vmid, $name, $sets[$name] ?? []);
         }
+    }
 
-        $rules = $this->firewallRules($vmid);
+    /**
+     * Delete the isolation IP sets no rule of $sets needs any more (a pool
+     * that stopped isolating, no protected networks left). Run after
+     * applyRules(), once nothing refers to them.
+     *
+     * @param  array<string, list<string>>  $sets
+     */
+    public function removeUnusedIsolationSets(int $vmid, array $sets): void
+    {
+        $wanted = self::setsOf(self::isolationRulesFor($sets));
 
-        if (! self::isolationRulesInPlace($rules, $wantedRules)) {
-            $comments = array_column(self::ISOLATION_RULES, 'comment');
-            $ours = array_filter($rules, fn (array $rule) => in_array($rule['comment'] ?? null, $comments, true));
-            $positions = array_map(fn (array $rule) => (int) ($rule['pos'] ?? 0), $ours);
-            rsort($positions);
-
-            // From the bottom up, so the positions of the others stay right.
-            foreach ($positions as $pos) {
-                $this->client->delete("{$base}/rules/{$pos}");
+        foreach (array_intersect([self::PROTECTED_SET, self::GATEWAYS_SET, self::ISOLATED_SET], $this->ipsetNames($vmid)) as $name) {
+            if (! in_array($name, $wanted, true)) {
+                $this->syncIpset($vmid, $name, []);
+                $this->client->delete($this->path($vmid, "firewall/ipset/{$name}"));
             }
+        }
+    }
 
-            // Proxmox puts a rule added without `pos` at the top: add the last one first.
-            foreach (array_reverse($wantedRules) as $rule) {
-                $this->client->post("{$base}/rules", $rule);
+    /**
+     * Make the panel's rules exactly $rules, on top and in this order (docs/adr/0035 §2).
+     * The panel's rules are those whose comment starts with PANEL_RULE_PREFIX;
+     * when they differ in any way, all of them are deleted and $rules added
+     * again. Other rules stay as they are, below them.
+     *
+     * @param  list<array<string, string|int>>  $rules  top to bottom, each with a comment starting with PANEL_RULE_PREFIX
+     */
+    public function applyRules(int $vmid, array $rules): void
+    {
+        $base = $this->path($vmid, 'firewall');
+        $current = $this->firewallRules($vmid);
+
+        if (self::panelRulesInPlace($current, $rules)) {
+            return;
+        }
+
+        $positions = array_map(fn (array $rule) => (int) ($rule['pos'] ?? 0), self::panelRules($current));
+        rsort($positions);
+
+        // From the bottom up, so the positions of the others stay right.
+        foreach ($positions as $pos) {
+            $this->client->delete("{$base}/rules/{$pos}");
+        }
+
+        // Proxmox puts a rule added without `pos` at the top: add the last one first.
+        foreach (array_reverse($rules) as $rule) {
+            $this->client->post("{$base}/rules", $rule);
+        }
+    }
+
+    /**
+     * Whether the panel's rules among $current are exactly $expected, in order
+     * (other rules may sit anywhere).
+     *
+     * @param  list<array<string, mixed>>  $current  as firewallRules() lists them
+     * @param  list<array<string, string|int>>  $expected
+     */
+    public static function panelRulesInPlace(array $current, array $expected): bool
+    {
+        $ours = self::panelRules($current);
+
+        if (count($ours) !== count($expected)) {
+            return false;
+        }
+
+        foreach ($expected as $i => $rule) {
+            foreach (self::RULE_FIELDS as $field) {
+                if ((string) ($ours[$i][$field] ?? '') !== (string) ($rule[$field] ?? '')) {
+                    return false;
+                }
             }
         }
 
-        // Sets no rule needs any more go last, once nothing refers to them.
-        foreach ([self::PROTECTED_SET, self::GATEWAYS_SET, self::ISOLATED_SET] as $name) {
-            if (in_array($name, $existing, true) && ! in_array($name, $wantedSets, true)) {
-                $this->syncIpset($vmid, $name, []);
-                $this->client->delete("{$base}/ipset/{$name}");
-            }
+        return true;
+    }
+
+    /**
+     * The rules the panel wrote, in order.
+     *
+     * @param  list<array<string, mixed>>  $rules
+     * @return list<array<string, mixed>>
+     */
+    public static function panelRules(array $rules): array
+    {
+        return array_values(array_filter($rules, fn (array $rule) => str_starts_with((string) ($rule['comment'] ?? ''), self::PANEL_RULE_PREFIX)));
+    }
+
+    /**
+     * Set the input policy (the output policy stays ACCEPT), unless it already is.
+     *
+     * @param  'ACCEPT'|'DROP'  $policy
+     */
+    public function setInputPolicy(int $vmid, string $policy): void
+    {
+        $options = $this->firewallOptions($vmid);
+
+        if (($options['policy_in'] ?? null) !== $policy || ($options['policy_out'] ?? null) !== 'ACCEPT') {
+            $this->client->put($this->path($vmid, 'firewall/options'), ['policy_in' => $policy, 'policy_out' => 'ACCEPT']);
         }
     }
 
@@ -327,18 +390,6 @@ final readonly class QemuResource
         }
 
         return true;
-    }
-
-    /**
-     * Whether the VM firewall has any isolation rule at all.
-     *
-     * @param  list<array<string, mixed>>  $rules  as firewallRules() lists them
-     */
-    public static function hasIsolationRules(array $rules): bool
-    {
-        $comments = array_column(self::ISOLATION_RULES, 'comment');
-
-        return array_filter($rules, fn (array $rule) => in_array($rule['comment'] ?? null, $comments, true)) !== [];
     }
 
     /**

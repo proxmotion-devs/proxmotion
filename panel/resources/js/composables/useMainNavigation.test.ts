@@ -16,6 +16,7 @@ describe('useMainNavigation', () => {
             '/admin/os-templates',
             '/admin/packages',
             '/admin/placement-groups',
+            '/admin/firewall-rulesets',
             '/admin/apps',
             '/admin/drifts',
             '/admin/users',

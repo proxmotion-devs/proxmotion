@@ -11,6 +11,7 @@ import {
     Network,
     Package,
     Server,
+    Shield,
     TriangleAlert,
     Users,
 } from '@lucide/vue';
@@ -22,6 +23,7 @@ import { index as billingSystems } from '@/routes/admin/billing-systems';
 import { index as clusters } from '@/routes/admin/clusters';
 import { index as dnsProviders } from '@/routes/admin/dns-providers';
 import { index as drifts } from '@/routes/admin/drifts';
+import { index as firewallRulesets } from '@/routes/admin/firewall-rulesets';
 import { index as ipPools } from '@/routes/admin/ip-pools';
 import { index as locations } from '@/routes/admin/locations';
 import { index as osTemplates } from '@/routes/admin/os-templates';
@@ -49,6 +51,11 @@ export function useMainNavigation(): ComputedRef<NavItem[]> {
             title: 'Placement groups',
             href: placementGroups(),
             icon: LayoutDashboard,
+        },
+        {
+            title: 'Firewall rule sets',
+            href: firewallRulesets(),
+            icon: Shield,
         },
         { title: 'Apps', href: apps(), icon: AppWindow },
         { title: 'Drift report', href: drifts(), icon: TriangleAlert },

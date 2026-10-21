@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Domain\Apps;
 
+use App\Domain\Firewall\ServerFirewalls;
 use App\Domain\Webhooks\Webhooks;
 use App\Enums\AppInstallationStatus;
 use App\Enums\AppRunKind;
@@ -25,7 +26,10 @@ use Throwable;
  */
 final readonly class AppRuns
 {
-    public function __construct(private Webhooks $webhooks) {}
+    public function __construct(
+        private Webhooks $webhooks,
+        private ServerFirewalls $firewalls,
+    ) {}
 
     /**
      * @param  array<string, array{type: string, value: string, filename?: string|null}>  $outputs
@@ -57,6 +61,11 @@ final readonly class AppRuns
                 ])->save();
             }
         });
+
+        // The app's ports change with it (docs/adr/0035 §4).
+        if ($run->kind === AppRunKind::Uninstall || $run->kind === AppRunKind::Upgrade) {
+            $this->firewalls->refresh($run->installation->server);
+        }
 
         $this->notify($run);
     }

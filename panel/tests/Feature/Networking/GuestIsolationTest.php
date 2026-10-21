@@ -18,6 +18,7 @@ use App\Models\User;
 use App\Provisioning\AddressAddition;
 use App\Provisioning\AddressChange;
 use App\Provisioning\AddressChanger;
+use App\Provisioning\Network\ServerFirewall;
 use App\Provisioning\ServerCreator;
 use App\Proxmox\ProxmoxClientFactory;
 use App\Proxmox\Resources\QemuResource;
@@ -160,11 +161,7 @@ class GuestIsolationTest extends TestCase
         $qemu = app(ProxmoxClientFactory::class)->forCluster($this->cluster)->qemu('pve1');
         $before = count($this->proxmox->writes);
 
-        $qemu->applyIsolation($server->vmid, [
-            QemuResource::ISOLATED_SET => ['203.0.113.0/29'],
-            QemuResource::GATEWAYS_SET => ['203.0.113.1'],
-            QemuResource::PROTECTED_SET => ['198.51.100.11', '192.0.2.0/24', '198.51.100.200'],
-        ]);
+        app(ServerFirewall::class)->apply($qemu, $server->refresh());
 
         $this->assertSame($before, count($this->proxmox->writes));
     }
@@ -182,7 +179,7 @@ class GuestIsolationTest extends TestCase
     {
         $server = $this->create();
         $vmid = $server->vmid;
-        // Someone moved the neighbour rule above the gateway rule and added a rule of their own.
+        // Someone moved the neighbour rule above the gateway rule and added a rule of their own, which ends up below the panel's.
         $rules = $this->proxmox->vms[$vmid]['rules'];
         [$rules[1], $rules[3]] = [$rules[3], $rules[1]];
         $this->proxmox->vms[$vmid]['rules'] = [['type' => 'in', 'action' => 'ACCEPT', 'proto' => 'tcp', 'dport' => '22', 'enable' => 1, 'comment' => 'ssh'], ...$rules];
@@ -196,7 +193,7 @@ class GuestIsolationTest extends TestCase
         $task = $server->tasks()->where('type', TaskType::EnableAntiSpoofing)->sole();
         $this->assertSame(TaskStatus::Succeeded, $task->status, (string) $task->error);
         $comments = array_column(QemuResource::ISOLATION_RULES, 'comment');
-        $this->assertSame([...$comments, 'ssh', 'Proxmotion: no DHCPv6 server', 'Proxmotion: no DHCP server'], $this->ruleComments($server));
+        $this->assertSame([...$comments, 'Proxmotion: no DHCPv6 server', 'Proxmotion: no DHCP server', 'ssh'], $this->ruleComments($server));
         $this->assertNull($this->firewallDrift());
     }
 

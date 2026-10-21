@@ -43,6 +43,8 @@ const firewallProblems: Record<string, string> = {
     addresses_differ: 'the IP set differs from the panel',
     isolation_rules_missing: 'the isolation rules are missing or out of order',
     isolation_sets_differ: 'the isolation IP sets differ from the panel',
+    firewall_rules_differ: 'the firewall rules differ from the panel',
+    firewall_policy_open: 'the firewall lets everything in although it is on',
 };
 
 const list = (value: unknown): string[] =>

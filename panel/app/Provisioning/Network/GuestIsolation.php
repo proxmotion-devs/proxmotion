@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace App\Provisioning\Network;
 
 use App\Domain\Networking\ProtectedAddresses;
-use App\Enums\ServerOrigin;
 use App\Models\IpPool;
 use App\Models\Location;
 use App\Models\Server;
@@ -23,21 +22,6 @@ use App\Support\Network\Cidr;
 final readonly class GuestIsolation
 {
     public function __construct(private ProtectedAddresses $protected) {}
-
-    /**
-     * Write the IP sets and rules to the server's VM firewall. Adopted VMs
-     * get them only when an administrator asks ($always: Enable
-     * anti-spoofing, Apply again) or already have some; then later address
-     * changes keep them right.
-     */
-    public function apply(QemuResource $qemu, Server $server, bool $always = false): void
-    {
-        if (! $always && $server->origin !== ServerOrigin::Provisioned && ! QemuResource::hasIsolationRules($qemu->firewallRules($server->vmid))) {
-            return;
-        }
-
-        $qemu->applyIsolation($server->vmid, $this->sets($server));
-    }
 
     /**
      * @return array<string, list<string>> IP set name => entries, in one spelling (Cidr::canonical())

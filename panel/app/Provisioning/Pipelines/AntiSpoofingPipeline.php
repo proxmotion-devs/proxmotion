@@ -5,10 +5,9 @@ declare(strict_types=1);
 namespace App\Provisioning\Pipelines;
 
 use App\Domain\Infrastructure\FirewallChecker;
-use App\Enums\ServerOrigin;
 use App\Models\Task;
-use App\Provisioning\Network\GuestIsolation;
 use App\Provisioning\Network\NetworkConfig;
+use App\Provisioning\Network\ServerFirewall;
 use App\Proxmox\ProxmoxClientFactory;
 
 /**
@@ -25,7 +24,7 @@ final readonly class AntiSpoofingPipeline
         private ProxmoxClientFactory $clients,
         private NetworkConfig $network,
         private FirewallChecker $firewall,
-        private GuestIsolation $isolation,
+        private ServerFirewall $firewallRules,
     ) {}
 
     public function run(Task $task): void
@@ -34,10 +33,10 @@ final readonly class AntiSpoofingPipeline
         $qemu = $this->clients->forCluster($server->cluster)->qemu($server->node->name);
         $addresses = $this->network->allowedAddresses($server);
 
-        $qemu->enableAntiSpoofing($server->vmid, $addresses, setPolicies: $server->origin === ServerOrigin::Provisioned);
+        $qemu->enableAntiSpoofing($server->vmid, $addresses);
         $qemu->removeFromAntiSpoofing($server->vmid, array_values(array_diff($qemu->antiSpoofingAddresses($server->vmid), $addresses)));
         $qemu->enableInterfaceFirewall($server->vmid);
-        $this->isolation->apply($qemu, $server, always: true);
+        $this->firewallRules->apply($qemu, $server, always: true);
 
         // Read it back at once, so the page shows the result (and the drift closes) now, not after the next sync.
         $this->firewall->recheck($server, $qemu);

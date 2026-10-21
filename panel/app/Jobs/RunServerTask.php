@@ -16,6 +16,7 @@ use App\Provisioning\Pipelines\AntiSpoofingPipeline;
 use App\Provisioning\Pipelines\AppRunPipeline;
 use App\Provisioning\Pipelines\ChangeResourcesPipeline;
 use App\Provisioning\Pipelines\CreateServerPipeline;
+use App\Provisioning\Pipelines\FirewallPipeline;
 use App\Provisioning\Pipelines\HostnamePipeline;
 use App\Provisioning\Pipelines\InstallAppPipeline;
 use App\Provisioning\Pipelines\PowerPipeline;
@@ -57,7 +58,7 @@ class RunServerTask implements ShouldQueue
      */
     public function __construct(public Task $task, public int $dispatch = 0) {}
 
-    public function handle(CreateServerPipeline $create, PowerPipeline $power, TerminateServerPipeline $terminate, ResetPasswordPipeline $resetPassword, ReinstallServerPipeline $reinstall, ChangeResourcesPipeline $changeResources, GuestScripts $guestScripts, AddressesPipeline $addresses, HostnamePipeline $hostname, InstallAppPipeline $installApp, AppRunPipeline $appRun, AntiSpoofingPipeline $antiSpoofing, ServerVerifier $verifier, StageRunner $stages, TaskFailer $failer): void
+    public function handle(CreateServerPipeline $create, PowerPipeline $power, TerminateServerPipeline $terminate, ResetPasswordPipeline $resetPassword, ReinstallServerPipeline $reinstall, ChangeResourcesPipeline $changeResources, GuestScripts $guestScripts, AddressesPipeline $addresses, HostnamePipeline $hostname, InstallAppPipeline $installApp, AppRunPipeline $appRun, AntiSpoofingPipeline $antiSpoofing, FirewallPipeline $firewall, ServerVerifier $verifier, StageRunner $stages, TaskFailer $failer): void
     {
         $task = $this->task;
 
@@ -98,6 +99,7 @@ class RunServerTask implements ShouldQueue
                     TaskType::AppRun => $appRun->run($task),
                     TaskType::Verify => $verifier->runTask($task),
                     TaskType::EnableAntiSpoofing => $antiSpoofing->run($task),
+                    TaskType::ApplyFirewall => $firewall->run($task),
                 };
             }
         } catch (Throwable $e) {

@@ -7,12 +7,11 @@ namespace App\Provisioning\Pipelines;
 use App\Domain\Infrastructure\FirewallChecker;
 use App\Domain\Servers\GuestScripts;
 use App\Enums\GuestScriptEvent;
-use App\Enums\ServerOrigin;
 use App\Models\IpAddress;
 use App\Models\Task;
 use App\Provisioning\IpAllocator;
-use App\Provisioning\Network\GuestIsolation;
 use App\Provisioning\Network\NetworkConfig;
+use App\Provisioning\Network\ServerFirewall;
 use App\Provisioning\VmLabels;
 use App\Proxmox\ProxmoxClientFactory;
 
@@ -34,7 +33,7 @@ final readonly class AddressesPipeline
         private IpAllocator $ips,
         private GuestScripts $guestScripts,
         private FirewallChecker $firewall,
-        private GuestIsolation $isolation,
+        private ServerFirewall $firewallRules,
     ) {}
 
     public function run(Task $task): void
@@ -48,7 +47,7 @@ final readonly class AddressesPipeline
         $keep = array_values(array_diff($this->network->allowedAddresses($server), $released));
 
         $reapply = ($task->input['reapply'] ?? false) === true;
-        $qemu->enableAntiSpoofing($server->vmid, $keep, setPolicies: $server->origin === ServerOrigin::Provisioned);
+        $qemu->enableAntiSpoofing($server->vmid, $keep);
 
         // "Apply again" makes the IP set exactly the server's addresses (docs/adr/0028 §3)
         // and turns net0's firewall flag back on (docs/adr/0033).
@@ -60,7 +59,7 @@ final readonly class AddressesPipeline
         // Only now, out of the firewall, may another server get it.
         $this->ips->releaseAddresses($releasing);
         // The isolation sets follow the pools of the addresses left (docs/adr/0034).
-        $this->isolation->apply($qemu, $server, always: $reapply);
+        $this->firewallRules->apply($qemu, $server, always: $reapply);
 
         if ($reapply) {
             $qemu->enableInterfaceFirewall($server->vmid);

@@ -15,6 +15,8 @@ defineProps<{
     description?: string;
     processing?: boolean;
     submitLabel?: string;
+    /** For forms with tables, e.g. firewall rules. */
+    wide?: boolean;
 }>();
 
 const open = defineModel<boolean>('open', { required: true });
@@ -24,7 +26,10 @@ const emit = defineEmits<{ submit: [] }>();
 
 <template>
     <Dialog v-model:open="open">
-        <DialogContent class="max-h-[90vh] overflow-y-auto sm:max-w-xl">
+        <DialogContent
+            class="max-h-[90vh] overflow-y-auto"
+            :class="wide ? 'sm:max-w-4xl' : 'sm:max-w-xl'"
+        >
             <form class="grid gap-6" @submit.prevent="emit('submit')">
                 <DialogHeader>
                     <DialogTitle>{{ $t(title) }}</DialogTitle>

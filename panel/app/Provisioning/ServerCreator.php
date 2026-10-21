@@ -6,6 +6,7 @@ namespace App\Provisioning;
 
 use App\Domain\Apps\AppInstaller;
 use App\Domain\Apps\AppNotEligible;
+use App\Domain\Firewall\ServerFirewalls;
 use App\Domain\Networking\ReverseDns\ReverseDns;
 use App\Enums\IpVersion;
 use App\Enums\NetworkModel;
@@ -253,6 +254,13 @@ final readonly class ServerCreator
             // A server of an inactive template is a test server (docs/adr/0024 §8).
             'is_test' => ! $order->osTemplate->is_active,
         ])->save();
+
+        // The package's firewall rule set (docs/adr/0035 §3).
+        $ruleset = $order->package?->firewallRuleset;
+
+        if ($ruleset !== null && $ruleset->is_active) {
+            ServerFirewalls::startWith($server, $ruleset);
+        }
 
         return $server;
     }

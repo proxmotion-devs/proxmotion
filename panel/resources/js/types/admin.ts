@@ -198,6 +198,8 @@ export type Package = ResourceLimitValues & {
     sort_order: number;
     /** Empty: any node; otherwise the groups of the ordered location (docs/adr/0020). */
     placement_group_ids: number[];
+    /** New servers start with the firewall on and these rules (docs/adr/0035 §3). */
+    firewall_ruleset: string | null;
 };
 
 export type Paginated<T> = {
@@ -239,6 +241,7 @@ export type TaskType =
     | 'change_primary_address'
     | 'change_addresses'
     | 'enable_anti_spoofing'
+    | 'apply_firewall'
     | 'change_hostname'
     | 'install_app'
     | 'app_run'
@@ -652,4 +655,40 @@ export type NewServerResources = {
     cpu_units: number | '';
     disk_mb_s: number | '';
     disk_iops: number | '';
+};
+
+/** One inbound firewall rule (docs/adr/0035); null port, source or comment: none. */
+export type FirewallRuleValues = {
+    action: 'accept' | 'drop';
+    protocol: 'tcp' | 'udp' | 'icmp' | 'any';
+    port: string | null;
+    source: string | null;
+    comment: string | null;
+};
+
+/** A port an installed app opens while the firewall is on. */
+export type AppFirewallRule = {
+    app: string;
+    protocol: 'tcp' | 'udp';
+    port: number;
+};
+
+/** A server's firewall on its page, with the rule sets that can be applied. */
+export type ServerFirewall = {
+    enabled: boolean;
+    rules: FirewallRuleValues[];
+    app_rules: AppFirewallRule[];
+    rulesets: Option[];
+};
+
+/** A firewall rule set (docs/adr/0035 §3). */
+export type FirewallRuleset = {
+    uuid: string;
+    name: string;
+    description: string | null;
+    is_active: boolean;
+    rules: FirewallRuleValues[];
+    /** Whether its rules let SSH or RDP in. */
+    opens_remote_access: boolean;
+    packages_count: number;
 };

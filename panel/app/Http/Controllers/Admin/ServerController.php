@@ -12,6 +12,7 @@ use App\Domain\Apps\LiveAppPolls;
 use App\Domain\Apps\OrderedAppOptions;
 use App\Domain\Apps\RecipeAction;
 use App\Domain\Apps\RecipeInput;
+use App\Domain\Firewall\ServerFirewalls;
 use App\Domain\Servers\GuestAgentProbe;
 use App\Domain\Servers\HostnameChanger;
 use App\Domain\Servers\ReinstallOptions;
@@ -43,6 +44,7 @@ use App\Models\AppRecipe;
 use App\Models\AppRun;
 use App\Models\AuditLog;
 use App\Models\BillingSystem;
+use App\Models\FirewallRuleset;
 use App\Models\IpAddress;
 use App\Models\IpPool;
 use App\Models\Location;
@@ -305,6 +307,12 @@ class ServerController extends Controller
             'power' => Inertia::defer(fn () => $server->status === ServerStatus::Active ? $this->power->state($server) : null),
             'reinstallOptions' => fn () => ReinstallOptions::for($server),
             'resourceOptions' => fn () => ResourceOptions::for($server),
+            // The server's firewall and the rule sets that can be applied (docs/adr/0035).
+            'firewall' => fn () => [
+                ...app(ServerFirewalls::class)->describe($server),
+                'rulesets' => FirewallRuleset::query()->where('is_active', true)->orderBy('name')->get(['uuid', 'name'])
+                    ->map(fn (FirewallRuleset $ruleset) => ['value' => $ruleset->uuid, 'label' => $ruleset->name]),
+            ],
             // Pools addresses may be added from: same location, network model, bridge and VLAN (docs/adr/0028).
             'addressPools' => fn () => collect(IpVersion::cases())
                 ->flatMap(fn (IpVersion $version) => $ips->sameNetworkPools($server->location, $server->network_model, $version, $server->ipAddresses->first()?->pool))

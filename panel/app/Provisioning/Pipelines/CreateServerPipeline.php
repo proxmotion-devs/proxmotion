@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Provisioning\Pipelines;
 
 use App\Domain\Apps\AppStarter;
+use App\Domain\Firewall\ServerFirewalls;
 use App\Domain\Servers\GuestScripts;
 use App\Domain\Servers\ServerVerifier;
 use App\Enums\CloneMode;
@@ -12,12 +13,13 @@ use App\Enums\GuestScriptEvent;
 use App\Enums\OsPlatform;
 use App\Enums\PowerAction;
 use App\Enums\ServerStatus;
+use App\Enums\TaskType;
 use App\Models\Server;
 use App\Models\Task;
 use App\Provisioning\Exceptions\ForeignVm;
 use App\Provisioning\LinkedClones;
-use App\Provisioning\Network\GuestIsolation;
 use App\Provisioning\Network\NetworkConfig;
+use App\Provisioning\Network\ServerFirewall;
 use App\Provisioning\ResourceLimits;
 use App\Provisioning\Stages\StagedPipeline;
 use App\Provisioning\Stages\StageRunner;
@@ -52,7 +54,7 @@ final readonly class CreateServerPipeline implements StagedPipeline
         private PowerPipeline $power,
         private StageRunner $stages,
         private ServerVerifier $verifier,
-        private GuestIsolation $isolation,
+        private ServerFirewall $firewallRules,
     ) {}
 
     public function stages(): array
@@ -343,9 +345,12 @@ final readonly class CreateServerPipeline implements StagedPipeline
     {
         $qemu = $this->clients->forCluster($server->cluster)->qemu($server->node->name);
         $qemu->enableAntiSpoofing($server->vmid, $this->network->allowedAddresses($server));
-        // Away from its neighbours and the protected networks (docs/adr/0034).
-        $this->isolation->apply($qemu, $server);
-        $task->completeStep('firewall');
+        // A reinstall onto the other platform: SSH ⇄ RDP (docs/adr/0035 §3).
+        $note = $task->type === TaskType::Reinstall ? ServerFirewalls::followPlatform($server) : null;
+
+        // The panel's rules: isolation (docs/adr/0034), DHCP, the server's firewall (docs/adr/0035).
+        $this->firewallRules->apply($qemu, $server);
+        $task->completeStep('firewall', $note);
 
         return null;
     }

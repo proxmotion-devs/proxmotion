@@ -8,13 +8,12 @@ use App\Domain\Servers\GuestAddresses;
 use App\Domain\Servers\GuestScripts;
 use App\Enums\GuestScriptEvent;
 use App\Enums\PowerAction;
-use App\Enums\ServerOrigin;
 use App\Models\IpAddress;
 use App\Models\Server;
 use App\Models\Task;
 use App\Provisioning\IpAllocator;
-use App\Provisioning\Network\GuestIsolation;
 use App\Provisioning\Network\NetworkConfig;
+use App\Provisioning\Network\ServerFirewall;
 use App\Provisioning\ResourceLimits;
 use App\Proxmox\Data\BootDisk;
 use App\Proxmox\ProxmoxClientFactory;
@@ -43,7 +42,7 @@ final readonly class ChangeResourcesPipeline
         private PowerPipeline $power,
         private GuestScripts $guestScripts,
         private GuestAddresses $guestAddresses,
-        private GuestIsolation $isolation,
+        private ServerFirewall $firewallRules,
     ) {}
 
     public function run(Task $task): void
@@ -113,13 +112,13 @@ final readonly class ChangeResourcesPipeline
         $released = array_values($releasing->map(fn (IpAddress $address) => $address->address)->all());
         $keep = array_values(array_diff($this->network->allowedAddresses($server), $released));
 
-        $qemu->enableAntiSpoofing($server->vmid, $keep, setPolicies: $server->origin === ServerOrigin::Provisioned);
+        $qemu->enableAntiSpoofing($server->vmid, $keep);
         $qemu->removeFromAntiSpoofing($server->vmid, $released);
 
         // Only now, out of the firewall, may another server get them.
         $this->ips->releaseAddresses($releasing);
         // The isolation sets follow the pools of the server's addresses (docs/adr/0034).
-        $this->isolation->apply($qemu, $server);
+        $this->firewallRules->apply($qemu, $server);
         $task->completeStep('addresses');
     }
 

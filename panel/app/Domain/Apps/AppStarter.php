@@ -11,8 +11,10 @@ use App\Enums\OsPlatform;
 use App\Models\AppInstallation;
 use App\Models\Server;
 use App\Models\Task;
+use App\Provisioning\Network\ServerFirewall;
 use App\Proxmox\Exceptions\ProxmoxException;
 use App\Proxmox\ProxmoxClientFactory;
+use Illuminate\Support\Facades\Log;
 use Throwable;
 
 /**
@@ -35,6 +37,7 @@ final readonly class AppStarter
         private AppInstallations $installations,
         private AppLogs $logs,
         private AppStopper $stopper,
+        private ServerFirewall $firewall,
     ) {}
 
     /**
@@ -127,6 +130,16 @@ final readonly class AppStarter
             'finished_at' => null,
         ])->save();
         $this->logs->beginAttempt($installation);
+
+        // Its ports, while the server's firewall is on (docs/adr/0035 §4).
+        if ($server->firewall_enabled) {
+            try {
+                $this->firewall->apply($this->clients->forCluster($server->cluster)->qemu($server->node->name), $server);
+            } catch (ProxmoxException $e) {
+                // The firewall check reports it; the installer runs anyway.
+                Log::warning('Could not open the ports of an app in the server firewall.', ['server' => $server->uuid, 'error' => $e->getMessage()]);
+            }
+        }
 
         $task->completeStep('app_start');
     }

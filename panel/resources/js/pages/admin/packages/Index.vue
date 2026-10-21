@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { Head, Link, useForm } from '@inertiajs/vue3';
+import { trans } from 'laravel-vue-i18n';
 import { Pencil, Plus } from '@lucide/vue';
 import { computed, ref } from 'vue';
 import ConfirmDelete from '@/components/admin/ConfirmDelete.vue';
 import FormDialog from '@/components/admin/FormDialog.vue';
 import FormField from '@/components/admin/FormField.vue';
 import GuideBox from '@/components/admin/GuideBox.vue';
+import NativeSelect from '@/components/admin/NativeSelect.vue';
 import StatusBadge from '@/components/admin/StatusBadge.vue';
 import Heading from '@/components/Heading.vue';
 import LimitFields from '@/components/servers/LimitFields.vue';
@@ -19,7 +21,7 @@ import type { OptionalNumber } from '@/lib/forms';
 import { destroy, index, store, update } from '@/routes/admin/packages';
 import { index as placementGroupsIndex } from '@/routes/admin/placement-groups';
 import { NETWORK_MODELS } from '@/types/admin';
-import type { NetworkModel, Package } from '@/types/admin';
+import type { NetworkModel, Option, Package } from '@/types/admin';
 
 defineOptions({
     layout: { breadcrumbs: [{ title: 'Packages', href: index() }] },
@@ -30,7 +32,14 @@ type Choice = { id: number; name: string; location: string };
 const props = defineProps<{
     packages: Package[];
     placementGroups: Choice[];
+    /** docs/adr/0035 §3 */
+    firewallRulesets: Option[];
 }>();
+
+const rulesetOptions = computed(() => [
+    { value: '', label: trans('None: the firewall starts off') },
+    ...props.firewallRulesets,
+]);
 
 // Placement groups grouped by location for the checkboxes.
 const byLocation = (choices: Choice[]) => {
@@ -87,6 +96,7 @@ const form = useForm({
     is_active: true,
     sort_order: 0,
     placement_group_ids: [] as number[],
+    firewall_ruleset: '' as string | null,
 });
 
 const openForm = (pkg: Package | null) => {
@@ -116,6 +126,7 @@ const openForm = (pkg: Package | null) => {
                   is_active: pkg.is_active,
                   sort_order: pkg.sort_order,
                   placement_group_ids: [...pkg.placement_group_ids],
+                  firewall_ruleset: pkg.firewall_ruleset ?? '',
               }
             : {
                   name: '',
@@ -136,6 +147,7 @@ const openForm = (pkg: Package | null) => {
                   is_active: true,
                   sort_order: 0,
                   placement_group_ids: [],
+                  firewall_ruleset: '',
               },
     );
     form.reset();
@@ -421,6 +433,18 @@ const modelLabel = (value: string) =>
             v-model:disk-iops="form.disk_iops"
             :errors="form.errors"
         />
+        <FormField
+            label="Firewall rule set"
+            for="firewall_ruleset"
+            :error="form.errors.firewall_ruleset"
+            hint="New servers start with the firewall on and these rules."
+        >
+            <NativeSelect
+                id="firewall_ruleset"
+                v-model="form.firewall_ruleset"
+                :options="rulesetOptions"
+            />
+        </FormField>
         <div class="grid gap-4 sm:grid-cols-4">
             <FormField
                 label="IPv4 addresses"

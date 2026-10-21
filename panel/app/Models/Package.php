@@ -11,6 +11,7 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Casts\AsEnumCollection;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Carbon;
@@ -31,6 +32,7 @@ use Illuminate\Support\Collection;
  * @property int|null $cpu_units relative CPU weight on a busy node
  * @property int|null $disk_mb_s read and write throughput of the boot disk, MB/s each
  * @property int|null $disk_iops read and write operations per second of the boot disk, each
+ * @property int|null $firewall_ruleset_id new servers start with the firewall on and these rules (docs/adr/0035 §3)
  * @property int $ipv4_count
  * @property int $ipv6_count
  * @property int $snapshot_slots
@@ -43,7 +45,7 @@ use Illuminate\Support\Collection;
  * @property-read \Illuminate\Database\Eloquent\Collection<int, PlacementGroup> $placementGroups
  */
 #[Fillable([
-    'name', 'cpu_cores', 'memory_mib', 'disk_mib', 'traffic_bytes', 'port_speed_mbps', 'cpu_limit', 'cpu_units', 'disk_mb_s', 'disk_iops',
+    'name', 'cpu_cores', 'memory_mib', 'disk_mib', 'traffic_bytes', 'port_speed_mbps', 'cpu_limit', 'cpu_units', 'disk_mb_s', 'disk_iops', 'firewall_ruleset_id',
     'ipv4_count', 'ipv6_count', 'snapshot_slots', 'backup_slots', 'network_models', 'is_active', 'sort_order',
 ])]
 class Package extends Model
@@ -86,6 +88,14 @@ class Package extends Model
     public function placementGroups(): BelongsToMany
     {
         return $this->belongsToMany(PlacementGroup::class);
+    }
+
+    /**
+     * @return BelongsTo<FirewallRuleset, $this>
+     */
+    public function firewallRuleset(): BelongsTo
+    {
+        return $this->belongsTo(FirewallRuleset::class);
     }
 
     /**

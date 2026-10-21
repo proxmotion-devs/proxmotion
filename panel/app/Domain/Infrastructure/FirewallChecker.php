@@ -13,6 +13,7 @@ use App\Models\Server;
 use App\Models\ServerDrift;
 use App\Provisioning\Network\GuestIsolation;
 use App\Provisioning\Network\NetworkConfig;
+use App\Provisioning\Network\ServerFirewall;
 use App\Proxmox\Data\VmResource;
 use App\Proxmox\Exceptions\ProxmoxException;
 use App\Proxmox\ProxmoxClientFactory;
@@ -24,8 +25,8 @@ use Illuminate\Support\Facades\Log;
  * Compares the VM firewalls of a few servers per sync with what anti-spoofing
  * needs (docs/adr/0033): firewall, IP and MAC filter on, no router
  * advertisements, net0's firewall flag, the DHCP server rules, and an IP set
- * of exactly the server's addresses; and the isolation rules and IP sets
- * (docs/adr/0034). Each server takes a few API calls, so
+ * of exactly the server's addresses; the isolation rules and IP sets
+ * (docs/adr/0034); and the server's firewall rules and policy (docs/adr/0035). Each server takes a few API calls, so
  * every sync looks at the servers checked longest ago. Nothing is repaired:
  * a difference becomes a drift (ADR 0005) an administrator restores.
  */
@@ -38,6 +39,7 @@ final readonly class FirewallChecker
         private ProxmoxClientFactory $clients,
         private NetworkConfig $network,
         private GuestIsolation $isolation,
+        private ServerFirewall $serverFirewall,
     ) {}
 
     /**
@@ -176,23 +178,32 @@ final readonly class FirewallChecker
         $rules = array_filter($allRules, fn (array $rule) => (int) ($rule['enable'] ?? 0) === 1);
         $comments = array_map(fn (array $rule) => $rule['comment'] ?? null, $rules);
 
-        foreach (QemuResource::DHCP_SERVER_RULES as $rule) {
-            if (! in_array($rule['comment'], $comments, true)) {
-                $problems[] = 'dhcp_server_allowed';
+        $dhcpMissing = array_diff(array_column(QemuResource::DHCP_SERVER_RULES, 'comment'), $comments) !== [];
 
-                break;
-            }
+        if ($dhcpMissing) {
+            $problems[] = 'dhcp_server_allowed';
         }
 
         // Only the rules and sets the server needs: none for a pool that does not isolate (docs/adr/0034).
         $isolation = $this->isolation->sets($server);
         $isolationRules = QemuResource::isolationRulesFor($isolation);
+        $isolationMissing = ! QemuResource::isolationRulesInPlace($allRules, $isolationRules);
 
-        if (! QemuResource::isolationRulesInPlace($allRules, $isolationRules)) {
+        if ($isolationMissing) {
             $problems[] = 'isolation_rules_missing';
         }
 
         $sets = $qemu->ipsetNames($server->vmid);
+
+        // The app ports and the server's own rules, and the block's order (docs/adr/0035 §6).
+        if (! $dhcpMissing && ! $isolationMissing
+            && ! QemuResource::panelRulesInPlace($allRules, $this->serverFirewall->rules($server, $isolation))) {
+            $problems[] = 'firewall_rules_differ';
+        }
+
+        if ($server->firewall_enabled && ($options['policy_in'] ?? null) !== 'DROP') {
+            $problems[] = 'firewall_policy_open';
+        }
 
         foreach (QemuResource::setsOf($isolationRules) as $name) {
             $entries = $isolation[$name];

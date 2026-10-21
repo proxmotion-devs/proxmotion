@@ -66,6 +66,7 @@ const taskTypeLabels: Record<TaskType, string> = {
     app_run: 'App action or uninstall',
     verify: 'Check the server',
     enable_anti_spoofing: 'Enable anti-spoofing',
+    apply_firewall: 'Apply firewall',
 };
 const taskStatusTone: Record<
     TaskStatus,

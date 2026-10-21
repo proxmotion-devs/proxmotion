@@ -93,6 +93,25 @@ paths:
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
 
+  /firewall-rulesets:
+    get:
+      tags: [Catalog]
+      summary: Active firewall rule sets
+      description: 'Scope: `catalog:read`. Rule sets customers can apply to a server''s firewall (`POST /servers/{server}/firewall/ruleset`).'
+      operationId: listFirewallRulesets
+      responses:
+        '200':
+          description: Firewall rule sets
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: { type: array, items: { $ref: '#/components/schemas/FirewallRuleset' } }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
   /apps:
     get:
       tags: [Apps]
@@ -562,6 +581,90 @@ paths:
                     properties:
                       address: { type: string }
                       ptr: { type: [string, 'null'] }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /servers/{server}/firewall:
+    parameters:
+      - $ref: '#/components/parameters/Server'
+    get:
+      tags: [Servers]
+      summary: The server's firewall
+      description: |
+        Scope: `servers:read`. Whether the firewall is on, its inbound rules in order, and the
+        ports the server's apps open while it is on. While the firewall is off everything may
+        reach the server; while it is on only what the rules allow. Outgoing traffic is never
+        filtered.
+      operationId: getServerFirewall
+      responses:
+        '200':
+          description: The firewall
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: { $ref: '#/components/schemas/Firewall' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    put:
+      tags: [Servers]
+      summary: Turn the firewall on or off and replace its rules
+      description: |
+        Scope: `servers:write`. Active and suspended servers. `rules` replaces every rule (at most
+        50, in order). Turned on without rules, the server gets one rule letting SSH (Linux) or
+        RDP (Windows) in. Answers `202` with the `apply_firewall` task.
+      operationId: updateServerFirewall
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [enabled, rules]
+              properties:
+                enabled: { type: boolean }
+                rules: { type: array, maxItems: 50, items: { $ref: '#/components/schemas/FirewallRule' } }
+      responses:
+        '202': { $ref: '#/components/responses/TaskAccepted' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /servers/{server}/firewall/ruleset:
+    parameters:
+      - $ref: '#/components/parameters/Server'
+    post:
+      tags: [Servers]
+      summary: Apply a firewall rule set
+      description: |
+        Scope: `servers:write`. Its rules replace the server's (`replace`) or follow them
+        (`append`, at most 50 rules in all), and the firewall is turned on. Answers `202` with the
+        `apply_firewall` task.
+      operationId: applyServerFirewallRuleset
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ruleset, mode]
+              properties:
+                ruleset: { type: string, format: uuid, description: 'An active rule set from `GET /firewall-rulesets`.' }
+                mode: { type: string, enum: [replace, append] }
+      responses:
+        '202': { $ref: '#/components/responses/TaskAccepted' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
@@ -1183,6 +1286,40 @@ components:
         port_speed_mbps: { type: [integer, 'null'] }
         traffic_bytes: { type: [integer, 'null'] }
         network_models: { type: array, items: { $ref: '#/components/schemas/NetworkModel' } }
+    FirewallRule:
+      type: object
+      required: [action, protocol]
+      description: One inbound rule. `port` only for `tcp` and `udp`.
+      properties:
+        action: { type: string, enum: [accept, drop] }
+        protocol: { type: string, enum: [tcp, udp, icmp, any] }
+        port: { type: [string, 'null'], pattern: '^\d{1,5}(-\d{1,5})?$', examples: ['22', '1000-2000'] }
+        source: { type: [string, 'null'], description: 'An address or CIDR; null: anywhere.', examples: ['198.51.100.0/24'] }
+        comment: { type: [string, 'null'], maxLength: 60 }
+    Firewall:
+      type: object
+      required: [enabled, rules, app_rules]
+      properties:
+        enabled: { type: boolean }
+        rules: { type: array, items: { $ref: '#/components/schemas/FirewallRule' } }
+        app_rules:
+          type: array
+          description: Ports the server's apps open while the firewall is on; not editable.
+          items:
+            type: object
+            required: [app, protocol, port]
+            properties:
+              app: { type: string, description: The app's slug. }
+              protocol: { type: string, enum: [tcp, udp] }
+              port: { type: integer }
+    FirewallRuleset:
+      type: object
+      required: [id, name, description, rules]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        description: { type: [string, 'null'] }
+        rules: { type: array, items: { $ref: '#/components/schemas/FirewallRule' } }
     Location:
       type: object
       required: [id, name, code, country_code, generates_hostnames]
@@ -1297,7 +1434,7 @@ components:
       required: [id, type, status, server, steps, error, created_at, started_at, finished_at]
       properties:
         id: { type: string, format: uuid }
-        type: { type: string, enum: [create, suspend, unsuspend, terminate, adopt, start, shutdown, stop, reboot, reset_password, reinstall, change_resources, guest_script, change_primary_address, change_addresses, change_hostname, install_app, app_run, verify, enable_anti_spoofing] }
+        type: { type: string, enum: [create, suspend, unsuspend, terminate, adopt, start, shutdown, stop, reboot, reset_password, reinstall, change_resources, guest_script, change_primary_address, change_addresses, change_hostname, install_app, app_run, verify, enable_anti_spoofing, apply_firewall] }
         status: { type: string, enum: [queued, running, succeeded, failed] }
         server:
           type: object
