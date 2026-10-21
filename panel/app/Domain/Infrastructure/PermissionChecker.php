@@ -18,7 +18,15 @@ final readonly class PermissionChecker
         'VM.Audit', 'VM.Allocate', 'VM.Clone', 'VM.PowerMgmt', 'VM.Console',
         'VM.Config.CPU', 'VM.Config.Memory', 'VM.Config.Disk',
         'VM.Config.Network', 'VM.Config.Cloudinit', 'VM.Config.Options',
+        // Moving servers to other nodes and clusters (docs/adr/0037).
+        'VM.Migrate',
     ];
+
+    /**
+     * What the incoming move token may do besides receiving servers on /vms:
+     * nothing that reaches into the VMs (docs/adr/0037 §5).
+     */
+    private const INCOMING_FORBIDDEN_ON_VMS = ['VM.PowerMgmt', 'VM.Console', 'VM.Monitor', 'VM.GuestAgent.Unrestricted', 'VM.Config.Disk'];
 
     /**
      * Privileges that let a token take over the whole Proxmox installation.
@@ -47,6 +55,47 @@ final readonly class PermissionChecker
         }
 
         return $results;
+    }
+
+    /**
+     * The same for the cluster's incoming move token (docs/adr/0037 §5):
+     * receiving a remote migration needs Sys.Incoming on / and VM.Allocate on
+     * /vms (the new VMID is in no pool yet), putting the VM into the resource
+     * pool Pool.Allocate. Empty without an incoming token.
+     *
+     * @return list<array{path: string, purpose: string, missing: list<string>, excess: list<string>}>
+     */
+    public function checkIncoming(Cluster $cluster): array
+    {
+        $connection = $cluster->incomingConnection();
+
+        if ($connection === null) {
+            return [];
+        }
+
+        $access = $this->clients->make($connection)->access();
+        $requirements = [
+            ['/', 'Receive servers from other clusters', ['Sys.Incoming', 'Sys.Audit'], self::DANGEROUS_PRIVILEGES],
+            ['/vms', 'Create the moved VM', ['VM.Allocate'], self::INCOMING_FORBIDDEN_ON_VMS],
+            ['/storage', 'Allocate the copied disks', ['Datastore.AllocateSpace'], []],
+            ['/sdn/zones/localnetwork', 'Attach the moved VM to a bridge', ['SDN.Use'], []],
+        ];
+
+        if ($cluster->resource_pool !== null) {
+            $requirements[] = ["/pool/{$cluster->resource_pool}", 'Put the moved VM into the resource pool', ['Pool.Allocate'], []];
+        }
+
+        return array_map(function (array $requirement) use ($access) {
+            [$path, $purpose, $required, $forbidden] = $requirement;
+            $granted = $access->privilegesOn($path);
+
+            return [
+                'path' => $path,
+                'purpose' => $purpose,
+                'missing' => array_values(array_diff($required, $granted)),
+                'excess' => array_values(array_intersect($forbidden, $granted)),
+            ];
+        }, $requirements);
     }
 
     /**

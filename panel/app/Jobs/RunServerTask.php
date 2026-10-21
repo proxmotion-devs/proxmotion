@@ -19,6 +19,7 @@ use App\Provisioning\Pipelines\CreateServerPipeline;
 use App\Provisioning\Pipelines\FirewallPipeline;
 use App\Provisioning\Pipelines\HostnamePipeline;
 use App\Provisioning\Pipelines\InstallAppPipeline;
+use App\Provisioning\Pipelines\MoveServerPipeline;
 use App\Provisioning\Pipelines\PowerPipeline;
 use App\Provisioning\Pipelines\ReinstallServerPipeline;
 use App\Provisioning\Pipelines\ResetPasswordPipeline;
@@ -38,7 +39,7 @@ use Throwable;
  * Runs one server task. Pipelines are idempotent, so a failed task can simply
  * be started again and continues where Proxmox's state says it stopped.
  *
- * Creating and reinstalling run in stages (docs/adr/0032): when a stage has
+ * Creating, reinstalling and moving (docs/adr/0037) run in stages (docs/adr/0032): when a stage has
  * to wait, the job queues itself again with that delay ($dispatch counts
  * these runs) and the worker is free in the meantime.
  */
@@ -58,7 +59,7 @@ class RunServerTask implements ShouldQueue
      */
     public function __construct(public Task $task, public int $dispatch = 0) {}
 
-    public function handle(CreateServerPipeline $create, PowerPipeline $power, TerminateServerPipeline $terminate, ResetPasswordPipeline $resetPassword, ReinstallServerPipeline $reinstall, ChangeResourcesPipeline $changeResources, GuestScripts $guestScripts, AddressesPipeline $addresses, HostnamePipeline $hostname, InstallAppPipeline $installApp, AppRunPipeline $appRun, AntiSpoofingPipeline $antiSpoofing, FirewallPipeline $firewall, ServerVerifier $verifier, StageRunner $stages, TaskFailer $failer): void
+    public function handle(CreateServerPipeline $create, MoveServerPipeline $move, PowerPipeline $power, TerminateServerPipeline $terminate, ResetPasswordPipeline $resetPassword, ReinstallServerPipeline $reinstall, ChangeResourcesPipeline $changeResources, GuestScripts $guestScripts, AddressesPipeline $addresses, HostnamePipeline $hostname, InstallAppPipeline $installApp, AppRunPipeline $appRun, AntiSpoofingPipeline $antiSpoofing, FirewallPipeline $firewall, ServerVerifier $verifier, StageRunner $stages, TaskFailer $failer): void
     {
         $task = $this->task;
 
@@ -76,6 +77,7 @@ class RunServerTask implements ShouldQueue
             $staged = match ($task->type) {
                 TaskType::Create => $create,
                 TaskType::Reinstall => $reinstall,
+                TaskType::Move => $move,
                 default => null,
             };
 

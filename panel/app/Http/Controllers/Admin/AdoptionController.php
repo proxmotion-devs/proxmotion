@@ -61,6 +61,7 @@ class AdoptionController extends Controller
                 ->map(fn (Package $package) => ['value' => $package->uuid, 'label' => $package->name]),
             'addresses' => $cluster === null ? [] : IpAddress::query()
                 ->whereNull('server_id')
+                ->whereNull('server_move_id')
                 ->whereHas('pool', fn ($query) => $query->where('location_id', $cluster->location_id))
                 ->orderBy('id')
                 ->limit(2000)

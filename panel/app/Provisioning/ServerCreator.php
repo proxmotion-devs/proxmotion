@@ -22,7 +22,6 @@ use App\Models\User;
 use App\Provisioning\Exceptions\ProvisioningException;
 use App\Provisioning\Placement\NodePlacer;
 use App\Provisioning\Placement\PlacementRules;
-use App\Proxmox\ProxmoxClientFactory;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -40,7 +39,7 @@ final readonly class ServerCreator
     public function __construct(
         private NodePlacer $placer,
         private IpAllocator $ips,
-        private ProxmoxClientFactory $clients,
+        private VmidAllocator $vmids,
         private TaskRunner $tasks,
         private AppInstaller $apps,
         private HostnameGenerator $hostnames,
@@ -130,7 +129,7 @@ final readonly class ServerCreator
                 storage: $order->storage,
             ));
             $cluster = $placement->node->cluster;
-            $vmid = $this->firstFreeVmid($cluster);
+            $vmid = $this->vmids->firstFree($cluster);
 
             return DB::transaction(function () use ($order, $spec, $placement, $cluster, $vmid, $ipv4Pool, $ipv6Pool, $primary, $additional, $appInputs, $actor) {
                 $server = $this->insertServer($order, $placement, $cluster, $vmid);
@@ -263,29 +262,5 @@ final readonly class ServerCreator
         }
 
         return $server;
-    }
-
-    /**
-     * The first VMID that is free both on Proxmox and in the panel (terminated
-     * servers keep their VMID in the panel's history). The per-location lock
-     * serialises orders; the unique index on (cluster_id, vmid) is the final guard.
-     *
-     * @throws ProvisioningException
-     */
-    private function firstFreeVmid(Cluster $cluster): int
-    {
-        $proxmox = $this->clients->forCluster($cluster)->cluster();
-        // Optionally keep the panel's VMs in their own range, apart from VMs managed by hand.
-        $candidate = max($proxmox->nextVmid(), (int) config('proxmotion.provisioning.min_vmid'));
-
-        for ($attempt = 0; $attempt < 50; $attempt++, $candidate++) {
-            $takenInPanel = Server::query()->where('cluster_id', $cluster->id)->where('vmid', $candidate)->exists();
-
-            if (! $takenInPanel && $proxmox->isVmidFree($candidate)) {
-                return $candidate;
-            }
-        }
-
-        throw new ProvisioningException('No free VMID found on the cluster.');
     }
 }

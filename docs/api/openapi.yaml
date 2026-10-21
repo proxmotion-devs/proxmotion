@@ -1434,7 +1434,7 @@ components:
       required: [id, type, status, server, steps, error, created_at, started_at, finished_at]
       properties:
         id: { type: string, format: uuid }
-        type: { type: string, enum: [create, suspend, unsuspend, terminate, adopt, start, shutdown, stop, reboot, reset_password, reinstall, change_resources, guest_script, change_primary_address, change_addresses, change_hostname, install_app, app_run, verify, enable_anti_spoofing, apply_firewall] }
+        type: { type: string, enum: [create, suspend, unsuspend, terminate, adopt, start, shutdown, stop, reboot, reset_password, reinstall, change_resources, guest_script, change_primary_address, change_addresses, change_hostname, install_app, app_run, verify, enable_anti_spoofing, apply_firewall, move] }
         status: { type: string, enum: [queued, running, succeeded, failed] }
         server:
           type: object
@@ -1652,7 +1652,7 @@ components:
         id: { type: string, format: uuid }
         event:
           type: string
-          enum: [ping, server.provisioned, server.suspended, server.unsuspended, server.reinstalled, server.terminated, server.failed, task.succeeded, task.failed, app.installed, app.failed, app.uninstalled, app.uninstall_failed, app.upgraded, app.upgrade_failed, app.action_succeeded, app.action_failed]
+          enum: [ping, server.provisioned, server.suspended, server.unsuspended, server.reinstalled, server.terminated, server.moved, server.failed, task.succeeded, task.failed, app.installed, app.failed, app.uninstalled, app.uninstall_failed, app.upgraded, app.upgrade_failed, app.action_succeeded, app.action_failed]
         created_at: { type: string, format: date-time }
         data:
           type: object
@@ -1687,6 +1687,9 @@ webhooks:
 
         - `server.provisioned`, `server.suspended`, `server.unsuspended`, `server.reinstalled`,
           `server.terminated`: the task of that type succeeded.
+        - `server.moved`: an administrator moved the server to another node, cluster or location
+          (docs/adr/0037). After a move to another location the server has new addresses: read
+          them with `GET /servers/{id}`.
         - `server.failed`: creating, reinstalling or terminating failed; the server is in `error`.
         - `task.succeeded`, `task.failed`: any task, including power actions, password resets,
           resource, address and hostname changes. A server event and its task event are separate

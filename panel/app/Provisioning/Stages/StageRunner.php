@@ -31,7 +31,7 @@ final readonly class StageRunner
     {
         $stages = $pipeline->stages();
         $started = Carbon::now();
-        $minutes = max(1, (int) config('proxmotion.provisioning.deadline_minutes'));
+        $minutes = max(1, $pipeline instanceof HasOwnDeadline ? $pipeline->deadlineMinutes() : (int) config('proxmotion.provisioning.deadline_minutes'));
         $stage = $task->stage ?? $stages[0];
         $index = array_search($stage, $stages, true);
 

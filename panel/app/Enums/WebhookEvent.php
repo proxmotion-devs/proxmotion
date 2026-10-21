@@ -18,6 +18,9 @@ enum WebhookEvent: string
     case ServerReinstalled = 'server.reinstalled';
     case ServerTerminated = 'server.terminated';
 
+    /** The server moved to another node, cluster or location (docs/adr/0037); its addresses may be new. */
+    case ServerMoved = 'server.moved';
+
     /** Creating, reinstalling or terminating failed; the server is in the error state. */
     case ServerFailed = 'server.failed';
 
@@ -64,6 +67,7 @@ enum WebhookEvent: string
             TaskType::Unsuspend => self::ServerUnsuspended,
             TaskType::Reinstall => self::ServerReinstalled,
             TaskType::Terminate => self::ServerTerminated,
+            TaskType::Move => self::ServerMoved,
             default => null,
         };
     }
@@ -80,6 +84,7 @@ enum WebhookEvent: string
             self::ServerUnsuspended => 'Server unsuspended',
             self::ServerReinstalled => 'Server reinstalled',
             self::ServerTerminated => 'Server terminated',
+            self::ServerMoved => 'Server moved',
             self::ServerFailed => 'Server failed (create, reinstall or terminate)',
             self::TaskSucceeded => 'Any task succeeded',
             self::TaskFailed => 'Any task failed',

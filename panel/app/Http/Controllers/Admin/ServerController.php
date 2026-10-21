@@ -15,6 +15,7 @@ use App\Domain\Apps\RecipeInput;
 use App\Domain\Firewall\ServerFirewalls;
 use App\Domain\Servers\GuestAgentProbe;
 use App\Domain\Servers\HostnameChanger;
+use App\Domain\Servers\MoveOptions;
 use App\Domain\Servers\ReinstallOptions;
 use App\Domain\Servers\ResourceOptions;
 use App\Domain\Servers\ServerPasswords;
@@ -223,7 +224,7 @@ class ServerController extends Controller
         return to_route('admin.servers.show', $server);
     }
 
-    public function show(Request $request, Server $server, GuestAgentProbe $agent, AppEligibility $eligibility, AppUpgrades $upgrades, TaskFailer $failer, LiveAppPolls $live, IpAllocator $ips, TaskPlan $plan, TaskEstimates $estimates): Response
+    public function show(Request $request, Server $server, MoveOptions $moves, GuestAgentProbe $agent, AppEligibility $eligibility, AppUpgrades $upgrades, TaskFailer $failer, LiveAppPolls $live, IpAllocator $ips, TaskPlan $plan, TaskEstimates $estimates): Response
     {
         $server->load(['node:id,uuid,name', 'cluster:id,uuid,name', 'location:id,name', 'package:id,name', 'billingSystem:id,name', 'osTemplate:id,operating_system_version_id,name,distribution,version,family,platform', 'storage:id,name', 'ipAddresses.pool:id,uuid,name,version,bridge,vlan_tag']);
 
@@ -307,6 +308,8 @@ class ServerController extends Controller
             'power' => Inertia::defer(fn () => $server->status === ServerStatus::Active ? $this->power->state($server) : null),
             'reinstallOptions' => fn () => ReinstallOptions::for($server),
             'resourceOptions' => fn () => ResourceOptions::for($server),
+            // Moving the server (docs/adr/0037).
+            'moveOptions' => fn () => $moves->for($server),
             // The server's firewall and the rule sets that can be applied (docs/adr/0035).
             'firewall' => fn () => [
                 ...app(ServerFirewalls::class)->describe($server),

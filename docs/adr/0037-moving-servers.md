@@ -1,6 +1,6 @@
 # 37. Moving servers between nodes and clusters
 
-- **Status:** Proposed (2026-10-22, not built yet)
+- **Status:** Accepted (built 2026-10-22; tested with a faked Proxmox only)
 - **Date:** 2026-10-22
 
 ## Context
@@ -15,7 +15,7 @@ Proxmox offers two API calls. Their details were read from the API viewer data (
 - `target-endpoint` (`apitoken=PVEAPIToken=…,host=…[,fingerprint=…][,port=…]`). The VM lands on **the node that answers at `host`**: Proxmox reads `/cluster/status` there and takes the `local` node.
 - `target-storage` and `target-bridge` are both required maps. An identity storage map (`1`) is refused.
 - `target-vmid` (defaults to the source VMID), `online`, `bwlimit`.
-- `delete` (default `0`: "the original VM is kept on the source cluster in a stopped state").
+- `delete` (default `0`: "the original VM is kept on the source cluster in a stopped state"). The source VM gets `lock: migrate` when the migration begins (`phase1`), and nothing clears that lock on the source after a successful remote migration (only the target is unlocked through the tunnel). Starting, unlocking or deleting a locked VM needs `skiplock`, which only `root@pam` may use.
 - Every disk is copied (`with-local-disks` is forced, transported over a websocket tunnel to the target's API port).
 - The VM config and the **VM firewall file are copied as they are** (`firewall-config` in the tunnel's `config` command).
 - Source privileges: `VM.Audit`, `VM.Config.Disk` and `VM.Migrate` on `/vms/{vmid}`. With `delete`, also `VM.Allocate`. `VM.Config.Cloudinit` too when the VM has `cipassword` or `cicustom`, which every panel server has.
@@ -38,46 +38,47 @@ It comes in three steps, built and verified in this order:
 
 ### 1. The move record and the task
 
-- `server_moves` holds one row per move:
-  - `server_id` and `kind` (`node`, `cluster`, `location`);
-  - the source `cluster_id`, `node_id`, `storage_id` and `vmid`, and the target `cluster_id`, `node_id`, `storage_id` and `vmid`;
-  - `online`, `status` (`queued`, `running`, `succeeded`, `failed`, `rolled_back`), the Proxmox UPID, the address plan (§3) and `source_removed_at`.
-  It is the history of where a server has been, and it **reserves** the target VMID and addresses while the move runs.
-- A move is one staged `move` task (ADR 0032). The long Proxmox task is a stage that checks its UPID once per run (`StageRunner::proxmoxTask()`), so no worker waits through a disk copy. The deadline is `PROXMOTION_MOVE_DEADLINE_MINUTES` (default 720), because copying disks can take hours. `PROXMOTION_MOVE_BWLIMIT_KIB` is passed as `bwlimit` when set.
+- `server_moves` (`ServerMove`) holds one row per move:
+  - `server_id`, the administrator (`user_id`) and `kind` (`node`, `cluster`, `location`);
+  - the source `location_id`, `cluster_id`, `node_id`, `storage_id` and `vmid`, and the same for the target;
+  - `status` (`queued`, `running`, `succeeded`, `failed`), `was_running` (whether the VM ran when the move began), `migrated_at` (Proxmox moved the VM), `recorded_at` (the server was recorded at the target), `finished_at` and `error`.
+  It is the history of where a server has been. While it runs it **reserves** the target VMID (`ServerMove::heldVmids()`) and, for step C, the new addresses (`ip_addresses.server_move_id`). Its tasks point to it (`tasks.server_move_id`).
+- A move is one staged `move` task (ADR 0032, `MoveServerPipeline`). The long Proxmox task is a stage that checks its UPID once per run (`StageRunner::proxmoxTask()`), so no worker waits through a disk copy. The deadline is `PROXMOTION_MOVE_DEADLINE_MINUTES` (default 720, `HasOwnDeadline`), because copying disks can take hours. `PROXMOTION_MOVE_BWLIMIT_KIB` is passed as `bwlimit` when set.
 - Like any task, it blocks other tasks on the server, so billing writes get `409` meanwhile. The server keeps its status (`active` or `suspended`), and its page shows the move.
-- A move is audited as `server.move_started` / `server.moved` / `server.move_failed`, with source and target. Steps B and C copy the whole server to other hardware and delete the source copy, so they are confirmed by typing the hostname (§7.8, like a reinstall).
+- A move is audited as `server.move_started` / `server.moved` / `server.move_failed` (and `server.move_resumed`, §7), with source and target. Steps B and C copy the whole server to other hardware and delete the source copy, so they are confirmed by typing the hostname (§7.8, like a reinstall); so is a move to a placement group that has nodes of another cluster.
 - When a move finishes, the webhook `server.moved` (new, additive) carries the server with its node, location and addresses. WHMCS and WISECP receivers only log it, as they do for other events they do not act on.
 
 ### 2. Checks before a move
 
-These run in the request (refusals name the check that failed) and again in the first stage:
+These run in the request (`ServerMover`, refusals name the check that failed and show on the dialog); the first stage checks again that the VM is on its node and the target VMID is free.
 
-- **Target placement.** A target node chosen by the administrator, or a placement group of the target location (best node by `NodePlacer`). The node must be online and not in maintenance, and the server must fit (`NodePlacer::freeCapacity()`, as the *Custom* create form warns today). The target storage must take VM disks; it defaults to the node's *Use for servers* storage. Step A on shared storage keeps the disks where they are.
-- **Bridges.** The target node must have the bridge of every pool the server has addresses in (steps A and B), or of the pools the new addresses come from (step C).
+- **Target placement** (`NodePlacer::placeMove()`). A node chosen by the administrator (also one in maintenance, like a chosen node of a new server), or the least used node of a placement group (nodes in maintenance skipped). Never the server's own node. The node must be online and in an active cluster, and the server must fit (CPU, memory, server slots and disk after over-commit). The target storage must take VM disks; it defaults to the node's *Use for servers* storage. A disk on shared storage that a node of the same cluster has too stays where it is.
+- **Clusters.** A node of another cluster only with `PROXMOTION_CROSS_CLUSTER_MOVES` on and an incoming move token on that cluster (§5), and with a known API address of the node.
+- **Bridges.** The target node must have the bridge of the server's primary pool (steps A and B), or of the pool the new addresses come from (step C).
 - **Firewall.** The target cluster's datacenter firewall and ebtables must be on (ADR 0033 §1), as for a new server.
-- **Proxmox's preconditions.** `GET …/migrate` must list no `local_resources`, and the target must not be in `not_allowed_nodes` (step A). The server must not be HA-managed or replicated (steps B and C). The panel creates neither, but adopted VMs may have them.
-- **The server itself.** No app installation `installing` and no app run `running` (an offline move would cut it off). No snapshots: their handling is left to Phase 7, and storage migration of disks with snapshots is not verified.
-- **Linked clones** (ADR 0027): step A refuses a linked clone on local storage until moving one is verified. Steps B and C copy the disk, so the result is a full clone; the server's `clone_mode` no longer applies to it.
-- **OS template.** When the server's OS template has no template VM on the target cluster or node, the move is still allowed. It warns that reinstalls will fail until the template is mapped there.
-- **Routed addresses.** For a server with addresses from a `routed` pool, the provider routes them to one host. The panel cannot move such a route (provider plugins are out of core, §3.7), so the move needs an extra tick: *The provider routes these addresses to the new node.*
+- **Proxmox's preconditions.** Step A asks `GET …/migrate`: no `local_resources`, and the target is not in `not_allowed_nodes`. HA-managed and replicated VMs are refused by Proxmox itself for steps B and C (the panel creates neither, but adopted VMs may have them); the task then fails with Proxmox's message and nothing moved.
+- **The server itself.** Active or suspended, no other task, no app installation queued, installing, uninstalling or upgrading and no app run queued or running (an offline move would cut it off). No snapshots (a `parent` key in the VM config): their handling is left to Phase 7, and storage migration of disks with snapshots is not verified.
+- **Linked clones** (ADR 0027): step A refuses a server whose boot disk is a linked clone (`base-…/vm-…`) on local storage until moving one is verified. Steps B and C copy the disk, so the result is a full clone.
+- **OS template.** When the server's OS template has no template VM on the target cluster, the move is still allowed; reinstalls fail there until the template is mapped. The dialog does not warn about it yet.
+- **Routed addresses.** For a server with addresses from a `routed` pool, the provider routes them to one host. The panel cannot move such a route (provider plugins are out of core, §3.7), so the move needs an extra tick: *The provider routes the addresses of this server to the new node.*
 
 ### 3. IP addresses
 
-- **Steps A and B keep every address, the MAC and `net0`.** IP pools belong to a location, and a pool's bridge and VLAN are already assumed to reach every node of the location (placement relies on it). The bridge map is identity per bridge (`vmbr0=vmbr0`).
-- **Step C gives the server new addresses.** It gets the same number per IP version from the target location's active pools for its network model (`IpAllocator`). Like the create form, an IPv4 pool and specific addresses may be chosen. They are reserved under the target location's lock when the move is requested and recorded in the move's address plan. The old addresses stay the server's until the move succeeds, then they are released (their PTRs are removed, ADR 0003).
-  - The new primary gets the PTR the old primary had, published by the new pool's driver. Other PTRs are not carried over.
+- **Steps A and B keep every address, the MAC and `net0`.** IP pools belong to a location, and a pool's bridge and VLAN are already assumed to reach every node of the location (placement relies on it). The bridge map is the primary pool's bridge (one name maps every bridge of the VM, which has only `net0`).
+- **Step C gives the server new addresses.** It gets the same number per IP version from the target location's active pools for its network model (`IpAllocator::assign()` with the move as holder). An IPv4 pool may be chosen; IPv6 comes from a pool on the IPv4 pool's bridge and VLAN, and a server never loses a version of its addresses (the move is refused without one). They are held for the move under the target location's lock (`ip_addresses.server_move_id`, taken by nothing else) and handed to the server when the move is recorded (`IpAllocator::switchToMoveAddresses()`); then the old ones are released with their PTRs (ADR 0003). A move that fails before it is recorded frees them again (`ServerMove::markFailed()`).
+  - The new primary of each version gets the PTR the old primary had, published by the new pool's driver. Other PTRs are not carried over.
   - The VM's notes and tags are rewritten with the new primaries (`VmLabels`).
-  - Inside the guest, the `addresses_changed` script applies the new addresses and default route through the guest agent (ADR 0009, 0011).
+  - Inside the guest, the `addresses_changed` script applies the new addresses and default route through the guest agent (ADR 0009, 0011). A server that was stopped stays stopped: the step says to use *Apply again* after starting it.
   - `ipconfig0` is **not** changed, because a new `ipconfig0` gives the guest a new cloud-init instance ID and new SSH host keys (ADR 0011).
-  - The bridge map and `net0`'s `tag=` follow the new pool.
-  - Nameservers: the default address script does not set resolvers today. The guest keeps the ones cloud-init wrote, which may not be reachable from the new location. Before step C is built, the address script learns to write the pool's nameservers, or the move warns.
+  - `net0` (bridge, `tag=`, a provider MAC of the new primary) and `nameserver` follow the new pool.
+  - Nameservers inside the guest: the default address script does not set resolvers. The guest keeps the ones cloud-init wrote, which may not be reachable from the new location. Not solved yet (see Consequences).
   - A hostname generated from the old address (ADR 0031) is **not** renamed: renaming is a separate action (ADR 0012).
 - Billing systems learn the new addresses from `server.moved` and `GET /servers/{id}`. API v1 is unchanged.
 
 ### 4. VMIDs
 
 - **Step A:** the VMID stays.
-- **Steps B and C:** VMIDs are per cluster (§3.6). The target VMID is the **same VMID when it is free** on the target cluster, in the panel (servers and running moves of that cluster) and at or above `PROXMOTION_MIN_VMID`. Otherwise it is the first free one, found the same way `ServerCreator::firstFreeVmid()` does, which then also skips VMIDs reserved by running moves. It is reserved under the target location's lock and passed as `target-vmid`. The server's `cluster_id`, `node_id`, `storage_id` and `vmid` change only when the move succeeds. The unique index on `(cluster_id, vmid)` stays the final guard.
+- **Steps B and C:** VMIDs are per cluster (§3.6). The target VMID is the **same VMID when it is free** on the target cluster, in the panel (servers and running moves of that cluster) and at or above `PROXMOTION_MIN_VMID`. Otherwise it is the first free one (`VmidAllocator`, which new servers use too and which skips VMIDs held by running moves). It is reserved under the target location's lock and passed as `target-vmid`. The server's `cluster_id`, `node_id`, `storage_id` and `vmid` change only when the move is recorded. The unique index on `(cluster_id, vmid)` stays the final guard.
 - Nothing is visible to billing systems: they know servers by UUID and `external_id`, never by VMID.
 
 ### 5. Tokens
@@ -93,9 +94,9 @@ These run in the request (refusals name the check that failed) and again in the 
   | `/storage` | `Datastore.AllocateSpace` | the copied disks |
   | `/sdn/zones/localnetwork` | `SDN.Use` | the bridges |
 
-  The cluster page checks it like the main token (`/access/permissions`). The excess-privilege warning applies to it too, apart from the rows above. Without an incoming token, steps B and C do not offer the cluster as a target.
-- **Where the secret goes.** The panel sends the incoming token of the *target* to the *source* cluster's API as `target-endpoint`, built only by `QemuResource::remoteMigrate()`. The source cluster's Proxmox therefore sees the target's secret. That is acceptable only because both clusters are the same provider's infrastructure, and it is why the incoming token is separate and narrow: it cannot read, power or delete the panel's servers. Still to verify: that the secret does not appear in the source's task log or task list.
-- **TLS.** `host` is the address of the chosen target node: `nodes.api_host`, a new field filled by the sync from the node's address on `/cluster/status`, which an administrator can override. When the cluster's certificate is not publicly trusted, `fingerprint` is required: `clusters.tls_fingerprint` (SHA-256), entered on the cluster form and compared with the certificate the panel sees on its connection test. The source nodes must reach the target node's API port; the move fails early with that reason when they cannot (unverified how Proxmox reports it).
+  The cluster page has a section *Servers from other clusters* to save it (it must reach Proxmox, like the main token; an empty token ID removes it; audited as `cluster.incoming_token_saved` / `cluster.incoming_token_removed`) and checks it like the main token (`PermissionChecker::checkIncoming()`), warning about `VM.PowerMgmt`, `VM.Console`, `VM.Monitor`, `VM.GuestAgent.Unrestricted` and `VM.Config.Disk` on `/vms` and the dangerous privileges on `/`. Without an incoming token, steps B and C refuse the cluster as a target.
+- **Where the secret goes.** The panel sends the incoming token of the *target* to the *source* cluster's API as `target-endpoint` (`RemoteEndpoint`, used only by `QemuResource::remoteMigrate()`, which masks the secret in any error message). The source cluster's Proxmox therefore sees the target's secret. That is acceptable only because both clusters are the same provider's infrastructure, and it is why the incoming token is separate and narrow: it cannot read, power or delete the panel's servers. Still to verify: that the secret does not appear in the source's task log or task list.
+- **TLS.** `host` is the API address of the chosen target node (`Node::apiHost()`): `nodes.api_host` when an administrator set it (node settings on the cluster page), else `nodes.address`, filled by the sync from `ip` in `/cluster/status`, else the cluster's host for a standalone node. When the cluster's certificate is not publicly trusted, `fingerprint` is passed: `clusters.tls_fingerprint` (SHA-256), entered with the incoming token. The panel does not compare it with the certificate itself. The source nodes must reach the target node's API port; how Proxmox reports it when they cannot is unverified.
 
 ### 6. Firewall state
 
@@ -104,19 +105,21 @@ These run in the request (refusals name the check that failed) and again in the 
   - `pm-protected` lists the **source location's** node addresses and protected networks (step B: same location, but other nodes);
   - in step C, `ipfilter-net0`, `pm-isolated` and `pm-gateways` still hold the old addresses and pools, which would drop the new addresses' traffic.
 
-  Right after the Proxmox task, a stage rewrites the whole VM firewall through the **target** cluster's main token, exactly as *Enable anti-spoofing* does (ADR 0033 §4): the options, IP sets from the panel's view of the target, the rule block and the input policy. It then reads it back (`FirewallChecker::recheck()`). In step C this runs **before** the VM is started on the target (§7).
-- `FirewallChecker` and `DriftDetector` skip a server while its move runs, and skip the target VMID on the target cluster. Otherwise the copy in progress would show up as an unknown VM, a missing VM or a `node_mismatch`.
+  Right after the VM is in the target's pool, a stage rewrites the whole VM firewall through the **target** cluster's main token, as *Enable anti-spoofing* does (ADR 0033 §4): the options, `net0`'s firewall flag, the address IP set (extra entries removed), the isolation IP sets from the panel's view of the target, the rule block and the input policy. It then reads it back (`FirewallChecker::recheck()`). In step C this runs **before** the VM is started on the target (§7).
+- `FirewallChecker` and `DriftDetector` already skip a server while a task of it runs. The drift report and the adoption list also leave the VMIDs held by moves into a cluster alone (`ServerMove::heldVmids()`), so a copy in progress never shows up as an unmanaged VM or is offered for adoption.
 
 ### 7. The stages
 
-- **Step A:** `check` → `migrate` (UPID; `online` when running; `with-local-disks` and `targetstorage` for local disks) → `record` (node and storage from `/cluster/resources`, not assumed) → `verify` (`ServerVerifier`, warnings only).
-- **Step B:** `check` → `remote_migrate` (`online` when running, `delete=0`) → `adopt` (the incoming token puts the VM into the target's resource pool) → `firewall` → `record` (cluster, node, storage, VMID) → `verify` → `remove_source`.
-- **Step C:** `check` → `shutdown` (the usual clean shutdown; a stuck guest fails the move without touching anything) → `remote_migrate` (offline, `delete=0`) → `adopt` → `configure` (`net0` bridge and tag, nameservers, VM notes and tags) → `firewall` → `record` (also location, addresses, PTRs) → `start` → `addresses` (guest script) → `verify` → `remove_source`.
+`MoveServerPipeline` has one list of stages; those that do not apply to a kind of move do nothing:
 
-`remove_source` deletes the stopped source copy through the source cluster's main token. That token can do it because the VM is still in its pool. It runs only once the target VM was recorded, and records `source_removed_at`.
+- **Step A:** `check` → `migrate` (UPID; `online` when running; `with-local-disks` and `targetstorage` unless the disk stays on shared storage) → `record` (only once `/cluster/resources` shows the VM on the target node) → `verify` (`ServerVerifier`, warnings only, when it runs).
+- **Step B:** `check` → `migrate` (`remote_migrate`, `online` when running, `delete=1`) → `record` (cluster, node, storage, VMID) → `adopt` (the incoming token puts the VM into the target's resource pool) → `firewall` → `verify`.
+- **Step C:** `check` → `shutdown` (a clean shutdown without forcing; a guest that does not stop fails the move and nothing changed) → `migrate` (offline, `delete=1`) → `record` (also location, addresses, PTRs) → `adopt` → `configure_network` (`net0`, `nameserver`, VM notes and tags) → `firewall` → `start` → `wait_agent` → `guest_addresses` (address script) → `verify`. The last four only for a server that ran.
 
-- **Before `record`**, a failed move leaves the server where it was. Its source VM is still there, because `delete=0` keeps it; a VM half-created on the target is deleted when the panel created it for this move (it is in the move record). Proxmox cleans up its own failed migration; the panel only removes what is left of it.
-- **After `record`**, the server lives on the target. While the source copy exists, *Return to the old copy* (admin, audited) starts it again, deletes the target VM and restores the recorded location; in step C, the old addresses are only released at `remove_source`, so they can still be returned to. A failed `verify` keeps the source copy and leaves that choice to the administrator. A server that verifies cleanly loses its old copy at once: two copies of one server with the same MAC and addresses must not run in the same network, and the adoption list (§3.8) must never offer the leftover.
+**`delete=1`, not a kept copy.** The first version of this ADR kept the source VM (`delete=0`) to return to it. Reading `qemu-server` showed that the kept copy stays locked (`lock: migrate`), and only root can unlock, start or delete a locked VM. A panel token could neither go back to it nor clean it up, and a stopped copy with the server's MAC and addresses would sit in the source cluster's pool. So Proxmox deletes the source once its migration succeeded, and there is no "return to the old copy".
+
+- **Before Proxmox finished** (`migrated_at` empty), a failed move leaves the server where it was: Proxmox cleans up its own failed migration and keeps the source. In step C the panel starts the VM it shut down again. The held VMID and addresses are free again.
+- **After Proxmox finished**, the server lives on the target. A later stage that fails (adding it to the pool, the firewall, the guest script) fails the task and the move; the move record says that the VM was moved, and *Finish the move* on the server page (`ServerMover::finish()`, audited as `server.move_resumed`) runs a new task for the same move. Every stage looks first at what is done (`migrated_at`, `recorded_at`), so Proxmox moves the VM only once.
 
 ## Consequences
 
@@ -125,11 +128,13 @@ These run in the request (refusals name the check that failed) and again in the 
 - A cluster that receives servers needs a second token with `Sys.Incoming` and `VM.Allocate` on `/vms`. Its secret is handed to the source cluster's Proxmox during each move.
 - Moving between locations changes a server's addresses. That is a visible event for the customer (DNS, firewalls elsewhere, licences bound to an IP), so it is never automatic.
 - Routed addresses need the provider to reroute them. The panel only asks for confirmation.
-- The server keeps its history: `server_moves` stays when a move finishes.
+- The server keeps its history: `server_moves` stays when a move finishes; the server page lists the last five.
+- There is no way back to the source after Proxmox moved the VM (`delete=1`); a server moved by mistake is moved back with another move.
+- Open: the guest keeps its old DNS resolvers after a move to another location, and the dialog does not warn when the server's OS template is not mapped on the target cluster.
 - Not verified on a real Proxmox yet:
-  - `migrate` with `with-local-disks` and `targetstorage` on LVM-thin and ZFS, and of a linked clone;
-  - `remote_migrate` online and offline;
-  - the source copy left stopped and unlocked with `delete=0`;
+  - `migrate` with `with-local-disks` and `targetstorage` on LVM-thin and ZFS, and of a linked clone on shared storage;
+  - `remote_migrate` online and offline, with `delete=1`;
+  - that the source VM really keeps `lock: migrate` with `delete=0` (read from the source, the reason for `delete=1`);
   - the copied firewall file applied on the target before the first start;
   - the copied cloud-init drive keeping the instance ID (otherwise every step-B/C move regenerates SSH host keys, which would change the design);
   - the token secret kept out of the source's task logs;

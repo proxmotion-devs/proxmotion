@@ -125,6 +125,43 @@ class FakeProxmoxCluster
     /** @var array<int, array{exitcode: int, out: string, err: string, polls: int}> */
     private array $processes = [];
 
+    /** When set, migrations (migrate, remote_migrate) fail with this exit status and move nothing. */
+    public ?string $failMigration = null;
+
+    /** When set, adding a VM to a pool is refused with this message. */
+    public ?string $refusePool = null;
+
+    /** @var list<array<string, mixed>> remote_migrate requests, the endpoint included */
+    public array $remoteMigrations = [];
+
+    /** @var array<string, string> per API host: the node that answers there (remote migrations land on it) */
+    public array $hostNodes = [];
+
+    /** @var array<string, self> the clusters by API host, when several are installed (installAll()) */
+    private array $network = [];
+
+    /** @var list<string> nodes of the cluster, for /cluster/status */
+    public array $nodes = ['pve1'];
+
+    /**
+     * Fake several clusters at once, each answering on its own API host:
+     * remote migrations go from one to the other (docs/adr/0037).
+     *
+     * @param  array<string, self>  $clusters  by API host
+     */
+    public static function installAll(array $clusters): void
+    {
+        foreach ($clusters as $cluster) {
+            $cluster->network = $clusters;
+        }
+
+        Http::preventStrayRequests()->fake(function (Request $request) use ($clusters) {
+            $host = (string) parse_url($request->url(), PHP_URL_HOST);
+
+            return ($clusters[$host] ?? throw new \RuntimeException("No fake Proxmox answers on {$host}."))->handle($request);
+        });
+    }
+
     public function addTemplate(int $vmid, string $node = 'pve1', ?string $pool = 'proxmotion', int $diskMib = 3584): self
     {
         $this->vms[$vmid] = [
@@ -195,6 +232,8 @@ class FakeProxmoxCluster
             ]]),
             $path === '/cluster/resources' => $this->ok($this->resources()),
             $path === '/cluster/firewall/options' => $this->ok($this->datacenterFirewall),
+            $path === '/cluster/status' => $this->ok(array_map(fn (string $node) => ['type' => 'node', 'name' => $node, 'online' => 1], $this->nodes)),
+            (bool) preg_match('#^/pools/([^/]+)$#', $path, $m) && $method === 'PUT' => $this->addToPool(urldecode($m[1]), (int) ($data['vms'] ?? 0)),
             (bool) preg_match('#^/nodes/([^/]+)/tasks$#', $path) => $this->ok(array_map(
                 fn (string $upid) => ['upid' => $upid],
                 $this->activeTasks[(int) ($query['vmid'] ?? 0)] ?? [],
@@ -266,6 +305,9 @@ class FakeProxmoxCluster
         }
 
         return match (true) {
+            $suffix === '/migrate' && $method === 'GET' => $this->ok(['running' => $vm['status'] === 'running' ? 1 : 0, 'local_resources' => [], 'local_disks' => []]),
+            $suffix === '/migrate' && $method === 'POST' => $this->migrate($node, $vmid, $data),
+            $suffix === '/remote_migrate' && $method === 'POST' => $this->remoteMigrate($node, $vmid, $data),
             $suffix === '' && $method === 'DELETE' => $this->destroyVm($node, $vmid),
             $suffix === '/config' && $method === 'GET' => $this->ok($vm['config']),
             $suffix === '/config' && $method === 'PUT' => $this->updateConfig($vmid, $data),
@@ -471,7 +513,7 @@ class FakeProxmoxCluster
 
     private function taskStatus(string $upid): PromiseInterface
     {
-        $failed = str_contains($upid, ':qmclone-fail:');
+        $failed = str_contains($upid, '-fail:');
         $this->polledTasks[] = $upid;
         $type = explode(':', $upid)[5] ?? '';
 
@@ -485,7 +527,7 @@ class FakeProxmoxCluster
             $this->activeTasks[$vmid] = array_values(array_diff($upids, [$upid]));
         }
 
-        return $this->ok(['status' => 'stopped', 'exitstatus' => $failed ? (string) $this->failClone : 'OK']);
+        return $this->ok(['status' => 'stopped', 'exitstatus' => $failed ? (string) (str_contains($upid, ':qmigrate-fail:') ? $this->failMigration : $this->failClone) : 'OK']);
     }
 
     /**
@@ -549,6 +591,83 @@ class FakeProxmoxCluster
         $this->vms[$vmid]['status'] = in_array($action, ['start', 'reboot'], true) ? 'running' : 'stopped';
 
         return $this->upid($node, "qm{$action}", $vmid);
+    }
+
+    /**
+     * Within the cluster: the VM moves to the target node; local disks to targetstorage.
+     *
+     * @param  array<string, mixed>  $data
+     */
+    private function migrate(string $node, int $vmid, array $data): PromiseInterface
+    {
+        if ($this->failMigration !== null) {
+            return $this->upid($node, 'qmigrate-fail', $vmid);
+        }
+
+        $this->vms[$vmid]['node'] = (string) $data['target'];
+
+        if (isset($data['targetstorage'])) {
+            $this->vms[$vmid]['config']['scsi0'] = (string) preg_replace('/^[^:]+:/', $data['targetstorage'].':', (string) $this->vms[$vmid]['config']['scsi0']);
+        }
+
+        return $this->upid($node, 'qmigrate', $vmid);
+    }
+
+    /**
+     * To another cluster (installAll()): the VM, its config and firewall are
+     * copied to the node behind the endpoint's host under target-vmid, in no
+     * pool; disks go to target-storage, net0 to target-bridge. With delete,
+     * the source is gone; otherwise it stays stopped and locked.
+     *
+     * @param  array<string, mixed>  $data
+     */
+    private function remoteMigrate(string $node, int $vmid, array $data): PromiseInterface
+    {
+        $this->remoteMigrations[] = ['vmid' => $vmid, ...$data];
+
+        if ($this->failMigration !== null) {
+            return $this->upid($node, 'qmigrate-fail', $vmid);
+        }
+
+        preg_match('/(?:^|,)host=([^,]+)/', (string) $data['target-endpoint'], $host);
+        $target = $this->network[$host[1] ?? ''] ?? null;
+
+        if ($target === null) {
+            return Create::promiseFor(new Psr7Response(500, ['Content-Type' => 'application/json'], '{"data":null}', '1.1', 'no route to target endpoint'));
+        }
+
+        $newId = (int) ($data['target-vmid'] ?? $vmid);
+        $vm = $this->vms[$vmid];
+        $vm['node'] = $target->hostNodes[$host[1]] ?? $target->nodes[0];
+        $vm['pool'] = null;
+        $vm['status'] = ($data['online'] ?? '0') === '1' && $vm['status'] === 'running' ? 'running' : 'stopped';
+        $vm['config']['scsi0'] = (string) preg_replace('/^[^:]+:[^,]+/', $data['target-storage'].":vm-{$newId}-disk-0", (string) $vm['config']['scsi0']);
+        $vm['config']['net0'] = (string) preg_replace('/bridge=[^,]+/', 'bridge='.$data['target-bridge'], (string) $vm['config']['net0']);
+        $target->vms[$newId] = $vm;
+
+        if (($data['delete'] ?? '0') === '1') {
+            unset($this->vms[$vmid]);
+        } else {
+            $this->vms[$vmid]['status'] = 'stopped';
+            $this->vms[$vmid]['config']['lock'] = 'migrate';
+        }
+
+        return $this->upid($node, 'qmigrate', $vmid);
+    }
+
+    private function addToPool(string $pool, int $vmid): PromiseInterface
+    {
+        if ($this->refusePool !== null) {
+            return Create::promiseFor(new Psr7Response(403, ['Content-Type' => 'application/json'], '{"data":null}', '1.1', $this->refusePool));
+        }
+
+        if (($this->vms[$vmid]['pool'] ?? null) === $pool) {
+            return Create::promiseFor(new Psr7Response(500, ['Content-Type' => 'application/json'], '{"data":null}', '1.1', "VM {$vmid} is already a pool member"));
+        }
+
+        $this->vms[$vmid]['pool'] = $pool;
+
+        return $this->ok(null);
     }
 
     private function destroyVm(string $node, int $vmid): PromiseInterface

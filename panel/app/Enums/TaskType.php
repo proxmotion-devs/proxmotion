@@ -27,4 +27,5 @@ enum TaskType: string
     case Verify = 'verify';
     case EnableAntiSpoofing = 'enable_anti_spoofing';
     case ApplyFirewall = 'apply_firewall';
+    case Move = 'move';
 }

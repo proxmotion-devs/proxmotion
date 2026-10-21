@@ -22,6 +22,7 @@ use Illuminate\Support\Carbon;
  * @property int|null $user_id
  * @property int|null $api_token_id
  * @property int|null $os_template_id the OS template a create or reinstall installs (TaskEstimates)
+ * @property int|null $server_move_id the move a move task carries out (docs/adr/0037)
  * @property TaskType $type
  * @property TaskStatus $status
  * @property list<array{key: string, status: string, message: string|null, started_at?: string|null, finished_at: string|null}> $steps started_at is missing on steps recorded before 2026-10-20
@@ -38,6 +39,7 @@ use Illuminate\Support\Carbon;
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  * @property-read Server $server
+ * @property-read ServerMove|null $move
  */
 class Task extends Model
 {
@@ -159,5 +161,13 @@ class Task extends Model
     public function server(): BelongsTo
     {
         return $this->belongsTo(Server::class);
+    }
+
+    /**
+     * @return BelongsTo<ServerMove, $this>
+     */
+    public function move(): BelongsTo
+    {
+        return $this->belongsTo(ServerMove::class, 'server_move_id');
     }
 }

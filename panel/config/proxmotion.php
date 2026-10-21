@@ -65,6 +65,25 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Moving servers (docs/adr/0037)
+    |--------------------------------------------------------------------------
+    |
+    | Moves to another cluster or location use Proxmox's remote migration,
+    | which Proxmox still calls experimental: they are offered only with
+    | cross_cluster on. A move must finish within deadline_minutes (copying
+    | disks can take hours); bwlimit_kib limits its transfer (KiB/s, empty:
+    | Proxmox's own limit).
+    |
+    */
+
+    'moves' => [
+        'cross_cluster' => (bool) env('PROXMOTION_CROSS_CLUSTER_MOVES', false),
+        'deadline_minutes' => (int) env('PROXMOTION_MOVE_DEADLINE_MINUTES', 720),
+        'bwlimit_kib' => env('PROXMOTION_MOVE_BWLIMIT_KIB') !== null && env('PROXMOTION_MOVE_BWLIMIT_KIB') !== '' ? (int) env('PROXMOTION_MOVE_BWLIMIT_KIB') : null,
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Guest isolation (docs/adr/0034)
     |--------------------------------------------------------------------------
     |

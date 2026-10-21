@@ -15,6 +15,7 @@ use App\Models\IpAddress;
 use App\Models\Node;
 use App\Models\Package;
 use App\Models\Server;
+use App\Models\ServerMove;
 use App\Models\Task;
 use App\Models\User;
 use App\Provisioning\Exceptions\ProvisioningException;
@@ -42,7 +43,8 @@ final readonly class AdoptServer
      */
     public function candidates(Cluster $cluster): array
     {
-        $managed = Server::query()->occupying()->where('cluster_id', $cluster->id)->pluck('vmid')->all();
+        // Servers moving into the cluster hold their VMID (docs/adr/0037 §6).
+        $managed = [...Server::query()->occupying()->where('cluster_id', $cluster->id)->pluck('vmid')->all(), ...ServerMove::heldVmids($cluster)];
 
         return array_values(array_filter(
             $this->clients->forCluster($cluster)->cluster()->guests(),
@@ -75,6 +77,7 @@ final readonly class AdoptServer
             $addresses = IpAddress::query()
                 ->whereIn('id', $ipAddressIds)
                 ->whereNull('server_id')
+                ->whereNull('server_move_id')
                 ->whereHas('pool', fn ($query) => $query->where('location_id', $cluster->location_id))
                 ->lockForUpdate()
                 ->get();

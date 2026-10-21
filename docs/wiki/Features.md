@@ -159,7 +159,8 @@ Per node, administrators set:
 
 - **Active / maintenance** — nodes in maintenance are skipped by automatic placement,
 - **over-commit ratios** for CPU, memory and disk,
-- **maximum number of servers**.
+- **maximum number of servers**,
+- **API address** — where servers moved in from other clusters land; empty uses the node's address from the sync ([ADR 0037](../adr/0037-moving-servers.md)).
 
 ### 4.4 Storage settings
 
@@ -417,6 +418,7 @@ All of these are available on the admin server page; the ones marked ✓ are als
 | **Change hostname** | ✓ | Renamed inside the guest; PTRs that matched the old name follow; the Proxmox VM name stays ([ADR 0012](../adr/0012-changing-the-hostname.md)) |
 | **Change primary address** | ✓ | Swap or replace (see 6.5); in the admin panel part of *Edit IP addresses* |
 | **Edit IP addresses**, **Apply again** | — | Add, remove, choose the primary; apply the addresses again (see 6.5.1) |
+| **Move** | — | To another node, cluster or location (see below) |
 | **rDNS** | ✓ | Per public address |
 | **Console** | ✓ (link) | See [Browser console](#10-browser-console) |
 | **Apps** | ✓ | Install, cancel, retry, uninstall, upgrade, actions, entitlements |
@@ -426,6 +428,16 @@ All of these are available on the admin server page; the ones marked ✓ are als
 | **Reset after trial** | — | Reinstalls a test server from its template |
 
 Destructive operations (terminate, reinstall, node/cluster removal) ask for extra confirmation and are audited.
+
+**Moving a server** ([ADR 0037](../adr/0037-moving-servers.md)): *Move* on the server page (active or suspended servers, no other task or running app script) sends it to a chosen node, or to the least used node of a placement group. Three kinds:
+
+| To | How | Addresses | VMID |
+|---|---|---|---|
+| Another node of its cluster | Proxmox `migrate`, live while it runs; local disks are copied, a disk on shared storage stays | kept | kept |
+| Another cluster of its location | Proxmox `remote_migrate` (experimental in Proxmox), live while it runs; the VM firewall is written again on the target | kept | kept when free there |
+| A cluster of another location | shut down, copied, started there | new ones from that location; the old primary's PTR moves to the new one | kept when free there |
+
+Moves to other clusters need `PROXMOTION_CROSS_CLUSTER_MOVES=true`, an *incoming move token* on the target cluster (*Servers from other clusters* on the cluster page: a separate token with `Sys.Incoming`, used for nothing else) and the hostname typed to confirm. Proxmox deletes the old VM once its copy succeeded. Servers with addresses of a routed pool need a tick that the provider routes them to the new node. If a step after the copy fails, *Finish the move* runs the rest again. The server keeps its history of moves; billing systems get `server.moved`. Tested with a faked Proxmox only.
 
 **Live usage** ([ADR 0036](../adr/0036-live-server-stats.md)): the *Overview* tab of an active or suspended server starts with cards for CPU, memory, network (in and out, against the port speed) and disk I/O, each with the last hour as a small line chart, plus the uptime. With Reverb running, `servers:stats` pushes new figures every 10 seconds to every open page of that server; without it the page asks every 10 seconds. Only servers whose page is open are asked for. Admin panel only; not tested against a real Proxmox or Reverb yet.
 
@@ -720,6 +732,8 @@ The **scheduler** and a **queue worker** must run; `composer dev` starts both lo
 | `PROXMOTION_DOCS_URL` | Base URL of the published guides; *Help* links to them when set |
 | `PROXMOTION_MIN_VMID` | Lowest VMID the panel assigns |
 | `PROXMOTION_DRIFT_STOPPED_GRACE_MINUTES` | How long a VM may be unexpectedly stopped before it is reported as drift (default 60) |
+| `PROXMOTION_CROSS_CLUSTER_MOVES` | Allow moving servers to other clusters and locations, through Proxmox's experimental remote migration (default `false`) |
+| `PROXMOTION_MOVE_DEADLINE_MINUTES`, `PROXMOTION_MOVE_BWLIMIT_KIB` | How long a move may take (default 720) and its bandwidth limit in KiB/s (empty: Proxmox's own) |
 | `BROADCAST_CONNECTION`, `REVERB_*`, `VITE_REVERB_*` | `reverb` and its settings push live server figures; `log` makes the server page poll instead |
 
 See `panel/.env.example` for the full list (database, Redis, mail, console proxy secret, …).
@@ -745,7 +759,7 @@ See `panel/.env.example` for the full list (database, Redis, mail, console proxy
 | 6 | Usage and quotas: traffic collection, graphs, throttle/suspend, `UsageUpdate` | Resource changes, guest scripts, primary address and hostname changes done early; traffic not started |
 | 7 | Snapshots and backups, Proxmox Backup Server | Planned |
 | 8 | Virtualizor import, native installer, production images, branding | Planned |
-| 9 | NAT VPS, LXC, ISO mount, rescue mode, customer firewall, moving servers between nodes and clusters ([ADR 0037](../adr/0037-moving-servers.md)), reseller system, more billing modules | Planned |
+| 9 | NAT VPS, LXC, ISO mount, rescue mode, customer firewall, moving servers (pulled forward, see 9.4), reseller system, more billing modules | Planned |
 
 ---
 

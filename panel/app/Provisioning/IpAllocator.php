@@ -12,6 +12,7 @@ use App\Models\IpAddress;
 use App\Models\IpPool;
 use App\Models\Location;
 use App\Models\Server;
+use App\Models\ServerMove;
 use App\Provisioning\Exceptions\ProvisioningException;
 use App\Support\Network\Cidr;
 use Illuminate\Database\Eloquent\Builder;
@@ -72,7 +73,7 @@ final class IpAllocator
      *
      * @throws ProvisioningException
      */
-    public function assign(Server $server, ?IpPool $ipv4Pool, int $ipv4Count, ?IpPool $ipv6Pool, int $ipv6Count): array
+    public function assign(Server|ServerMove $server, ?IpPool $ipv4Pool, int $ipv4Count, ?IpPool $ipv6Pool, int $ipv6Count): array
     {
         $assigned = [];
 
@@ -139,7 +140,7 @@ final class IpAllocator
                 return $pool->addresses()->create(['address' => $address]);
             }
 
-            if ($existing !== null && $existing->server_id === null && ! $existing->is_reserved) {
+            if ($existing !== null && $existing->server_id === null && $existing->server_move_id === null && ! $existing->is_reserved) {
                 return $existing;
             }
         }
@@ -253,6 +254,8 @@ final class IpAllocator
         return IpAddress::query()
             ->where('ip_pool_id', $pool->id)
             ->whereNull('server_id')
+            // Held for a server moving here from another location (docs/adr/0037 §3).
+            ->whereNull('server_move_id')
             ->where('is_reserved', false)
             // Defence in depth: never hand out the gateway or a node's own IP,
             // even if it ended up unreserved in the pool.
@@ -268,7 +271,7 @@ final class IpAllocator
     {
         $protected = $this->protected->for($pool);
 
-        $existing = IpAddress::query()->where('ip_pool_id', $pool->id)->whereNull('server_id')->where('is_reserved', false)
+        $existing = IpAddress::query()->where('ip_pool_id', $pool->id)->whereNull('server_id')->whereNull('server_move_id')->where('is_reserved', false)
             ->whereNotIn('address', array_keys($protected))->orderBy('id')->lockForUpdate()->first();
 
         if ($existing !== null) {
@@ -298,10 +301,51 @@ final class IpAllocator
         }
     }
 
-    private function give(IpAddress $address, Server $server): IpAddress
+    /**
+     * Assign the address to a server, or hold it for a move to another
+     * location until the move is recorded (docs/adr/0037 §3).
+     */
+    private function give(IpAddress $address, Server|ServerMove $holder): IpAddress
     {
-        $address->forceFill(['server_id' => $server->id, 'assigned_at' => now()])->save();
+        $address->forceFill($holder instanceof ServerMove
+            ? ['server_move_id' => $holder->id]
+            : ['server_id' => $holder->id, 'assigned_at' => now()])->save();
 
         return $address;
+    }
+
+    /**
+     * Hand a moved server the addresses its move held (docs/adr/0037 §3): the
+     * first of each version becomes the primary and takes the PTR the old
+     * primary of that version had; the old addresses are released, with their
+     * PTRs. Caller holds the allocation lock of the target location.
+     */
+    public function switchToMoveAddresses(ServerMove $move, Server $server): void
+    {
+        $old = $server->ipAddresses()->with('pool')->get();
+        $new = $move->reservedAddresses()->with('pool')->get();
+        $oldPrimaries = $old->groupBy(fn (IpAddress $address) => $address->pool->version->value)->map(fn ($addresses) => $addresses->first());
+        $taken = [];
+
+        foreach ($new as $address) {
+            $version = $address->pool->version->value;
+            $primary = ! isset($taken[$version]);
+            $taken[$version] = true;
+
+            $address->forceFill([
+                'server_id' => $server->id,
+                'server_move_id' => null,
+                'is_primary' => $primary,
+                'assigned_at' => now(),
+            ])->save();
+
+            $ptr = $oldPrimaries->get($version)?->ptr;
+
+            if ($primary && $ptr !== null) {
+                $this->reverseDns->setGenerated($address, $ptr);
+            }
+        }
+
+        $this->releaseAddresses($old);
     }
 }

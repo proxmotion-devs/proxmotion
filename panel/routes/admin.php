@@ -25,6 +25,7 @@ use App\Http\Controllers\Admin\PackageController;
 use App\Http\Controllers\Admin\PlacementGroupController;
 use App\Http\Controllers\Admin\ServerController;
 use App\Http\Controllers\Admin\ServerFirewallController;
+use App\Http\Controllers\Admin\ServerMoveController;
 use App\Http\Controllers\Admin\ServerStatsController;
 use App\Http\Controllers\Admin\StorageController;
 use App\Http\Controllers\Admin\TaskController;
@@ -53,6 +54,9 @@ Route::resource('locations', LocationController::class)->only(['index', 'store',
 Route::resource('clusters', ClusterController::class)->only(['index', 'store', 'show', 'update', 'destroy']);
 Route::post('clusters/{cluster}/sync', [ClusterController::class, 'sync'])->name('clusters.sync');
 Route::post('clusters/{cluster}/permissions', [ClusterController::class, 'checkPermissions'])->name('clusters.permissions');
+// The token servers from other clusters are moved in with (docs/adr/0037 §5).
+Route::put('clusters/{cluster}/incoming', [ClusterController::class, 'updateIncoming'])->middleware('throttle:10,1')->name('clusters.incoming');
+Route::post('clusters/{cluster}/incoming/permissions', [ClusterController::class, 'checkIncomingPermissions'])->name('clusters.incoming.permissions');
 Route::patch('nodes/{node}', [NodeController::class, 'update'])->name('nodes.update');
 Route::patch('storages/{storage}', [StorageController::class, 'update'])->name('storages.update');
 
@@ -157,6 +161,9 @@ Route::post('servers/{server}/addresses', [ServerController::class, 'changeAddre
 Route::post('servers/{server}/addresses/reapply', [ServerController::class, 'reapplyAddresses'])->middleware('throttle:10,1')->name('servers.reapply-addresses');
 Route::post('servers/{server}/hostname', [ServerController::class, 'changeHostname'])->middleware('throttle:10,1')->name('servers.hostname');
 Route::post('servers/{server}/reset-password', [ServerController::class, 'resetPassword'])->middleware('throttle:10,1')->name('servers.reset-password');
+// Moving servers to other nodes, clusters and locations (docs/adr/0037).
+Route::post('servers/{server}/move', [ServerMoveController::class, 'store'])->middleware('throttle:10,1')->name('servers.move');
+Route::post('servers/{server}/moves/{move}/finish', [ServerMoveController::class, 'finish'])->middleware('throttle:10,1')->name('servers.moves.finish');
 Route::put('servers/{server}/test', [AppController::class, 'testServer'])->name('servers.test');
 Route::post('servers/{server}/trial-reset', [AppController::class, 'resetTestServer'])->middleware('throttle:10,1')->name('servers.trial-reset');
 Route::post('servers/{server}/apps', [AppController::class, 'install'])->middleware('throttle:10,1')->name('servers.apps');

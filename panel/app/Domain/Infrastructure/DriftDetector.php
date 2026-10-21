@@ -10,6 +10,7 @@ use App\Enums\TaskStatus;
 use App\Models\Cluster;
 use App\Models\Server;
 use App\Models\ServerDrift;
+use App\Models\ServerMove;
 use App\Proxmox\Data\VmResource;
 
 /**
@@ -89,7 +90,11 @@ final readonly class DriftDetector
         }
 
         if ($cluster->resource_pool !== null) {
-            $known = Server::query()->where('cluster_id', $cluster->id)->where('status', '!=', ServerStatus::Terminated)->pluck('vmid')->all();
+            $known = [
+                ...Server::query()->where('cluster_id', $cluster->id)->where('status', '!=', ServerStatus::Terminated)->pluck('vmid')->all(),
+                // A server moving in (docs/adr/0037 §6).
+                ...ServerMove::heldVmids($cluster),
+            ];
 
             foreach ($vms as $vm) {
                 if ($vm->pool === $cluster->resource_pool && ! in_array($vm->vmid, $known, true)) {

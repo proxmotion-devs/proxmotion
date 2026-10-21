@@ -1,15 +1,11 @@
 <script setup lang="ts">
 import { Head, router, setLayoutProps, useForm } from '@inertiajs/vue3';
-import {
-    AlertTriangle,
-    CircleCheck,
-    CircleX,
-    Pencil,
-    RefreshCw,
-    ShieldCheck,
-} from '@lucide/vue';
+import { Pencil, RefreshCw, ShieldCheck } from '@lucide/vue';
+import { trans } from 'laravel-vue-i18n';
 import { computed, ref } from 'vue';
 import ClusterFormDialog from '@/components/admin/ClusterFormDialog.vue';
+import IncomingMovesSection from '@/components/admin/IncomingMovesSection.vue';
+import PermissionList from '@/components/admin/PermissionList.vue';
 import ConfirmDelete from '@/components/admin/ConfirmDelete.vue';
 import FormDialog from '@/components/admin/FormDialog.vue';
 import FormField from '@/components/admin/FormField.vue';
@@ -42,6 +38,8 @@ const props = defineProps<{
     nodes: Node[];
     templates: { vmid: number; name: string | null; node: string }[];
     permissionCheck: PermissionCheck | null;
+    /** The check of the incoming move token (docs/adr/0037 §5). */
+    incomingPermissionCheck: PermissionCheck | null;
 }>();
 
 const checkPermissions = () =>
@@ -90,6 +88,7 @@ const nodeForm = useForm({
     memory_overcommit: 1,
     disk_overcommit: 1,
     max_servers: '' as OptionalNumber,
+    api_host: '',
 });
 
 const editNode = (node: Node) => {
@@ -101,6 +100,7 @@ const editNode = (node: Node) => {
         memory_overcommit: node.memory_overcommit,
         disk_overcommit: node.disk_overcommit,
         max_servers: node.max_servers ?? '',
+        api_host: node.api_host ?? '',
     });
     nodeForm.reset();
     nodeDialogOpen.value = true;
@@ -115,6 +115,7 @@ const submitNode = () => {
         .transform((data) => ({
             ...data,
             max_servers: optionalNumber(data.max_servers),
+            api_host: data.api_host.trim() || null,
         }))
         .submit(updateNode(editingNode.value.uuid), {
             preserveScroll: true,
@@ -264,48 +265,13 @@ const submitNode = () => {
                     {{ $t('Check permissions') }}
                 </Button>
             </div>
-            <ul v-if="permissionCheck" class="flex flex-col gap-2 text-sm">
-                <li
-                    v-for="entry in permissionCheck"
-                    :key="entry.path"
-                    class="flex flex-wrap items-center gap-2 rounded-lg border p-3"
-                >
-                    <CircleX
-                        v-if="entry.missing.length"
-                        class="h-4 w-4 text-red-600"
-                    />
-                    <AlertTriangle
-                        v-else-if="entry.excess.length"
-                        class="h-4 w-4 text-amber-600"
-                    />
-                    <CircleCheck v-else class="h-4 w-4 text-emerald-600" />
-                    <span class="font-mono text-xs">{{ entry.path }}</span>
-                    <span class="text-muted-foreground">{{
-                        $t(entry.purpose)
-                    }}</span>
-                    <span
-                        v-if="entry.missing.length"
-                        class="w-full font-mono text-xs text-red-700 dark:text-red-400"
-                    >
-                        {{
-                            $t('Missing: :privileges', {
-                                privileges: entry.missing.join(', '),
-                            })
-                        }}
-                    </span>
-                    <span
-                        v-if="entry.excess.length"
-                        class="w-full font-mono text-xs text-amber-700 dark:text-amber-400"
-                    >
-                        {{
-                            $t('More than needed: :privileges', {
-                                privileges: entry.excess.join(', '),
-                            })
-                        }}
-                    </span>
-                </li>
-            </ul>
+            <PermissionList v-if="permissionCheck" :entries="permissionCheck" />
         </section>
+
+        <IncomingMovesSection
+            :cluster="cluster"
+            :permission-check="incomingPermissionCheck"
+        />
 
         <section class="flex flex-col gap-4">
             <Heading variant="small" title="Nodes" />
@@ -637,6 +603,26 @@ const submitNode = () => {
                 v-model.number="nodeForm.max_servers"
                 type="number"
                 min="0"
+            />
+        </FormField>
+        <FormField
+            label="API address"
+            for="api_host"
+            :error="nodeForm.errors.api_host"
+            :hint="
+                editingNode?.address
+                    ? trans(
+                          'Servers moved in from other clusters land on the node behind this address. Empty: :address, from the cluster.',
+                          { address: editingNode.address },
+                      )
+                    : 'Servers moved in from other clusters land on the node behind this address.'
+            "
+        >
+            <Input
+                id="api_host"
+                v-model="nodeForm.api_host"
+                class="font-mono"
+                :placeholder="editingNode?.address ?? ''"
             />
         </FormField>
     </FormDialog>

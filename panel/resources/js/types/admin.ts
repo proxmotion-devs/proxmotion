@@ -33,6 +33,10 @@ export type Cluster = {
     last_sync_error: string | null;
     /** Why anti-spoofing does not work on this cluster (an English key), or null. */
     firewall_problem: string | null;
+    /** The token servers from other clusters are moved in with (docs/adr/0037 §5). */
+    incoming_token_id: string | null;
+    receives_moves: boolean;
+    tls_fingerprint: string | null;
 };
 
 export type Storage = {
@@ -67,6 +71,10 @@ export type Node = {
     memory_overcommit: number;
     disk_overcommit: number;
     max_servers: number | null;
+    /** Its address in the cluster, from the sync. */
+    address: string | null;
+    /** Where its API answers, set by an administrator (docs/adr/0037 §5). */
+    api_host: string | null;
     last_seen_at: string | null;
     storages: Storage[];
     bridges: Bridge[];
@@ -246,6 +254,7 @@ export type TaskType =
     | 'install_app'
     | 'app_run'
     | 'verify'
+    | 'move'
     | PowerAction;
 
 export type PowerAction = 'start' | 'shutdown' | 'stop' | 'reboot';
@@ -326,6 +335,58 @@ export type ResourceValues = ResourceLimitValues & {
 export type ResourceOptions = {
     packages: (ResourceValues & Option)[];
     current: ResourceValues & { package: string };
+};
+
+/** How far a server moves (docs/adr/0037). */
+export type ServerMoveKind = 'node' | 'cluster' | 'location';
+
+export type ServerMoveStatus = 'queued' | 'running' | 'succeeded' | 'failed';
+
+/** One move of a server, newest first. */
+export type ServerMove = {
+    uuid: string;
+    kind: ServerMoveKind;
+    status: ServerMoveStatus;
+    from: string;
+    to: string;
+    error: string | null;
+    /** Proxmox moved the VM but a later step failed: a new task can finish it. */
+    can_finish: boolean;
+    created_at: string | null;
+    finished_at: string | null;
+};
+
+/** A node a server can be moved to. */
+export type MoveNodeOption = Option & {
+    location: string;
+    location_name: string;
+    cluster: string;
+    online: boolean;
+    maintenance: boolean;
+    /** Why it cannot take the server (translated), or null. */
+    refusal: string | null;
+    storages: {
+        name: string;
+        shared: boolean;
+        use_for_servers: boolean;
+        free_mib: number;
+    }[];
+};
+
+/** What the "Move server" dialog offers (docs/adr/0037). */
+export type MoveOptions = {
+    /** Why the server cannot be moved now (translated), or null. */
+    refusal: string | null;
+    /** Moves to other clusters are turned on (PROXMOTION_CROSS_CLUSTER_MOVES). */
+    cross_cluster: boolean;
+    /** It has addresses the provider routes to its node. */
+    routed: boolean;
+    location: string;
+    cluster: string;
+    nodes: MoveNodeOption[];
+    placementGroups: (Option & { location: string; location_name: string })[];
+    ipv4Pools: (Option & { location: string; free: number })[];
+    moves: ServerMove[];
 };
 
 /** One address on the server page. */

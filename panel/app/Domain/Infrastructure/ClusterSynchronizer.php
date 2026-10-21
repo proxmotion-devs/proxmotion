@@ -68,7 +68,7 @@ final readonly class ClusterSynchronizer
                 'firewall_ebtables' => $firewall->ebtables,
             ])->save();
 
-            $nodeModels = $this->syncNodes($cluster, $nodes);
+            $nodeModels = $this->syncNodes($cluster, $nodes, $status->nodeAddresses);
             $this->syncStorages($nodeModels, $storages);
             $this->syncBridges($nodeModels, $bridges);
             $this->syncTemplates($cluster, $nodeModels, $guests);
@@ -97,9 +97,10 @@ final readonly class ClusterSynchronizer
 
     /**
      * @param  list<NodeInfo>  $nodes
+     * @param  array<string, string>  $addresses  per node name: its address in the cluster (ClusterStatus)
      * @return array<string, Node> keyed by node name
      */
-    private function syncNodes(Cluster $cluster, array $nodes): array
+    private function syncNodes(Cluster $cluster, array $nodes, array $addresses = []): array
     {
         $models = [];
 
@@ -109,6 +110,8 @@ final readonly class ClusterSynchronizer
                 'cpu_cores' => $info->cpuCores,
                 'memory_bytes' => $info->memoryBytes,
                 'last_seen_at' => $info->online ? now() : null,
+                // Where a server moved in from another cluster is sent to (docs/adr/0037 §5).
+                'address' => $addresses[$info->name] ?? null,
             ], fn ($value) => $value !== null);
 
             $models[$info->name] = $this->upsert($cluster->nodes(), ['name' => $info->name], [

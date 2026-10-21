@@ -20,6 +20,8 @@ class NodeRequest extends FormRequest
             'memory_overcommit' => ['required', 'numeric', 'between:0.1,4'],
             'disk_overcommit' => ['required', 'numeric', 'between:0.1,10'],
             'max_servers' => ['nullable', 'integer', 'min:0', 'max:100000'],
+            // Where its API answers, when the address from the sync is not reachable from other clusters (docs/adr/0037 §5).
+            'api_host' => ['nullable', 'string', 'max:255', 'regex:/^[A-Za-z0-9.:-]+$/'],
         ];
     }
 }

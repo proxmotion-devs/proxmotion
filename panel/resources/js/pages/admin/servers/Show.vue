@@ -13,6 +13,8 @@ import AddressesDialog from '@/components/servers/AddressesDialog.vue';
 import AppList from '@/components/servers/AppList.vue';
 import PowerControls from '@/components/servers/PowerControls.vue';
 import HostnameDialog from '@/components/servers/HostnameDialog.vue';
+import MoveDialog from '@/components/servers/MoveDialog.vue';
+import MoveHistory from '@/components/servers/MoveHistory.vue';
 import RdnsDialog from '@/components/servers/RdnsDialog.vue';
 import RebuildDialog from '@/components/servers/RebuildDialog.vue';
 import AntiSpoofingButton from '@/components/servers/AntiSpoofingButton.vue';
@@ -39,6 +41,7 @@ import {
     enableAntiSpoofing,
     hostname as changeHostname,
     index,
+    move as moveServer,
     password,
     power as powerRoute,
     rdns,
@@ -55,12 +58,14 @@ import {
     unsuspend,
     verify,
 } from '@/routes/admin/servers';
+import { finish as finishMove } from '@/routes/admin/servers/moves';
 import { NETWORK_MODELS } from '@/types/admin';
 import type {
     AddressPoolOption,
     AppEntitlement,
     AppInstallation,
     AppOption,
+    MoveOptions,
     NetworkModel,
     Option,
     OsPlatform,
@@ -123,6 +128,8 @@ const props = withDefaults(
         revealedAppOutputs: RevealedAppOutputs | null;
         reinstallOptions: ReinstallOptions;
         resourceOptions: ResourceOptions;
+        /** docs/adr/0037 */
+        moveOptions: MoveOptions;
         /** docs/adr/0035 */
         firewall: ServerFirewall;
         /** Pools addresses may be added from (docs/adr/0028). */
@@ -160,7 +167,18 @@ const { formatDateTime } = useDateTime();
 const { start, stop } = usePoll(
     3000,
     // drifts too: a finished task can close one (Enable anti-spoofing, docs/adr/0033).
-    { only: ['server', 'tasks', 'power', 'agent', 'apps', 'drifts'] },
+    // moveOptions: the move's progress and history (docs/adr/0037).
+    {
+        only: [
+            'server',
+            'tasks',
+            'power',
+            'agent',
+            'apps',
+            'drifts',
+            'moveOptions',
+        ],
+    },
     { autoStart: false },
 );
 
@@ -601,6 +619,24 @@ const resetAfterTrial = () => {
                             </dd>
                         </div>
                     </dl>
+                    <!-- Moving to another node, cluster or location (docs/adr/0037). -->
+                    <MoveHistory
+                        v-if="moveOptions.moves.length"
+                        :moves="moveOptions.moves"
+                        :finish="(move) => finishMove([server.uuid, move])"
+                        :disabled="busy"
+                    />
+                    <div
+                        v-if="['active', 'suspended'].includes(server.status)"
+                        class="mt-auto flex flex-wrap gap-2"
+                    >
+                        <MoveDialog
+                            :action="moveServer(server.uuid)"
+                            :options="moveOptions"
+                            :hostname="server.hostname"
+                            :disabled="busy"
+                        />
+                    </div>
                 </section>
             </div>
 

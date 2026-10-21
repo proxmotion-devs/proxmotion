@@ -40,6 +40,11 @@ final class TaskFailer
             'finished_at' => now(),
         ])->save();
 
+        // The server stays as it is; the move says how far it got (docs/adr/0037 §7).
+        if ($task->type === TaskType::Move) {
+            $task->move?->markFailed($message);
+        }
+
         $this->notify($task);
     }
 

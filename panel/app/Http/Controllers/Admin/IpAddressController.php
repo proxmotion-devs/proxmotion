@@ -38,7 +38,7 @@ class IpAddressController extends Controller
 
     public function destroy(IpAddress $ipAddress): RedirectResponse
     {
-        if ($ipAddress->server_id !== null) {
+        if ($ipAddress->server_id !== null || $ipAddress->server_move_id !== null) {
             $this->toast('error', 'This address is assigned to a server.');
 
             return back();
@@ -68,7 +68,7 @@ class IpAddressController extends Controller
         $action = $request->string('action')->toString();
 
         $count = match ($action) {
-            'delete' => (clone $query)->whereNull('server_id')->delete(),
+            'delete' => (clone $query)->whereNull('server_id')->whereNull('server_move_id')->delete(),
             'reserve' => (clone $query)->update(['is_reserved' => true]),
             default => (clone $query)->update(['is_reserved' => false]),
         };
@@ -100,6 +100,7 @@ class IpAddressController extends Controller
 
         $deleted = $ipPool->addresses()
             ->whereNull('server_id')
+            ->whereNull('server_move_id')
             ->whereNotIn('address', $input->addresses)
             ->delete();
 

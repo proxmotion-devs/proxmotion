@@ -174,7 +174,7 @@ class WebhookReceiver
             case 'server.failed':
                 return $this->failed($service, $hostname, $error);
             default:
-                // server.reinstalled, task.succeeded, task.failed: the module log is enough.
+                // server.reinstalled, server.moved, task.succeeded, task.failed: the module log is enough.
                 return 'Logged.';
         }
     }

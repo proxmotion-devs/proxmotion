@@ -13,6 +13,7 @@ use Illuminate\Support\Carbon;
  * @property int $id
  * @property int $ip_pool_id
  * @property int|null $server_id
+ * @property int|null $server_move_id held for a move to another location until it is recorded (docs/adr/0037 §3)
  * @property bool $is_primary the server's primary address of its version (docs/adr/0011); written only by provisioning
  * @property Carbon|null $assigned_at
  * @property string $address

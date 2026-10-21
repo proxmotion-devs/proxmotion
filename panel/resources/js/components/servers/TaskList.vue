@@ -67,6 +67,7 @@ const taskTypeLabels: Record<TaskType, string> = {
     verify: 'Check the server',
     enable_anti_spoofing: 'Enable anti-spoofing',
     apply_firewall: 'Apply firewall',
+    move: 'Move server',
 };
 const taskStatusTone: Record<
     TaskStatus,
@@ -106,6 +107,11 @@ const stepLabels: Record<string, string> = {
     app_upload: 'Upload the app installer to the server',
     app_start: 'Start the app installer',
     verify: 'Check addresses, gateway, DNS, hostname and disk',
+    // Moving a server (docs/adr/0037).
+    check: 'Check the server and its VM',
+    migrate: 'Move the VM (Proxmox)',
+    record: 'Record the new place',
+    configure_network: 'Set up the network for the new addresses',
 };
 // "1 min 52 s", from whole seconds.
 const formatDuration = (seconds: number): string => {

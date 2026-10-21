@@ -11,6 +11,8 @@ use App\Enums\AppInstallMode;
 use App\Enums\GuestScriptEvent;
 use App\Enums\OsPlatform;
 use App\Enums\PowerAction;
+use App\Enums\ServerMoveKind;
+use App\Enums\ServerStatus;
 use App\Enums\TaskType;
 use App\Models\Server;
 use App\Models\Task;
@@ -45,8 +47,35 @@ final readonly class TaskPlan
             TaskType::Terminate => ['stop', 'destroy', 'release_ips'],
             TaskType::Verify => ['verify'],
             TaskType::EnableAntiSpoofing, TaskType::ApplyFirewall => ['firewall'],
+            TaskType::Move => $this->move($task),
             default => [],
         };
+    }
+
+    /**
+     * The stages of MoveServerPipeline that apply to the move (docs/adr/0037 §7).
+     *
+     * @return list<string>
+     */
+    private function move(Task $task): array
+    {
+        $move = $task->move;
+
+        if ($move === null) {
+            return [];
+        }
+
+        // Before the check knows, an active server is taken to be running.
+        $running = $move->was_running ?? $task->server->status === ServerStatus::Active;
+
+        return array_values(array_filter(match ($move->kind) {
+            ServerMoveKind::Node => ['check', 'migrate', 'record', $running ? 'verify' : null],
+            ServerMoveKind::Cluster => ['check', 'migrate', 'record', 'adopt', 'firewall', $running ? 'verify' : null],
+            ServerMoveKind::Location => [
+                'check', $running ? 'shutdown' : null, 'migrate', 'record', 'adopt', 'configure_network', 'firewall',
+                $running ? 'start' : null, $running ? 'wait_agent' : null, GuestScriptEvent::AddressesChanged->step(), $running ? 'verify' : null,
+            ],
+        }));
     }
 
     /**

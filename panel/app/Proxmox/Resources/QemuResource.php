@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Proxmox\Resources;
 
+use App\Proxmox\Data\MigrationPreconditions;
+use App\Proxmox\Data\RemoteEndpoint;
 use App\Proxmox\Data\RrdPoint;
 use App\Proxmox\Data\Upid;
 use App\Proxmox\Data\VmStats;
@@ -159,6 +161,62 @@ final readonly class QemuResource
         $data = $this->client->post($this->path($vmid, 'vncproxy'), ['websocket' => 1, 'generate-password' => 1]);
 
         return VncProxyTicket::fromApi(is_array($data) ? $data : []);
+    }
+
+    /**
+     * What Proxmox says about moving the VM to $target (docs/adr/0037 §2).
+     */
+    public function migrationPreconditions(int $vmid, string $target): MigrationPreconditions
+    {
+        $data = $this->client->get($this->path($vmid, 'migrate'), ['target' => $target]);
+
+        return MigrationPreconditions::fromArray(is_array($data) ? $data : []);
+    }
+
+    /**
+     * Move the VM to another node of the cluster. A running VM moves live
+     * ($online); its local disks are copied to $targetStorage, or to a
+     * storage of the same name when null. Disks on shared storage stay.
+     */
+    public function migrate(int $vmid, string $target, bool $online, ?string $targetStorage = null, bool $withLocalDisks = false, ?int $bwlimitKib = null): Upid
+    {
+        $params = array_filter([
+            'target' => $target,
+            'online' => $online ? 1 : null,
+            'with-local-disks' => $online && $withLocalDisks ? 1 : null,
+            'targetstorage' => $targetStorage,
+            'bwlimit' => $bwlimitKib,
+        ], fn ($value) => $value !== null);
+
+        return $this->upid($this->client->post($this->path($vmid, 'migrate'), $params));
+    }
+
+    /**
+     * Move the VM to another cluster (Proxmox: experimental, docs/adr/0037).
+     * Every disk is copied to $targetStorage and net0 is put on $targetBridge;
+     * with $delete the source VM is removed once the move succeeded, otherwise
+     * Proxmox keeps it stopped and locked. A refusal never repeats the token
+     * secret of the endpoint.
+     *
+     * @throws ProxmoxRequestFailed
+     */
+    public function remoteMigrate(int $vmid, RemoteEndpoint $endpoint, int $targetVmid, string $targetStorage, string $targetBridge, bool $online, bool $delete = true, ?int $bwlimitKib = null): Upid
+    {
+        $params = array_filter([
+            'target-endpoint' => $endpoint->toParameter(),
+            'target-vmid' => $targetVmid,
+            'target-storage' => $targetStorage,
+            'target-bridge' => $targetBridge,
+            'online' => $online ? 1 : null,
+            'delete' => $delete ? 1 : null,
+            'bwlimit' => $bwlimitKib,
+        ], fn ($value) => $value !== null);
+
+        try {
+            return $this->upid($this->client->post($this->path($vmid, 'remote_migrate'), $params));
+        } catch (ProxmoxRequestFailed $e) {
+            throw new ProxmoxRequestFailed($endpoint->mask($e->getMessage()), $e->status);
+        }
     }
 
     /**

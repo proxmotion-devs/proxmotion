@@ -211,6 +211,16 @@ class Server extends Model
     }
 
     /**
+     * Its moves to other nodes, clusters and locations (docs/adr/0037), newest first.
+     *
+     * @return HasMany<ServerMove, $this>
+     */
+    public function moves(): HasMany
+    {
+        return $this->hasMany(ServerMove::class)->latest('id');
+    }
+
+    /**
      * @return HasMany<ServerDrift, $this>
      */
     public function drifts(): HasMany
