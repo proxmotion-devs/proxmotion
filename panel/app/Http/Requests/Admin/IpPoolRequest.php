@@ -158,7 +158,7 @@ class IpPoolRequest extends FormRequest
             : null;
         $data['reverse_zone'] = $this->filled('reverse_zone') ? strtolower(rtrim($this->string('reverse_zone')->toString(), '.')) : null;
         $data['rdns_require_forward'] = $this->boolean('rdns_require_forward');
-        $data['isolate_guests'] = $this->boolean('isolate_guests', true);
+        $data['isolate_guests'] = $this->boolean('isolate_guests');
         $data['gateway'] = $this->filled('gateway') ? $this->string('gateway')->toString() : null;
 
         if ($this->pool() === null) {

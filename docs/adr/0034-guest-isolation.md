@@ -17,7 +17,7 @@ The maintainers want servers to be isolated from each other and from the infrast
 
 ### 1. Neighbours cannot reach each other
 
-- `ip_pools.isolate_guests` (default **on**, also for existing pools) says whether servers with addresses of the pool may talk to each other directly. It is a checkbox on the pool form.
+- `ip_pools.isolate_guests` (default **off**, also for existing pools — see *Default* below) says whether servers with addresses of the pool may talk to each other directly. It is a checkbox on the pool form.
 - Every server's VM firewall gets three IP sets, created with the anti-spoofing options (ADR 0033) and kept equal to what the panel computes (`GuestIsolation`):
   - `pm-isolated`: the networks of the server's pools that isolate guests;
   - `pm-gateways`: those pools' gateways;
@@ -36,6 +36,8 @@ The maintainers want servers to be isolated from each other and from the infrast
 - ARP still works between neighbours (ebtables only checks that a server answers for its own addresses, ADR 0033); only IP traffic is dropped.
 - **Only the rules a server needs** are written, and a rule never refers to an empty IP set: rule 1 only with protected networks, rules 4–5 only when one of its pools isolates guests, rules 2–3 only then and with a gateway. Rules and IP sets a server no longer needs — its pool stopped isolating, its address moved to a pool that does not isolate — are deleted (the set's entries first, then the set), so turning isolation off really removes it from the VM firewall.
 - Proxmox puts a rule added without `pos` at the top, so the panel adds the rules from the last to the first. When one is missing, extra, disabled or out of order, all of ours are deleted and added again; rules administrators added themselves are left alone (below ours).
+
+**Default.** Neighbour isolation is off unless an administrator turns it on for a pool. Most providers (Hetzner, DigitalOcean) and panels (VirtFusion's network filters, 2026-10-21) stop spoofing but let servers of one subnet reach each other; anti-spoofing (ADR 0033) already keeps a server from taking a neighbour's addresses, and blocking all traffic between them, also between one customer's servers, would surprise customers. The protected networks (§2) are not affected by it.
 
 ### 2. Protected networks
 
@@ -62,7 +64,7 @@ Nothing changes on its own. `FirewallChecker` (ADR 0033 §3) also reports `isola
 
 ## Consequences
 
-- Servers of one isolated pool cannot reach each other's public addresses; customers with several servers in one pool may open tickets about it. The pool checkbox is the way out.
+- Servers of a pool with isolation turned on cannot reach each other's public addresses, also when one customer owns them; it is off by default for that reason.
 - Servers cannot open connections to the Proxmox nodes, which also means no DNS or NTP from a node that is the servers' gateway.
 - Five more rules and three IP sets per VM; the sync reads three more IP sets per checked server (up to 60 more calls per cluster every five minutes).
 - Not verified on a real Proxmox yet: that rules added without `pos` land at the top, `DELETE .../firewall/ipset/{name}` of an emptied set, the IP sets mixing IPv4 and IPv6 entries, the order of the built-in NDP rules against rule 5, and the limits applied to a running VM.

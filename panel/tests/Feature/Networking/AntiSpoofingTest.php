@@ -43,8 +43,9 @@ class AntiSpoofingTest extends TestCase
         parent::setUp();
 
         $this->buildInfrastructure();
-        // With a protected network every isolation rule is written (docs/adr/0034).
+        // With a protected network and a pool that isolates, every isolation rule is written (docs/adr/0034).
         config(['proxmotion.protected_networks' => ['198.51.100.200']]);
+        $this->ipv4Pool->update(['isolate_guests' => true]);
         $this->proxmox = (new FakeProxmoxCluster)->addTemplate(9000)->install();
         $this->server = app(ServerCreator::class)->create($this->order());
         $this->admin = User::factory()->withTwoFactor()->create();

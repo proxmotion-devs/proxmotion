@@ -573,7 +573,7 @@ const topics = [
                 <p>
                     {{
                         $t(
-                            'Servers with addresses of the same IP pool cannot reach each other while the pool isolates its servers (on by default), also when they belong to one customer. Turn off Isolate servers from each other on the pool if they must, then press Enable anti-spoofing on each of its servers.',
+                            'Servers with addresses of the same IP pool cannot reach each other when Isolate servers from each other is turned on for the pool (off by default), also when they belong to one customer. Turn it off if they must, then press Enable anti-spoofing on each of its servers.',
                         )
                     }}
                 </p>

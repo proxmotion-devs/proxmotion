@@ -11,8 +11,9 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('ip_pools', function (Blueprint $table) {
-            // Servers with addresses of the pool may not talk to each other directly (docs/adr/0034).
-            $table->boolean('isolate_guests')->default(true)->after('is_active');
+            // Servers with addresses of the pool may not talk to each other directly (docs/adr/0034);
+            // off by default, as at most providers.
+            $table->boolean('isolate_guests')->default(false)->after('is_active');
         });
 
         Schema::table('locations', function (Blueprint $table) {

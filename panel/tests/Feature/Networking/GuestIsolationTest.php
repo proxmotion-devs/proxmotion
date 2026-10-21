@@ -47,6 +47,8 @@ class GuestIsolationTest extends TestCase
         $this->node->bridges()->update(['cidr' => '198.51.100.11/24']);
         $this->location->update(['protected_networks' => ['192.0.2.0/24']]);
         config(['proxmotion.protected_networks' => ['198.51.100.200', 'not-a-network']]);
+        // Off by default; most tests look at a pool that isolates.
+        $this->ipv4Pool->update(['isolate_guests' => true]);
 
         $this->proxmox = (new FakeProxmoxCluster)->addTemplate(9000)->install();
         $this->admin = User::factory()->withTwoFactor()->create();
@@ -239,6 +241,7 @@ class GuestIsolationTest extends TestCase
         $other = IpPool::factory()->for($this->location)->create([
             'network' => '203.0.113.64/28',
             'gateway' => '203.0.113.65',
+            'isolate_guests' => true,
             'bridge' => 'vmbr0',
             'network_model' => NetworkModel::Bridged,
             'vlan_tag' => null,
