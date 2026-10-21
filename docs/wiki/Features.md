@@ -745,7 +745,7 @@ See `panel/.env.example` for the full list (database, Redis, mail, console proxy
 | 6 | Usage and quotas: traffic collection, graphs, throttle/suspend, `UsageUpdate` | Resource changes, guest scripts, primary address and hostname changes done early; traffic not started |
 | 7 | Snapshots and backups, Proxmox Backup Server | Planned |
 | 8 | Virtualizor import, native installer, production images, branding | Planned |
-| 9 | NAT VPS, LXC, ISO mount, rescue mode, customer firewall, live migration, reseller system, more billing modules | Planned |
+| 9 | NAT VPS, LXC, ISO mount, rescue mode, customer firewall, moving servers between nodes and clusters ([ADR 0037](../adr/0037-moving-servers.md)), reseller system, more billing modules | Planned |
 
 ---
 
