@@ -1,7 +1,7 @@
 format: 2
 slug: sqlserver-express
 name: SQL Server Express
-version: 1.0.1
+version: 1.0.2
 category: web
 description:
     en: Microsoft SQL Server 2022 Express with SQL logins, the sa administrator and a fixed TCP port.

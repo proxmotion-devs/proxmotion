@@ -11,7 +11,9 @@ $port = Pm-Input 'port'
 $password = Get-SqlPassword
 $restart = $false
 
-if (-not (Test-SqlInstalled)) {
+if (Test-SqlInstalled) {
+    Assert-Sql2022
+} else {
     $media = Join-Path $env:PROXMOTION_APP_DIR 'media'
     New-Item -ItemType Directory -Force -Path $media | Out-Null
 
@@ -44,11 +46,10 @@ if (-not (Test-SqlInstalled)) {
 }
 
 Pm-Step 80 "Listening on TCP port $port"
-$id = (Get-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Microsoft SQL Server\Instance Names\SQL').$SqlInstance
-$tcp = "HKLM:\SOFTWARE\Microsoft\Microsoft SQL Server\$id\MSSQLServer\SuperSocketNetLib\Tcp\IPAll"
+$tcp = "HKLM:\SOFTWARE\Microsoft\Microsoft SQL Server\$(Get-SqlInstanceId)\MSSQLServer\SuperSocketNetLib\Tcp\IPAll"
 Set-ItemProperty -Path $tcp -Name 'TcpDynamicPorts' -Value ''
 Set-ItemProperty -Path $tcp -Name 'TcpPort' -Value "$port"
-Restart-Service -Name $SqlService -Force
+Start-SqlService -Restart
 Pm-FirewallPort 'sql' 'TCP' @("$port")
 
 Pm-Step 90 'Setting the sa password'

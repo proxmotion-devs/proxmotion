@@ -14,6 +14,12 @@ GetNumaNodeProcessorMask2` on Windows releases whose `kernel32.dll` lacks that f
 (older than Windows Server 2022), so the package is now pinned. When Microsoft moves or
 replaces the file, the install fails with a clear message and the URL and hash need updating.
 
+A failed SQL Server 2025 setup can leave its `MSSQL$SQLEXPRESS` service behind, which never
+starts on those releases. Since 1.0.2 the script refuses an existing `SQLEXPRESS` instance that
+is not SQL Server 2022 (registry id `MSSQL16.SQLEXPRESS`) instead of configuring it: remove it
+in _Settings > Apps_ or reinstall the server first. When the instance does not start, the end
+of its error log is printed to the app's log.
+
 Outputs: the server (`<server address>,<port>`), the user `sa`, its generated password and
 a notice.
 
