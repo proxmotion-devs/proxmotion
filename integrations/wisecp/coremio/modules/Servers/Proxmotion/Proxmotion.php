@@ -32,7 +32,7 @@ class Proxmotion extends ServerModule
     private const BUSY = ['pending', 'provisioning', 'reinstalling', 'terminating'];
 
     /** Tools that need a running server, hidden while it is busy or not active. */
-    private const SERVER_TOOLS = ['start-server', 'stop-server', 'restart-server', 'poweroff-server', 'reset-password', 'reinstall-os', 'vnc-console', 'hostname-change', 'reverse-dns', 'apps'];
+    private const SERVER_TOOLS = ['start-server', 'stop-server', 'restart-server', 'poweroff-server', 'reset-password', 'reinstall-os', 'vnc-console', 'hostname-change', 'reverse-dns', 'apps', 'firewall'];
 
     /** App installation statuses during which the installer still runs. */
     private const APP_BUSY = ['queued', 'installing', 'uninstalling', 'upgrading'];
@@ -71,8 +71,8 @@ class Proxmotion extends ServerModule
     }
 
     /**
-     * The App Marketplace is a tool of the module's own (WISECP has none):
-     * its page is pages/tools/apps.php.
+     * The App Marketplace and the firewall are tools of the module's own
+     * (WISECP has neither): their pages are in pages/tools/.
      */
     public function configure_features(): void
     {
@@ -86,6 +86,18 @@ class Proxmotion extends ServerModule
             'type' => 'page-loader',
             'capabilities' => ['list', 'install', 'retry', 'cancel', 'download', 'uninstall', 'upgrade', 'action'],
         ]);
+
+        // The server's firewall (docs/adr/0035): pages/tools/firewall.php.
+        $this->add_tool('firewall', [
+            'name' => $this->text('tool_firewall'),
+            'label' => $this->text('tool_firewall'),
+            'group' => 'system',
+            'order' => 16,
+            'icon' => 'bi bi-shield-check',
+            'page' => 'firewall',
+            'type' => 'page-loader',
+            'capabilities' => ['list', 'toggle', 'add', 'delete', 'up', 'down', 'ruleset'],
+        ]);
     }
 
     /**
@@ -98,6 +110,8 @@ class Proxmotion extends ServerModule
     {
         $filters = parent::get_tool_action_data_filters();
         $filters['apps'] = ['secret_inputs' => null, 'app' => 'route', 'installation' => 'route', 'run' => 'route', 'app_action' => 'identifier', 'output' => 'identifier'];
+        // Proxmotion validates the rest of a rule; rule_action, as WISECP removes "action".
+        $filters['firewall'] = ['ruleset' => 'route', 'mode' => 'identifier', 'rule_action' => 'identifier', 'protocol' => 'identifier', 'index' => 'identifier'];
 
         return $filters;
     }
@@ -483,6 +497,10 @@ class Proxmotion extends ServerModule
             return $this->appsData((string) $this->requireActiveServer()['id']);
         }
 
+        if ($tool === 'firewall') {
+            return $this->firewallData((string) $this->requireActiveServer()['id']);
+        }
+
         $server = $this->api->server((string) $this->requireActiveServer()['id']);
 
         return match ($tool) {
@@ -540,6 +558,7 @@ class Proxmotion extends ServerModule
                 'action' => $this->runAppAction($id, trim((string) ($data['installation'] ?? '')), trim((string) ($data['app_action'] ?? '')), (string) ($data['secret_inputs'] ?? '')),
                 default => throw new Exception('Unknown action: ' . $action),
             },
+            'firewall' => $this->firewall($id, $action, $data),
             default => throw new Exception('Unknown tool: ' . $tool),
         };
     }
@@ -786,6 +805,143 @@ class Proxmotion extends ServerModule
         }
 
         return $inputs;
+    }
+
+    /**
+     * The firewall tool's page (docs/adr/0035): on or off, the rules, the
+     * app ports and the rule sets that can be applied.
+     *
+     * @return array<string, mixed>
+     */
+    private function firewallData(string $id): array
+    {
+        $firewall = $this->api->firewall($id);
+
+        return [
+            'enabled' => ! empty($firewall['enabled']),
+            'rules' => self::firewallRules($firewall),
+            'app_rules' => array_values(array_filter(
+                is_array($firewall['app_rules'] ?? null) ? $firewall['app_rules'] : [],
+                static fn (mixed $rule): bool => is_array($rule) && isset($rule['app'], $rule['protocol'], $rule['port']),
+            )),
+            'rulesets' => array_map(static fn (array $ruleset): array => [
+                'id' => (string) ($ruleset['id'] ?? ''),
+                'name' => (string) ($ruleset['name'] ?? ''),
+                'description' => is_string($ruleset['description'] ?? null) ? $ruleset['description'] : '',
+            ], $this->api->firewallRulesets()),
+        ];
+    }
+
+    /**
+     * Change the firewall: "toggle" (enabled), "add" (a rule), "delete", "up"
+     * or "down" (index), or "ruleset" (ruleset, mode). Proxmotion takes the
+     * whole list of rules, so the current ones are read first.
+     *
+     * @param array<string, mixed> $data
+     * @return array<string, mixed>
+     */
+    private function firewall(string $id, string $action, array $data): array
+    {
+        $done = ['status' => 'successful', 'message' => $this->text('firewall_saved'), 'successToast' => true];
+
+        if ($action === 'ruleset') {
+            $ruleset = trim((string) ($data['ruleset'] ?? ''));
+
+            if ($ruleset === '') {
+                throw new Exception($this->text('firewall_ruleset_required'));
+            }
+
+            $this->api->applyFirewallRuleset($id, $ruleset, ($data['mode'] ?? '') === 'append' ? 'append' : 'replace', $this->idempotencyKey('firewall-ruleset'));
+
+            return $done;
+        }
+
+        $firewall = $this->api->firewall($id);
+        $enabled = ! empty($firewall['enabled']);
+        $rules = self::firewallRules($firewall);
+        $index = is_numeric($data['index'] ?? null) ? (int) $data['index'] : -1;
+
+        switch ($action) {
+            case 'toggle':
+                $enabled = ! empty($data['enabled']);
+                break;
+            case 'add':
+                $rules[] = self::ruleFromForm($data);
+                break;
+            case 'delete':
+                if (! isset($rules[$index])) {
+                    throw new Exception($this->text('firewall_unknown'));
+                }
+
+                array_splice($rules, $index, 1);
+                break;
+            case 'up':
+            case 'down':
+                $other = $action === 'up' ? $index - 1 : $index + 1;
+
+                if (! isset($rules[$index], $rules[$other])) {
+                    throw new Exception($this->text('firewall_unknown'));
+                }
+
+                [$rules[$index], $rules[$other]] = [$rules[$other], $rules[$index]];
+                break;
+            default:
+                throw new Exception('Unknown action: ' . $action);
+        }
+
+        $this->api->updateFirewall($id, $enabled, $rules, $this->idempotencyKey('firewall'));
+
+        return $done;
+    }
+
+    /**
+     * The rules of a firewall as Proxmotion takes them back.
+     *
+     * @param array<string, mixed> $firewall
+     * @return list<array{action: string, protocol: string, port: string|null, source: string|null, comment: string|null}>
+     */
+    private static function firewallRules(array $firewall): array
+    {
+        $text = static fn (array $rule, string $key): ?string => is_scalar($rule[$key] ?? null) && (string) $rule[$key] !== '' ? (string) $rule[$key] : null;
+        $rules = [];
+
+        foreach (is_array($firewall['rules'] ?? null) ? $firewall['rules'] : [] as $rule) {
+            if (is_array($rule)) {
+                $rules[] = [
+                    'action' => $text($rule, 'action') ?? 'accept',
+                    'protocol' => $text($rule, 'protocol') ?? 'tcp',
+                    'port' => $text($rule, 'port'),
+                    'source' => $text($rule, 'source'),
+                    'comment' => $text($rule, 'comment'),
+                ];
+            }
+        }
+
+        return $rules;
+    }
+
+    /**
+     * A new rule from the tool's form; Proxmotion validates it.
+     *
+     * @param array<string, mixed> $data
+     * @return array{action: string, protocol: string, port: string|null, source: string|null, comment: string|null}
+     */
+    private static function ruleFromForm(array $data): array
+    {
+        $text = static function (string $key) use ($data): ?string {
+            $value = trim((string) ($data[$key] ?? ''));
+
+            return $value === '' ? null : $value;
+        };
+        $protocol = in_array($text('protocol'), ['tcp', 'udp', 'icmp', 'any'], true) ? (string) $text('protocol') : 'tcp';
+
+        return [
+            'action' => $text('rule_action') === 'drop' ? 'drop' : 'accept',
+            'protocol' => $protocol,
+            'port' => in_array($protocol, ['tcp', 'udp'], true) ? $text('port') : null,
+            'source' => $text('source'),
+            'comment' => $text('comment'),
+        ];
     }
 
     /**

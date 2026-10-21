@@ -30,7 +30,8 @@ final class LanguageTest extends TestCase
 
         preg_match_all("/->text\\('([a-z_]+)'[,)]/", $source, $direct);
         preg_match_all("/\\{lang\\.([a-z0-9-]+)\\}/", $config, $fromConfig);
-        preg_match_all("/\\\$t\\('([a-z_]+)'\\)/", (string) file_get_contents(PROXMOTION_WISECP_MODULE . '/pages/tools/apps.php'), $fromPage);
+        $pages = file_get_contents(PROXMOTION_WISECP_MODULE . '/pages/tools/apps.php') . file_get_contents(PROXMOTION_WISECP_MODULE . '/pages/tools/firewall.php');
+        preg_match_all("/\\\$t\\('([a-z_]+)'\\)/", $pages, $fromPage);
 
         // Keys built from a name: 'setting_' . $key, the busy/not_active choice and app statuses.
         $built = ['setting_package', 'setting_location', 'setting_os_template', 'setting_network_model', 'busy', 'not_active'];
