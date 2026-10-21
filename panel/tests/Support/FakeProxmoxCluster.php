@@ -277,6 +277,7 @@ class FakeProxmoxCluster
             $suffix === '/firewall/ipset' && $method === 'GET' => $this->ok($this->ipsetNames($vm)),
             $suffix === '/firewall/ipset' => $this->createIpset($vmid, (string) ($data['name'] ?? 'ipfilter-net0')),
             (bool) preg_match('#^/firewall/ipset/([A-Za-z0-9_-]+)$#', $suffix, $m) && $method === 'GET' => $this->ok(array_map(fn ($cidr) => ['cidr' => $cidr], $this->ipsetEntries($vm, $m[1]))),
+            (bool) preg_match('#^/firewall/ipset/([A-Za-z0-9_-]+)$#', $suffix, $m) && $method === 'DELETE' => $this->deleteIpset($vmid, $m[1]),
             (bool) preg_match('#^/firewall/ipset/([A-Za-z0-9_-]+)$#', $suffix, $m) => $this->addToIpset($vmid, (string) $data['cidr'], $m[1]),
             (bool) preg_match('#^/firewall/ipset/([A-Za-z0-9_-]+)/(.+)$#', $suffix, $m) && $method === 'DELETE' => $this->removeFromIpset($vmid, rawurldecode($m[2]), $m[1]),
             default => Http::response(['data' => null], 501),
@@ -608,6 +609,22 @@ class FakeProxmoxCluster
             $this->vms[$vmid]['ipset'] = [];
         } else {
             $this->vms[$vmid]['ipsets'][$name] = [];
+        }
+
+        return $this->ok(null);
+    }
+
+    private function deleteIpset(int $vmid, string $name): PromiseInterface
+    {
+        // Like Proxmox without `force`: only an empty set can be deleted.
+        if ($this->ipsetEntries($this->vms[$vmid], $name) !== []) {
+            return Create::promiseFor(new Psr7Response(500, ['Content-Type' => 'application/json'], '{"data":null}', '1.1', 'IPSet not empty'));
+        }
+
+        if ($name === 'ipfilter-net0') {
+            $this->vms[$vmid]['ipset'] = null;
+        } else {
+            unset($this->vms[$vmid]['ipsets'][$name]);
         }
 
         return $this->ok(null);

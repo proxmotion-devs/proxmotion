@@ -224,80 +224,102 @@ final readonly class QemuResource
     ];
 
     /**
-     * Make the isolation IP sets exactly $sets and put ISOLATION_RULES on top
-     * (docs/adr/0034). The sets come first, as rules refer to them. When a
-     * rule is missing, disabled, changed or out of order, all of them are
-     * replaced; other rules stay as they are, below them.
+     * Make the VM firewall isolate the server as $sets say (docs/adr/0034):
+     * only the rules whose IP set has entries (isolationRulesFor()), on top
+     * and in order, with exactly those sets. Rules and sets no longer needed
+     * — a pool that stopped isolating, no protected networks left — are
+     * removed. When a rule is missing, extra, disabled, changed or out of
+     * order, all of ours are replaced; other rules stay as they are.
      *
      * @param  array<string, list<string>>  $sets  IP set name => entries (addresses or CIDRs)
      */
     public function applyIsolation(int $vmid, array $sets): void
     {
         $base = $this->path($vmid, 'firewall');
+        $wantedRules = self::isolationRulesFor($sets);
+        $wantedSets = self::setsOf($wantedRules);
         $existing = $this->ipsetNames($vmid);
 
-        foreach ($sets as $name => $entries) {
+        // The sets first: rules refer to them.
+        foreach ($wantedSets as $name) {
             if (! in_array($name, $existing, true)) {
                 $this->client->post("{$base}/ipset", ['name' => $name, 'comment' => 'Managed by Proxmotion']);
             }
 
-            $current = $this->ipsetEntries($vmid, $name);
-            $wanted = array_map(Cidr::canonical(...), $entries);
-
-            foreach ($current as $entry) {
-                if (! in_array(Cidr::canonical($entry), $wanted, true)) {
-                    $this->client->delete("{$base}/ipset/{$name}/".rawurlencode($entry));
-                }
-            }
-
-            $have = array_map(Cidr::canonical(...), $current);
-
-            foreach ($wanted as $entry) {
-                if (! in_array($entry, $have, true)) {
-                    $this->client->post("{$base}/ipset/{$name}", ['cidr' => $entry]);
-                }
-            }
+            $this->syncIpset($vmid, $name, $sets[$name] ?? []);
         }
 
         $rules = $this->firewallRules($vmid);
 
-        if (self::isolationRulesInPlace($rules)) {
-            return;
+        if (! self::isolationRulesInPlace($rules, $wantedRules)) {
+            $comments = array_column(self::ISOLATION_RULES, 'comment');
+            $ours = array_filter($rules, fn (array $rule) => in_array($rule['comment'] ?? null, $comments, true));
+            $positions = array_map(fn (array $rule) => (int) ($rule['pos'] ?? 0), $ours);
+            rsort($positions);
+
+            // From the bottom up, so the positions of the others stay right.
+            foreach ($positions as $pos) {
+                $this->client->delete("{$base}/rules/{$pos}");
+            }
+
+            // Proxmox puts a rule added without `pos` at the top: add the last one first.
+            foreach (array_reverse($wantedRules) as $rule) {
+                $this->client->post("{$base}/rules", $rule);
+            }
         }
 
-        $comments = array_column(self::ISOLATION_RULES, 'comment');
-        $ours = array_filter($rules, fn (array $rule) => in_array($rule['comment'] ?? null, $comments, true));
-        $positions = array_map(fn (array $rule) => (int) ($rule['pos'] ?? 0), $ours);
-        rsort($positions);
-
-        // From the bottom up, so the positions of the others stay right.
-        foreach ($positions as $pos) {
-            $this->client->delete("{$base}/rules/{$pos}");
-        }
-
-        // Proxmox puts a rule added without `pos` at the top: add the last one first.
-        foreach (array_reverse(self::ISOLATION_RULES) as $rule) {
-            $this->client->post("{$base}/rules", $rule);
+        // Sets no rule needs any more go last, once nothing refers to them.
+        foreach ([self::PROTECTED_SET, self::GATEWAYS_SET, self::ISOLATED_SET] as $name) {
+            if (in_array($name, $existing, true) && ! in_array($name, $wantedSets, true)) {
+                $this->syncIpset($vmid, $name, []);
+                $this->client->delete("{$base}/ipset/{$name}");
+            }
         }
     }
 
     /**
-     * Whether the VM firewall has every isolation rule, enabled, unchanged and
-     * in order (other rules may sit above, below or between them).
+     * The isolation rules a server needs, in order: the protected networks'
+     * rule when there are any, and the gateway and neighbour rules when one
+     * of its pools isolates guests (the gateway rules only with a gateway).
+     * A rule never refers to an empty IP set.
+     *
+     * @param  array<string, list<string>>  $sets  IP set name => entries
+     * @return list<array<string, string|int>>
+     */
+    public static function isolationRulesFor(array $sets): array
+    {
+        $has = fn (string $name) => ($sets[$name] ?? []) !== [];
+
+        return array_values(array_filter(self::ISOLATION_RULES, function (array $rule) use ($has): bool {
+            $set = ltrim((string) ($rule['dest'] ?? $rule['source']), '+');
+
+            return match ($set) {
+                self::GATEWAYS_SET => $has(self::GATEWAYS_SET) && $has(self::ISOLATED_SET),
+                default => $has($set),
+            };
+        }));
+    }
+
+    /**
+     * Whether the VM firewall has exactly the expected isolation rules,
+     * enabled, unchanged and in order (other rules may sit above, below or
+     * between them), and none of the others.
      *
      * @param  list<array<string, mixed>>  $rules  as firewallRules() lists them
+     * @param  list<array<string, string|int>>|null  $expected  isolationRulesFor(); null: all of them
      */
-    public static function isolationRulesInPlace(array $rules): bool
+    public static function isolationRulesInPlace(array $rules, ?array $expected = null): bool
     {
+        $expected ??= self::ISOLATION_RULES;
         $comments = array_column(self::ISOLATION_RULES, 'comment');
         $ours = array_values(array_filter($rules, fn (array $rule) => in_array($rule['comment'] ?? null, $comments, true)));
 
-        if (count($ours) !== count(self::ISOLATION_RULES)) {
+        if (count($ours) !== count($expected)) {
             return false;
         }
 
-        foreach (self::ISOLATION_RULES as $i => $expected) {
-            foreach ($expected as $key => $value) {
+        foreach ($expected as $i => $rule) {
+            foreach ($rule as $key => $value) {
                 if ((string) ($ours[$i][$key] ?? '') !== (string) $value) {
                     return false;
                 }
@@ -305,6 +327,55 @@ final readonly class QemuResource
         }
 
         return true;
+    }
+
+    /**
+     * Whether the VM firewall has any isolation rule at all.
+     *
+     * @param  list<array<string, mixed>>  $rules  as firewallRules() lists them
+     */
+    public static function hasIsolationRules(array $rules): bool
+    {
+        $comments = array_column(self::ISOLATION_RULES, 'comment');
+
+        return array_filter($rules, fn (array $rule) => in_array($rule['comment'] ?? null, $comments, true)) !== [];
+    }
+
+    /**
+     * The IP sets some of $rules refer to.
+     *
+     * @param  list<array<string, string|int>>  $rules
+     * @return list<string>
+     */
+    public static function setsOf(array $rules): array
+    {
+        return array_values(array_unique(array_map(fn (array $rule) => ltrim((string) ($rule['dest'] ?? $rule['source']), '+'), $rules)));
+    }
+
+    /**
+     * Make one IP set's entries exactly $entries.
+     *
+     * @param  list<string>  $entries
+     */
+    private function syncIpset(int $vmid, string $name, array $entries): void
+    {
+        $base = $this->path($vmid, 'firewall');
+        $current = $this->ipsetEntries($vmid, $name);
+        $wanted = array_map(Cidr::canonical(...), $entries);
+
+        foreach ($current as $entry) {
+            if (! in_array(Cidr::canonical($entry), $wanted, true)) {
+                $this->client->delete("{$base}/ipset/{$name}/".rawurlencode($entry));
+            }
+        }
+
+        $have = array_map(Cidr::canonical(...), $current);
+
+        foreach ($wanted as $entry) {
+            if (! in_array($entry, $have, true)) {
+                $this->client->post("{$base}/ipset/{$name}", ['cidr' => $entry]);
+            }
+        }
     }
 
     /**

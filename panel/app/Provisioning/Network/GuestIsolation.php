@@ -27,12 +27,12 @@ final readonly class GuestIsolation
     /**
      * Write the IP sets and rules to the server's VM firewall. Adopted VMs
      * get them only when an administrator asks ($always: Enable
-     * anti-spoofing, Apply again) or already have them; then later address
-     * changes keep their sets right.
+     * anti-spoofing, Apply again) or already have some; then later address
+     * changes keep them right.
      */
     public function apply(QemuResource $qemu, Server $server, bool $always = false): void
     {
-        if (! $always && $server->origin !== ServerOrigin::Provisioned && ! QemuResource::isolationRulesInPlace($qemu->firewallRules($server->vmid))) {
+        if (! $always && $server->origin !== ServerOrigin::Provisioned && ! QemuResource::hasIsolationRules($qemu->firewallRules($server->vmid))) {
             return;
         }
 

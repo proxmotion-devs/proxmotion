@@ -105,10 +105,51 @@ class GuestIsolationTest extends TestCase
 
         $server = $this->create();
 
-        $this->assertSame([], $this->vm($server)['ipsets'][QemuResource::ISOLATED_SET]);
-        $this->assertSame([], $this->vm($server)['ipsets'][QemuResource::GATEWAYS_SET]);
-        $this->assertNotEmpty($this->vm($server)['ipsets'][QemuResource::PROTECTED_SET]);
-        $this->assertCount(count(QemuResource::ISOLATION_RULES) + 2, $this->vm($server)['rules']);
+        // No rule refers to an empty IP set.
+        $this->assertSame([QemuResource::PROTECTED_SET], array_keys($this->vm($server)['ipsets']));
+        $this->assertSame(['Proxmotion: no connections to protected networks', 'Proxmotion: no DHCPv6 server', 'Proxmotion: no DHCP server'], $this->ruleComments($server));
+
+        $this->sync();
+
+        $this->assertNull($this->firewallDrift());
+    }
+
+    public function test_turning_isolation_off_removes_the_neighbour_rules_and_sets()
+    {
+        $server = $this->create();
+        $this->ipv4Pool->update(['isolate_guests' => false]);
+
+        // Until an administrator applies it, the server is reported.
+        $this->sync();
+        $this->assertSame(['isolation_rules_missing'], $this->firewallDrift()?->actual['problems']);
+
+        $this->actingAs($this->admin)->post(route('admin.servers.enable-anti-spoofing', $server))->assertRedirect();
+
+        $task = $server->tasks()->where('type', TaskType::EnableAntiSpoofing)->sole();
+        $this->assertSame(TaskStatus::Succeeded, $task->status, (string) $task->error);
+        $this->assertSame([QemuResource::PROTECTED_SET], array_keys($this->vm($server)['ipsets']));
+        $this->assertSame(['Proxmotion: no connections to protected networks', 'Proxmotion: no DHCPv6 server', 'Proxmotion: no DHCP server'], $this->ruleComments($server));
+        $this->assertNull($this->firewallDrift());
+
+        // And back on.
+        $this->ipv4Pool->update(['isolate_guests' => true]);
+        app(AddressChanger::class)->reapply($server->refresh(), $this->admin, null);
+
+        $this->assertTrue(QemuResource::isolationRulesInPlace($this->vm($server)['rules']));
+        $this->assertSame(['203.0.113.0/29'], $this->vm($server)['ipsets'][QemuResource::ISOLATED_SET]);
+    }
+
+    public function test_without_isolation_or_protected_networks_the_firewall_gets_no_isolation_rules()
+    {
+        $this->ipv4Pool->update(['isolate_guests' => false]);
+        $this->node->bridges()->update(['cidr' => null]);
+        $this->location->update(['protected_networks' => null]);
+        config(['proxmotion.protected_networks' => []]);
+
+        $server = $this->create();
+
+        $this->assertSame([], $this->vm($server)['ipsets']);
+        $this->assertSame(['Proxmotion: no DHCPv6 server', 'Proxmotion: no DHCP server'], $this->ruleComments($server));
     }
 
     public function test_applying_again_writes_nothing_when_everything_is_right()

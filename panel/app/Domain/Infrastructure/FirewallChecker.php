@@ -184,13 +184,18 @@ final readonly class FirewallChecker
             }
         }
 
-        if (! QemuResource::isolationRulesInPlace($allRules)) {
+        // Only the rules and sets the server needs: none for a pool that does not isolate (docs/adr/0034).
+        $isolation = $this->isolation->sets($server);
+        $isolationRules = QemuResource::isolationRulesFor($isolation);
+
+        if (! QemuResource::isolationRulesInPlace($allRules, $isolationRules)) {
             $problems[] = 'isolation_rules_missing';
         }
 
         $sets = $qemu->ipsetNames($server->vmid);
 
-        foreach ($this->isolation->sets($server) as $name => $entries) {
+        foreach (QemuResource::setsOf($isolationRules) as $name) {
+            $entries = $isolation[$name];
             $actualEntries = in_array($name, $sets, true) ? array_map(Cidr::canonical(...), $qemu->ipsetEntries($server->vmid, $name)) : null;
 
             if ($actualEntries === null || array_diff($entries, $actualEntries) !== [] || array_diff($actualEntries, $entries) !== []) {

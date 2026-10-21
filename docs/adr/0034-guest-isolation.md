@@ -34,7 +34,8 @@ The maintainers want servers to be isolated from each other and from the infrast
 
 - The rules match by destination, not by path: two servers in one isolated pool cannot reach each other at all, also not through the gateway, also when both belong to one customer. Servers in different pools (or behind routed `/32`s of different pools) still reach each other through the router. A pool whose customers must reach each other directly turns isolation off; a private network per customer would be a separate feature (not planned yet).
 - ARP still works between neighbours (ebtables only checks that a server answers for its own addresses, ADR 0033); only IP traffic is dropped.
-- Proxmox puts a rule added without `pos` at the top, so the panel adds the five rules from the last to the first. When one is missing, disabled or out of order, all five are deleted and added again; rules administrators added themselves are left alone (below ours).
+- **Only the rules a server needs** are written, and a rule never refers to an empty IP set: rule 1 only with protected networks, rules 4–5 only when one of its pools isolates guests, rules 2–3 only then and with a gateway. Rules and IP sets a server no longer needs — its pool stopped isolating, its address moved to a pool that does not isolate — are deleted (the set's entries first, then the set), so turning isolation off really removes it from the VM firewall.
+- Proxmox puts a rule added without `pos` at the top, so the panel adds the rules from the last to the first. When one is missing, extra, disabled or out of order, all of ours are deleted and added again; rules administrators added themselves are left alone (below ours).
 
 ### 2. Protected networks
 
@@ -64,4 +65,4 @@ Nothing changes on its own. `FirewallChecker` (ADR 0033 §3) also reports `isola
 - Servers of one isolated pool cannot reach each other's public addresses; customers with several servers in one pool may open tickets about it. The pool checkbox is the way out.
 - Servers cannot open connections to the Proxmox nodes, which also means no DNS or NTP from a node that is the servers' gateway.
 - Five more rules and three IP sets per VM; the sync reads three more IP sets per checked server (up to 60 more calls per cluster every five minutes).
-- Not verified on a real Proxmox yet: that rules added without `pos` land at the top, that a rule referring to an empty IP set matches nothing (and does not break the VM's firewall), the IP sets mixing IPv4 and IPv6 entries, the order of the built-in NDP rules against rule 5, and the limits applied to a running VM.
+- Not verified on a real Proxmox yet: that rules added without `pos` land at the top, `DELETE .../firewall/ipset/{name}` of an emptied set, the IP sets mixing IPv4 and IPv6 entries, the order of the built-in NDP rules against rule 5, and the limits applied to a running VM.
