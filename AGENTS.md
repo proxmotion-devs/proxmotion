@@ -112,7 +112,7 @@ proxmotion/
 │   │   │   ├── Data/                     # typed DTOs of API responses (NodeInfo, StorageInfo, Upid, …)
 │   │   │   ├── TaskWaiter.php            # UPID tracking
 │   │   │   └── Exceptions/
-│   │   ├── Support/                      # Locales, Network/Cidr
+│   │   ├── Support/                      # Locales, Network/Cidr, Database/SqliteConnector (IMMEDIATE transactions on PHP 8.3)
 │   │   ├── Provisioning/                 # Orchestration
 │   │   │   ├── ServerCreator.php         # reserve node/storage/VMID/IPs under a per-location lock, queue the task
 │   │   │   ├── ResourceChanger.php       # upgrade/downgrade: capacity + addresses under the same lock, queue ChangeResources
@@ -416,7 +416,7 @@ shellcheck $(git ls-files '*.sh')    # from the repository root, like CI (settin
 npm ci && npm test              # console proxy (node:test)
 ```
 
-- **SQLite (local default):** `config/database.php` uses WAL, a 5 s busy timeout and `IMMEDIATE` transactions, because the web server, the queue worker and the scheduler write at the same time; with the defaults the worker's job reservation failed with "database is locked" and the task stayed queued. A queued or running task blocks its server; `RunServerTask::failed()` ends it when its job fails, and *Mark as failed* on the server page ends one that is stuck (queued, or running without a heartbeat for longer than `RunServerTask::TIMEOUT`, or past its deadline). The queues' `retry_after` defaults to 1860 s, longer than that timeout, or a running job would be handed to a second worker and failed (ADR 0032).
+- **SQLite (local default):** `config/database.php` uses WAL, a 5 s busy timeout and `IMMEDIATE` transactions, because the web server, the queue worker and the scheduler write at the same time; with the defaults the worker's job reservation failed with "database is locked" and the task stayed queued. Laravel applies `transaction_mode` only on PHP 8.4+, so `App\Support\Database\SqliteConnector` (bound as `db.connector.sqlite`) begins `IMMEDIATE` transactions on PHP 8.3 itself; without it, reservations again failed at once, and Laravel fails a job whose reservation throws, which failed its task (`SqliteTransactionModeTest`). A queued or running task blocks its server; `RunServerTask::failed()` ends it when its job fails, and *Mark as failed* on the server page ends one that is stuck (queued, or running without a heartbeat for longer than `RunServerTask::TIMEOUT`, or past its deadline). The queues' `retry_after` defaults to 1860 s, longer than that timeout, or a running job would be handed to a second worker and failed (ADR 0032).
 - **PHP must be on `PATH` for frontend commands too:** the Wayfinder Vite plugin runs `php artisan wayfinder:generate` during `vp build`, `vp dev` and `vp test`. On Windows, [Laravel Herd](https://herd.laravel.com/windows) provides PHP and Composer (`%USERPROFILE%\.config\herd\bin`).
 - After adding or renaming routes, run `npm run build` (or `php artisan wayfinder:generate --with-form`) before Feature tests: Inertia pages are resolved from the Vite manifest.
 - With Docker: `docker compose -f deploy/docker/compose.yml up -d`.

@@ -3,6 +3,7 @@
 namespace App\Providers;
 
 use App\Models\ApiToken;
+use App\Support\Database\SqliteConnector;
 use Carbon\CarbonImmutable;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
@@ -19,7 +20,8 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        // IMMEDIATE SQLite transactions on PHP 8.3 too (config/database.php).
+        $this->app->bind('db.connector.sqlite', SqliteConnector::class);
     }
 
     /**
