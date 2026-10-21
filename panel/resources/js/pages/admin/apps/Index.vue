@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3';
 import { FileUp, Pencil, Plus } from '@lucide/vue';
-import { computed, ref } from 'vue';
+import { trans } from 'laravel-vue-i18n';
+import { computed, ref, watch } from 'vue';
 import FormDialog from '@/components/admin/FormDialog.vue';
 import AppSystemsDialog from '@/components/admin/AppSystemsDialog.vue';
 import type { AppOsVersion } from '@/components/admin/AppSystemsPicker.vue';
@@ -12,6 +13,12 @@ import StatusBadge from '@/components/admin/StatusBadge.vue';
 import Heading from '@/components/Heading.vue';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import {
+    matchesFilters,
+    osFilterOptions,
+    type OsFilter,
+    type PlatformFilter,
+} from '@/lib/appFilters';
 import {
     edit,
     importMethod as importRoute,
@@ -89,6 +96,53 @@ const tickedLabel = (ids: number[]) => {
     return [...bySystem.entries()]
         .map(([system, versions]) => `${system} ${versions.join(', ')}`)
         .join(' · ');
+};
+
+// Filters by platform and by the systems an app is ticked for.
+const platformFilter = ref<PlatformFilter>('all');
+const osFilter = ref<OsFilter>('all');
+
+const platformFilterOptions = computed(() => [
+    { value: 'all' as const, label: trans('All platforms') },
+    { value: 'linux' as const, label: trans('Linux') },
+    { value: 'windows' as const, label: trans('Windows') },
+]);
+
+const osOptions = computed(() => [
+    { value: 'all', label: trans('All operating systems') },
+    { value: 'none', label: trans('Not offered on any system') },
+    ...osFilterOptions(
+        props.osVersions,
+        platformFilter.value,
+        trans('All versions'),
+    ),
+]);
+
+// A system of the other platform is no longer listed.
+watch(platformFilter, () => {
+    if (!osOptions.value.some((option) => option.value === osFilter.value)) {
+        osFilter.value = 'all';
+    }
+});
+
+const filteredApps = computed(() =>
+    props.apps.filter((app) =>
+        matchesFilters(
+            app,
+            platformFilter.value,
+            osFilter.value,
+            props.osVersions,
+        ),
+    ),
+);
+
+const filtered = computed(
+    () => platformFilter.value !== 'all' || osFilter.value !== 'all',
+);
+
+const clearFilters = () => {
+    platformFilter.value = 'all';
+    osFilter.value = 'all';
 };
 
 const toggle = (slug: string, active: boolean) =>
@@ -197,6 +251,44 @@ const submitCreate = () =>
             </ol>
         </GuideBox>
 
+        <div v-if="apps.length" class="flex flex-wrap items-center gap-2">
+            <NativeSelect
+                v-model="platformFilter"
+                :options="platformFilterOptions"
+                :aria-label="$t('Platform')"
+                class="w-auto"
+                data-test="platform-filter"
+            />
+            <NativeSelect
+                v-model="osFilter"
+                :options="osOptions"
+                :aria-label="$t('Operating system')"
+                class="w-auto"
+                data-test="os-filter"
+            />
+            <Button
+                v-if="filtered"
+                variant="ghost"
+                size="sm"
+                data-test="clear-filters"
+                @click="clearFilters"
+            >
+                {{ $t('Clear filters') }}
+            </Button>
+            <span
+                v-if="filtered"
+                class="text-xs text-muted-foreground"
+                data-test="filter-count"
+            >
+                {{
+                    $t(':shown of :total apps', {
+                        shown: String(filteredApps.length),
+                        total: String(apps.length),
+                    })
+                }}
+            </span>
+        </div>
+
         <div class="overflow-x-auto rounded-xl border">
             <table class="w-full text-sm">
                 <thead class="bg-muted/50 text-left text-muted-foreground">
@@ -212,7 +304,11 @@ const submitCreate = () =>
                     </tr>
                 </thead>
                 <tbody>
-                    <tr v-for="app in apps" :key="app.slug" class="border-t">
+                    <tr
+                        v-for="app in filteredApps"
+                        :key="app.slug"
+                        class="border-t"
+                    >
                         <td class="px-4 py-3">
                             <span class="font-medium">{{ app.name }}</span>
                             <span class="ml-1 text-xs text-muted-foreground">{{
@@ -308,6 +404,15 @@ const submitCreate = () =>
                                     'No apps yet. Run php artisan apps:sync to add the bundled recipes.',
                                 )
                             }}
+                        </td>
+                    </tr>
+                    <tr v-else-if="filteredApps.length === 0">
+                        <td
+                            colspan="4"
+                            class="px-4 py-10 text-center text-muted-foreground"
+                            data-test="no-filtered-apps"
+                        >
+                            {{ $t('No apps match the filters.') }}
                         </td>
                     </tr>
                 </tbody>
