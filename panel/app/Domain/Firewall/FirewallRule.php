@@ -11,13 +11,17 @@ use Closure;
 /**
  * One inbound rule of a server's firewall or of a rule set (docs/adr/0035):
  * accept or drop traffic of a protocol, to a port or range, from a source.
- * Written to the VM firewall as one Proxmox rule, two for ICMP from anywhere.
+ * Written to the VM firewall as one Proxmox rule, two for ICMP from anywhere
+ * and for "any" with a port (TCP and UDP).
  */
 final readonly class FirewallRule
 {
     public const ACTIONS = ['accept', 'drop'];
 
     public const PROTOCOLS = ['tcp', 'udp', 'icmp', 'any'];
+
+    /** Protocols a rule may name a port for: "any" with a port is TCP and UDP to it. */
+    public const PORT_PROTOCOLS = ['tcp', 'udp', 'any'];
 
     /** Rules per server or rule set (the panel's own rules do not count). */
     public const MAX_RULES = 50;
@@ -28,7 +32,7 @@ final readonly class FirewallRule
     public function __construct(
         public string $action,
         public string $protocol,
-        /** A port or range ("22", "1000-2000"), tcp and udp only; null: every port. */
+        /** A port or range ("22", "1000-2000"), not for icmp; null: every port. */
         public ?string $port = null,
         /** An address or CIDR; null: anywhere. */
         public ?string $source = null,
@@ -67,8 +71,8 @@ final readonly class FirewallRule
         $protocol = $rule['protocol'] ?? null;
         $port = $rule['port'] ?? null;
 
-        if (is_string($port) && $port !== '' && ! in_array($protocol, ['tcp', 'udp'], true)) {
-            return 'Only TCP and UDP rules can have a port.';
+        if (is_string($port) && $port !== '' && ! in_array($protocol, self::PORT_PROTOCOLS, true)) {
+            return 'ICMP rules cannot have a port.';
         }
 
         return null;
@@ -85,7 +89,7 @@ final readonly class FirewallRule
         return new self(
             action: (string) $data['action'],
             protocol: (string) $data['protocol'],
-            port: in_array($data['protocol'], ['tcp', 'udp'], true) ? $text('port') : null,
+            port: in_array($data['protocol'], self::PORT_PROTOCOLS, true) ? $text('port') : null,
             source: $source === null ? null : Cidr::canonical($source),
             comment: $text('comment'),
             isDefault: $isDefault,
@@ -145,7 +149,9 @@ final readonly class FirewallRule
     /**
      * The Proxmox rules (POST .../firewall/rules) of this rule: ICMP is
      * "icmp" for IPv4 and "ipv6-icmp" for IPv6, so ICMP from anywhere
-     * becomes two rules.
+     * becomes two rules. Proxmox takes a port only with a protocol, so "any"
+     * with a port becomes a TCP and a UDP rule; without one it names no
+     * protocol and matches all traffic.
      *
      * @return list<array<string, string|int>>
      */
@@ -160,6 +166,10 @@ final readonly class FirewallRule
             'enable' => 1,
             'comment' => self::COMMENT_PREFIX.($this->comment === null ? '' : ": {$this->comment}"),
         ], fn ($value) => $value !== null);
+
+        if ($this->protocol === 'any' && $this->port !== null) {
+            return [[...$base, 'proto' => 'tcp'], [...$base, 'proto' => 'udp']];
+        }
 
         if ($this->protocol !== 'icmp') {
             return [$base];

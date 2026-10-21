@@ -102,6 +102,17 @@ final class FirewallTest extends ModuleTestCase
         $this->assertMatchesRegularExpression('/^wisecp-42-firewall-/', $this->api->last('PUT ' . self::SERVER . '/firewall')['headers']['Idempotency-Key']);
     }
 
+    public function test_any_rules_keep_their_port_and_icmp_rules_lose_it(): void
+    {
+        $this->hasFirewall();
+
+        $this->module()->tool_action('firewall', 'add', ['rule_action' => 'accept', 'protocol' => 'any', 'port' => '53']);
+        $this->assertSame(['any', '53'], [$this->sent()['rules'][2]['protocol'], $this->sent()['rules'][2]['port']]);
+
+        $this->module()->tool_action('firewall', 'add', ['rule_action' => 'accept', 'protocol' => 'icmp', 'port' => '22']);
+        $this->assertNull($this->sent()['rules'][2]['port']);
+    }
+
     public function test_rules_are_moved_and_deleted_and_everything_else_allowed(): void
     {
         $this->hasFirewall();

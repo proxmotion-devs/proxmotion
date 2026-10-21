@@ -36,8 +36,8 @@ const protocols = computed(() => [
     { value: 'any' as const, label: trans('Any') },
 ]);
 
-const withPort = (rule: FirewallRuleValues) =>
-    rule.protocol === 'tcp' || rule.protocol === 'udp';
+// "Any" with a port is TCP and UDP to it; without one, all traffic.
+const withPort = (rule: FirewallRuleValues) => rule.protocol !== 'icmp';
 
 const update = (index: number, changes: Partial<FirewallRuleValues>) => {
     rules.value = rules.value.map((rule, i) => {
@@ -47,7 +47,7 @@ const update = (index: number, changes: Partial<FirewallRuleValues>) => {
 
         const changed = { ...rule, ...changes };
 
-        // Only TCP and UDP have ports.
+        // ICMP has no ports.
         return withPort(changed) ? changed : { ...changed, port: null };
     });
 };

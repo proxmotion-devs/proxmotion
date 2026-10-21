@@ -114,7 +114,7 @@ return [
     'firewall_any' => 'Any',
     'firewall_all_ports' => 'all ports',
     'firewall_anywhere' => 'anywhere',
-    'firewall_port_hint' => 'e.g. 22 or 1000-2000; TCP and UDP only',
+    'firewall_port_hint' => 'e.g. 22 or 1000-2000, empty for all ports; not for ICMP',
     'firewall_source_hint' => 'address or network, empty: anywhere',
     'firewall_add' => 'Add rule',
     'firewall_delete' => 'Delete',

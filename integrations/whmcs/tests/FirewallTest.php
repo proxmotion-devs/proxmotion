@@ -81,13 +81,22 @@ class FirewallTest extends ModuleTestCase
         $this->assertStringStartsWith('whmcs-42-firewall-', $this->api->last('PUT /servers/' . self::SERVER_ID . '/firewall')['headers']['Idempotency-Key']);
     }
 
-    public function test_icmp_and_any_rules_lose_their_port()
+    public function test_icmp_rules_lose_their_port()
     {
         $this->hasFirewall();
 
         $this->module()->firewall(['op' => 'add', 'rule_action' => 'accept', 'protocol' => 'icmp', 'port' => '22']);
 
         $this->assertNull($this->sentRules()['rules'][2]['port']);
+    }
+
+    public function test_any_rules_keep_their_port()
+    {
+        $this->hasFirewall();
+
+        $this->module()->firewall(['op' => 'add', 'rule_action' => 'accept', 'protocol' => 'any', 'port' => '53']);
+
+        $this->assertSame(['any', '53'], [$this->sentRules()['rules'][2]['protocol'], $this->sentRules()['rules'][2]['port']]);
     }
 
     public function test_rules_are_moved_and_deleted_by_position()

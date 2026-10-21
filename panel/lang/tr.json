@@ -524,7 +524,7 @@
     "Only choose this when the whole block is yours. Shared data-centre subnets contain other customers’ addresses.": "Bunu yalnızca bloğun tamamı size aitse seçin. Veri merkezinin ortak ağlarında başka müşterilerin adresleri de bulunur.",
     "Only disable this for self-signed certificates on a trusted network.": "Bunu yalnızca güvenilir bir ağda, kendinden imzalı sertifikalar için kapatın.",
     "Only for routed IPs that need a provider-issued virtual MAC.": "Yalnızca sağlayıcının verdiği sanal MAC adresine ihtiyaç duyan routed IP'ler için.",
-    "Only TCP and UDP rules can have a port.": "Yalnızca TCP ve UDP kurallarının portu olabilir.",
+    "ICMP rules cannot have a port.": "ICMP kurallarının portu olamaz.",
     "Only the addresses I list": "Yalnızca listelediğim adresler",
     "Only VMs in the resource pool \":pool\" are shown. Move a VM into this pool on Proxmox to adopt it.": "Yalnızca \":pool\" resource pool'undaki VM'ler gösterilir. Bir VM'i devralmak için Proxmox'ta onu bu pool'a taşıyın.",
     "Open": "Aç",

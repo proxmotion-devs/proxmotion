@@ -111,6 +111,23 @@ class FirewallApiTest extends ApiTestCase
         $this->api('GET', $this->url())->assertJsonPath('data.default_policy', 'accept')->assertJsonPath('data.rules', [$rule]);
     }
 
+    public function test_any_protocol_keeps_its_port_as_tcp_and_udp_rules()
+    {
+        // DNS: one port, both protocols. Choosing "any" once dropped the port and opened everything.
+        $dns = ['action' => 'accept', 'protocol' => 'any', 'port' => '53', 'source' => null, 'comment' => 'DNS'];
+        $everything = ['action' => 'accept', 'protocol' => 'any', 'port' => null, 'source' => '198.51.100.7', 'comment' => 'Office'];
+
+        $this->api('PUT', $this->url(), ['default_policy' => 'drop', 'rules' => [$dns, $everything]])->assertAccepted();
+
+        $this->api('GET', $this->url())->assertJsonPath('data.rules', [$dns, $everything]);
+        $rules = collect($this->proxmox->vms[$this->server->vmid]['rules']);
+        $written = $rules->where('comment', 'Proxmotion rule: DNS')->map(fn (array $rule) => [$rule['proto'] ?? null, $rule['dport'] ?? null])->values()->all();
+        $this->assertEqualsCanonicalizing([['tcp', '53'], ['udp', '53']], $written);
+        $office = $rules->firstWhere('comment', 'Proxmotion rule: Office');
+        $this->assertArrayNotHasKey('proto', $office);
+        $this->assertArrayNotHasKey('dport', $office);
+    }
+
     public function test_switching_back_to_allowing_keeps_the_rules()
     {
         $rule = ['action' => 'accept', 'protocol' => 'tcp', 'port' => '443', 'source' => null, 'comment' => null];
@@ -130,7 +147,7 @@ class FirewallApiTest extends ApiTestCase
 
         $put(['port' => '70000'])->assertUnprocessable()->assertJsonValidationErrors('rules.0.port');
         $put(['port' => '2000-1000'])->assertUnprocessable()->assertJsonValidationErrors('rules.0.port');
-        $put(['protocol' => 'icmp', 'port' => '22'])->assertUnprocessable()->assertJsonValidationErrors(['rules.0.port' => 'Only TCP and UDP rules can have a port.']);
+        $put(['protocol' => 'icmp', 'port' => '22'])->assertUnprocessable()->assertJsonValidationErrors(['rules.0.port' => 'ICMP rules cannot have a port.']);
         $put(['source' => 'office.example.com'])->assertUnprocessable()->assertJsonValidationErrors('rules.0.source');
         $put(['action' => 'reject'])->assertUnprocessable()->assertJsonValidationErrors('rules.0.action');
         $put(['comment' => "two\nlines"])->assertUnprocessable()->assertJsonValidationErrors('rules.0.comment');

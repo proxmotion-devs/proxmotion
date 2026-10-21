@@ -1288,7 +1288,7 @@ components:
     FirewallRule:
       type: object
       required: [action, protocol]
-      description: One inbound rule. `port` only for `tcp` and `udp`.
+      description: One inbound rule. `port` not for `icmp`; `any` with a port is TCP and UDP to it, without one all traffic.
       properties:
         action: { type: string, enum: [accept, drop] }
         protocol: { type: string, enum: [tcp, udp, icmp, any] }

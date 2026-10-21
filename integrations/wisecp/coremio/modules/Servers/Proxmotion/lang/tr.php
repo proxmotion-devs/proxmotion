@@ -141,7 +141,7 @@ return [
     'firewall_any' => 'Hepsi',
     'firewall_all_ports' => 'tüm portlar',
     'firewall_anywhere' => 'her yer',
-    'firewall_port_hint' => 'örn. 22 veya 1000-2000; yalnızca TCP ve UDP',
+    'firewall_port_hint' => 'örn. 22 veya 1000-2000, tüm portlar için boş; ICMP için değil',
     'firewall_source_hint' => 'adres veya ağ, boş: her yer',
     'firewall_add' => 'Kural ekle',
     'firewall_delete' => 'Sil',

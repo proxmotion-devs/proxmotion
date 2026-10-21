@@ -197,7 +197,7 @@ class ServerFirewallTest extends TestCase
 
         $this->actingAs($this->admin)->put(route('admin.servers.firewall', $server), [
             'default_policy' => 'drop',
-            'rules' => [['action' => 'accept', 'protocol' => 'any', 'port' => '22', 'source' => null, 'comment' => null]],
+            'rules' => [['action' => 'accept', 'protocol' => 'icmp', 'port' => '22', 'source' => null, 'comment' => null]],
         ])->assertSessionHasErrors('rules.0.port');
     }
 

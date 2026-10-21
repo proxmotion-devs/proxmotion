@@ -949,7 +949,7 @@ class Proxmotion extends ServerModule
         return [
             'action' => $text('rule_action') === 'drop' ? 'drop' : 'accept',
             'protocol' => $protocol,
-            'port' => in_array($protocol, ['tcp', 'udp'], true) ? $text('port') : null,
+            'port' => $protocol !== 'icmp' ? $text('port') : null,
             'source' => $text('source'),
             'comment' => $text('comment'),
         ];

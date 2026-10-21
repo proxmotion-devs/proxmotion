@@ -533,7 +533,7 @@ class Module
         return [
             'action' => $text('rule_action') === 'drop' ? 'drop' : 'accept',
             'protocol' => $protocol,
-            'port' => $protocol === 'tcp' || $protocol === 'udp' ? $text('port') : null,
+            'port' => $protocol !== 'icmp' ? $text('port') : null,
             'source' => $text('source'),
             'comment' => $text('comment'),
         ];
