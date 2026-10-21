@@ -2,6 +2,9 @@
 
 $SqlInstance = 'SQLEXPRESS'
 $SqlService = 'MSSQL$SQLEXPRESS'
+# SQL Server 2022 Express 16.0.1000.6, Core package (English), signed by Microsoft.
+$SqlPackageUrl = 'https://download.microsoft.com/download/3/8/d/38de7036-2433-4207-8eae-06e247e17b25/SQLEXPR_x64_ENU.exe'
+$SqlPackageSha256 = '2E61C8BBDE6021F9026C54AD9DB4BBB1227E68761D4C00A6A50A2C70FE7AFE05'
 # Kept in the app's directory (SYSTEM and Administrators only), so running
 # install.ps1 again after a restart keeps the password it reported.
 $SqlPasswordFile = Join-Path $env:PROXMOTION_APP_DIR 'sa-password.txt'

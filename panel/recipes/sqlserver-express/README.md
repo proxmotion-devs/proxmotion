@@ -1,11 +1,18 @@
 # SQL Server Express
 
 Installs [Microsoft SQL Server 2022 Express](https://www.microsoft.com/sql-server/sql-server-downloads)
-as the instance `SQLEXPRESS` with Microsoft's installer: the Express bootstrapper
-(`go.microsoft.com/fwlink/p/?linkid=2216019`) downloads the Core package, which is
-unpacked and installed with `setup.exe /Q /ACTION=Install /FEATURES=SQLEngine`. SQL Server
-2022 runs on Windows Server 2016 and later and on Windows 10 and 11, so the app should not
-be offered on older releases.
+as the instance `SQLEXPRESS` with Microsoft's installer: the Core package
+(`SQLEXPR_x64_ENU.exe`, 16.0.1000.6, from `download.microsoft.com`, checked against its
+SHA-256 in `lib.ps1`) is unpacked and installed with
+`setup.exe /Q /ACTION=Install /FEATURES=SQLEngine`. SQL Server 2022 runs on Windows Server
+2016 and later and on Windows 10 and 11, so the app should not be offered on older
+releases.
+
+Version 1.0.0 downloaded Microsoft's Express bootstrapper (`go.microsoft.com/fwlink/p/?linkid=2216019`),
+which now redirects to SQL Server 2025. Its setup stops with `EntryPointNotFoundException:
+GetNumaNodeProcessorMask2` on Windows releases whose `kernel32.dll` lacks that function
+(older than Windows Server 2022), so the package is now pinned. When Microsoft moves or
+replaces the file, the install fails with a clear message and the URL and hash need updating.
 
 Outputs: the server (`<server address>,<port>`), the user `sa`, its generated password and
 a notice.

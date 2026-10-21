@@ -1,6 +1,6 @@
 # SQL Server 2022 Express (instance SQLEXPRESS) through Microsoft's installer:
-# the Express bootstrapper downloads the Core package, setup installs the
-# database engine with SQL logins, then the instance gets a fixed TCP port.
+# the Core package is downloaded and checked, setup installs the database
+# engine with SQL logins, then the instance gets a fixed TCP port.
 # Running it again keeps the instance and its databases and the sa password.
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version 3.0
@@ -15,19 +15,20 @@ if (-not (Test-SqlInstalled)) {
     $media = Join-Path $env:PROXMOTION_APP_DIR 'media'
     New-Item -ItemType Directory -Force -Path $media | Out-Null
 
+    # The Core package itself, not the Express bootstrapper: Microsoft's
+    # bootstrapper link now hands out SQL Server 2025, whose setup fails on
+    # Windows releases without GetNumaNodeProcessorMask2 (before Server 2022).
     Pm-Step 10 'Downloading SQL Server 2022 Express'
-    $bootstrapper = Join-Path $media 'SQL2022-SSEI-Expr.exe'
-    Pm-Download 'https://go.microsoft.com/fwlink/p/?linkid=2216019' $bootstrapper
-    Pm-Exec $bootstrapper @('/ACTION=Download', "/MEDIAPATH=$media", '/MEDIATYPE=Core', '/QUIET')
-    $package = Get-ChildItem -LiteralPath $media -Filter 'SQLEXPR*.exe' | Select-Object -First 1
+    $package = Join-Path $media 'SQLEXPR_x64_ENU.exe'
+    Pm-Download $SqlPackageUrl $package
 
-    if ($null -eq $package) {
-        Pm-Fail 'The SQL Server installer did not download its package.'
+    if ((Get-FileHash -LiteralPath $package -Algorithm SHA256).Hash -ne $SqlPackageSha256) {
+        Pm-Fail 'The downloaded SQL Server package is not the expected SQL Server 2022 Express (SHA-256 differs).'
     }
 
     Pm-Step 25 'Unpacking SQL Server'
     $setupDir = Join-Path $media 'setup'
-    Pm-Exec $package.FullName @('/Q', "/X:$setupDir")
+    Pm-Exec $package @('/Q', "/X:$setupDir")
 
     Pm-Step 35 'Installing SQL Server (this takes several minutes)'
     $arguments = @(
