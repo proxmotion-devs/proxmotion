@@ -465,6 +465,7 @@ The App Marketplace is the equivalent of OVH's "install with an application": on
 | **aaPanel** | Control panel | Official installer, login read from its output; no uninstall |
 | **HestiaCP** | Control panel | Choice of Apache, mail, language; action: reset password; no uninstall |
 | **CyberPanel** | Control panel | OpenLiteSpeed edition; action: reset password; no uninstall |
+| **Pterodactyl Panel** | Control panel | Game server panel 2.0 (open beta), optional Let's Encrypt; action: reset password; uninstall. Wings nodes are installed separately |
 | **FASTPANEL** | Control panel | Choice of database server |
 | **LAMP** | Web | Apache, PHP, one database; optional Let's Encrypt |
 | **LEMP** | Web | nginx, PHP, one database; optional Let's Encrypt |

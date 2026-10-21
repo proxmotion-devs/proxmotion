@@ -75,7 +75,7 @@ class RecipeEditorTest extends AdminTestCase
 
         $this->post(route('admin.apps.store'), ['slug' => 'mine', 'name' => 'Mine', 'platform' => 'macos'])->assertSessionHasErrors('platform');
 
-        $this->assertSame(19, AppRecipe::query()->count());
+        $this->assertSame(20, AppRecipe::query()->count());
     }
 
     public function test_a_new_windows_app_starts_from_the_powershell_skeleton()
@@ -204,12 +204,12 @@ class RecipeEditorTest extends AdminTestCase
         $this->post(route('admin.apps.store'), ['slug' => 'uptime-kuma', 'name' => 'Uptime Kuma']);
 
         $this->get(route('admin.apps.index'))->assertInertia(fn ($page) => $page
-            ->has('apps', 20)
-            ->where('apps.14.slug', 'uptime-kuma')
-            ->where('apps.14.source', 'custom')
-            ->where('apps.14.published', false)
-            ->where('apps.14.draft_version', '1.0.0')
-            ->where('apps.14.version', null));
+            ->has('apps', 21)
+            ->where('apps.15.slug', 'uptime-kuma')
+            ->where('apps.15.source', 'custom')
+            ->where('apps.15.published', false)
+            ->where('apps.15.draft_version', '1.0.0')
+            ->where('apps.15.version', null));
     }
 
     public function test_the_editor_opens_bundled_apps_for_editing_and_custom_drafts_with_their_errors()

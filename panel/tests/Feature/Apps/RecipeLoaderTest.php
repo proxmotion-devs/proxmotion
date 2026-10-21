@@ -72,7 +72,7 @@ class RecipeLoaderTest extends TestCase
     {
         $recipes = (new RecipeLoader)->all();
 
-        $this->assertSame(['aapanel', 'chocolatey', 'coolify', 'cpanel', 'cyberpanel', 'docker', 'fastpanel', 'hestiacp', 'iis', 'lamp', 'lemp', 'nodejs', 'openvpn', 'plesk', 'portainer', 'sqlserver-express', 'whmcs', 'wireguard', 'wordpress'], array_keys($recipes));
+        $this->assertSame(['aapanel', 'chocolatey', 'coolify', 'cpanel', 'cyberpanel', 'docker', 'fastpanel', 'hestiacp', 'iis', 'lamp', 'lemp', 'nodejs', 'openvpn', 'plesk', 'portainer', 'pterodactyl', 'sqlserver-express', 'whmcs', 'wireguard', 'wordpress'], array_keys($recipes));
         $this->assertSame(['install.ps1', 'uninstall.ps1', 'actions/reset-password.ps1', 'lib.ps1'], array_keys($recipes['sqlserver-express']['files']));
         $this->assertSame(['install.sh', 'uninstall.sh', 'upgrade.sh', 'actions/add-client.sh', 'actions/revoke-client.sh', 'actions/list-clients.sh', 'lib.sh'], array_keys($recipes['wireguard']['files']));
         $this->artisan('apps:validate')->assertSuccessful();
