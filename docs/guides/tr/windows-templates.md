@@ -25,7 +25,7 @@ yapılandırması kullanıldı, *ölçülmedi* diye işaretlenenler hariç:
 
 | Aşama | Süre | Neye bağlı |
 |---|---|---|
-| Şablonun tam klonu | 2:00 | Şablon diskinin dolu kısmı ve depolamanın hızı. **Bağlı klon** saniyeler sürer |
+| Şablonun full clone'u | 2:00 | Şablon diskinin dolu kısmı ve storage'ın hızı. **Linked clone** saniyeler sürer |
 | İlk açılış: Sysprep'in *specialize* aşaması ("Getting ready"), ardından tek yeniden başlatma | 1:01 | vCPU sayısı; aygıt kurulumu (`PersistAllDeviceInstalls`, ölçülmedi) |
 | İkinci açılıştan OOBE'nin bitmesine kadar | 0:20 | vCPU sayısı |
 | Cloudbase-Init servisi (ağ, şifre) | 0:26 | 10 sn'si bu rehberin çıkardığı `CreateUserPlugin`'di (ölçülmedi) |
@@ -33,9 +33,9 @@ yapılandırması kullanıldı, *ölçülmedi* diye işaretlenenler hariç:
 
 Kazandıranlar, büyükten küçüğe:
 
-1. OS şablonunda **Klonlama yöntemi *Bağlı klon*** ([ADR 0027](../../adr/0027-linked-clones.md)):
+1. OS şablonunda **Klonlama yöntemi *Linked clone*** ([ADR 0027](../../adr/0027-linked-clones.md)):
    yaklaşık 2 dakika daha az. Sunucular bu durumda şablona bağımlı olur; önce ADR'yi okuyun.
-2. **Küçük bir şablon** ([6. adım](#6-küçültün-ve-genelleştirin)): tam klon, thin bir diskin
+2. **Küçük bir şablon** ([6. adım](#6-küçültün-ve-genelleştirin)): full clone, thin bir diskin
    yalnızca dolu bloklarını kopyalar; şablondan silinen her GB klonu kısaltır.
 3. Pakette **daha çok vCPU**: kurulum aşamaları çoğunlukla işlemci işidir.
 4. **Üç yerine tek yeniden başlatma** ve **gereksiz Cloudbase-Init eklentilerinin olmaması**
@@ -50,7 +50,7 @@ Uzak Masaüstü sertifikasını taşır).
 
 ### 1. ISO'lar
 
-**ISO image** içerik türü olan bir depolamaya (*Node → `local` → ISO Images → Upload* ya da
+**ISO image** içerik türü olan bir storage'a (*Node → `local` → ISO Images → Upload* ya da
 *Download from URL*):
 
 - **Windows Server** ISO'su (2019, 2022 ya da 2025; deneme sürümü veya toplu lisans medyanız) ve
@@ -67,7 +67,7 @@ Uzak Masaüstü sertifikasını taşır).
 | General | *Resource Pool*: API token'ı bir havuzla sınırlıysa panelin havuzu |
 | OS | Windows Server ISO'su. *Type* **Microsoft Windows**, uygun sürüm: Proxmox, Cloudbase-Init'in okuyacağı şifreyi yalnızca Windows türündeki VM'ler için yazar. **Add additional drive for VirtIO drivers** kutusunu işaretleyip `virtio-win.iso`'yu seçin |
 | System | *Machine* q35, *BIOS* **OVMF (UEFI)**, *Add EFI Disk* (pre-enrolled keys), *SCSI Controller* VirtIO SCSI single, **QEMU Agent** açık. Windows Server TPM istemez |
-| Disks | Bus SCSI, **40 GiB** (Windows Server en az 32 ister; panel diski pakete göre büyütür), **Discard** ve **SSD emulation** açık, sunucularınızın kullandığı depolamada |
+| Disks | Bus SCSI, **40 GiB** (Windows Server en az 32 ister; panel diski pakete göre büyütür), **Discard** ve **SSD emulation** açık, sunucularınızın kullandığı storage'da |
 | CPU | 1 soket, hazırlarken **4 çekirdek** (güncellemeler daha hızlı kurulur; panel her sunucunun kendi sayısını ayarlar), *Type* varsayılan (`x86-64-v2-AES`), `host` değil; böylece klonlar her node'da çalışır |
 | Memory | 4096 MiB, ballooning kapalı |
 | Network | Model VirtIO, güncellemeler için internete çıkan bir bridge |
@@ -121,7 +121,7 @@ Administrator şifresini, ağı ve bilgisayar adını ayarlar.
 
 ### 6. Küçültün ve genelleştirin
 
-Şablon diskinde dolu kalan her GB, her yeni sunucu için kopyalanır (tam klon). Yönetici olarak
+Şablon diskinde dolu kalan her GB, her yeni sunucu için kopyalanır (full clone). Yönetici olarak
 açılan PowerShell'de:
 
 ```powershell
@@ -146,15 +146,15 @@ Sysprep komutunu çalıştırın.)
 ### 7. VM'i şablona çevirin
 
 1. *Hardware*: **iki** CD/DVD sürücüsünü de kaldırın.
-2. *Hardware → Add → CloudInit Drive*, diskle aynı depolamada. *Cloud-Init* sekmesini boş bırakın:
+2. *Hardware → Add → CloudInit Drive*, diskle aynı storage'da. *Cloud-Init* sekmesini boş bırakın:
    panel her sunucu için doldurur.
 3. *Options*: *Boot Order* yalnızca disk (`scsi0`), *QEMU Guest Agent* açık.
 4. *More → Convert to template*.
 
-**Yerel** depolamalı bir cluster'da şablon, sunucu barındıracak her node'da gerekir (*Clone →
+**Yerel** storage'lı bir cluster'da şablon, sunucu barındıracak her node'da gerekir (*Clone →
 Target node*, mod *Full clone* ile oraya klonlayıp klonu şablona çevirin). **Paylaşımlı**
-depolamada bir tane yeter. **Bağlı klon** için ayrıca şablonun, sunucunun diskinin gideceği
-depolamanın tam kendisinde olması gerekir.
+storage'da bir tane yeter. **Linked clone** için ayrıca şablonun, sunucunun diskinin gideceği
+storage'ın tam kendisinde olması gerekir.
 
 ### 8. Panele ekleyin
 
@@ -310,9 +310,9 @@ Güvenlik güncellemeleri için şablonu her ay yenileyin:
 
 4. [7. adımı](#7-vmi-şablona-çevirin) yeni, tarihli bir isimle yapın, panelde cluster'ı senkronlayıp
    OS şablonunu yeni şablona eşleyin.
-5. Eski şablonu, onu kullanan kalmayınca silin. Tam klonlar ona bağlı değildir. **Bağlı klonlar**
+5. Eski şablonu, onu kullanan kalmayınca silin. Full clone'lar ona bağlı değildir. **Linked clone'lar**
    temel diskini kullandığı sürece Proxmox silmeyi reddeder: o sunucular yeniden kurulana ya da
-   silinene kadar saklayın ve eski şablonlar için depolama planlayın.
+   silinene kadar saklayın ve eski şablonlar için storage planlayın.
 
 ## Panel Windows için ne yapar
 
@@ -392,14 +392,14 @@ bittiğini gösterir.
 ## Henüz doğrulanmayanlar
 
 - Windows uygulamaları (ADR 0029) yalnızca panelin sahte Proxmox'unda çalıştı: zamanlanmış görev,
-  yeniden başlatıp devam etme, günlük okuyucu ve paketle gelen üç Windows tarifi gerçek bir Windows
+  yeniden başlatıp devam etme, log okuyucu ve üç dahili Windows recipe'si gerçek bir Windows
   konuğunda denenmedi.
 - Bir kez, Windows Server 2022'de ölçüldü (2026-10-20): `Unattend.xml` değişikliğiyle tek yeniden
   başlatma, ve panelin kurulum kontrolünün sunucuyu Cloudbase-Init servisi durduktan birkaç saniye
   sonra *Active* yapması. Denenmedi: hostname'in tek yeniden başlatmayla uygulanması, Windows
   Server 2019 ve 2025, ve `Unattend.xml` dosyası farklı olan Cloudbase-Init sürümleri.
 - Ölçülmedi: `PersistAllDeviceInstalls`, `CreateUserPlugin` ve `ExtendVolumesPlugin` olmadan
-  servis, 6. adımdaki küçültme komutları, bir Windows şablonunun bağlı klonları.
+  servis, 6. adımdaki küçültme komutları, bir Windows şablonunun linked clone'ları.
 - 4. adımdaki Uzak Masaüstü ve ping komutlarını biz çalıştırmadık; `@FirewallAPI.dll,-28752`
   güvenlik duvarı grubu ve `FPS-ICMP4-ERQ-In` / `FPS-ICMP6-ERQ-In` kural adları Windows'un kendi
   yerleşik adlarıdır.
