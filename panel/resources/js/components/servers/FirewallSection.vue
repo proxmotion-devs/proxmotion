@@ -167,19 +167,42 @@ const applyRuleset = () =>
             </p>
         </form>
 
-        <div v-if="firewall.app_rules.length > 0" class="flex flex-col gap-1">
+        <div v-if="firewall.app_rules.length > 0" class="flex flex-col gap-2">
             <p class="text-sm font-medium">
                 {{ $t('Opened for apps') }}
             </p>
-            <ul class="flex flex-wrap gap-2 text-xs">
-                <li
-                    v-for="rule in firewall.app_rules"
-                    :key="`${rule.app}-${rule.protocol}-${rule.port}`"
-                    class="rounded-md border px-2 py-1 font-mono"
-                >
-                    {{ rule.port }}/{{ rule.protocol }} · {{ rule.app }}
-                </li>
-            </ul>
+            <div class="overflow-x-auto rounded-xl border">
+                <table class="w-full text-sm" data-test="firewall-app-rules">
+                    <thead class="bg-muted/50 text-left text-muted-foreground">
+                        <tr>
+                            <th class="px-4 py-2 font-medium">
+                                {{ $t('Port') }}
+                            </th>
+                            <th class="px-4 py-2 font-medium">
+                                {{ $t('Protocol') }}
+                            </th>
+                            <th class="px-4 py-2 font-medium">
+                                {{ $t('App') }}
+                            </th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr
+                            v-for="rule in firewall.app_rules"
+                            :key="`${rule.app}-${rule.protocol}-${rule.port}`"
+                            class="border-t"
+                        >
+                            <td class="px-4 py-2 font-mono text-xs">
+                                {{ rule.port }}
+                            </td>
+                            <td class="px-4 py-2 font-mono text-xs uppercase">
+                                {{ rule.protocol }}
+                            </td>
+                            <td class="px-4 py-2">{{ rule.app }}</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
         </div>
     </section>
 </template>

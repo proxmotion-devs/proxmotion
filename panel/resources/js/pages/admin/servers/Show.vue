@@ -201,15 +201,24 @@ const modelLabel =
     NETWORK_MODELS.find((model) => model.value === props.server.network_model)
         ?.label ?? props.server.network_model;
 
-// Overview, apps and tasks on their own tabs. The tab survives the redirect
-// back after an action (e.g. installing an app) for this server.
-type Tab = 'overview' | 'apps' | 'tasks';
+// Overview, apps, firewall and tasks on their own tabs. The tab survives the
+// redirect back after an action (e.g. installing an app) for this server.
+type Tab = 'overview' | 'apps' | 'firewall' | 'tasks';
 const tabKey = `server-tab:${props.server.uuid}`;
+
+// The firewall can be changed while the server is active or suspended (docs/adr/0035).
+const hasFirewall = computed(() =>
+    ['active', 'suspended'].includes(props.server.status),
+);
+
 const storedTab = (): Tab | null => {
     try {
         const value = sessionStorage.getItem(tabKey);
 
-        return value === 'overview' || value === 'apps' || value === 'tasks'
+        return value === 'overview' ||
+            value === 'apps' ||
+            value === 'tasks' ||
+            (value === 'firewall' && hasFirewall.value)
             ? value
             : null;
     } catch {
@@ -219,6 +228,13 @@ const storedTab = (): Tab | null => {
 const tab = ref<Tab>(
     props.revealedAppOutputs ? 'apps' : (storedTab() ?? 'overview'),
 );
+
+// A server leaving the active or suspended states (e.g. terminated) loses the tab.
+watch(hasFirewall, (value) => {
+    if (!value && tab.value === 'firewall') {
+        tab.value = 'overview';
+    }
+});
 
 watch(tab, (value) => {
     try {
@@ -235,6 +251,15 @@ const tabs = computed(() => [
         label: 'Apps',
         count: props.apps.filter((app) => app.status !== 'removed').length,
     },
+    ...(hasFirewall.value
+        ? [
+              {
+                  value: 'firewall' as Tab,
+                  label: 'Firewall',
+                  count: props.firewall.rules.length,
+              },
+          ]
+        : []),
     { value: 'tasks' as Tab, label: 'Tasks', count: null },
 ]);
 
@@ -669,13 +694,6 @@ const resetAfterTrial = () => {
                 </ul>
             </section>
 
-            <FirewallSection
-                v-if="['active', 'suspended'].includes(server.status)"
-                :server="server.uuid"
-                :firewall="firewall"
-                :disabled="busy"
-            />
-
             <ServerChecks
                 v-if="active || server.verification"
                 :verification="server.verification"
@@ -804,6 +822,13 @@ const resetAfterTrial = () => {
                 </div>
             </section>
         </template>
+
+        <FirewallSection
+            v-else-if="tab === 'firewall'"
+            :server="server.uuid"
+            :firewall="firewall"
+            :disabled="busy"
+        />
 
         <TaskList v-else :tasks="tasks" />
     </div>
