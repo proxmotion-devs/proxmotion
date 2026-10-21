@@ -27,6 +27,7 @@ const form = useForm({
     country_code: '',
     description: '',
     hostname_template: '',
+    protected_networks: '',
 });
 
 const templateExample = computed(() =>
@@ -44,6 +45,7 @@ const openForm = (location: Location | null) => {
         country_code: location?.country_code ?? '',
         description: location?.description ?? '',
         hostname_template: location?.hostname_template ?? '',
+        protected_networks: location?.protected_networks.join('\n') ?? '',
     });
     form.reset();
     dialogOpen.value = true;
@@ -210,6 +212,20 @@ const submit = () => {
             <p v-if="templateExample" class="text-xs text-muted-foreground">
                 {{ $t('Example: :hostname', { hostname: templateExample }) }}
             </p>
+        </FormField>
+        <FormField
+            label="Protected networks"
+            for="protected_networks"
+            :error="form.errors.protected_networks"
+            hint="Servers of this location cannot open connections to these networks, e.g. a management network or the panel. One address or CIDR per line. The Proxmox nodes are always protected."
+        >
+            <textarea
+                id="protected_networks"
+                v-model="form.protected_networks"
+                rows="3"
+                class="w-full rounded-md border border-input bg-transparent px-3 py-2 font-mono text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 dark:bg-input/30"
+                placeholder="198.51.100.0/24"
+            />
         </FormField>
     </FormDialog>
 </template>

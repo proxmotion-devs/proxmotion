@@ -19,7 +19,7 @@ use Illuminate\Support\Facades\Http;
  */
 class FakeProxmoxCluster
 {
-    /** @var array<int, array{node: string, pool: string|null, template: bool, status: string, config: array<string, mixed>, ipset: list<string>|null, firewall: array<string, mixed>, rules: list<array<string, mixed>>}> */
+    /** @var array<int, array{node: string, pool: string|null, template: bool, status: string, config: array<string, mixed>, ipset: list<string>|null, ipsets?: array<string, list<string>>, firewall: array<string, mixed>, rules: list<array<string, mixed>>}> ipset: ipfilter-net0, ipsets: the other IP sets by name */
     public array $vms = [];
 
     /** @var array<string, int> GET /cluster/firewall/options */
@@ -134,6 +134,7 @@ class FakeProxmoxCluster
                 'net0' => 'virtio=BC:24:11:00:00:01,bridge=vmbr0',
             ],
             'ipset' => null,
+            'ipsets' => [],
             'firewall' => [],
             'rules' => [],
         ];
@@ -272,11 +273,12 @@ class FakeProxmoxCluster
             $suffix === '/firewall/options' => $this->firewallOptions($vmid, $data),
             $suffix === '/firewall/rules' && $method === 'GET' => $this->ok(array_map(fn (array $rule, int $pos) => [...$rule, 'pos' => $pos], $vm['rules'], array_keys($vm['rules']))),
             $suffix === '/firewall/rules' => $this->addRule($vmid, $data),
-            $suffix === '/firewall/ipset' && $method === 'GET' => $this->ok($vm['ipset'] === null ? [] : [['name' => 'ipfilter-net0']]),
-            $suffix === '/firewall/ipset' => $this->createIpset($vmid),
-            $suffix === '/firewall/ipset/ipfilter-net0' && $method === 'GET' => $this->ok(array_map(fn ($cidr) => ['cidr' => $cidr], $vm['ipset'] ?? [])),
-            $suffix === '/firewall/ipset/ipfilter-net0' => $this->addToIpset($vmid, (string) $data['cidr']),
-            str_starts_with($suffix, '/firewall/ipset/ipfilter-net0/') && $method === 'DELETE' => $this->removeFromIpset($vmid, rawurldecode(substr($suffix, strlen('/firewall/ipset/ipfilter-net0/')))),
+            (bool) preg_match('#^/firewall/rules/(\d+)$#', $suffix, $m) && $method === 'DELETE' => $this->deleteRule($vmid, (int) $m[1]),
+            $suffix === '/firewall/ipset' && $method === 'GET' => $this->ok($this->ipsetNames($vm)),
+            $suffix === '/firewall/ipset' => $this->createIpset($vmid, (string) ($data['name'] ?? 'ipfilter-net0')),
+            (bool) preg_match('#^/firewall/ipset/([A-Za-z0-9_-]+)$#', $suffix, $m) && $method === 'GET' => $this->ok(array_map(fn ($cidr) => ['cidr' => $cidr], $this->ipsetEntries($vm, $m[1]))),
+            (bool) preg_match('#^/firewall/ipset/([A-Za-z0-9_-]+)$#', $suffix, $m) => $this->addToIpset($vmid, (string) $data['cidr'], $m[1]),
+            (bool) preg_match('#^/firewall/ipset/([A-Za-z0-9_-]+)/(.+)$#', $suffix, $m) && $method === 'DELETE' => $this->removeFromIpset($vmid, rawurldecode($m[2]), $m[1]),
             default => Http::response(['data' => null], 501),
         };
     }
@@ -564,16 +566,56 @@ class FakeProxmoxCluster
         return $this->ok(null);
     }
 
-    private function createIpset(int $vmid): PromiseInterface
+    private function deleteRule(int $vmid, int $pos): PromiseInterface
     {
-        $this->vms[$vmid]['ipset'] = [];
+        array_splice($this->vms[$vmid]['rules'], $pos, 1);
 
         return $this->ok(null);
     }
 
-    private function removeFromIpset(int $vmid, string $cidr): PromiseInterface
+    /**
+     * @param  array<string, mixed>  $vm
+     * @return list<array{name: string}>
+     */
+    private function ipsetNames(array $vm): array
     {
-        $this->vms[$vmid]['ipset'] = array_values(array_filter($this->vms[$vmid]['ipset'] ?? [], fn (string $entry) => $entry !== $cidr));
+        /** @var array<string, list<string>> $others */
+        $others = $vm['ipsets'] ?? [];
+        $names = [...($vm['ipset'] === null ? [] : ['ipfilter-net0']), ...array_keys($others)];
+
+        return array_map(fn (string $name) => ['name' => $name], $names);
+    }
+
+    /**
+     * @param  array<string, mixed>  $vm
+     * @return list<string>
+     */
+    private function ipsetEntries(array $vm, string $name): array
+    {
+        /** @var list<string> */
+        return $name === 'ipfilter-net0' ? ($vm['ipset'] ?? []) : ($vm['ipsets'][$name] ?? []);
+    }
+
+    private function createIpset(int $vmid, string $name): PromiseInterface
+    {
+        if ($name === 'ipfilter-net0') {
+            $this->vms[$vmid]['ipset'] = [];
+        } else {
+            $this->vms[$vmid]['ipsets'][$name] = [];
+        }
+
+        return $this->ok(null);
+    }
+
+    private function removeFromIpset(int $vmid, string $cidr, string $name): PromiseInterface
+    {
+        $keep = fn (array $entries) => array_values(array_filter($entries, fn (string $entry) => $entry !== $cidr));
+
+        if ($name === 'ipfilter-net0') {
+            $this->vms[$vmid]['ipset'] = $keep($this->vms[$vmid]['ipset'] ?? []);
+        } else {
+            $this->vms[$vmid]['ipsets'][$name] = $keep($this->vms[$vmid]['ipsets'][$name] ?? []);
+        }
 
         return $this->ok(null);
     }
@@ -596,9 +638,13 @@ class FakeProxmoxCluster
         return $this->ok(array_values($entries));
     }
 
-    private function addToIpset(int $vmid, string $cidr): PromiseInterface
+    private function addToIpset(int $vmid, string $cidr, string $name): PromiseInterface
     {
-        $this->vms[$vmid]['ipset'][] = $cidr;
+        if ($name === 'ipfilter-net0') {
+            $this->vms[$vmid]['ipset'][] = $cidr;
+        } else {
+            $this->vms[$vmid]['ipsets'][$name][] = $cidr;
+        }
 
         return $this->ok(null);
     }

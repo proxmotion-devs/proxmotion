@@ -43,6 +43,8 @@ class IpPoolRequest extends FormRequest
             'nameservers' => ['array', 'max:4'],
             'nameservers.*' => ['required', 'ip'],
             'is_active' => ['required', 'boolean'],
+            // Servers of the pool may not talk to each other directly (docs/adr/0034).
+            'isolate_guests' => ['boolean'],
             // Reverse DNS (docs/adr/0003): no provider means "record only".
             'dns_provider' => ['nullable', 'string', Rule::exists('dns_providers', 'uuid')],
             'reverse_zone' => [Rule::requiredIf($this->filled('dns_provider')), 'nullable', 'string', 'max:255', 'regex:/^([a-z0-9-]+\.)+(in-addr|ip6)\.arpa\.?$/i'],
@@ -156,6 +158,7 @@ class IpPoolRequest extends FormRequest
             : null;
         $data['reverse_zone'] = $this->filled('reverse_zone') ? strtolower(rtrim($this->string('reverse_zone')->toString(), '.')) : null;
         $data['rdns_require_forward'] = $this->boolean('rdns_require_forward');
+        $data['isolate_guests'] = $this->boolean('isolate_guests', true);
         $data['gateway'] = $this->filled('gateway') ? $this->string('gateway')->toString() : null;
 
         if ($this->pool() === null) {

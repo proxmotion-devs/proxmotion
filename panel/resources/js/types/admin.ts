@@ -9,6 +9,8 @@ export type Location = LocationOption & {
     description: string | null;
     /** Names servers ordered without a hostname (docs/adr/0031). */
     hostname_template: string | null;
+    /** CIDRs its servers may not open connections to (docs/adr/0034). */
+    protected_networks: string[];
     clusters_count: number;
     ip_pools_count: number;
 };
@@ -93,6 +95,7 @@ export type IpPool = {
     dns_provider: string | null;
     reverse_zone: string | null;
     rdns_require_forward: boolean;
+    isolate_guests: boolean;
     addresses_count?: number;
     reserved_count?: number;
     assigned_count?: number;

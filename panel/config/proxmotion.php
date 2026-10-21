@@ -65,6 +65,19 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Guest isolation (docs/adr/0034)
+    |--------------------------------------------------------------------------
+    |
+    | Networks servers of every location may not open connections to, e.g.
+    | the panel's own address, besides the Proxmox nodes and each location's
+    | protected networks. Comma-separated CIDRs or addresses.
+    |
+    */
+
+    'protected_networks' => array_values(array_filter(array_map('trim', explode(',', (string) env('PROXMOTION_PROTECTED_NETWORKS', ''))))),
+
+    /*
+    |--------------------------------------------------------------------------
     | Drift reports (docs/adr/0005)
     |--------------------------------------------------------------------------
     |

@@ -41,6 +41,8 @@ const firewallProblems: Record<string, string> = {
     interface_firewall_off: 'net0 has no firewall flag',
     dhcp_server_allowed: 'the DHCP server rules are missing',
     addresses_differ: 'the IP set differs from the panel',
+    isolation_rules_missing: 'the isolation rules are missing or out of order',
+    isolation_sets_differ: 'the isolation IP sets differ from the panel',
 };
 
 const list = (value: unknown): string[] =>

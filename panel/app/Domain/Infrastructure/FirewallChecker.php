@@ -11,18 +11,21 @@ use App\Enums\TaskStatus;
 use App\Models\Cluster;
 use App\Models\Server;
 use App\Models\ServerDrift;
+use App\Provisioning\Network\GuestIsolation;
 use App\Provisioning\Network\NetworkConfig;
 use App\Proxmox\Data\VmResource;
 use App\Proxmox\Exceptions\ProxmoxException;
 use App\Proxmox\ProxmoxClientFactory;
 use App\Proxmox\Resources\QemuResource;
+use App\Support\Network\Cidr;
 use Illuminate\Support\Facades\Log;
 
 /**
  * Compares the VM firewalls of a few servers per sync with what anti-spoofing
  * needs (docs/adr/0033): firewall, IP and MAC filter on, no router
  * advertisements, net0's firewall flag, the DHCP server rules, and an IP set
- * of exactly the server's addresses. Each server takes a few API calls, so
+ * of exactly the server's addresses; and the isolation rules and IP sets
+ * (docs/adr/0034). Each server takes a few API calls, so
  * every sync looks at the servers checked longest ago. Nothing is repaired:
  * a difference becomes a drift (ADR 0005) an administrator restores.
  */
@@ -34,6 +37,7 @@ final readonly class FirewallChecker
     public function __construct(
         private ProxmoxClientFactory $clients,
         private NetworkConfig $network,
+        private GuestIsolation $isolation,
     ) {}
 
     /**
@@ -168,7 +172,8 @@ final readonly class FirewallChecker
             $problems[] = 'interface_firewall_off';
         }
 
-        $rules = array_filter($qemu->firewallRules($server->vmid), fn (array $rule) => (int) ($rule['enable'] ?? 0) === 1);
+        $allRules = $qemu->firewallRules($server->vmid);
+        $rules = array_filter($allRules, fn (array $rule) => (int) ($rule['enable'] ?? 0) === 1);
         $comments = array_map(fn (array $rule) => $rule['comment'] ?? null, $rules);
 
         foreach (QemuResource::DHCP_SERVER_RULES as $rule) {
@@ -179,8 +184,24 @@ final readonly class FirewallChecker
             }
         }
 
+        if (! QemuResource::isolationRulesInPlace($allRules)) {
+            $problems[] = 'isolation_rules_missing';
+        }
+
+        $sets = $qemu->ipsetNames($server->vmid);
+
+        foreach ($this->isolation->sets($server) as $name => $entries) {
+            $actualEntries = in_array($name, $sets, true) ? array_map(Cidr::canonical(...), $qemu->ipsetEntries($server->vmid, $name)) : null;
+
+            if ($actualEntries === null || array_diff($entries, $actualEntries) !== [] || array_diff($actualEntries, $entries) !== []) {
+                $problems[] = 'isolation_sets_differ';
+
+                break;
+            }
+        }
+
         $expected = array_map(self::normalize(...), $this->network->allowedAddresses($server));
-        $actual = array_map(self::normalize(...), $qemu->hasAntiSpoofingSet($server->vmid) ? $qemu->antiSpoofingAddresses($server->vmid) : []);
+        $actual = array_map(self::normalize(...), in_array('ipfilter-net0', $sets, true) ? $qemu->antiSpoofingAddresses($server->vmid) : []);
         $missing = array_values(array_diff($expected, $actual));
         $extra = array_values(array_diff($actual, $expected));
 

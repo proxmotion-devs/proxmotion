@@ -16,6 +16,7 @@ use App\Models\Server;
 use App\Models\Task;
 use App\Provisioning\Exceptions\ForeignVm;
 use App\Provisioning\LinkedClones;
+use App\Provisioning\Network\GuestIsolation;
 use App\Provisioning\Network\NetworkConfig;
 use App\Provisioning\Stages\StagedPipeline;
 use App\Provisioning\Stages\StageRunner;
@@ -50,6 +51,7 @@ final readonly class CreateServerPipeline implements StagedPipeline
         private PowerPipeline $power,
         private StageRunner $stages,
         private ServerVerifier $verifier,
+        private GuestIsolation $isolation,
     ) {}
 
     public function stages(): array
@@ -338,6 +340,8 @@ final readonly class CreateServerPipeline implements StagedPipeline
     {
         $qemu = $this->clients->forCluster($server->cluster)->qemu($server->node->name);
         $qemu->enableAntiSpoofing($server->vmid, $this->network->allowedAddresses($server));
+        // Away from its neighbours and the protected networks (docs/adr/0034).
+        $this->isolation->apply($qemu, $server);
         $task->completeStep('firewall');
 
         return null;

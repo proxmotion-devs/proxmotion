@@ -8,6 +8,7 @@ use App\Proxmox\Data\Upid;
 use App\Proxmox\Data\VncProxyTicket;
 use App\Proxmox\Exceptions\ProxmoxRequestFailed;
 use App\Proxmox\ProxmoxClient;
+use App\Support\Network\Cidr;
 
 /**
  * QEMU/KVM guests on one node.
@@ -197,6 +198,139 @@ final readonly class QemuResource
                 $this->client->post("{$base}/ipset/ipfilter-net0", ['cidr' => $address]);
             }
         }
+    }
+
+    /** Networks of the server's pools that isolate guests (docs/adr/0034). */
+    public const ISOLATED_SET = 'pm-isolated';
+
+    /** Gateways of those pools, still reachable. */
+    public const GATEWAYS_SET = 'pm-gateways';
+
+    /** Networks the server may not open connections to (Proxmox nodes, management networks). */
+    public const PROTECTED_SET = 'pm-protected';
+
+    /**
+     * Rules that keep a server away from its neighbours and the protected
+     * networks (docs/adr/0034), top to bottom: protected networks before the
+     * gateway (on routed setups the gateway is often a node), the gateway
+     * before the neighbours. Recognised by their comments.
+     */
+    public const ISOLATION_RULES = [
+        ['type' => 'out', 'action' => 'DROP', 'dest' => '+'.self::PROTECTED_SET, 'enable' => 1, 'comment' => 'Proxmotion: no connections to protected networks'],
+        ['type' => 'out', 'action' => 'ACCEPT', 'dest' => '+'.self::GATEWAYS_SET, 'enable' => 1, 'comment' => 'Proxmotion: gateway reachable (out)'],
+        ['type' => 'in', 'action' => 'ACCEPT', 'source' => '+'.self::GATEWAYS_SET, 'enable' => 1, 'comment' => 'Proxmotion: gateway reachable (in)'],
+        ['type' => 'out', 'action' => 'DROP', 'dest' => '+'.self::ISOLATED_SET, 'enable' => 1, 'comment' => 'Proxmotion: isolated from neighbours (out)'],
+        ['type' => 'in', 'action' => 'DROP', 'source' => '+'.self::ISOLATED_SET, 'enable' => 1, 'comment' => 'Proxmotion: isolated from neighbours (in)'],
+    ];
+
+    /**
+     * Make the isolation IP sets exactly $sets and put ISOLATION_RULES on top
+     * (docs/adr/0034). The sets come first, as rules refer to them. When a
+     * rule is missing, disabled, changed or out of order, all of them are
+     * replaced; other rules stay as they are, below them.
+     *
+     * @param  array<string, list<string>>  $sets  IP set name => entries (addresses or CIDRs)
+     */
+    public function applyIsolation(int $vmid, array $sets): void
+    {
+        $base = $this->path($vmid, 'firewall');
+        $existing = $this->ipsetNames($vmid);
+
+        foreach ($sets as $name => $entries) {
+            if (! in_array($name, $existing, true)) {
+                $this->client->post("{$base}/ipset", ['name' => $name, 'comment' => 'Managed by Proxmotion']);
+            }
+
+            $current = $this->ipsetEntries($vmid, $name);
+            $wanted = array_map(Cidr::canonical(...), $entries);
+
+            foreach ($current as $entry) {
+                if (! in_array(Cidr::canonical($entry), $wanted, true)) {
+                    $this->client->delete("{$base}/ipset/{$name}/".rawurlencode($entry));
+                }
+            }
+
+            $have = array_map(Cidr::canonical(...), $current);
+
+            foreach ($wanted as $entry) {
+                if (! in_array($entry, $have, true)) {
+                    $this->client->post("{$base}/ipset/{$name}", ['cidr' => $entry]);
+                }
+            }
+        }
+
+        $rules = $this->firewallRules($vmid);
+
+        if (self::isolationRulesInPlace($rules)) {
+            return;
+        }
+
+        $comments = array_column(self::ISOLATION_RULES, 'comment');
+        $ours = array_filter($rules, fn (array $rule) => in_array($rule['comment'] ?? null, $comments, true));
+        $positions = array_map(fn (array $rule) => (int) ($rule['pos'] ?? 0), $ours);
+        rsort($positions);
+
+        // From the bottom up, so the positions of the others stay right.
+        foreach ($positions as $pos) {
+            $this->client->delete("{$base}/rules/{$pos}");
+        }
+
+        // Proxmox puts a rule added without `pos` at the top: add the last one first.
+        foreach (array_reverse(self::ISOLATION_RULES) as $rule) {
+            $this->client->post("{$base}/rules", $rule);
+        }
+    }
+
+    /**
+     * Whether the VM firewall has every isolation rule, enabled, unchanged and
+     * in order (other rules may sit above, below or between them).
+     *
+     * @param  list<array<string, mixed>>  $rules  as firewallRules() lists them
+     */
+    public static function isolationRulesInPlace(array $rules): bool
+    {
+        $comments = array_column(self::ISOLATION_RULES, 'comment');
+        $ours = array_values(array_filter($rules, fn (array $rule) => in_array($rule['comment'] ?? null, $comments, true)));
+
+        if (count($ours) !== count(self::ISOLATION_RULES)) {
+            return false;
+        }
+
+        foreach (self::ISOLATION_RULES as $i => $expected) {
+            foreach ($expected as $key => $value) {
+                if ((string) ($ours[$i][$key] ?? '') !== (string) $value) {
+                    return false;
+                }
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * Names of the VM firewall's IP sets.
+     *
+     * @return list<string>
+     */
+    public function ipsetNames(int $vmid): array
+    {
+        return array_values(array_filter(array_map(
+            fn (array $set) => is_string($set['name'] ?? null) ? $set['name'] : null,
+            ClusterResource::listOfArrays($this->client->get($this->path($vmid, 'firewall/ipset'))),
+        )));
+    }
+
+    /**
+     * The entries of one IP set as Proxmox lists them.
+     *
+     * @return list<string>
+     */
+    public function ipsetEntries(int $vmid, string $name): array
+    {
+        return array_values(array_filter(array_map(
+            fn (array $entry) => is_string($entry['cidr'] ?? null) ? $entry['cidr'] : null,
+            ClusterResource::listOfArrays($this->client->get($this->path($vmid, 'firewall/ipset/'.rawurlencode($name)))),
+        )));
     }
 
     /**

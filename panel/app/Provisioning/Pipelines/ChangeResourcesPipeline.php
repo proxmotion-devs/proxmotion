@@ -13,6 +13,7 @@ use App\Models\IpAddress;
 use App\Models\Server;
 use App\Models\Task;
 use App\Provisioning\IpAllocator;
+use App\Provisioning\Network\GuestIsolation;
 use App\Provisioning\Network\NetworkConfig;
 use App\Proxmox\Data\BootDisk;
 use App\Proxmox\ProxmoxClientFactory;
@@ -41,6 +42,7 @@ final readonly class ChangeResourcesPipeline
         private PowerPipeline $power,
         private GuestScripts $guestScripts,
         private GuestAddresses $guestAddresses,
+        private GuestIsolation $isolation,
     ) {}
 
     public function run(Task $task): void
@@ -113,6 +115,8 @@ final readonly class ChangeResourcesPipeline
 
         // Only now, out of the firewall, may another server get them.
         $this->ips->releaseAddresses($releasing);
+        // The isolation sets follow the pools of the server's addresses (docs/adr/0034).
+        $this->isolation->apply($qemu, $server);
         $task->completeStep('addresses');
     }
 

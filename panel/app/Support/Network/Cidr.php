@@ -57,6 +57,40 @@ final readonly class Cidr
         }
     }
 
+    /**
+     * Whether an entry is a single address or a network in CIDR notation
+     * (as Proxmox IP sets take them).
+     */
+    public static function isAddressOrNetwork(string $entry): bool
+    {
+        return str_contains($entry, '/') ? self::isValid($entry) : filter_var(trim($entry), FILTER_VALIDATE_IP) !== false;
+    }
+
+    /**
+     * One spelling per IP set entry, as Proxmox may list one differently
+     * from how it was written: networks as "203.0.113.0/24" (host bits
+     * cleared), single addresses without a prefix, IPv6 shortened. Invalid
+     * entries are returned trimmed.
+     */
+    public static function canonical(string $entry): string
+    {
+        $entry = trim($entry);
+
+        if (! str_contains($entry, '/')) {
+            $packed = @inet_pton($entry);
+
+            return $packed === false ? $entry : (string) inet_ntop($packed);
+        }
+
+        if (! self::isValid($entry)) {
+            return $entry;
+        }
+
+        $cidr = self::parse($entry);
+
+        return $cidr->prefix === ($cidr->version === 4 ? 32 : 128) ? $cidr->address : (string) $cidr;
+    }
+
     public function contains(string $ip): bool
     {
         $packed = @inet_pton($ip);

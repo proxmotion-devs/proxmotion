@@ -11,6 +11,7 @@ use App\Enums\ServerOrigin;
 use App\Models\IpAddress;
 use App\Models\Task;
 use App\Provisioning\IpAllocator;
+use App\Provisioning\Network\GuestIsolation;
 use App\Provisioning\Network\NetworkConfig;
 use App\Provisioning\VmLabels;
 use App\Proxmox\ProxmoxClientFactory;
@@ -33,6 +34,7 @@ final readonly class AddressesPipeline
         private IpAllocator $ips,
         private GuestScripts $guestScripts,
         private FirewallChecker $firewall,
+        private GuestIsolation $isolation,
     ) {}
 
     public function run(Task $task): void
@@ -55,14 +57,16 @@ final readonly class AddressesPipeline
             : $released;
         $qemu->removeFromAntiSpoofing($server->vmid, $remove);
 
+        // Only now, out of the firewall, may another server get it.
+        $this->ips->releaseAddresses($releasing);
+        // The isolation sets follow the pools of the addresses left (docs/adr/0034).
+        $this->isolation->apply($qemu, $server, always: $reapply);
+
         if ($reapply) {
             $qemu->enableInterfaceFirewall($server->vmid);
             // Read it back at once: a firewall drift closes now, not after the next sync.
             $this->firewall->recheck($server, $qemu);
         }
-
-        // Only now, out of the firewall, may another server get it.
-        $this->ips->releaseAddresses($releasing);
         $task->completeStep('addresses', VmLabels::apply($qemu, $server));
 
         $this->guestScripts->run($task, $server, GuestScriptEvent::AddressesChanged);

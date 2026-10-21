@@ -52,6 +52,21 @@ class CidrTest extends TestCase
         Cidr::parse('203.0.113.0/30')->address(4);
     }
 
+    public function test_ip_set_entries_get_one_spelling()
+    {
+        $this->assertSame('203.0.113.0/24', Cidr::canonical(' 203.0.113.9/24 '));
+        $this->assertSame('203.0.113.9', Cidr::canonical('203.0.113.9/32'));
+        $this->assertSame('203.0.113.9', Cidr::canonical('203.0.113.9'));
+        $this->assertSame('2001:db8::/48', Cidr::canonical('2001:DB8:0:0::/48'));
+        $this->assertSame('2001:db8::5', Cidr::canonical('2001:db8:0::5/128'));
+        $this->assertSame('not-an-address', Cidr::canonical('not-an-address'));
+
+        $this->assertTrue(Cidr::isAddressOrNetwork('203.0.113.9'));
+        $this->assertTrue(Cidr::isAddressOrNetwork('2001:db8::/64'));
+        $this->assertFalse(Cidr::isAddressOrNetwork('node1.example.com'));
+        $this->assertFalse(Cidr::isAddressOrNetwork('203.0.113.0/33'));
+    }
+
     #[DataProvider('invalidNetworks')]
     public function test_it_rejects_invalid_networks(string $cidr)
     {

@@ -234,6 +234,15 @@ Every VPS gets the Proxmox firewall with **`ipfilter` and `macfilter`** enabled 
 - **Enable anti-spoofing** on the server page (adopted servers and servers with a firewall drift) and on the drift turns it on again after a confirmation listing the addresses. Adopted VMs keep their own firewall policies; nothing runs inside the server. *Apply again* also restores `net0`'s firewall flag. Both read the firewall back when they finish, so the drift closes and the page shows *Anti-spoofing on* at once.
 - **Not covered:** NDP target spoofing on a shared IPv6 `/64` (Proxmox does not check the target address of neighbour advertisements); give each server a routed `/64`.
 
+#### 6.4.1 Isolation
+
+([ADR 0034](../adr/0034-guest-isolation.md)) Anti-spoofing stops a server from pretending to be another; isolation stops it from **talking** to others:
+
+- **Neighbours**: an IP pool's *Isolate servers from each other* (on by default) keeps servers with its addresses from reaching each other at all, also through the gateway and also when they belong to one customer. The gateway stays reachable; servers in other pools are reached through the router as before. Turn it off for a pool whose servers must talk to each other directly.
+- **Protected networks**: servers cannot open connections to the Proxmox nodes of their location (their bridge addresses, learned by the sync), to the location's *Protected networks* (location form, one address or CIDR per line, e.g. a management network) or to `PROXMOTION_PROTECTED_NETWORKS` (every location, e.g. the panel's address). This also means no DNS or NTP from a node that is the servers' gateway.
+- **How**: three IP sets (`pm-isolated`, `pm-gateways`, `pm-protected`) and five rules on top of each VM firewall, written with anti-spoofing. Nothing is written to the datacenter firewall and the token needs no new privileges. Address changes keep the sets right.
+- **Existing servers** change only when an administrator presses *Enable anti-spoofing*: the firewall drift lists missing or reordered isolation rules and IP sets that differ (also after a pool's isolation or a location's protected networks change).
+
 ### 6.5 Changing the primary address
 
 ([ADR 0011](../adr/0011-changing-the-primary-address.md)) The billing API (`POST /servers/{id}/primary-address`) can make another address the **primary**; administrators do the same with *Edit IP addresses* (6.5.1):
@@ -651,7 +660,7 @@ The panel manages customer infrastructure and is internet-facing. Key properties
 - **Tenant isolation** through scoped tokens per billing system; public ids are UUIDs or the billing `external_id`. Every API endpoint has wrong-scope, wrong-token and other-billing-system tests.
 - **Proxmox token secrets**, root passwords, app outputs, app logs and guest script output are **encrypted at rest** and never appear in API responses, page props or logs. Root passwords are shown once.
 - **Console**: browsers never reach Proxmox; single-use tickets, signed single-use customer links (≤ 60 s).
-- **Anti-spoofing** (`ipfilter`, `macfilter`) on every VPS.
+- **Anti-spoofing** (`ipfilter`, `macfilter`) on every VPS, and **isolation**: servers of one pool cannot reach each other, and no server can open connections to the Proxmox nodes or other protected networks.
 - **Strict input validation** for hostnames, rDNS names, SSH keys, cloud-init data and app inputs; nothing raw goes into Proxmox parameters or a shell.
 - **Only reviewed scripts run in guests**: recipe scripts, default guest scripts and audited overrides. Never free-form commands.
 - **Mandatory 2FA** for administrators; audit log for every sensitive action; extra confirmation for destructive operations.

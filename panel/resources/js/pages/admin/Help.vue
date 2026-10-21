@@ -565,6 +565,26 @@ const topics = [
                     }}
                 </p>
             </HelpQuestion>
+
+            <HelpQuestion
+                id="trouble-isolation"
+                title="Why can two servers not reach each other?"
+            >
+                <p>
+                    {{
+                        $t(
+                            'Servers with addresses of the same IP pool cannot reach each other while the pool isolates its servers (on by default), also when they belong to one customer. Turn off Isolate servers from each other on the pool if they must, then press Enable anti-spoofing on each of its servers.',
+                        )
+                    }}
+                </p>
+                <p>
+                    {{
+                        $t(
+                            "No server can open connections to the Proxmox nodes of its location or to the location's protected networks. A node that is the servers' gateway therefore cannot serve them DNS or NTP.",
+                        )
+                    }}
+                </p>
+            </HelpQuestion>
         </section>
     </div>
 </template>

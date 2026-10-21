@@ -86,9 +86,10 @@ class AntiSpoofingTest extends TestCase
         }
 
         $this->assertSame('ACCEPT', $firewall['policy_in']);
-        $this->assertSame(['Proxmotion: no DHCP server', 'Proxmotion: no DHCPv6 server'], array_reverse($this->ruleComments()));
+        // The isolation rules (docs/adr/0034) above the DHCP server rules.
+        $this->assertSame([...array_column(QemuResource::ISOLATION_RULES, 'comment'), 'Proxmotion: no DHCPv6 server', 'Proxmotion: no DHCP server'], $this->ruleComments());
         $this->assertSame(['out', 'DROP', 'udp', '67', '68'], [
-            $this->vm()['rules'][1]['type'], $this->vm()['rules'][1]['action'], $this->vm()['rules'][1]['proto'], $this->vm()['rules'][1]['sport'], $this->vm()['rules'][1]['dport'],
+            $this->vm()['rules'][6]['type'], $this->vm()['rules'][6]['action'], $this->vm()['rules'][6]['proto'], $this->vm()['rules'][6]['sport'], $this->vm()['rules'][6]['dport'],
         ]);
         $this->assertTrue(QemuResource::interfaceFirewalled($this->vm()['config']['net0']));
     }
@@ -97,7 +98,7 @@ class AntiSpoofingTest extends TestCase
     {
         app(AddressChanger::class)->reapply($this->server->refresh(), $this->admin, null);
 
-        $this->assertCount(2, $this->vm()['rules']);
+        $this->assertCount(2 + count(QemuResource::ISOLATION_RULES), $this->vm()['rules']);
     }
 
     public function test_a_freshly_provisioned_server_has_no_firewall_drift()
@@ -122,7 +123,7 @@ class AntiSpoofingTest extends TestCase
         $drift = $this->firewallDrift();
         $this->assertNotNull($drift);
         $this->assertSame($this->server->id, $drift->server_id);
-        $this->assertSame(['firewall_off', 'radv_on', 'interface_firewall_off', 'dhcp_server_allowed', 'addresses_differ'], $drift->actual['problems']);
+        $this->assertSame(['firewall_off', 'radv_on', 'interface_firewall_off', 'dhcp_server_allowed', 'isolation_rules_missing', 'addresses_differ'], $drift->actual['problems']);
         $this->assertSame(['203.0.113.6'], $drift->actual['extra']);
         $this->assertSame([], $drift->actual['missing']);
         $this->assertSame($this->server->ipAddresses()->pluck('address')->all(), $drift->expected['addresses']);
@@ -138,7 +139,7 @@ class AntiSpoofingTest extends TestCase
         $this->assertEquals(1, $this->vm()['firewall']['enable']);
         $this->assertEquals(0, $this->vm()['firewall']['radv']);
         $this->assertTrue(QemuResource::interfaceFirewalled($this->vm()['config']['net0']));
-        $this->assertCount(2, $this->vm()['rules']);
+        $this->assertCount(2 + count(QemuResource::ISOLATION_RULES), $this->vm()['rules']);
         $this->assertNotContains('203.0.113.6', $this->vm()['ipset']);
         $this->assertTrue(AuditLog::query()->where('action', 'server.anti_spoofing_enabled')->exists());
 
@@ -229,7 +230,7 @@ class AntiSpoofingTest extends TestCase
         $this->assertSame('DROP', $firewall['policy_in']);
         $this->assertArrayNotHasKey('policy_out', $firewall);
         $this->assertEquals(1, $firewall['ipfilter']);
-        $this->assertCount(3, $this->vm()['rules'], 'Its own rule stays.');
+        $this->assertCount(3 + count(QemuResource::ISOLATION_RULES), $this->vm()['rules'], 'Its own rule stays.');
         $this->assertEqualsCanonicalizing($this->server->ipAddresses()->pluck('address')->all(), $this->vm()['ipset']);
         $this->assertNotNull($this->server->refresh()->firewall_checked_at, 'Checked: the page no longer offers the button.');
     }

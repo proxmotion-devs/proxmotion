@@ -6,6 +6,7 @@ namespace App\Http\Requests\Admin;
 
 use App\Models\Location;
 use App\Provisioning\HostnameGenerator;
+use App\Support\Network\Cidr;
 use Closure;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
@@ -36,7 +37,29 @@ class LocationRequest extends FormRequest
                     $fail(__($problem));
                 }
             }],
+            // One address or CIDR per line (docs/adr/0034).
+            'protected_networks' => ['nullable', 'string', 'max:4000', function (string $attribute, mixed $value, Closure $fail) {
+                foreach (self::lines((string) $value) as $entry) {
+                    if (! Cidr::isAddressOrNetwork($entry)) {
+                        $fail(__(':entry is not an address or a network in CIDR notation.', ['entry' => $entry]));
+
+                        return;
+                    }
+                }
+
+                if (count(self::lines((string) $value)) > 100) {
+                    $fail(__('Enter at most 100 protected networks.'));
+                }
+            }],
         ];
+    }
+
+    /**
+     * @return list<string>
+     */
+    private static function lines(string $value): array
+    {
+        return array_values(array_filter(array_map('trim', preg_split('/[\r\n,]+/', $value) ?: []), fn (string $line) => $line !== ''));
     }
 
     /**
@@ -47,6 +70,8 @@ class LocationRequest extends FormRequest
         $data = $this->validated();
         $data['country_code'] = isset($data['country_code']) ? strtoupper((string) $data['country_code']) : null;
         $data['hostname_template'] = isset($data['hostname_template']) ? strtolower(trim((string) $data['hostname_template'])) : null;
+        $networks = array_values(array_unique(array_map(Cidr::canonical(...), self::lines((string) ($data['protected_networks'] ?? '')))));
+        $data['protected_networks'] = $networks === [] ? null : $networks;
 
         return $data;
     }
