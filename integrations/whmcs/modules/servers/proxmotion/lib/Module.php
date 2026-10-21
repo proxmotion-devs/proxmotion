@@ -422,6 +422,114 @@ class Module
     }
 
     /**
+     * Change the server's firewall (docs/adr/0035). $input "op" says how:
+     * "toggle" (enabled), "add" (a rule from the form), "delete", "up" or
+     * "down" (index), or "ruleset" (ruleset, mode). Proxmotion takes the
+     * whole list of rules, so the current ones are read first.
+     *
+     * @param array<string, mixed> $input from the form
+     */
+    public function firewall(array $input): string
+    {
+        $server = $this->requireActiveServer();
+        $id = (string) $server['id'];
+        $op = isset($input['op']) ? (string) $input['op'] : '';
+
+        if ($op === 'ruleset') {
+            $ruleset = isset($input['ruleset']) ? trim((string) $input['ruleset']) : '';
+
+            if ($ruleset === '') {
+                return $this->lang->get('firewall_ruleset_required');
+            }
+
+            $mode = isset($input['mode']) && $input['mode'] === 'append' ? 'append' : 'replace';
+            $this->client->applyFirewallRuleset($id, $ruleset, $mode, $this->idempotencyKey('firewall-ruleset'));
+
+            return 'success';
+        }
+
+        $firewall = $this->client->firewall($id);
+        $enabled = !empty($firewall['enabled']);
+        $rules = self::firewallRules($firewall);
+        $index = isset($input['index']) && is_numeric($input['index']) ? (int) $input['index'] : -1;
+
+        if ($op === 'toggle') {
+            $enabled = !empty($input['enabled']);
+        } elseif ($op === 'add') {
+            $rules[] = self::ruleFromForm($input);
+        } elseif ($op === 'delete' && isset($rules[$index])) {
+            array_splice($rules, $index, 1);
+        } elseif (($op === 'up' || $op === 'down') && isset($rules[$index])) {
+            $other = $op === 'up' ? $index - 1 : $index + 1;
+
+            if (!isset($rules[$other])) {
+                return 'success';
+            }
+
+            $moved = $rules[$index];
+            $rules[$index] = $rules[$other];
+            $rules[$other] = $moved;
+        } else {
+            return $this->lang->get('firewall_unknown');
+        }
+
+        $this->client->updateFirewall($id, $enabled, $rules, $this->idempotencyKey('firewall'));
+
+        return 'success';
+    }
+
+    /**
+     * The rules of a firewall as Proxmotion takes them back.
+     *
+     * @param array<string, mixed> $firewall
+     * @return list<array<string, string|null>>
+     */
+    private static function firewallRules(array $firewall): array
+    {
+        $rules = [];
+
+        foreach (isset($firewall['rules']) && is_array($firewall['rules']) ? $firewall['rules'] : [] as $rule) {
+            if (!is_array($rule)) {
+                continue;
+            }
+
+            $rules[] = [
+                'action' => isset($rule['action']) ? (string) $rule['action'] : 'accept',
+                'protocol' => isset($rule['protocol']) ? (string) $rule['protocol'] : 'tcp',
+                'port' => isset($rule['port']) && $rule['port'] !== '' ? (string) $rule['port'] : null,
+                'source' => isset($rule['source']) && $rule['source'] !== '' ? (string) $rule['source'] : null,
+                'comment' => isset($rule['comment']) && $rule['comment'] !== '' ? (string) $rule['comment'] : null,
+            ];
+        }
+
+        return $rules;
+    }
+
+    /**
+     * A new rule from the client area form; Proxmotion validates it.
+     *
+     * @param array<string, mixed> $input
+     * @return array<string, string|null>
+     */
+    private static function ruleFromForm(array $input): array
+    {
+        $text = function (string $key) use ($input) {
+            $value = isset($input[$key]) ? trim((string) $input[$key]) : '';
+
+            return $value === '' ? null : $value;
+        };
+        $protocol = in_array($text('protocol'), ['tcp', 'udp', 'icmp', 'any'], true) ? (string) $text('protocol') : 'tcp';
+
+        return [
+            'action' => $text('rule_action') === 'drop' ? 'drop' : 'accept',
+            'protocol' => $protocol,
+            'port' => $protocol === 'tcp' || $protocol === 'udp' ? $text('port') : null,
+            'source' => $text('source'),
+            'comment' => $text('comment'),
+        ];
+    }
+
+    /**
      * Cancel a running installation, or with a run one of its uninstalls,
      * upgrades or actions (docs/adr/0030). Possible in any server status: it
      * only stops a script.
@@ -543,6 +651,7 @@ class Module
             'addonsUrl' => $this->addonsUrl(),
             'installations' => [],
             'appsBusy' => false,
+            'firewall' => null,
         ];
 
         try {
@@ -572,6 +681,7 @@ class Module
                     $vars['appsBusy'] = count(array_filter($vars['installations'], function (array $installation) {
                         return $installation['busy'];
                     })) > 0;
+                    $vars['firewall'] = $this->presentFirewall($this->client->firewall((string) $server['id']), $this->client->firewallRulesets());
                 }
             }
         } catch (ApiException $e) {
@@ -741,6 +851,57 @@ class Module
     private function idempotencyKey(string $operation): string
     {
         return 'whmcs-' . $this->params['serviceid'] . '-' . $operation . '-' . bin2hex(random_bytes(8));
+    }
+
+    /**
+     * The firewall for the template (docs/adr/0035).
+     *
+     * @param array<string, mixed> $firewall
+     * @param list<array<string, mixed>> $rulesets
+     * @return array<string, mixed>
+     */
+    private function presentFirewall(array $firewall, array $rulesets): array
+    {
+        $rules = [];
+
+        foreach (self::firewallRules($firewall) as $index => $rule) {
+            $rules[] = [
+                'index' => $index,
+                'action' => $this->lang->get($rule['action'] === 'drop' ? 'firewall_block' : 'firewall_allow'),
+                'allows' => $rule['action'] !== 'drop',
+                'protocol' => $rule['protocol'] === 'any' ? $this->lang->get('firewall_any') : strtoupper((string) $rule['protocol']),
+                'port' => $rule['port'] !== null ? $rule['port'] : $this->lang->get('firewall_all_ports'),
+                'source' => $rule['source'] !== null ? $rule['source'] : $this->lang->get('firewall_anywhere'),
+                'comment' => $rule['comment'],
+                'first' => $index === 0,
+                'last' => false,
+            ];
+        }
+
+        if ($rules !== []) {
+            $rules[count($rules) - 1]['last'] = true;
+        }
+
+        $apps = [];
+
+        foreach (isset($firewall['app_rules']) && is_array($firewall['app_rules']) ? $firewall['app_rules'] : [] as $rule) {
+            if (is_array($rule) && isset($rule['app'], $rule['protocol'], $rule['port'])) {
+                $apps[] = ['app' => (string) $rule['app'], 'port' => (int) $rule['port'], 'protocol' => strtoupper((string) $rule['protocol'])];
+            }
+        }
+
+        return [
+            'enabled' => !empty($firewall['enabled']),
+            'rules' => $rules,
+            'appRules' => $apps,
+            'rulesets' => array_map(function (array $ruleset) {
+                return [
+                    'id' => isset($ruleset['id']) ? (string) $ruleset['id'] : '',
+                    'name' => isset($ruleset['name']) ? (string) $ruleset['name'] : '',
+                    'description' => isset($ruleset['description']) && is_string($ruleset['description']) ? $ruleset['description'] : '',
+                ];
+            }, $rulesets),
+        ];
     }
 
     /**

@@ -143,6 +143,20 @@ The **reinstall** form can bring an app with the new system: it lists the apps t
 the server, that it may install and that need no setting without a default (they are
 installed with their defaults). Proxmotion checks the app again against the chosen OS.
 
+### Firewall
+
+Active servers show their **firewall** (Proxmotion docs/adr/0035): on or off, its inbound
+rules in order and the ports its apps open. The customer turns it on or off (turning it
+off asks to confirm), adds a rule (allow or block, TCP, UDP, ICMP or any, a port or range
+such as `1000-2000`, a source address or network, a comment), moves rules up and down,
+deletes them, and applies a **rule set** the administrators prepared in Proxmotion (in
+place of their rules or after them, which also turns the firewall on). Turned on without
+rules, it lets SSH (Linux) or RDP (Windows) in. Every change reads the current rules from
+Proxmotion first and sends the whole list back with an `Idempotency-Key`; Proxmotion
+checks the rules and the module shows its message when one is wrong. Nothing is stored in
+WHMCS. Changes take a few seconds to reach the server; the console works even when the
+firewall locks the customer out.
+
 ### Paid apps
 
 Apps marked paid in Proxmotion (Proxmotion docs/adr/0019) are installed later only when

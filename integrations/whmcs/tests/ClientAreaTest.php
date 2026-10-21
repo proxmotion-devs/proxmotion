@@ -83,7 +83,7 @@ class ClientAreaTest extends ModuleTestCase
     public function test_the_overview_shows_actions_uninstall_and_recent_runs()
     {
         $this->showsServer();
-        $this->api = new FakeTransport();
+        $this->freshApi();
         $this->serviceHas($this->server());
         $this->api->on('GET /servers/' . self::SERVER_ID, 200, ['data' => $this->server()]);
         $this->api->on('GET /os-templates', 200, ['data' => []]);
@@ -163,7 +163,7 @@ class ClientAreaTest extends ModuleTestCase
     public function test_the_overview_lists_installed_and_installable_apps_in_the_customers_language()
     {
         $this->showsServer();
-        $this->api = new FakeTransport();
+        $this->freshApi();
         $this->serviceHas($this->server());
         $this->api->on('GET /servers/' . self::SERVER_ID, 200, ['data' => $this->server()]);
         $this->api->on('GET /os-templates', 200, ['data' => []]);
@@ -299,7 +299,7 @@ class ClientAreaTest extends ModuleTestCase
         $this->serviceHas(null);
         $this->assertSame('The server of this service was not found. Please contact support.', $this->module()->clientArea()['templateVariables']['pmx']['error']);
 
-        $this->api = new FakeTransport();
+        $this->freshApi();
         $this->api->on('GET /servers?external_id=42', 503, ['message' => 'Proxmox could not be reached.']);
         $this->assertSame('The server details cannot be shown right now. Please try again later.', $this->module()->clientArea()['templateVariables']['pmx']['error']);
     }
@@ -382,7 +382,7 @@ class ClientAreaTest extends ModuleTestCase
     public function test_the_reinstall_form_offers_apps_the_server_may_install_with_their_defaults()
     {
         $this->showsServer();
-        $this->api = new FakeTransport();
+        $this->freshApi();
         $this->serviceHas($this->server());
         $this->api->on('GET /servers/' . self::SERVER_ID, 200, ['data' => $this->server()]);
         $this->api->on('GET /os-templates', 200, ['data' => [['id' => 'os-uuid', 'name' => 'Ubuntu 24.04']]]);
@@ -403,7 +403,7 @@ class ClientAreaTest extends ModuleTestCase
     public function test_paid_apps_without_a_right_are_offered_to_buy()
     {
         $this->showsServer();
-        $this->api = new FakeTransport();
+        $this->freshApi();
         $this->serviceHas($this->server());
         $this->api->on('GET /servers/' . self::SERVER_ID, 200, ['data' => $this->server()]);
         $this->api->on('GET /os-templates', 200, ['data' => []]);

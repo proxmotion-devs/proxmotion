@@ -402,6 +402,47 @@ class ApiClient
     /**
      * A signed console link for the customer's browser (valid for 60 seconds, once).
      */
+    /**
+     * The server's firewall: enabled, rules, app_rules (docs/adr/0035).
+     *
+     * @return array<string, mixed>
+     */
+    public function firewall(string $id): array
+    {
+        return $this->dataOf($this->request('GET', '/servers/' . rawurlencode($id) . '/firewall'));
+    }
+
+    /**
+     * Turn the firewall on or off and replace its rules; returns the task.
+     *
+     * @param list<array<string, string|null>> $rules
+     * @return array<string, mixed>
+     */
+    public function updateFirewall(string $id, bool $enabled, array $rules, string $idempotencyKey): array
+    {
+        return $this->dataOf($this->request('PUT', '/servers/' . rawurlencode($id) . '/firewall', ['enabled' => $enabled, 'rules' => $rules], $idempotencyKey));
+    }
+
+    /**
+     * Apply a rule set ("replace" or "append"); returns the task.
+     *
+     * @return array<string, mixed>
+     */
+    public function applyFirewallRuleset(string $id, string $ruleset, string $mode, string $idempotencyKey): array
+    {
+        return $this->dataOf($this->request('POST', '/servers/' . rawurlencode($id) . '/firewall/ruleset', ['ruleset' => $ruleset, 'mode' => $mode], $idempotencyKey));
+    }
+
+    /**
+     * Active firewall rule sets.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function firewallRulesets(): array
+    {
+        return $this->listOf($this->request('GET', '/firewall-rulesets'));
+    }
+
     public function consoleLink(string $id): string
     {
         $data = $this->dataOf($this->request('POST', '/servers/' . rawurlencode($id) . '/console'));

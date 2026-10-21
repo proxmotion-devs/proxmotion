@@ -234,7 +234,7 @@ class ProvisioningTest extends ModuleTestCase
         $this->assertSame('success', $this->module(['suspendreason' => 'Overdue on Invoice #12'])->suspend());
         $this->assertSame(['reason' => 'Overdue on Invoice #12'], $this->api->last('POST /servers/' . self::SERVER_ID . '/suspend')['body']);
 
-        $this->api = new FakeTransport();
+        $this->freshApi();
         $this->serviceHas($this->server(['status' => 'suspended']));
         $this->api->on('POST /servers/' . self::SERVER_ID . '/unsuspend', 202, $this->task('unsuspend'));
 
@@ -247,7 +247,7 @@ class ProvisioningTest extends ModuleTestCase
         $this->serviceHas($this->server(['status' => 'suspended']));
         $this->assertSame('success', $this->module()->suspend());
 
-        $this->api = new FakeTransport();
+        $this->freshApi();
         $this->serviceHas($this->server());
         $this->assertSame('success', $this->module()->unsuspend());
 
@@ -330,7 +330,7 @@ class ProvisioningTest extends ModuleTestCase
         $this->api->on('GET /packages', 200, ['data' => []])->on('GET /servers', 200, ['data' => []]);
         $this->assertSame(['success' => true, 'error' => ''], $this->module()->testConnection());
 
-        $this->api = new FakeTransport();
+        $this->freshApi();
         $this->api->on('GET /packages', 401, ['message' => 'Unauthenticated.']);
         $this->assertSame('Unauthenticated.', $this->runCommand('testConnection'));
     }

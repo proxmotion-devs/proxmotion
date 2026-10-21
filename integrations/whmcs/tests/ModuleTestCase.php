@@ -22,9 +22,20 @@ abstract class ModuleTestCase extends TestCase
     {
         parent::setUp();
 
-        $this->api = new FakeTransport();
+        $this->freshApi();
         $GLOBALS['whmcs_calls'] = ['logModuleCall' => [], 'localAPI' => []];
         unset($GLOBALS['CONFIG']);
+    }
+
+    /**
+     * A new fake API; the client area of an active server always shows its
+     * firewall (docs/adr/0035), so an empty one is there by default.
+     */
+    protected function freshApi(): void
+    {
+        $this->api = new FakeTransport();
+        $this->api->on('GET /servers/' . self::SERVER_ID . '/firewall', 200, ['data' => ['enabled' => false, 'rules' => [], 'app_rules' => []]]);
+        $this->api->on('GET /firewall-rulesets', 200, ['data' => []]);
     }
 
     /**
