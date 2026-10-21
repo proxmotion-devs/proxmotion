@@ -81,6 +81,12 @@ class FakeProxmoxCluster
     /** @var array<int, list<string>> agent commands (exec, file-read, …) each guest blocks, as RHEL-family qemu-ga does by default */
     public array $agentBlocked = [];
 
+    /** @var array<int, array<string, mixed>> per VMID: more fields of status/current (cpu, mem, netin, uptime, …) */
+    public array $stats = [];
+
+    /** @var array<int, list<array<string, mixed>>> per VMID: what rrddata answers */
+    public array $rrd = [];
+
     /** @var array<int, bool> VMIDs that /cluster/resources lists with maxdisk 0, as Proxmox can for stopped VMs */
     public array $unknownDiskSize = [];
 
@@ -265,7 +271,8 @@ class FakeProxmoxCluster
             $suffix === '/config' && $method === 'PUT' => $this->updateConfig($vmid, $data),
             $suffix === '/pending' && $method === 'GET' => $this->pendingOf($vmid),
             $suffix === '/resize' && $method === 'PUT' => $this->resize($vmid, $data),
-            $suffix === '/status/current' => $this->ok(['status' => $vm['status']]),
+            $suffix === '/status/current' => $this->ok([...($this->stats[$vmid] ?? []), 'status' => $vm['status']]),
+            $suffix === '/rrddata' => $this->ok($this->rrd[$vmid] ?? []),
             (bool) preg_match('#^/status/(start|stop|shutdown|reboot)$#', $suffix, $m) => $this->power($node, $vmid, $m[1]),
             $suffix === '/vncproxy' && $method === 'POST' => $this->vncProxy($node, $vmid),
             str_starts_with($suffix, '/agent/') => $this->agent($vmid, substr($suffix, 7), $data),

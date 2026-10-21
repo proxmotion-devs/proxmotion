@@ -367,6 +367,36 @@ export type ServerVerification = {
     }[];
 };
 
+/**
+ * Live figures of a server (LiveStats, docs/adr/0036). Times in ms since the
+ * epoch; network and disk in bytes per second, null without two samples.
+ */
+export type ServerStats = {
+    time: number;
+    status: string;
+    uptime: number | null;
+    cpu_percent: number | null;
+    cpus: number | null;
+    memory_bytes: number | null;
+    memory_total_bytes: number | null;
+    net_in: number | null;
+    net_out: number | null;
+    disk_read: number | null;
+    disk_write: number | null;
+};
+
+/** One minute of a server's last hour, or one live sample. */
+export type ServerStatsPoint = Pick<
+    ServerStats,
+    | 'time'
+    | 'cpu_percent'
+    | 'memory_bytes'
+    | 'net_in'
+    | 'net_out'
+    | 'disk_read'
+    | 'disk_write'
+>;
+
 /** What TaskList needs. */
 export type TaskProgress = {
     uuid: string;

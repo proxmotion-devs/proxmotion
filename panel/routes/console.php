@@ -20,3 +20,6 @@ Schedule::command('model:prune', ['--model' => [AppLog::class, GuestScriptLog::c
 
 // Follow app installers running inside servers (docs/adr/0015).
 Schedule::command('apps:poll')->everyMinute()->withoutOverlapping();
+
+// Live figures of the servers administrators are watching; returns at once when nobody is (docs/adr/0036).
+Schedule::command('servers:stats')->everyTenSeconds()->withoutOverlapping();

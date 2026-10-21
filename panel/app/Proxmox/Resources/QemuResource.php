@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace App\Proxmox\Resources;
 
+use App\Proxmox\Data\RrdPoint;
 use App\Proxmox\Data\Upid;
+use App\Proxmox\Data\VmStats;
 use App\Proxmox\Data\VncProxyTicket;
 use App\Proxmox\Exceptions\ProxmoxRequestFailed;
 use App\Proxmox\ProxmoxClient;
@@ -99,6 +101,35 @@ final readonly class QemuResource
             'status' => is_string($data['status'] ?? null) ? $data['status'] : 'unknown',
             'uptime' => is_numeric($data['uptime'] ?? null) ? (int) $data['uptime'] : null,
         ];
+    }
+
+    /**
+     * What the VM is doing right now: CPU, memory, and its network and disk counters (docs/adr/0036).
+     */
+    public function stats(int $vmid): VmStats
+    {
+        $data = $this->client->get($this->path($vmid, 'status/current'));
+
+        /** @var array<string, mixed> $data */
+        $data = is_array($data) ? $data : [];
+
+        return VmStats::fromArray($data);
+    }
+
+    /**
+     * Averages per minute of the last hour, oldest first (docs/adr/0036).
+     *
+     * @return list<RrdPoint>
+     */
+    public function rrd(int $vmid): array
+    {
+        $points = array_map(
+            RrdPoint::fromArray(...),
+            ClusterResource::listOfArrays($this->client->get($this->path($vmid, 'rrddata'), ['timeframe' => 'hour', 'cf' => 'AVERAGE'])),
+        );
+        usort($points, fn (RrdPoint $a, RrdPoint $b) => $a->time <=> $b->time);
+
+        return $points;
     }
 
     /**

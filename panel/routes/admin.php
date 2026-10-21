@@ -25,6 +25,7 @@ use App\Http\Controllers\Admin\PackageController;
 use App\Http\Controllers\Admin\PlacementGroupController;
 use App\Http\Controllers\Admin\ServerController;
 use App\Http\Controllers\Admin\ServerFirewallController;
+use App\Http\Controllers\Admin\ServerStatsController;
 use App\Http\Controllers\Admin\StorageController;
 use App\Http\Controllers\Admin\TaskController;
 use App\Http\Controllers\Admin\UserController;
@@ -139,6 +140,8 @@ Route::resource('servers', ServerController::class)->only(['index', 'create', 's
 Route::post('servers/{server}/suspend', [ServerController::class, 'suspend'])->name('servers.suspend');
 Route::post('servers/{server}/unsuspend', [ServerController::class, 'unsuspend'])->name('servers.unsuspend');
 Route::post('servers/{server}/power/{action}', [ServerController::class, 'power'])->middleware('throttle:20,1')->name('servers.power');
+// Live figures of the server page, which also mark it as watched (docs/adr/0036).
+Route::get('servers/{server}/stats', ServerStatsController::class)->middleware('throttle:30,1')->name('servers.stats');
 Route::post('servers/{server}/retry', [ServerController::class, 'retry'])->name('servers.retry');
 Route::post('servers/{server}/rebuild', [ServerController::class, 'rebuild'])->middleware('throttle:10,1')->name('servers.rebuild');
 Route::post('servers/{server}/verify', [ServerController::class, 'verify'])->middleware('throttle:10,1')->name('servers.verify');

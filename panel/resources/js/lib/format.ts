@@ -33,6 +33,30 @@ export function formatTraffic(bytes: number | null | undefined): string {
         : scale(bytes, 1000, DECIMAL_UNITS);
 }
 
+/** Disk throughput from bytes per second (decimal units), e.g. "1.2 MB/s". */
+export function formatByteRate(
+    bytesPerSecond: number | null | undefined,
+): string {
+    return bytesPerSecond === null || bytesPerSecond === undefined
+        ? '—'
+        : `${scale(bytesPerSecond, 1000, DECIMAL_UNITS)}/s`;
+}
+
+/** Network throughput from bytes per second, in bits like port speeds, e.g. "12.4 Mbps". */
+export function formatBitRate(
+    bytesPerSecond: number | null | undefined,
+): string {
+    return bytesPerSecond === null || bytesPerSecond === undefined
+        ? '—'
+        : scale(bytesPerSecond * 8, 1000, [
+              'bps',
+              'Kbps',
+              'Mbps',
+              'Gbps',
+              'Tbps',
+          ]);
+}
+
 /** Share of `used` in `total` as a whole percentage, or null when unknown. */
 export function percentage(
     used: number | null | undefined,

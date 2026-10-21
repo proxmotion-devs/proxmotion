@@ -427,6 +427,8 @@ All of these are available on the admin server page; the ones marked ✓ are als
 
 Destructive operations (terminate, reinstall, node/cluster removal) ask for extra confirmation and are audited.
 
+**Live usage** ([ADR 0036](../adr/0036-live-server-stats.md)): the *Overview* tab of an active or suspended server starts with cards for CPU, memory, network (in and out, against the port speed) and disk I/O, each with the last hour as a small line chart, plus the uptime. With Reverb running, `servers:stats` pushes new figures every 10 seconds to every open page of that server; without it the page asks every 10 seconds. Only servers whose page is open are asked for. Admin panel only; not tested against a real Proxmox or Reverb yet.
+
 ### 9.5 Windows guests
 
 Windows templates are supported by the data model and default guest scripts exist (`addresses.ps1`, `disk.ps1`, `hostname.ps1`, password for `Administrator`), with a [Windows template guide](../guides/windows-templates.md). They have **not run on a real Windows guest yet**.
@@ -705,6 +707,8 @@ All features are covered by automated tests with faked HTTP (an in-memory Proxmo
 | `php artisan apps:validate` | Validate every recipe against the JSON Schema |
 | `php artisan apps:check-versions` | Require a higher version for changed bundled recipes (CI) |
 | `php artisan apps:make <slug>` | Create a format 2 recipe skeleton |
+| `php artisan servers:stats` | Send live figures of the servers whose page is open (every 10 seconds; only with `BROADCAST_CONNECTION=reverb`) |
+| `php artisan reverb:start` | WebSocket server for live figures |
 
 The **scheduler** and a **queue worker** must run; `composer dev` starts both locally.
 
@@ -716,12 +720,13 @@ The **scheduler** and a **queue worker** must run; `composer dev` starts both lo
 | `PROXMOTION_DOCS_URL` | Base URL of the published guides; *Help* links to them when set |
 | `PROXMOTION_MIN_VMID` | Lowest VMID the panel assigns |
 | `PROXMOTION_DRIFT_STOPPED_GRACE_MINUTES` | How long a VM may be unexpectedly stopped before it is reported as drift (default 60) |
+| `BROADCAST_CONNECTION`, `REVERB_*`, `VITE_REVERB_*` | `reverb` and its settings push live server figures; `log` makes the server page poll instead |
 
 See `panel/.env.example` for the full list (database, Redis, mail, console proxy secret, …).
 
 ### 18.3 Deployment
 
-- **Docker Compose** (`deploy/docker/compose.yml`): app (php-fpm + nginx), console-proxy, queue/Horizon, scheduler, Reverb, MariaDB, Redis. Not yet run end to end.
+- **Docker Compose** (`deploy/docker/compose.yml`): app (php-fpm + nginx), console-proxy, queue/Horizon, scheduler, Reverb (nginx forwards `/app`), MariaDB, Redis. Not yet run end to end.
 - **Local development**: SQLite works out of the box (WAL mode and immediate transactions so web, worker and scheduler can write at once). See the [README](../../README.md#development).
 - **Native Debian/Ubuntu installer**, production images on GHCR, `proxmotion:install` / `proxmotion:upgrade` commands and admin branding settings **(planned, Phase 8)**.
 

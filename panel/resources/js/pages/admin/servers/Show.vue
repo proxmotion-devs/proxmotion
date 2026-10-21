@@ -23,6 +23,7 @@ import RemoveAddressButton from '@/components/servers/RemoveAddressButton.vue';
 import ResourcesDialog from '@/components/servers/ResourcesDialog.vue';
 import ResetPasswordButton from '@/components/servers/ResetPasswordButton.vue';
 import ServerChecks from '@/components/servers/ServerChecks.vue';
+import ServerStatsCards from '@/components/servers/ServerStatsCards.vue';
 import TaskList from '@/components/servers/TaskList.vue';
 import { Button } from '@/components/ui/button';
 import { useDateTime } from '@/composables/useDateTime';
@@ -428,6 +429,13 @@ const resetAfterTrial = () => {
 
         <template v-if="tab === 'overview'">
             <TaskList v-if="runningTasks.length" :tasks="runningTasks" />
+
+            <!-- Live figures from Proxmox while its VM exists (docs/adr/0036). -->
+            <ServerStatsCards
+                v-if="['active', 'suspended'].includes(server.status)"
+                :server-uuid="server.uuid"
+                :port-speed-mbps="server.port_speed_mbps"
+            />
 
             <div class="grid gap-4 lg:grid-cols-3">
                 <section class="flex flex-col gap-3 rounded-xl border p-4">
