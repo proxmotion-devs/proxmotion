@@ -112,7 +112,7 @@ proxmotion/
 │   │   │   ├── Data/                     # typed DTOs of API responses (NodeInfo, StorageInfo, Upid, …)
 │   │   │   ├── TaskWaiter.php            # UPID tracking
 │   │   │   └── Exceptions/
-│   │   ├── Support/                      # Locales, Network/Cidr, Database/SqliteConnector (IMMEDIATE transactions on PHP 8.3)
+│   │   ├── Support/                      # Locales, Network/Cidr, Database/SqliteConnector (IMMEDIATE transactions on PHP 8.3), Broadcasting/ReverbFallback (the log broadcaster when Reverb has no ID, key or secret, ADR 0036)
 │   │   ├── Provisioning/                 # Orchestration
 │   │   │   ├── ServerCreator.php         # reserve node/storage/VMID/IPs under a per-location lock, queue the task
 │   │   │   ├── ResourceChanger.php       # upgrade/downgrade: capacity + addresses under the same lock, queue ChangeResources

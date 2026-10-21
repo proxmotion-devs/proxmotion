@@ -46,6 +46,7 @@ When Echo is not configured (no `VITE_REVERB_APP_KEY`) or its connection is not 
 
 - Docker Compose runs `php artisan reverb:start`; nginx forwards `/app` (WebSocket upgrade) to it. The native installer (Phase 8) needs a systemd unit and the same nginx location.
 - `.env.example` gets the `REVERB_*` and `VITE_REVERB_*` settings. Without them the panel falls back to polling (§5).
+- The channels are registered on the broadcaster when the panel boots, so `BROADCAST_CONNECTION=reverb` without `REVERB_APP_ID`, `REVERB_APP_KEY` or `REVERB_APP_SECRET` made every request and artisan command fail — the queue worker and scheduler too. `ReverbFallback` switches to the `log` broadcaster at boot instead; `servers:stats` names the missing settings on every run and in the log once an hour. Live figures are a convenience; provisioning must not stop for them.
 
 ## Consequences
 

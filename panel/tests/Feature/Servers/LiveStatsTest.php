@@ -7,11 +7,13 @@ use App\Enums\ServerStatus;
 use App\Events\ServerStatsUpdated;
 use App\Models\Server;
 use App\Models\User;
+use App\Support\Broadcasting\ReverbFallback;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Broadcast;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Testing\TestResponse;
 use Tests\Concerns\BuildsInfrastructure;
 use Tests\Support\FakeProxmoxCluster;
@@ -234,6 +236,49 @@ class LiveStatsTest extends TestCase
 
         Event::assertNotDispatched(ServerStatsUpdated::class);
         $this->assertSame($requests, $this->statusRequests());
+    }
+
+    public function test_reverb_without_its_settings_falls_back_to_the_log_broadcaster()
+    {
+        config([
+            'broadcasting.default' => 'reverb',
+            'broadcasting.connections.reverb.app_id' => 'test-app',
+            'broadcasting.connections.reverb.key' => null,
+            'broadcasting.connections.reverb.secret' => '',
+        ]);
+
+        ReverbFallback::apply(config());
+
+        $this->assertSame('log', config('broadcasting.default'));
+        $this->assertSame(['REVERB_APP_KEY', 'REVERB_APP_SECRET'], ReverbFallback::missing(config()));
+
+        Log::spy();
+        Event::fake([ServerStatsUpdated::class]);
+        $this->stats();
+
+        $this->artisan('servers:stats')
+            ->expectsOutputToContain('REVERB_APP_KEY, REVERB_APP_SECRET are not set')
+            ->assertSuccessful();
+        $this->artisan('servers:stats')->assertSuccessful();
+
+        Event::assertNotDispatched(ServerStatsUpdated::class);
+        // Once an hour in the log, though the command runs every 10 seconds.
+        Log::shouldHaveReceived('warning')->once();
+    }
+
+    public function test_configured_reverb_is_kept()
+    {
+        config([
+            'broadcasting.default' => 'reverb',
+            'broadcasting.connections.reverb.app_id' => 'test-app',
+            'broadcasting.connections.reverb.key' => 'test-key',
+            'broadcasting.connections.reverb.secret' => 'test-secret',
+        ]);
+
+        ReverbFallback::apply(config());
+
+        $this->assertSame('reverb', config('broadcasting.default'));
+        $this->assertSame([], ReverbFallback::missing(config()));
     }
 
     public function test_the_servers_channel_is_open_to_administrators_with_two_factor_only()

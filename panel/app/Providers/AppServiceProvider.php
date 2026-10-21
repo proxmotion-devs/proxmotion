@@ -3,6 +3,7 @@
 namespace App\Providers;
 
 use App\Models\ApiToken;
+use App\Support\Broadcasting\ReverbFallback;
 use App\Support\Database\SqliteConnector;
 use Carbon\CarbonImmutable;
 use Illuminate\Cache\RateLimiting\Limit;
@@ -30,6 +31,9 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         $this->configureDefaults();
+
+        // Before the channels are registered (bootstrap/app.php, after boot): an unconfigured Reverb must not stop the panel.
+        ReverbFallback::apply(config());
 
         // Billing API (docs/adr/0008): per token, set by AuthenticateApiToken.
         RateLimiter::for('api', function (Request $request): Limit {
