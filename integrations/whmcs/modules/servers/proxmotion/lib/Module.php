@@ -423,7 +423,7 @@ class Module
 
     /**
      * Change the server's firewall (docs/adr/0035). $input "op" says how:
-     * "toggle" (enabled), "add" (a rule from the form), "delete", "up" or
+     * "policy" (default_policy), "add" (a rule from the form), "delete", "up" or
      * "down" (index), or "ruleset" (ruleset, mode). Proxmotion takes the
      * whole list of rules, so the current ones are read first.
      *
@@ -449,12 +449,12 @@ class Module
         }
 
         $firewall = $this->client->firewall($id);
-        $enabled = !empty($firewall['enabled']);
+        $policy = self::policyOf($firewall);
         $rules = self::firewallRules($firewall);
         $index = isset($input['index']) && is_numeric($input['index']) ? (int) $input['index'] : -1;
 
-        if ($op === 'toggle') {
-            $enabled = !empty($input['enabled']);
+        if ($op === 'policy') {
+            $policy = isset($input['default_policy']) && $input['default_policy'] === 'drop' ? 'drop' : 'accept';
         } elseif ($op === 'add') {
             $rules[] = self::ruleFromForm($input);
         } elseif ($op === 'delete' && isset($rules[$index])) {
@@ -473,9 +473,19 @@ class Module
             return $this->lang->get('firewall_unknown');
         }
 
-        $this->client->updateFirewall($id, $enabled, $rules, $this->idempotencyKey('firewall'));
+        $this->client->updateFirewall($id, $policy, $rules, $this->idempotencyKey('firewall'));
 
         return 'success';
+    }
+
+    /**
+     * What happens to incoming traffic no rule matches: "accept" or "drop".
+     *
+     * @param array<string, mixed> $firewall
+     */
+    private static function policyOf(array $firewall): string
+    {
+        return isset($firewall['default_policy']) && $firewall['default_policy'] === 'drop' ? 'drop' : 'accept';
     }
 
     /**
@@ -891,7 +901,7 @@ class Module
         }
 
         return [
-            'enabled' => !empty($firewall['enabled']),
+            'blocks' => self::policyOf($firewall) === 'drop',
             'rules' => $rules,
             'appRules' => $apps,
             'rulesets' => array_map(function (array $ruleset) {

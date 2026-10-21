@@ -145,13 +145,14 @@ installed with their defaults). Proxmotion checks the app again against the chos
 
 ### Firewall
 
-Active servers show their **firewall** (Proxmotion docs/adr/0035): on or off, its inbound
-rules in order and the ports its apps open. The customer turns it on or off (turning it
-off asks to confirm), adds a rule (allow or block, TCP, UDP, ICMP or any, a port or range
+Active servers show their **firewall** (Proxmotion docs/adr/0035): its inbound rules in
+order, which always apply, whether everything else is allowed or blocked, and the ports
+its apps open. The customer switches between allowing and blocking everything else
+(blocking asks to confirm), adds a rule (allow or block, TCP, UDP, ICMP or any, a port or range
 such as `1000-2000`, a source address or network, a comment), moves rules up and down,
 deletes them, and applies a **rule set** the administrators prepared in Proxmotion (in
-place of their rules or after them, which also turns the firewall on). Turned on without
-rules, it lets SSH (Linux) or RDP (Windows) in. Every change reads the current rules from
+place of their rules or after them). Switched to blocking without a rule that allows
+anything, it lets SSH (Linux) or RDP (Windows) in. Every change reads the current rules from
 Proxmotion first and sends the whole list back with an `Idempotency-Key`; Proxmotion
 checks the rules and the module shows its message when one is wrong. Nothing is stored in
 WHMCS. Changes take a few seconds to reach the server; the console works even when the

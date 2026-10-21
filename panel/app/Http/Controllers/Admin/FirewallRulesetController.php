@@ -29,6 +29,7 @@ class FirewallRulesetController extends Controller
                     'uuid' => $ruleset->uuid,
                     'name' => $ruleset->name,
                     'description' => $ruleset->description,
+                    'default_policy' => $ruleset->default_policy,
                     'is_active' => $ruleset->is_active,
                     'rules' => $ruleset->rules,
                     'opens_remote_access' => $ruleset->opensRemoteAccess(),

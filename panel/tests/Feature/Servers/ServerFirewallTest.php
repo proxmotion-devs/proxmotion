@@ -75,7 +75,7 @@ class ServerFirewallTest extends TestCase
 
     private function turnOn(Server $server, array $rules = []): void
     {
-        $task = app(ServerFirewalls::class)->change($server, true, $rules, $this->admin, null)->refresh();
+        $task = app(ServerFirewalls::class)->change($server, 'drop', $rules, $this->admin, null)->refresh();
         $this->assertSame(TaskStatus::Succeeded, $task->status, (string) $task->error);
     }
 
@@ -100,7 +100,7 @@ class ServerFirewallTest extends TestCase
 
         $server = $this->create();
 
-        $this->assertTrue($server->firewall_enabled);
+        $this->assertSame('drop', $server->firewall_policy);
         $this->assertSame(['443'], $server->firewallRules()->pluck('port')->all());
         $this->assertSame('DROP', $this->vm($server)['firewall']['policy_in']);
         $this->assertContains('Proxmotion rule: HTTPS', $this->ruleComments($server));
@@ -114,7 +114,7 @@ class ServerFirewallTest extends TestCase
         $ruleset = FirewallRuleset::create(['name' => 'Old', 'is_active' => false, 'rules' => []]);
         $this->package->update(['firewall_ruleset_id' => $ruleset->id]);
 
-        $this->assertFalse($this->create()->firewall_enabled);
+        $this->assertSame('accept', $this->create()->firewall_policy);
     }
 
     public function test_a_reinstall_onto_windows_swaps_the_untouched_ssh_rule_for_rdp()
@@ -184,19 +184,19 @@ class ServerFirewallTest extends TestCase
         $server = $this->create();
 
         $this->actingAs($this->admin)->get(route('admin.servers.show', $server))
-            ->assertInertia(fn ($page) => $page->where('firewall.enabled', false)->where('firewall.rules', []));
+            ->assertInertia(fn ($page) => $page->where('firewall.default_policy', 'accept')->where('firewall.rules', []));
 
         $this->actingAs($this->admin)->put(route('admin.servers.firewall', $server), [
-            'enabled' => true,
+            'default_policy' => 'drop',
             'rules' => [['action' => 'drop', 'protocol' => 'udp', 'port' => '53', 'source' => '2001:db8::/32', 'comment' => 'No DNS']],
         ])->assertSessionHasNoErrors()->assertRedirect();
 
-        $this->assertTrue($server->refresh()->firewall_enabled);
+        $this->assertSame('drop', $server->refresh()->firewall_policy);
         $rule = collect($this->vm($server)['rules'])->firstWhere('comment', 'Proxmotion rule: No DNS');
         $this->assertSame(['DROP', 'udp', '53', '2001:db8::/32'], [$rule['action'], $rule['proto'], $rule['dport'], $rule['source']]);
 
         $this->actingAs($this->admin)->put(route('admin.servers.firewall', $server), [
-            'enabled' => true,
+            'default_policy' => 'drop',
             'rules' => [['action' => 'accept', 'protocol' => 'any', 'port' => '22', 'source' => null, 'comment' => null]],
         ])->assertSessionHasErrors('rules.0.port');
     }
@@ -205,7 +205,7 @@ class ServerFirewallTest extends TestCase
     {
         $rules = [['action' => 'accept', 'protocol' => 'tcp', 'port' => '80', 'source' => null, 'comment' => null]];
 
-        $this->actingAs($this->admin)->post(route('admin.firewall-rulesets.store'), ['name' => 'Web', 'is_active' => true, 'rules' => $rules])
+        $this->actingAs($this->admin)->post(route('admin.firewall-rulesets.store'), ['name' => 'Web', 'default_policy' => 'drop', 'is_active' => true, 'rules' => $rules])
             ->assertSessionHasNoErrors();
         $ruleset = FirewallRuleset::query()->sole();
 

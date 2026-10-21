@@ -22,7 +22,7 @@ final class FirewallTest extends ModuleTestCase
     private static function firewall(): array
     {
         return [
-            'enabled' => true,
+            'default_policy' => 'drop',
             'rules' => [
                 ['action' => 'accept', 'protocol' => 'tcp', 'port' => '22', 'source' => '198.51.100.0/24', 'comment' => 'Office'],
                 ['action' => 'drop', 'protocol' => 'any', 'port' => null, 'source' => null, 'comment' => null],
@@ -65,7 +65,7 @@ final class FirewallTest extends ModuleTestCase
 
         $data = $this->module()->tool_data('firewall', 'index');
 
-        $this->assertTrue($data['enabled']);
+        $this->assertSame('drop', $data['default_policy']);
         $this->assertSame(self::firewall()['rules'], $data['rules']);
         $this->assertSame([['app' => 'wireguard', 'protocol' => 'udp', 'port' => 51820]], $data['app_rules']);
         $this->assertSame([['id' => 'ruleset-uuid', 'name' => 'Web', 'description' => '']], $data['rulesets']);
@@ -73,7 +73,7 @@ final class FirewallTest extends ModuleTestCase
 
     public function test_the_page_shows_the_rules_and_the_forms(): void
     {
-        $html = $this->page(['enabled' => true, 'rules' => self::firewall()['rules'], 'app_rules' => self::firewall()['app_rules'], 'rulesets' => [['id' => 'ruleset-uuid', 'name' => 'Web', 'description' => '']]]);
+        $html = $this->page(['default_policy' => 'drop', 'rules' => self::firewall()['rules'], 'app_rules' => self::firewall()['app_rules'], 'rulesets' => [['id' => 'ruleset-uuid', 'name' => 'Web', 'description' => '']]]);
 
         $this->assertStringContainsString('<code>198.51.100.0/24</code>', $html);
         $this->assertStringContainsString('<code>all ports</code>', $html);
@@ -81,10 +81,12 @@ final class FirewallTest extends ModuleTestCase
         $this->assertStringNotContainsString('onclick="pmxFirewallRule(this, \'up\')" data-index="0"', $html, 'The first rule cannot move up.');
         $this->assertStringContainsString('<option value="ruleset-uuid" title="">Web</option>', $html);
         $this->assertStringContainsString('<code>51820/UDP</code> (wireguard)', $html);
-        $this->assertStringContainsString('Turn off', $html);
+        $this->assertStringContainsString('Allow everything else', $html);
+        $this->assertStringContainsString('data-policy="accept"', $html);
 
-        $empty = $this->page(['enabled' => false, 'rules' => [], 'app_rules' => [], 'rulesets' => []]);
-        $this->assertStringContainsString('No rules: nothing can reach the server while the firewall is on.', $empty);
+        $empty = $this->page(['default_policy' => 'accept', 'rules' => [], 'app_rules' => [], 'rulesets' => []]);
+        $this->assertStringContainsString('No rules.', $empty);
+        $this->assertStringContainsString('Block everything else', $empty);
         $this->assertStringNotContainsString('pmxFirewallRuleset(this', $empty);
     }
 
@@ -95,12 +97,12 @@ final class FirewallTest extends ModuleTestCase
         $result = $this->module()->tool_action('firewall', 'add', ['rule_action' => 'drop', 'protocol' => 'udp', 'port' => ' 53 ', 'source' => '', 'comment' => 'No DNS']);
 
         $this->assertSame('successful', $result['status']);
-        $this->assertTrue($this->sent()['enabled']);
+        $this->assertSame('drop', $this->sent()['default_policy']);
         $this->assertSame(['action' => 'drop', 'protocol' => 'udp', 'port' => '53', 'source' => null, 'comment' => 'No DNS'], $this->sent()['rules'][2]);
         $this->assertMatchesRegularExpression('/^wisecp-42-firewall-/', $this->api->last('PUT ' . self::SERVER . '/firewall')['headers']['Idempotency-Key']);
     }
 
-    public function test_rules_are_moved_and_deleted_and_the_firewall_turned_off(): void
+    public function test_rules_are_moved_and_deleted_and_everything_else_allowed(): void
     {
         $this->hasFirewall();
 
@@ -110,9 +112,9 @@ final class FirewallTest extends ModuleTestCase
         $this->module()->tool_action('firewall', 'delete', ['index' => '0']);
         $this->assertSame(['drop'], array_column($this->sent()['rules'], 'action'));
 
-        $this->module()->tool_action('firewall', 'toggle', ['enabled' => '0']);
-        $this->assertFalse($this->sent()['enabled']);
-        $this->assertCount(2, $this->sent()['rules'], 'Turned off, the rules stay.');
+        $this->module()->tool_action('firewall', 'policy', ['default_policy' => 'accept']);
+        $this->assertSame('accept', $this->sent()['default_policy']);
+        $this->assertCount(2, $this->sent()['rules'], 'The rules stay.');
     }
 
     public function test_a_rule_set_is_applied(): void

@@ -11,7 +11,7 @@ use Illuminate\Validation\Validator;
 
 /**
  * A server's firewall as the admin page and the billing API send it
- * (docs/adr/0035): on or off and the whole list of rules.
+ * (docs/adr/0035): the default policy and the whole list of rules.
  */
 class FirewallRulesRequest extends FormRequest
 {
@@ -21,7 +21,8 @@ class FirewallRulesRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'enabled' => ['required', 'boolean'],
+            // What happens to incoming traffic no rule matches.
+            'default_policy' => ['required', 'in:accept,drop'],
             ...FirewallRule::validation('rules'),
         ];
     }
@@ -48,9 +49,12 @@ class FirewallRulesRequest extends FormRequest
         }
     }
 
-    public function enabled(): bool
+    /**
+     * @return 'accept'|'drop'
+     */
+    public function policy(): string
     {
-        return $this->boolean('enabled');
+        return $this->input('default_policy') === 'drop' ? 'drop' : 'accept';
     }
 
     /**

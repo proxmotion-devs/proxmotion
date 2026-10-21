@@ -19,12 +19,13 @@ use Illuminate\Support\Carbon;
  * @property string $uuid
  * @property string $name
  * @property string|null $description
+ * @property string $default_policy accept or drop: what the rules do not match
  * @property list<array{action: string, protocol: string, port: string|null, source: string|null, comment: string|null}> $rules
  * @property bool $is_active offered to customers and on the forms
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  */
-#[Fillable(['name', 'description', 'rules', 'is_active'])]
+#[Fillable(['name', 'description', 'default_policy', 'rules', 'is_active'])]
 class FirewallRuleset extends Model
 {
     use HasPublicUuid;

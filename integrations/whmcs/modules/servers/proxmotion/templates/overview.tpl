@@ -110,18 +110,18 @@
                 <hr>
                 <h4>
                     {$pmx.lang.firewall|escape}
-                    {if $firewall.enabled}
-                        <span class="label label-success">{$pmx.lang.firewall_on|escape}</span>
+                    {if $firewall.blocks}
+                        <span class="label label-success">{$pmx.lang.firewall_blocks|escape}</span>
                     {else}
-                        <span class="label label-default">{$pmx.lang.firewall_off|escape}</span>
+                        <span class="label label-default">{$pmx.lang.firewall_allows|escape}</span>
                     {/if}
                 </h4>
                 <p class="text-muted">{$pmx.lang.firewall_intro|escape}</p>
-                <form method="post" action="{$pmxAction}Firewall" class="form-inline" style="margin-bottom: 10px;"{if $firewall.enabled} onsubmit="return confirm('{$pmx.lang.firewall_off_confirm|escape:'javascript'}');"{/if}>
+                <form method="post" action="{$pmxAction}Firewall" class="form-inline" style="margin-bottom: 10px;"{if !$firewall.blocks} onsubmit="return confirm('{$pmx.lang.firewall_block_confirm|escape:'javascript'}');"{/if}>
                     <input type="hidden" name="token" value="{$token}">
-                    <input type="hidden" name="op" value="toggle">
-                    <input type="hidden" name="enabled" value="{if $firewall.enabled}0{else}1{/if}">
-                    <button type="submit" class="btn btn-{if $firewall.enabled}default{else}primary{/if} btn-sm">{if $firewall.enabled}{$pmx.lang.firewall_turn_off|escape}{else}{$pmx.lang.firewall_turn_on|escape}{/if}</button>
+                    <input type="hidden" name="op" value="policy">
+                    <input type="hidden" name="default_policy" value="{if $firewall.blocks}accept{else}drop{/if}">
+                    <button type="submit" class="btn btn-{if $firewall.blocks}default{else}primary{/if} btn-sm">{if $firewall.blocks}{$pmx.lang.firewall_allow_rest|escape}{else}{$pmx.lang.firewall_block_rest|escape}{/if}</button>
                 </form>
 
                 <table class="table table-condensed">

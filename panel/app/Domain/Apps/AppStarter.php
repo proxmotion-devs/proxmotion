@@ -131,8 +131,8 @@ final readonly class AppStarter
         ])->save();
         $this->logs->beginAttempt($installation);
 
-        // Its ports, while the server's firewall is on (docs/adr/0035 §4).
-        if ($server->firewall_enabled) {
+        // Its ports, while the server's firewall drops by default (docs/adr/0035 §4).
+        if ($server->blocksByDefault()) {
             try {
                 $this->firewall->apply($this->clients->forCluster($server->cluster)->qemu($server->node->name), $server);
             } catch (ProxmoxException $e) {

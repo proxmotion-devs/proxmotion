@@ -201,7 +201,7 @@ final readonly class FirewallChecker
             $problems[] = 'firewall_rules_differ';
         }
 
-        if ($server->firewall_enabled && ($options['policy_in'] ?? null) !== 'DROP') {
+        if ($server->blocksByDefault() && ($options['policy_in'] ?? null) !== 'DROP') {
             $problems[] = 'firewall_policy_open';
         }
 

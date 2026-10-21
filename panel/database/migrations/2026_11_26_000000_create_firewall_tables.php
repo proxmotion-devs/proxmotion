@@ -16,6 +16,8 @@ return new class extends Migration
             $table->uuid('uuid')->unique();
             $table->string('name', 100);
             $table->string('description', 255)->nullable();
+            // What the rules do not match: accept, or drop (only what they allow comes in).
+            $table->string('default_policy', 6)->default('drop');
             $table->json('rules');
             $table->boolean('is_active')->default(true);
             $table->timestamps();
@@ -39,11 +41,12 @@ return new class extends Migration
         });
 
         Schema::table('servers', function (Blueprint $table) {
-            $table->boolean('firewall_enabled')->default(false)->after('firewall_checked_at');
+            // Incoming traffic no rule matches: accept (the default) or drop (docs/adr/0035 §1).
+            $table->string('firewall_policy', 6)->default('accept')->after('firewall_checked_at');
         });
 
         Schema::table('packages', function (Blueprint $table) {
-            // New servers start with the firewall on and these rules.
+            // New servers start with these rules and their default policy.
             $table->foreignId('firewall_ruleset_id')->nullable()->after('disk_iops')->constrained('firewall_rulesets')->nullOnDelete();
         });
     }
@@ -55,7 +58,7 @@ return new class extends Migration
         });
 
         Schema::table('servers', function (Blueprint $table) {
-            $table->dropColumn('firewall_enabled');
+            $table->dropColumn('firewall_policy');
         });
 
         Schema::dropIfExists('server_firewall_rules');

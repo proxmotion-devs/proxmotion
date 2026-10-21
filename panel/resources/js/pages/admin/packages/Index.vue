@@ -37,7 +37,7 @@ const props = defineProps<{
 }>();
 
 const rulesetOptions = computed(() => [
-    { value: '', label: trans('None: the firewall starts off') },
+    { value: '', label: trans('None: no rules, everything is allowed') },
     ...props.firewallRulesets,
 ]);
 
@@ -437,7 +437,7 @@ const modelLabel = (value: string) =>
             label="Firewall rule set"
             for="firewall_ruleset"
             :error="form.errors.firewall_ruleset"
-            hint="New servers start with the firewall on and these rules."
+            hint="New servers start with its rules and what it does with other traffic."
         >
             <NativeSelect
                 id="firewall_ruleset"

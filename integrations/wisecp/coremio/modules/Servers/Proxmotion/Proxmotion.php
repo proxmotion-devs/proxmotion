@@ -96,7 +96,7 @@ class Proxmotion extends ServerModule
             'icon' => 'bi bi-shield-check',
             'page' => 'firewall',
             'type' => 'page-loader',
-            'capabilities' => ['list', 'toggle', 'add', 'delete', 'up', 'down', 'ruleset'],
+            'capabilities' => ['list', 'policy', 'add', 'delete', 'up', 'down', 'ruleset'],
         ]);
     }
 
@@ -111,7 +111,7 @@ class Proxmotion extends ServerModule
         $filters = parent::get_tool_action_data_filters();
         $filters['apps'] = ['secret_inputs' => null, 'app' => 'route', 'installation' => 'route', 'run' => 'route', 'app_action' => 'identifier', 'output' => 'identifier'];
         // Proxmotion validates the rest of a rule; rule_action, as WISECP removes "action".
-        $filters['firewall'] = ['ruleset' => 'route', 'mode' => 'identifier', 'rule_action' => 'identifier', 'protocol' => 'identifier', 'index' => 'identifier'];
+        $filters['firewall'] = ['ruleset' => 'route', 'mode' => 'identifier', 'rule_action' => 'identifier', 'protocol' => 'identifier', 'index' => 'identifier', 'default_policy' => 'identifier'];
 
         return $filters;
     }
@@ -818,7 +818,7 @@ class Proxmotion extends ServerModule
         $firewall = $this->api->firewall($id);
 
         return [
-            'enabled' => ! empty($firewall['enabled']),
+            'default_policy' => self::policyOf($firewall),
             'rules' => self::firewallRules($firewall),
             'app_rules' => array_values(array_filter(
                 is_array($firewall['app_rules'] ?? null) ? $firewall['app_rules'] : [],
@@ -833,7 +833,7 @@ class Proxmotion extends ServerModule
     }
 
     /**
-     * Change the firewall: "toggle" (enabled), "add" (a rule), "delete", "up"
+     * Change the firewall: "policy" (default_policy), "add" (a rule), "delete", "up"
      * or "down" (index), or "ruleset" (ruleset, mode). Proxmotion takes the
      * whole list of rules, so the current ones are read first.
      *
@@ -857,13 +857,13 @@ class Proxmotion extends ServerModule
         }
 
         $firewall = $this->api->firewall($id);
-        $enabled = ! empty($firewall['enabled']);
+        $policy = self::policyOf($firewall);
         $rules = self::firewallRules($firewall);
         $index = is_numeric($data['index'] ?? null) ? (int) $data['index'] : -1;
 
         switch ($action) {
-            case 'toggle':
-                $enabled = ! empty($data['enabled']);
+            case 'policy':
+                $policy = ($data['default_policy'] ?? '') === 'drop' ? 'drop' : 'accept';
                 break;
             case 'add':
                 $rules[] = self::ruleFromForm($data);
@@ -889,9 +889,20 @@ class Proxmotion extends ServerModule
                 throw new Exception('Unknown action: ' . $action);
         }
 
-        $this->api->updateFirewall($id, $enabled, $rules, $this->idempotencyKey('firewall'));
+        $this->api->updateFirewall($id, $policy, $rules, $this->idempotencyKey('firewall'));
 
         return $done;
+    }
+
+    /**
+     * What happens to incoming traffic no rule matches.
+     *
+     * @param array<string, mixed> $firewall
+     * @return 'accept'|'drop'
+     */
+    private static function policyOf(array $firewall): string
+    {
+        return ($firewall['default_policy'] ?? null) === 'drop' ? 'drop' : 'accept';
     }
 
     /**

@@ -147,12 +147,12 @@ confirmation. Proxmotion checks the app again against the chosen OS.
 ### Firewall
 
 The module adds a **Firewall** tool of its own (`pages/tools/firewall.php`, Proxmotion
-docs/adr/0035), shown while the server is active: on or off, the inbound rules in order
-with up, down and delete, a form to add a rule (allow or block, TCP, UDP, ICMP or any, a
+docs/adr/0035), shown while the server is active: the inbound rules in order, which always
+apply, with up, down and delete, a button to allow or block everything else, a form to add a rule (allow or block, TCP, UDP, ICMP or any, a
 port or range such as `1000-2000`, a source address or network, a comment), the rule sets
-administrators prepared in Proxmotion (in place of the customer's rules or after them,
-which turns the firewall on), and the ports the server's apps open. Turned on without
-rules, it lets SSH (Linux) or RDP (Windows) in. Every change reads the current rules and
+administrators prepared in Proxmotion (in place of the customer's rules or after them),
+and the ports the server's apps open. Switched to blocking without a rule that allows
+anything, it lets SSH (Linux) or RDP (Windows) in. Every change reads the current rules and
 sends the whole list with an `Idempotency-Key`; Proxmotion's message is shown when a rule
 is wrong. The field of a rule's action is `rule_action`, because WISECP removes `action`
 from tool data. Like the Apps tool, it is unverified whether WISECP shows an added tool.

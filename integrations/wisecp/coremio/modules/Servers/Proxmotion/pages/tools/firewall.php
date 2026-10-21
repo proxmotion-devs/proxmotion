@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 /*
  * The client area's Firewall tool (Proxmotion::tool_data('firewall'),
- * docs/adr/0035): on or off, the inbound rules in order with up, down and
+ * docs/adr/0035): what happens to traffic no rule matches, the inbound rules in order with up, down and
  * delete, a form to add a rule, a rule set to apply and the app ports.
  * WISECP renders it with the variables of ServerModule::render_tool_page();
  * actions go through request_tool_action() of WISECP's service page.
@@ -25,7 +25,7 @@ $title = isset($tool_label) && is_string($tool_label) ? $tool_label : '';
 $e = static fn (mixed $value): string => htmlspecialchars(is_scalar($value) ? (string) $value : '', ENT_QUOTES);
 $t = static fn (string $key): string => htmlspecialchars(is_string($texts[$key] ?? null) ? $texts[$key] : $key, ENT_QUOTES);
 
-$enabled = ! empty($data['enabled']);
+$blocks = ($data['default_policy'] ?? '') === 'drop';
 /** @var list<array<string, mixed>> $rules */
 $rules = is_array($data['rules'] ?? null) ? $data['rules'] : [];
 /** @var list<array<string, mixed>> $appRules */
@@ -40,12 +40,12 @@ $protocols = ['tcp' => 'TCP', 'udp' => 'UDP', 'icmp' => 'ICMP', 'any' => $t('fir
         <div class="card-title mb-0 fw-semibold">
             <i class="bi bi-shield-check me-2"></i><?= $e($title) ?>
             <?php if ($error === null): ?>
-                <span class="badge <?= $enabled ? 'bg-success' : 'bg-secondary' ?> ms-2"><?= $enabled ? $t('firewall_on') : $t('firewall_off') ?></span>
+                <span class="badge <?= $blocks ? 'bg-success' : 'bg-secondary' ?> ms-2"><?= $blocks ? $t('firewall_blocks') : $t('firewall_allows') ?></span>
             <?php endif; ?>
         </div>
         <?php if ($error === null): ?>
-            <button type="button" class="btn btn-sm <?= $enabled ? 'btn-outline-secondary' : 'btn-primary' ?>" onclick="pmxFirewallToggle(this)" data-enabled="<?= $enabled ? '0' : '1' ?>"<?= $enabled ? ' data-confirm="' . $t('firewall_off_confirm') . '"' : '' ?>>
-                <?= $enabled ? $t('firewall_turn_off') : $t('firewall_turn_on') ?>
+            <button type="button" class="btn btn-sm <?= $blocks ? 'btn-outline-secondary' : 'btn-primary' ?>" onclick="pmxFirewallPolicy(this)" data-policy="<?= $blocks ? 'accept' : 'drop' ?>"<?= $blocks ? '' : ' data-confirm="' . $t('firewall_block_confirm') . '"' ?>>
+                <?= $blocks ? $t('firewall_allow_rest') : $t('firewall_block_rest') ?>
             </button>
         <?php endif; ?>
     </div>
@@ -176,14 +176,14 @@ $protocols = ['tcp' => 'TCP', 'udp' => 'UDP', 'icmp' => 'ICMP', 'any' => $t('fir
         request_tool_action(TOOL, action, data, Object.assign({ button: button }, after));
     }
 
-    window.pmxFirewallToggle = function (button) {
+    window.pmxFirewallPolicy = function (button) {
         var question = button.getAttribute('data-confirm');
 
         if (question && !window.confirm(question)) {
             return;
         }
 
-        send('toggle', { enabled: button.getAttribute('data-enabled') }, button);
+        send('policy', { default_policy: button.getAttribute('data-policy') }, button);
     };
 
     window.pmxFirewallRule = function (button, action) {

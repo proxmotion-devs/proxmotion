@@ -13,8 +13,8 @@ use App\Proxmox\Resources\QemuResource;
 /**
  * Writes the panel's part of a server's VM firewall (docs/adr/0035 §2): the
  * isolation IP sets and rules (docs/adr/0034), the DHCP server rules
- * (docs/adr/0033), and while its firewall is on the app ports and the
- * server's own rules, with the input policy. Anti-spoofing options and the
+ * (docs/adr/0033), the app ports while it drops by default, the server's own
+ * rules, and the input policy (docs/adr/0035). Anti-spoofing options and the
  * address IP set are QemuResource::enableAntiSpoofing()'s.
  */
 final readonly class ServerFirewall
@@ -27,14 +27,14 @@ final readonly class ServerFirewall
     /**
      * Adopted VMs get the panel's rules only when an administrator asks
      * ($always: Enable anti-spoofing, Apply again), when their firewall is
-     * changed ($changing) or when they already have some; then later changes
-     * keep them right.
+     * changed ($changing), when they have firewall rules or already have some
+     * of the panel's; then later changes keep them right.
      *
      * @param  bool  $changing  a firewall change of the customer or an administrator: the policy follows it on adopted VMs too
      */
     public function apply(QemuResource $qemu, Server $server, bool $always = false, bool $changing = false): void
     {
-        $writes = $always || $changing || $server->origin === ServerOrigin::Provisioned || $server->firewall_enabled
+        $writes = $always || $changing || $server->origin === ServerOrigin::Provisioned || $server->blocksByDefault() || $server->firewallRules()->exists()
             || QemuResource::panelRules($qemu->firewallRules($server->vmid)) !== [];
 
         if (! $writes) {
@@ -62,28 +62,29 @@ final readonly class ServerFirewall
      */
     public function rules(Server $server, array $sets): array
     {
-        $rules = [...QemuResource::isolationRulesFor($sets), ...QemuResource::DHCP_SERVER_RULES];
-
-        if (! $server->firewall_enabled) {
-            return $rules;
-        }
-
         $own = $server->firewallRules()->get()->flatMap(fn (ServerFirewallRule $rule) => $rule->toRule()->proxmoxRules());
 
-        return [...$rules, ...$this->apps->proxmoxRules($server), ...$own->values()->all()];
+        return [
+            ...QemuResource::isolationRulesFor($sets),
+            ...QemuResource::DHCP_SERVER_RULES,
+            // The apps' ports matter only while everything else is dropped.
+            ...($server->blocksByDefault() ? $this->apps->proxmoxRules($server) : []),
+            ...$own->values()->all(),
+        ];
     }
 
     /**
-     * DROP while the firewall is on; ACCEPT while it is off on servers the
-     * panel created, and on adopted ones only when a firewall change turned
-     * it off (otherwise they keep their own, docs/adr/0033 §2). Null: leave it.
+     * DROP when the server's default policy is drop; otherwise ACCEPT on
+     * servers the panel created, and on adopted ones only when a firewall
+     * change set it (otherwise they keep their own, docs/adr/0033 §2). Null:
+     * leave it.
      *
      * @return 'ACCEPT'|'DROP'|null
      */
     public function inputPolicy(Server $server, bool $changing = false): ?string
     {
         return match (true) {
-            $server->firewall_enabled => 'DROP',
+            $server->blocksByDefault() => 'DROP',
             $server->origin === ServerOrigin::Provisioned, $changing => 'ACCEPT',
             default => null,
         };

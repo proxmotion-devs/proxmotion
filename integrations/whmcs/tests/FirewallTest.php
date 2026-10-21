@@ -18,7 +18,7 @@ class FirewallTest extends ModuleTestCase
     private static function firewall(): array
     {
         return [
-            'enabled' => true,
+            'default_policy' => 'drop',
             'rules' => [
                 ['action' => 'accept', 'protocol' => 'tcp', 'port' => '22', 'source' => '198.51.100.0/24', 'comment' => 'Office'],
                 ['action' => 'drop', 'protocol' => 'any', 'port' => null, 'source' => null, 'comment' => null],
@@ -60,7 +60,7 @@ class FirewallTest extends ModuleTestCase
 
         $firewall = $this->module()->clientArea()['templateVariables']['pmx']['firewall'];
 
-        $this->assertTrue($firewall['enabled']);
+        $this->assertTrue($firewall['blocks']);
         $this->assertSame(['index' => 0, 'action' => 'Allow', 'allows' => true, 'protocol' => 'TCP', 'port' => '22', 'source' => '198.51.100.0/24', 'comment' => 'Office', 'first' => true, 'last' => false], $firewall['rules'][0]);
         $this->assertSame(['Block', 'Any', 'all ports', 'anywhere', true], [$firewall['rules'][1]['action'], $firewall['rules'][1]['protocol'], $firewall['rules'][1]['port'], $firewall['rules'][1]['source'], $firewall['rules'][1]['last']]);
         $this->assertSame([['app' => 'wireguard', 'port' => 51820, 'protocol' => 'UDP']], $firewall['appRules']);
@@ -75,7 +75,7 @@ class FirewallTest extends ModuleTestCase
 
         $this->assertSame('success', $result);
         $body = $this->sentRules();
-        $this->assertTrue($body['enabled']);
+        $this->assertSame('drop', $body['default_policy']);
         $this->assertCount(3, $body['rules']);
         $this->assertSame(['action' => 'accept', 'protocol' => 'udp', 'port' => '53', 'source' => null, 'comment' => 'DNS'], $body['rules'][2]);
         $this->assertStringStartsWith('whmcs-42-firewall-', $this->api->last('PUT /servers/' . self::SERVER_ID . '/firewall')['headers']['Idempotency-Key']);
@@ -101,13 +101,13 @@ class FirewallTest extends ModuleTestCase
         $this->assertSame(['accept'], array_column($this->sentRules()['rules'], 'action'));
     }
 
-    public function test_the_firewall_is_turned_off_keeping_its_rules()
+    public function test_everything_else_is_allowed_again_keeping_the_rules()
     {
         $this->hasFirewall();
 
-        $this->module()->firewall(['op' => 'toggle', 'enabled' => '0']);
+        $this->module()->firewall(['op' => 'policy', 'default_policy' => 'accept']);
 
-        $this->assertFalse($this->sentRules()['enabled']);
+        $this->assertSame('accept', $this->sentRules()['default_policy']);
         $this->assertCount(2, $this->sentRules()['rules']);
     }
 

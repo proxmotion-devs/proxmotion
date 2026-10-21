@@ -7,15 +7,15 @@ import NativeSelect from '@/components/admin/NativeSelect.vue';
 import StatusBadge from '@/components/admin/StatusBadge.vue';
 import FirewallRulesEditor from '@/components/servers/FirewallRulesEditor.vue';
 import { Button } from '@/components/ui/button';
-import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { firewall as firewallRoute } from '@/routes/admin/servers';
 import { ruleset as rulesetRoute } from '@/routes/admin/servers/firewall';
 import type { ServerFirewall } from '@/types/admin';
 
 /**
- * A server's firewall (docs/adr/0035): on or off, its inbound rules, a rule
- * set to apply and the ports its apps open. Saving queues an apply_firewall
+ * A server's firewall (docs/adr/0035): what happens to traffic no rule
+ * matches, its inbound rules (always applied), a rule set to apply and the
+ * ports its apps open. Saving queues an apply_firewall
  * task, like the customer's changes through the billing API.
  */
 const props = defineProps<{
@@ -25,7 +25,7 @@ const props = defineProps<{
 }>();
 
 const form = useForm({
-    enabled: props.firewall.enabled,
+    default_policy: props.firewall.default_policy,
     rules: props.firewall.rules,
 });
 
@@ -38,10 +38,21 @@ const rulesetForm = useForm({
 watch(
     () => props.firewall,
     (firewall) => {
-        form.defaults({ enabled: firewall.enabled, rules: firewall.rules });
+        form.defaults({
+            default_policy: firewall.default_policy,
+            rules: firewall.rules,
+        });
         form.reset();
     },
 );
+
+const policies = computed(() => [
+    { value: 'accept' as const, label: trans('Allow it') },
+    {
+        value: 'drop' as const,
+        label: trans('Block it: only what the rules allow comes in'),
+    },
+]);
 
 const modes = computed(() => [
     { value: 'replace' as const, label: trans('Replace the rules') },
@@ -65,24 +76,39 @@ const applyRuleset = () =>
                 <ShieldCheck class="h-4 w-4" />
                 {{ $t('Firewall') }}
                 <StatusBadge
-                    :tone="firewall.enabled ? 'success' : 'neutral'"
-                    :label="firewall.enabled ? 'On' : 'Off'"
+                    :tone="
+                        firewall.default_policy === 'drop'
+                            ? 'success'
+                            : 'neutral'
+                    "
+                    :label="
+                        firewall.default_policy === 'drop'
+                            ? 'Blocks by default'
+                            : 'Allows by default'
+                    "
                 />
             </h3>
         </div>
         <p class="text-sm text-muted-foreground">
             {{
                 $t(
-                    'When on, only the traffic these rules allow reaches the server; what it sends is never blocked. Turned on without rules, it lets SSH (Linux) or RDP (Windows) in. The console always works.',
+                    'The rules always apply, top to bottom; traffic no rule matches is allowed or blocked as chosen here. What the server sends is never blocked. Switched to block without a rule that allows anything, it lets SSH (Linux) or RDP (Windows) in. The console always works.',
                 )
             }}
         </p>
 
         <form class="flex flex-col gap-3" @submit.prevent="save">
-            <Label class="flex items-center gap-3 font-normal">
-                <Checkbox v-model="form.enabled" :disabled="disabled" />
-                {{ $t('Firewall on') }}
-            </Label>
+            <div class="flex max-w-md flex-col gap-1">
+                <Label for="firewall-policy">{{
+                    $t('Traffic no rule matches')
+                }}</Label>
+                <NativeSelect
+                    id="firewall-policy"
+                    v-model="form.default_policy"
+                    :options="policies"
+                    :disabled="disabled"
+                />
+            </div>
             <FirewallRulesEditor v-model="form.rules" :errors="form.errors" />
             <div class="flex gap-2">
                 <Button

@@ -31,7 +31,7 @@ class PackageRequest extends FormRequest
             'port_speed_mbps' => ['nullable', 'integer', 'between:1,400000'],
             // Empty: unlimited (docs/adr/0034).
             ...ResourceLimits::rules(),
-            // New servers start with the firewall on and these rules (docs/adr/0035 §3).
+            // New servers start with these rules and its default policy (docs/adr/0035 §3).
             'firewall_ruleset' => ['nullable', 'string', Rule::exists('firewall_rulesets', 'uuid')],
             'ipv4_count' => ['required', 'integer', 'between:0,64'],
             'ipv6_count' => ['required', 'integer', 'between:0,64'],

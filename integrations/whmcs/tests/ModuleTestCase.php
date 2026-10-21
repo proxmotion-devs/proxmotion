@@ -34,7 +34,7 @@ abstract class ModuleTestCase extends TestCase
     protected function freshApi(): void
     {
         $this->api = new FakeTransport();
-        $this->api->on('GET /servers/' . self::SERVER_ID . '/firewall', 200, ['data' => ['enabled' => false, 'rules' => [], 'app_rules' => []]]);
+        $this->api->on('GET /servers/' . self::SERVER_ID . '/firewall', 200, ['data' => ['default_policy' => 'accept', 'rules' => [], 'app_rules' => []]]);
         $this->api->on('GET /firewall-rulesets', 200, ['data' => []]);
     }
 

@@ -32,7 +32,7 @@ use Illuminate\Support\Collection;
  * @property int|null $cpu_units relative CPU weight on a busy node
  * @property int|null $disk_mb_s read and write throughput of the boot disk, MB/s each
  * @property int|null $disk_iops read and write operations per second of the boot disk, each
- * @property int|null $firewall_ruleset_id new servers start with the firewall on and these rules (docs/adr/0035 §3)
+ * @property int|null $firewall_ruleset_id new servers start with these rules and its default policy (docs/adr/0035 §3)
  * @property int $ipv4_count
  * @property int $ipv6_count
  * @property int $snapshot_slots

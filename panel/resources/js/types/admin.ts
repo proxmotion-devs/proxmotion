@@ -198,7 +198,7 @@ export type Package = ResourceLimitValues & {
     sort_order: number;
     /** Empty: any node; otherwise the groups of the ordered location (docs/adr/0020). */
     placement_group_ids: number[];
-    /** New servers start with the firewall on and these rules (docs/adr/0035 §3). */
+    /** New servers start with these rules and its default policy (docs/adr/0035 §3). */
     firewall_ruleset: string | null;
 };
 
@@ -666,7 +666,7 @@ export type FirewallRuleValues = {
     comment: string | null;
 };
 
-/** A port an installed app opens while the firewall is on. */
+/** A port an installed app opens while the server blocks by default. */
 export type AppFirewallRule = {
     app: string;
     protocol: 'tcp' | 'udp';
@@ -675,7 +675,8 @@ export type AppFirewallRule = {
 
 /** A server's firewall on its page, with the rule sets that can be applied. */
 export type ServerFirewall = {
-    enabled: boolean;
+    /** What happens to incoming traffic no rule matches. */
+    default_policy: 'accept' | 'drop';
     rules: FirewallRuleValues[];
     app_rules: AppFirewallRule[];
     rulesets: Option[];
@@ -686,6 +687,7 @@ export type FirewallRuleset = {
     uuid: string;
     name: string;
     description: string | null;
+    default_policy: 'accept' | 'drop';
     is_active: boolean;
     rules: FirewallRuleValues[];
     /** Whether its rules let SSH or RDP in. */

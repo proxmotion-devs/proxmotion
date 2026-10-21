@@ -14,8 +14,9 @@ use App\Provisioning\Exceptions\TaskAlreadyRunning;
 use Illuminate\Http\JsonResponse;
 
 /**
- * A server's firewall (docs/adr/0035): read it, replace its rules, or apply
- * a rule set. Changes answer 202 with the apply_firewall task.
+ * A server's firewall (docs/adr/0035): read it, set its default policy and
+ * replace its rules, or apply a rule set. Changes answer 202 with the
+ * apply_firewall task.
  */
 class FirewallController extends ApiController
 {
@@ -33,7 +34,7 @@ class FirewallController extends ApiController
         }
 
         try {
-            return $this->accepted($this->firewalls->change($server, $request->enabled(), $request->firewallRules(), $this->token($request), $request->ip()));
+            return $this->accepted($this->firewalls->change($server, $request->policy(), $request->firewallRules(), $this->token($request), $request->ip()));
         } catch (TaskAlreadyRunning $e) {
             return $this->conflict($e->translatedMessage());
         } catch (ProvisioningException $e) {

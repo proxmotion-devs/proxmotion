@@ -247,11 +247,11 @@ Every VPS gets the Proxmox firewall with **`ipfilter` and `macfilter`** enabled 
 
 ([ADR 0035](../adr/0035-server-firewall.md)) A firewall per server that customers (billing API and modules) and administrators (server page) manage, in the spirit of VirtFusion's:
 
-- **Off** (the default): everything may reach the server, as before. **On**: the input policy is `DROP` and only what the server's rules allow comes in; what the server sends is never filtered, and answers to its own connections come back.
+- **Rules always apply**, top to bottom. What happens to traffic no rule matches is the server's **default policy**: *allow* (the default, everything else comes in as before; e.g. one `block 3389/tcp` rule closes RDP) or *block* (only what the rules allow comes in). What the server sends is never filtered, and answers to its own connections come back.
 - **Rules**: inbound only, at most 50, in order: allow or block, TCP, UDP, ICMP or any, a port or range (`22`, `1000-2000`), a source address or CIDR (empty: anywhere), a comment. Every change is an `apply_firewall` task and is audited.
-- **Default rule**: turned on without rules, a server gets SSH (`22/tcp`) on Linux or RDP (`3389/tcp`) on Windows, an ordinary rule that can be narrowed or deleted. A reinstall onto the other platform swaps it while it is the only, untouched rule; otherwise the task says that no rule lets SSH or RDP in.
-- **Rule sets** (*Admin → Firewall rule sets*): prepared rules customers apply in one go (replacing or adding to theirs, which turns the firewall on); a package can start its new servers with one. The page warns about rule sets that let neither SSH nor RDP in.
-- **App ports**: the `firewall` ports of the server's apps (e.g. WireGuard's UDP port) are opened while the firewall is on, as soon as the installer starts, and closed once the app is uninstalled.
+- **Default rule**: switched to *block* without a rule that allows anything, a server gets SSH (`22/tcp`) on Linux or RDP (`3389/tcp`) on Windows, an ordinary rule that can be narrowed or deleted. A reinstall onto the other platform swaps it while it is the only, untouched rule; otherwise the task says that no rule lets SSH or RDP in.
+- **Rule sets** (*Admin → Firewall rule sets*): prepared rules with a default policy that customers apply in one go (replacing their rules and policy, or adding to their rules); a package can start its new servers with one. The page warns about rule sets that let neither SSH nor RDP in.
+- **App ports**: the `firewall` ports of the server's apps (e.g. WireGuard's UDP port) are opened while it blocks by default, as soon as the installer starts, and closed once the app is uninstalled.
 - **How**: the panel writes one block of rules on top of the VM firewall (isolation, DHCP, app ports, the server's rules), all with comments starting with `Proxmotion`, and rewrites it whenever it differs; rules added in Proxmox by hand stay below it. The firewall check reports changed rules and an open policy as a firewall drift.
 - The console never goes through the network: a customer who locks themselves out can still get in.
 

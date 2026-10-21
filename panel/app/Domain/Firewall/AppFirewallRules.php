@@ -10,7 +10,7 @@ use App\Models\Server;
 
 /**
  * The ports a server's apps declare in their recipes (`firewall:`), opened
- * while the server's firewall is on (docs/adr/0035 §4). `{{ inputs.x }}` is
+ * while the server drops by default (docs/adr/0035 §4). `{{ inputs.x }}` is
  * the installation's input value.
  */
 final class AppFirewallRules

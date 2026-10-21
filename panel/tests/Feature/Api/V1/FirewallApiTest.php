@@ -38,11 +38,11 @@ class FirewallApiTest extends ApiTestCase
         return array_map(fn (array $rule) => (string) ($rule['comment'] ?? ''), $this->proxmox->vms[$this->server->vmid]['rules']);
     }
 
-    public function test_a_new_server_has_its_firewall_off()
+    public function test_a_new_server_allows_everything()
     {
         $this->api('GET', $this->url())
             ->assertOk()
-            ->assertExactJson(['data' => ['enabled' => false, 'rules' => [], 'app_rules' => []]]);
+            ->assertExactJson(['data' => ['default_policy' => 'accept', 'rules' => [], 'app_rules' => []]]);
 
         $this->assertSame('ACCEPT', $this->proxmox->vms[$this->server->vmid]['firewall']['policy_in']);
     }
@@ -55,13 +55,13 @@ class FirewallApiTest extends ApiTestCase
             ['action' => 'accept', 'protocol' => 'icmp', 'port' => null, 'source' => null, 'comment' => 'Ping'],
         ];
 
-        $this->api('PUT', $this->url(), ['enabled' => true, 'rules' => $rules])
+        $this->api('PUT', $this->url(), ['default_policy' => 'drop', 'rules' => $rules])
             ->assertAccepted()
             ->assertJsonPath('data.type', 'apply_firewall')
             ->assertJsonPath('data.status', 'succeeded');
 
         $this->api('GET', $this->url())
-            ->assertJsonPath('data.enabled', true)
+            ->assertJsonPath('data.default_policy', 'drop')
             ->assertJsonPath('data.rules', $rules);
 
         $vm = $this->proxmox->vms[$this->server->vmid];
@@ -80,38 +80,51 @@ class FirewallApiTest extends ApiTestCase
         $this->assertSame(['icmp', 'ipv6-icmp'], [$vm['rules'][4]['proto'], $vm['rules'][5]['proto']]);
 
         $audit = AuditLog::query()->where('action', 'server.firewall_changed')->sole();
-        $this->assertFalse($audit->properties['before']['enabled']);
+        $this->assertSame('accept', $audit->properties['before']['default_policy']);
         $this->assertCount(3, $audit->properties['after']['rules']);
     }
 
-    public function test_turning_it_on_without_rules_lets_ssh_in()
+    public function test_blocking_by_default_without_an_allowing_rule_lets_ssh_in()
     {
-        $this->api('PUT', $this->url(), ['enabled' => true, 'rules' => []])->assertAccepted();
+        $this->api('PUT', $this->url(), ['default_policy' => 'drop', 'rules' => []])->assertAccepted();
 
         $this->api('GET', $this->url())->assertJsonPath('data.rules', [
             ['action' => 'accept', 'protocol' => 'tcp', 'port' => '22', 'source' => null, 'comment' => 'SSH'],
         ]);
 
-        // Already on: an empty list blocks everything.
-        $this->api('PUT', $this->url(), ['enabled' => true, 'rules' => []])->assertAccepted();
+        // Already blocking: an empty list blocks everything.
+        $this->api('PUT', $this->url(), ['default_policy' => 'drop', 'rules' => []])->assertAccepted();
         $this->api('GET', $this->url())->assertJsonPath('data.rules', []);
     }
 
-    public function test_turning_it_off_keeps_the_rules_and_opens_the_server()
+    public function test_rules_apply_while_everything_else_is_allowed()
+    {
+        // The rule an administrator wrote expecting it to work at once.
+        $rule = ['action' => 'drop', 'protocol' => 'tcp', 'port' => '3389', 'source' => null, 'comment' => 'No RDP'];
+
+        $this->api('PUT', $this->url(), ['default_policy' => 'accept', 'rules' => [$rule]])->assertAccepted();
+
+        $vm = $this->proxmox->vms[$this->server->vmid];
+        $this->assertSame('ACCEPT', $vm['firewall']['policy_in']);
+        $written = collect($vm['rules'])->firstWhere('comment', 'Proxmotion rule: No RDP');
+        $this->assertSame(['in', 'DROP', 'tcp', '3389'], [$written['type'], $written['action'], $written['proto'], $written['dport']]);
+        $this->api('GET', $this->url())->assertJsonPath('data.default_policy', 'accept')->assertJsonPath('data.rules', [$rule]);
+    }
+
+    public function test_switching_back_to_allowing_keeps_the_rules()
     {
         $rule = ['action' => 'accept', 'protocol' => 'tcp', 'port' => '443', 'source' => null, 'comment' => null];
-        $this->api('PUT', $this->url(), ['enabled' => true, 'rules' => [$rule]])->assertAccepted();
+        $this->api('PUT', $this->url(), ['default_policy' => 'drop', 'rules' => [$rule]])->assertAccepted();
 
-        $this->api('PUT', $this->url(), ['enabled' => false, 'rules' => [$rule]])->assertAccepted();
+        $this->api('PUT', $this->url(), ['default_policy' => 'accept', 'rules' => [$rule]])->assertAccepted();
 
         $this->assertSame('ACCEPT', $this->proxmox->vms[$this->server->vmid]['firewall']['policy_in']);
-        $this->assertNotContains('Proxmotion rule', $this->proxmoxComments());
-        $this->api('GET', $this->url())->assertJsonPath('data.enabled', false)->assertJsonPath('data.rules', [$rule]);
+        $this->assertContains('Proxmotion rule', $this->proxmoxComments());
     }
 
     public function test_invalid_rules_are_refused()
     {
-        $put = fn (array $rule) => $this->api('PUT', $this->url(), ['enabled' => true, 'rules' => [[
+        $put = fn (array $rule) => $this->api('PUT', $this->url(), ['default_policy' => 'drop', 'rules' => [[
             'action' => 'accept', 'protocol' => 'tcp', 'port' => null, 'source' => null, 'comment' => null, ...$rule,
         ]]]);
 
@@ -123,7 +136,7 @@ class FirewallApiTest extends ApiTestCase
         $put(['comment' => "two\nlines"])->assertUnprocessable()->assertJsonValidationErrors('rules.0.comment');
 
         $tooMany = array_fill(0, 51, ['action' => 'accept', 'protocol' => 'any', 'port' => null, 'source' => null, 'comment' => null]);
-        $this->api('PUT', $this->url(), ['enabled' => true, 'rules' => $tooMany])->assertUnprocessable()->assertJsonValidationErrors('rules');
+        $this->api('PUT', $this->url(), ['default_policy' => 'drop', 'rules' => $tooMany])->assertUnprocessable()->assertJsonValidationErrors('rules');
 
         $this->assertFalse(Task::query()->where('type', TaskType::ApplyFirewall)->exists());
     }
@@ -140,15 +153,16 @@ class FirewallApiTest extends ApiTestCase
             ->assertOk()
             ->assertJsonCount(1, 'data')
             ->assertJsonPath('data.0.id', $web->uuid)
+            ->assertJsonPath('data.0.default_policy', 'drop')
             ->assertJsonPath('data.0.rules.1.port', '443');
 
-        $this->api('PUT', $this->url(), ['enabled' => false, 'rules' => [['action' => 'accept', 'protocol' => 'tcp', 'port' => '22', 'source' => null, 'comment' => null]]])->assertAccepted();
+        $this->api('PUT', $this->url(), ['default_policy' => 'accept', 'rules' => [['action' => 'accept', 'protocol' => 'tcp', 'port' => '22', 'source' => null, 'comment' => null]]])->assertAccepted();
 
         $this->api('POST', $this->url('/ruleset'), ['ruleset' => $web->uuid, 'mode' => 'append'])->assertAccepted();
-        $this->api('GET', $this->url())->assertJsonPath('data.enabled', true)->assertJsonCount(3, 'data.rules');
+        $this->api('GET', $this->url())->assertJsonPath('data.default_policy', 'accept', 'Appending keeps the policy.')->assertJsonCount(3, 'data.rules');
 
         $this->api('POST', $this->url('/ruleset'), ['ruleset' => $web->uuid, 'mode' => 'replace'])->assertAccepted();
-        $this->api('GET', $this->url())->assertJsonCount(2, 'data.rules')->assertJsonPath('data.rules.0.comment', 'HTTP');
+        $this->api('GET', $this->url())->assertJsonPath('data.default_policy', 'drop', 'The rule set\'s.')->assertJsonCount(2, 'data.rules')->assertJsonPath('data.rules.0.comment', 'HTTP');
 
         $hidden = FirewallRuleset::query()->where('name', 'Hidden')->sole();
         $this->api('POST', $this->url('/ruleset'), ['ruleset' => $hidden->uuid, 'mode' => 'replace'])->assertUnprocessable();
@@ -158,15 +172,15 @@ class FirewallApiTest extends ApiTestCase
     {
         $this->server->forceFill(['status' => ServerStatus::Reinstalling])->save();
 
-        $this->api('PUT', $this->url(), ['enabled' => true, 'rules' => []])->assertConflict();
+        $this->api('PUT', $this->url(), ['default_policy' => 'drop', 'rules' => []])->assertConflict();
     }
 
     public function test_a_running_task_is_a_conflict()
     {
         (new Task)->forceFill(['server_id' => $this->server->id, 'type' => TaskType::Reboot, 'status' => TaskStatus::Running, 'steps' => []])->save();
 
-        $this->api('PUT', $this->url(), ['enabled' => true, 'rules' => []])->assertConflict();
+        $this->api('PUT', $this->url(), ['default_policy' => 'drop', 'rules' => []])->assertConflict();
 
-        $this->assertFalse($this->server->refresh()->firewall_enabled, 'Rolled back.');
+        $this->assertSame('accept', $this->server->refresh()->firewall_policy, 'Rolled back.');
     }
 }

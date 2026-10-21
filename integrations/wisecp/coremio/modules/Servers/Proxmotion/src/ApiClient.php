@@ -403,7 +403,7 @@ final class ApiClient
      * A signed console link for the customer's browser (valid for 60 seconds, once).
      */
     /**
-     * The server's firewall: enabled, rules, app_rules (docs/adr/0035).
+     * The server's firewall: default_policy, rules, app_rules (docs/adr/0035).
      *
      * @return array<string, mixed>
      */
@@ -413,14 +413,14 @@ final class ApiClient
     }
 
     /**
-     * Turn the firewall on or off and replace its rules; returns the task.
+     * Set the default policy ("accept" or "drop") and replace the rules; returns the task.
      *
      * @param list<array<string, string|null>> $rules
      * @return array<string, mixed>
      */
-    public function updateFirewall(string $id, bool $enabled, array $rules, string $idempotencyKey): array
+    public function updateFirewall(string $id, string $policy, array $rules, string $idempotencyKey): array
     {
-        return $this->dataOf($this->request('PUT', '/servers/' . rawurlencode($id) . '/firewall', ['enabled' => $enabled, 'rules' => $rules], $idempotencyKey));
+        return $this->dataOf($this->request('PUT', '/servers/' . rawurlencode($id) . '/firewall', ['default_policy' => $policy, 'rules' => $rules], $idempotencyKey));
     }
 
     /**

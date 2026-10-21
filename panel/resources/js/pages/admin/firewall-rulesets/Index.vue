@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { Head, useForm } from '@inertiajs/vue3';
+import { trans } from 'laravel-vue-i18n';
 import { Pencil, Plus, TriangleAlert } from '@lucide/vue';
 import { computed, ref } from 'vue';
 import ConfirmDelete from '@/components/admin/ConfirmDelete.vue';
 import FormDialog from '@/components/admin/FormDialog.vue';
 import FormField from '@/components/admin/FormField.vue';
+import NativeSelect from '@/components/admin/NativeSelect.vue';
 import StatusBadge from '@/components/admin/StatusBadge.vue';
 import Heading from '@/components/Heading.vue';
 import FirewallRulesEditor from '@/components/servers/FirewallRulesEditor.vue';
@@ -44,28 +46,39 @@ const starter: FirewallRuleValues[] = [
 const form = useForm({
     name: '',
     description: '',
+    default_policy: 'drop' as 'accept' | 'drop',
     is_active: true,
     rules: starter,
 });
 
+const policies = computed(() => [
+    {
+        value: 'drop' as const,
+        label: trans('Block it: only what the rules allow comes in'),
+    },
+    { value: 'accept' as const, label: trans('Allow it') },
+]);
+
 /** Whether the rules let SSH (22) or RDP (3389) in, like FirewallRule::opens(). */
-const opensRemoteAccess = computed(() =>
-    form.rules.some((rule) => {
-        if (
-            rule.action !== 'accept' ||
-            !['tcp', 'any'].includes(rule.protocol)
-        ) {
-            return false;
-        }
+const opensRemoteAccess = computed(
+    () =>
+        form.default_policy === 'accept' ||
+        form.rules.some((rule) => {
+            if (
+                rule.action !== 'accept' ||
+                !['tcp', 'any'].includes(rule.protocol)
+            ) {
+                return false;
+            }
 
-        if (!rule.port) {
-            return true;
-        }
+            if (!rule.port) {
+                return true;
+            }
 
-        const [from, to = from] = rule.port.split('-').map(Number);
+            const [from, to = from] = rule.port.split('-').map(Number);
 
-        return [22, 3389].some((port) => port >= from && port <= to);
-    }),
+            return [22, 3389].some((port) => port >= from && port <= to);
+        }),
 );
 
 const openForm = (ruleset: FirewallRuleset | null) => {
@@ -74,6 +87,7 @@ const openForm = (ruleset: FirewallRuleset | null) => {
     form.defaults({
         name: ruleset?.name ?? '',
         description: ruleset?.description ?? '',
+        default_policy: ruleset?.default_policy ?? 'drop',
         is_active: ruleset?.is_active ?? true,
         rules: ruleset ? [...ruleset.rules] : starter,
     });
@@ -148,6 +162,13 @@ const summary = (rules: FirewallRuleValues[]) =>
                         </td>
                         <td class="px-4 py-3 font-mono text-xs">
                             {{ summary(ruleset.rules) || '—' }}
+                            <div class="mt-1 font-sans text-muted-foreground">
+                                {{
+                                    ruleset.default_policy === 'drop'
+                                        ? $t('Blocks by default')
+                                        : $t('Allows by default')
+                                }}
+                            </div>
                             <div
                                 v-if="!ruleset.opens_remote_access"
                                 class="mt-1 flex items-center gap-1 font-sans text-amber-700 dark:text-amber-400"
@@ -224,6 +245,17 @@ const summary = (rules: FirewallRuleValues[]) =>
             :error="form.errors.description"
         >
             <Input id="description" v-model="form.description" />
+        </FormField>
+        <FormField
+            label="Traffic no rule matches"
+            for="default_policy"
+            :error="form.errors.default_policy"
+        >
+            <NativeSelect
+                id="default_policy"
+                v-model="form.default_policy"
+                :options="policies"
+            />
         </FormField>
         <Label class="flex items-center gap-3 font-normal">
             <Checkbox v-model="form.is_active" />

@@ -24,6 +24,7 @@ class FirewallRulesetResource extends JsonResource
             'id' => $this->uuid,
             'name' => $this->name,
             'description' => $this->description,
+            'default_policy' => $this->default_policy,
             'rules' => $this->rules,
         ];
     }

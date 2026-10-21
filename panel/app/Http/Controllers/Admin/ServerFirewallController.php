@@ -25,7 +25,7 @@ class ServerFirewallController extends Controller
     public function update(FirewallRulesRequest $request, Server $server, #[CurrentUser] User $admin): RedirectResponse
     {
         try {
-            $this->firewalls->change($server, $request->enabled(), $request->firewallRules(), $admin, $request->ip());
+            $this->firewalls->change($server, $request->policy(), $request->firewallRules(), $admin, $request->ip());
         } catch (ProvisioningException $e) {
             $this->toast('error', $e->translatedMessage());
 

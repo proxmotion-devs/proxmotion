@@ -594,10 +594,9 @@ paths:
       tags: [Servers]
       summary: The server's firewall
       description: |
-        Scope: `servers:read`. Whether the firewall is on, its inbound rules in order, and the
-        ports the server's apps open while it is on. While the firewall is off everything may
-        reach the server; while it is on only what the rules allow. Outgoing traffic is never
-        filtered.
+        Scope: `servers:read`. The inbound rules in order, which always apply; what happens to
+        incoming traffic no rule matches (`default_policy`: `accept` or `drop`); and the ports the
+        server's apps open while it drops by default. Outgoing traffic is never filtered.
       operationId: getServerFirewall
       responses:
         '200':
@@ -614,11 +613,11 @@ paths:
         '404': { $ref: '#/components/responses/NotFound' }
     put:
       tags: [Servers]
-      summary: Turn the firewall on or off and replace its rules
+      summary: Set the default policy and replace the rules
       description: |
         Scope: `servers:write`. Active and suspended servers. `rules` replaces every rule (at most
-        50, in order). Turned on without rules, the server gets one rule letting SSH (Linux) or
-        RDP (Windows) in. Answers `202` with the `apply_firewall` task.
+        50, in order). Switched to `drop` without a rule that allows anything, the server gets one
+        rule letting SSH (Linux) or RDP (Windows) in. Answers `202` with the `apply_firewall` task.
       operationId: updateServerFirewall
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
@@ -628,9 +627,9 @@ paths:
           application/json:
             schema:
               type: object
-              required: [enabled, rules]
+              required: [default_policy, rules]
               properties:
-                enabled: { type: boolean }
+                default_policy: { type: string, enum: [accept, drop], description: What happens to incoming traffic no rule matches. }
                 rules: { type: array, maxItems: 50, items: { $ref: '#/components/schemas/FirewallRule' } }
       responses:
         '202': { $ref: '#/components/responses/TaskAccepted' }
@@ -647,9 +646,9 @@ paths:
       tags: [Servers]
       summary: Apply a firewall rule set
       description: |
-        Scope: `servers:write`. Its rules replace the server's (`replace`) or follow them
-        (`append`, at most 50 rules in all), and the firewall is turned on. Answers `202` with the
-        `apply_firewall` task.
+        Scope: `servers:write`. Its rules and default policy replace the server's (`replace`), or
+        its rules follow the server's (`append`, at most 50 rules in all; the default policy stays).
+        Answers `202` with the `apply_firewall` task.
       operationId: applyServerFirewallRuleset
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
@@ -1298,13 +1297,13 @@ components:
         comment: { type: [string, 'null'], maxLength: 60 }
     Firewall:
       type: object
-      required: [enabled, rules, app_rules]
+      required: [default_policy, rules, app_rules]
       properties:
-        enabled: { type: boolean }
+        default_policy: { type: string, enum: [accept, drop], description: What happens to incoming traffic no rule matches. }
         rules: { type: array, items: { $ref: '#/components/schemas/FirewallRule' } }
         app_rules:
           type: array
-          description: Ports the server's apps open while the firewall is on; not editable.
+          description: Ports the server's apps open while it drops by default; not editable.
           items:
             type: object
             required: [app, protocol, port]
@@ -1314,11 +1313,12 @@ components:
               port: { type: integer }
     FirewallRuleset:
       type: object
-      required: [id, name, description, rules]
+      required: [id, name, description, default_policy, rules]
       properties:
         id: { type: string, format: uuid }
         name: { type: string }
         description: { type: [string, 'null'] }
+        default_policy: { type: string, enum: [accept, drop] }
         rules: { type: array, items: { $ref: '#/components/schemas/FirewallRule' } }
     Location:
       type: object
