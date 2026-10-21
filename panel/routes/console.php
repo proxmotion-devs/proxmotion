@@ -22,4 +22,5 @@ Schedule::command('model:prune', ['--model' => [AppLog::class, GuestScriptLog::c
 Schedule::command('apps:poll')->everyMinute()->withoutOverlapping();
 
 // Live figures of the servers administrators are watching; returns at once when nobody is (docs/adr/0036).
-Schedule::command('servers:stats')->everyTenSeconds()->withoutOverlapping();
+// The lock expires after a minute: a crashed run must not stop them for a day (the default).
+Schedule::command('servers:stats')->everyTenSeconds()->withoutOverlapping(1);
