@@ -5,6 +5,7 @@ import { SlidersHorizontal } from '@lucide/vue';
 import { computed, ref } from 'vue';
 import FormField from '@/components/admin/FormField.vue';
 import NativeSelect from '@/components/admin/NativeSelect.vue';
+import LimitFields from '@/components/servers/LimitFields.vue';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
@@ -43,6 +44,10 @@ const fromResources = (resources: ResourceValues) => ({
     ipv6_count: resources.ipv6_count,
     port_speed_mbps: (resources.port_speed_mbps ?? '') as OptionalNumber,
     traffic_gb: (resources.traffic_gb ?? '') as OptionalNumber,
+    cpu_limit: (resources.cpu_limit ?? '') as OptionalNumber,
+    cpu_units: (resources.cpu_units ?? '') as OptionalNumber,
+    disk_mb_s: (resources.disk_mb_s ?? '') as OptionalNumber,
+    disk_iops: (resources.disk_iops ?? '') as OptionalNumber,
 });
 
 const form = useForm({
@@ -87,6 +92,10 @@ const submit = () =>
             ...data,
             port_speed_mbps: optionalNumber(data.port_speed_mbps),
             traffic_gb: optionalNumber(data.traffic_gb),
+            cpu_limit: optionalNumber(data.cpu_limit),
+            cpu_units: optionalNumber(data.cpu_units),
+            disk_mb_s: optionalNumber(data.disk_mb_s),
+            disk_iops: optionalNumber(data.disk_iops),
         }))
         .submit(props.action, {
             preserveScroll: true,
@@ -219,6 +228,14 @@ const submit = () =>
                         />
                     </FormField>
                 </div>
+
+                <LimitFields
+                    v-model:cpu-limit="form.cpu_limit"
+                    v-model:cpu-units="form.cpu_units"
+                    v-model:disk-mb-s="form.disk_mb_s"
+                    v-model:disk-iops="form.disk_iops"
+                    :errors="form.errors"
+                />
 
                 <p
                     v-if="smallerDisk"

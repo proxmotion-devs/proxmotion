@@ -76,6 +76,10 @@ class ChangeResourcesTest extends TestCase
                     'ipv6_count' => 0,
                     'port_speed_mbps' => 1000,
                     'traffic_gb' => $this->package->traffic_bytes === null ? null : intdiv($this->package->traffic_bytes, 1000 ** 3),
+                    'cpu_limit' => null,
+                    'cpu_units' => null,
+                    'disk_mb_s' => null,
+                    'disk_iops' => null,
                 ]));
     }
 

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Requests\Admin;
 
 use App\Enums\NetworkModel;
+use App\Provisioning\ResourceLimits;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -27,6 +28,8 @@ class PackageRequest extends FormRequest
             'disk_gib' => ['required', 'integer', 'between:1,65536'],
             'traffic_gb' => ['nullable', 'integer', 'between:1,10000000'],
             'port_speed_mbps' => ['nullable', 'integer', 'between:1,400000'],
+            // Empty: unlimited (docs/adr/0034).
+            ...ResourceLimits::rules(),
             'ipv4_count' => ['required', 'integer', 'between:0,64'],
             'ipv6_count' => ['required', 'integer', 'between:0,64'],
             'snapshot_slots' => ['required', 'integer', 'between:0,100'],
@@ -59,6 +62,6 @@ class PackageRequest extends FormRequest
         $data['traffic_bytes'] = $this->filled('traffic_gb') ? $this->integer('traffic_gb') * 1000 ** 3 : null;
         $data['port_speed_mbps'] = $this->filled('port_speed_mbps') ? $this->integer('port_speed_mbps') : null;
 
-        return $data;
+        return [...$data, ...ResourceLimits::fromRequest($this)->columns()];
     }
 }

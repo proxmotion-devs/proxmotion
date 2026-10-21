@@ -19,6 +19,10 @@ const pkg = (overrides: Partial<PackageOption> = {}): PackageOption => ({
     ipv6_count: 0,
     port_speed_mbps: null,
     traffic_gb: 2000,
+    cpu_limit: null,
+    cpu_units: null,
+    disk_mb_s: null,
+    disk_iops: null,
     ...overrides,
 });
 

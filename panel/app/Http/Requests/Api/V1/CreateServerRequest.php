@@ -172,6 +172,8 @@ class CreateServerRequest extends FormRequest
             ipv6Count: (int) $override('ipv6_count', $package->ipv6Count),
             portSpeedMbps: $override('port_speed_mbps', $package->portSpeedMbps),
             trafficBytes: $override('traffic_bytes', $package->trafficBytes),
+            // From the package; the API takes no overrides (docs/adr/0034).
+            limits: $package->limits,
         );
     }
 }

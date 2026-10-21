@@ -489,6 +489,12 @@ class FakeProxmoxCluster
             return Create::promiseFor(new Psr7Response(403, ['Content-Type' => 'application/json'], '{"data":null}', '1.1', $this->refuseTags));
         }
 
+        foreach (array_filter(explode(',', (string) ($data['delete'] ?? ''))) as $key) {
+            unset($this->vms[$vmid]['config'][$key]);
+        }
+
+        unset($data['delete']);
+
         foreach ($data as $key => $value) {
             // Without hotplug, Proxmox keeps CPU and memory changes of a running VM for its next start.
             if ($this->vms[$vmid]['status'] === 'running' && in_array($key, ['cores', 'sockets', 'memory'], true) && (string) ($this->vms[$vmid]['config'][$key] ?? '') !== (string) $value) {

@@ -65,6 +65,7 @@ final readonly class ResourceChanger
                     'disk_mib' => $target->diskMib,
                     'port_speed_mbps' => $target->portSpeedMbps,
                     'traffic_bytes' => $target->trafficBytes,
+                    ...$target->limits->columns(),
                 ])->save();
 
                 return $this->tasks->start($server, TaskType::ChangeResources, $actor, input: [
@@ -97,6 +98,7 @@ final readonly class ResourceChanger
             ipv6Count: $spec->ipv6Count,
             portSpeedMbps: $spec->portSpeedMbps,
             trafficBytes: $spec->trafficBytes,
+            limits: $spec->limits,
         );
     }
 
@@ -134,7 +136,7 @@ final readonly class ResourceChanger
     }
 
     /**
-     * @return array<string, int|null>
+     * @return array<string, int|float|null>
      */
     private function resourcesOf(Server $server): array
     {
@@ -146,6 +148,7 @@ final readonly class ResourceChanger
             'ipv6_count' => $server->ipAddresses()->whereHas('pool', fn ($query) => $query->where('version', IpVersion::V6))->count(),
             'port_speed_mbps' => $server->port_speed_mbps,
             'traffic_bytes' => $server->traffic_bytes,
+            ...ResourceLimits::of($server)->columns(),
         ];
     }
 }

@@ -48,6 +48,10 @@ use Illuminate\Support\Carbon;
  * @property int $disk_mib
  * @property int|null $port_speed_mbps
  * @property int|null $traffic_bytes
+ * @property string|null $cpu_limit at most this many cores' worth of CPU time, e.g. "1.50" (docs/adr/0034); null: unlimited
+ * @property int|null $cpu_units relative CPU weight on a busy node
+ * @property int|null $disk_mb_s read and write throughput of the boot disk, MB/s each
+ * @property int|null $disk_iops read and write operations per second of the boot disk, each
  * @property string|null $root_password
  * @property bool $root_password_unrevealed the billing system has not fetched the current root password yet
  * @property bool $reboot_required changed CPU or memory waits for the VM's next restart
@@ -91,6 +95,10 @@ class Server extends Model
             'disk_mib' => 'integer',
             'port_speed_mbps' => 'integer',
             'traffic_bytes' => 'integer',
+            'cpu_limit' => 'decimal:2',
+            'cpu_units' => 'integer',
+            'disk_mb_s' => 'integer',
+            'disk_iops' => 'integer',
             'root_password' => 'encrypted',
             'root_password_unrevealed' => 'boolean',
             'reboot_required' => 'boolean',

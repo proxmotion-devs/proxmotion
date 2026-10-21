@@ -8,6 +8,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\PackageRequest;
 use App\Models\Package;
 use App\Models\PlacementGroup;
+use App\Provisioning\ResourceLimits;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
@@ -31,6 +32,7 @@ class PackageController extends Controller
                     'disk_mib' => $package->disk_mib,
                     'traffic_bytes' => $package->traffic_bytes,
                     'port_speed_mbps' => $package->port_speed_mbps,
+                    ...ResourceLimits::of($package)->columns(),
                     'ipv4_count' => $package->ipv4_count,
                     'ipv6_count' => $package->ipv6_count,
                     'snapshot_slots' => $package->snapshot_slots,

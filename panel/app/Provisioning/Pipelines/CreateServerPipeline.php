@@ -18,6 +18,7 @@ use App\Provisioning\Exceptions\ForeignVm;
 use App\Provisioning\LinkedClones;
 use App\Provisioning\Network\GuestIsolation;
 use App\Provisioning\Network\NetworkConfig;
+use App\Provisioning\ResourceLimits;
 use App\Provisioning\Stages\StagedPipeline;
 use App\Provisioning\Stages\StageRunner;
 use App\Provisioning\VmLabels;
@@ -308,7 +309,9 @@ final readonly class CreateServerPipeline implements StagedPipeline
             $params['sshkeys'] = rawurlencode(trim($server->ssh_keys));
         }
 
-        $qemu->updateConfig($server->vmid, $params);
+        // CPU and disk limits (docs/adr/0034); the disk is the clone's, grown later.
+        $limits = ResourceLimits::of($server)->proxmoxConfig($current);
+        $qemu->updateConfig($server->vmid, [...$params, ...$limits['params']], $limits['delete']);
 
         // Proxmox generates the MAC address on clone; record the one the VM really has.
         $config = $qemu->config($server->vmid) ?? [];

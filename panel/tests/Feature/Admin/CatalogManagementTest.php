@@ -148,6 +148,23 @@ class CatalogManagementTest extends AdminTestCase
         $this->assertEquals([NetworkModel::Bridged, NetworkModel::Routed], $package->network_models->all());
     }
 
+    public function test_packages_store_cpu_and_disk_limits()
+    {
+        // docs/adr/0034
+        $this->post(route('admin.packages.store'), [
+            'name' => 'VPS S', 'cpu_cores' => 2, 'memory_mib' => 2048, 'disk_gib' => 40,
+            'ipv4_count' => 1, 'ipv6_count' => 0, 'snapshot_slots' => 0, 'backup_slots' => 0,
+            'network_models' => ['bridged'], 'is_active' => true, 'sort_order' => 0,
+            'cpu_limit' => 1.25, 'cpu_units' => null, 'disk_mb_s' => 200, 'disk_iops' => '',
+        ])->assertSessionHasNoErrors();
+
+        $package = Package::query()->sole();
+        $this->assertSame(['1.25', null, 200, null], [$package->cpu_limit, $package->cpu_units, $package->disk_mb_s, $package->disk_iops]);
+
+        $this->get(route('admin.packages.index'))
+            ->assertInertia(fn (Assert $page) => $page->where('packages.0.cpu_limit', 1.25)->where('packages.0.disk_mb_s', 200));
+    }
+
     public function test_unlimited_traffic_is_stored_as_null()
     {
         $package = Package::factory()->create();

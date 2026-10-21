@@ -60,7 +60,7 @@ Nothing company-specific is built in: no hard-coded names, IP ranges or branding
 | **Storage** | A Proxmox storage. The `shared` flag decides how cloning works; *Use for servers* decides whether automatic placement may put disks there. |
 | **Placement group** | A panel-only, named set of nodes of one location (optionally with their storages) that packages can be pinned to. |
 | **IP pool** | An IPv4 or IPv6 range with a network model, gateway, netmask, VLAN, location and rDNS settings. |
-| **Package** | A plan: CPU, memory, disk, traffic quota, port speed, IP counts, allowed network models, optional placement groups. |
+| **Package** | A plan: CPU, memory, disk, traffic quota, port speed, CPU and disk limits, IP counts, allowed network models, optional placement groups. |
 | **OS template** | A Proxmox template VM (cloud-init + QEMU guest agent) mapped per node or cluster, with its distribution, version and family. |
 | **Server** | A VPS managed by the panel. Identified publicly by a UUID, and by the billing system's service id (`external_id`). |
 | **Task** | One asynchronous operation on a server (create, reinstall, power, …), with step-by-step progress. |
@@ -333,6 +333,7 @@ A **package** (plan) defines:
 
 - vCPU cores, memory (MiB), disk (MiB),
 - traffic quota (bytes) and port speed (Mbps → Proxmox `rate=`),
+- optional **CPU and disk limits** ([ADR 0034](../adr/0034-guest-isolation.md)): a CPU limit in cores (`cpulimit`, e.g. 1.5), a CPU weight on a busy node (`cpuunits`), and the boot disk's read and write speed in MB/s and operations per second (`mbps_rd`/`mbps_wr`, `iops_rd`/`iops_wr`); empty is unlimited. Servers take them from their package on creation and package changes; custom servers and *Change resources* take them by hand. The billing API accepts no overrides for them,
 - number of IPv4 and IPv6 addresses,
 - backup quota,
 - allowed **network models**,

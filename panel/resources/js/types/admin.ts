@@ -173,7 +173,15 @@ export type GuestScriptRunDetail = GuestScriptRun & {
     output_kept: boolean;
 };
 
-export type Package = {
+/** CPU and disk limits (docs/adr/0034); null is unlimited. */
+export type ResourceLimitValues = {
+    cpu_limit: number | null;
+    cpu_units: number | null;
+    disk_mb_s: number | null;
+    disk_iops: number | null;
+};
+
+export type Package = ResourceLimitValues & {
     uuid: string;
     name: string;
     cpu_cores: number;
@@ -301,7 +309,7 @@ export type Drift = {
 };
 
 /** Resources as the ResourcesDialog edits them. */
-export type ResourceValues = {
+export type ResourceValues = ResourceLimitValues & {
     cpu_cores: number;
     memory_mib: number;
     disk_gib: number;
@@ -597,17 +605,18 @@ export type PlacementGroupOption = Option & {
 };
 
 /** A package offered on the create form; its values fill the resource fields. */
-export type PackageOption = Option & {
-    network_models: NetworkModel[];
-    placement_groups: string[];
-    cpu_cores: number;
-    memory_mib: number;
-    disk_gib: number;
-    ipv4_count: number;
-    ipv6_count: number;
-    port_speed_mbps: number | null;
-    traffic_gb: number | null;
-};
+export type PackageOption = Option &
+    ResourceLimitValues & {
+        network_models: NetworkModel[];
+        placement_groups: string[];
+        cpu_cores: number;
+        memory_mib: number;
+        disk_gib: number;
+        ipv4_count: number;
+        ipv6_count: number;
+        port_speed_mbps: number | null;
+        traffic_gb: number | null;
+    };
 
 /** A placement group (docs/adr/0020): nodes, and optionally storages, of one location. */
 export type PlacementGroup = {
@@ -639,4 +648,8 @@ export type NewServerResources = {
     ipv6_count: number;
     port_speed_mbps: number | '';
     traffic_gb: number | '';
+    cpu_limit: number | '';
+    cpu_units: number | '';
+    disk_mb_s: number | '';
+    disk_iops: number | '';
 };

@@ -8,6 +8,7 @@ import FormField from '@/components/admin/FormField.vue';
 import GuideBox from '@/components/admin/GuideBox.vue';
 import StatusBadge from '@/components/admin/StatusBadge.vue';
 import Heading from '@/components/Heading.vue';
+import LimitFields from '@/components/servers/LimitFields.vue';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
@@ -74,6 +75,10 @@ const form = useForm({
     disk_gib: 40,
     traffic_gb: 2000 as OptionalNumber,
     port_speed_mbps: 1000 as OptionalNumber,
+    cpu_limit: '' as OptionalNumber,
+    cpu_units: '' as OptionalNumber,
+    disk_mb_s: '' as OptionalNumber,
+    disk_iops: '' as OptionalNumber,
     ipv4_count: 1,
     ipv6_count: 1,
     snapshot_slots: 1,
@@ -99,6 +104,10 @@ const openForm = (pkg: Package | null) => {
                           ? ''
                           : Math.round(pkg.traffic_bytes / 1000 ** 3),
                   port_speed_mbps: pkg.port_speed_mbps ?? '',
+                  cpu_limit: pkg.cpu_limit ?? '',
+                  cpu_units: pkg.cpu_units ?? '',
+                  disk_mb_s: pkg.disk_mb_s ?? '',
+                  disk_iops: pkg.disk_iops ?? '',
                   ipv4_count: pkg.ipv4_count,
                   ipv6_count: pkg.ipv6_count,
                   snapshot_slots: pkg.snapshot_slots,
@@ -115,6 +124,10 @@ const openForm = (pkg: Package | null) => {
                   disk_gib: 40,
                   traffic_gb: 2000,
                   port_speed_mbps: 1000,
+                  cpu_limit: '',
+                  cpu_units: '',
+                  disk_mb_s: '',
+                  disk_iops: '',
                   ipv4_count: 1,
                   ipv6_count: 1,
                   snapshot_slots: 1,
@@ -148,6 +161,10 @@ const submit = () => {
         ...data,
         traffic_gb: optionalNumber(data.traffic_gb),
         port_speed_mbps: optionalNumber(data.port_speed_mbps),
+        cpu_limit: optionalNumber(data.cpu_limit),
+        cpu_units: optionalNumber(data.cpu_units),
+        disk_mb_s: optionalNumber(data.disk_mb_s),
+        disk_iops: optionalNumber(data.disk_iops),
     })).submit(editing.value ? update(editing.value.uuid) : store(), {
         preserveScroll: true,
         onSuccess: () => (dialogOpen.value = false),
@@ -397,6 +414,13 @@ const modelLabel = (value: string) =>
                 />
             </FormField>
         </div>
+        <LimitFields
+            v-model:cpu-limit="form.cpu_limit"
+            v-model:cpu-units="form.cpu_units"
+            v-model:disk-mb-s="form.disk_mb_s"
+            v-model:disk-iops="form.disk_iops"
+            :errors="form.errors"
+        />
         <div class="grid gap-4 sm:grid-cols-4">
             <FormField
                 label="IPv4 addresses"

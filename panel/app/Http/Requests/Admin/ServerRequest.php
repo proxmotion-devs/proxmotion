@@ -15,6 +15,7 @@ use App\Models\Package;
 use App\Models\PlacementGroup;
 use App\Provisioning\HostnameGenerator;
 use App\Provisioning\NewServer;
+use App\Provisioning\ResourceLimits;
 use App\Provisioning\ServerCreator;
 use App\Provisioning\ServerSpec;
 use App\Rules\Hostname;
@@ -55,6 +56,8 @@ class ServerRequest extends FormRequest
             // Empty: unlimited.
             'port_speed_mbps' => ['nullable', 'integer', 'between:1,400000'],
             'traffic_gb' => ['nullable', 'integer', 'between:1,10000000'],
+            // Custom servers only, empty: unlimited (docs/adr/0034).
+            ...ResourceLimits::rules(),
             // Custom servers only: "group", the best node of a placement group (docs/adr/0020);
             // "node", the node (and optionally storage) chosen here.
             'placement' => [Rule::requiredIf($custom), Rule::prohibitedIf(! $custom), 'nullable', Rule::in(['group', 'node'])],
@@ -196,6 +199,7 @@ class ServerRequest extends FormRequest
             ipv6Count: $this->integer('ipv6_count'),
             portSpeedMbps: $this->filled('port_speed_mbps') ? $this->integer('port_speed_mbps') : null,
             trafficBytes: $this->filled('traffic_gb') ? $this->integer('traffic_gb') * 1000 ** 3 : null,
+            limits: ResourceLimits::fromRequest($this),
         );
     }
 }

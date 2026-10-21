@@ -11,6 +11,10 @@ const values: NewServerResources = {
     ipv6_count: 0,
     port_speed_mbps: '',
     traffic_gb: '',
+    cpu_limit: '',
+    cpu_units: '',
+    disk_mb_s: '',
+    disk_iops: '',
 };
 
 const mountFields = () => {
@@ -46,6 +50,21 @@ describe('ResourceFields', () => {
             ...values,
             cpu_cores: 4,
             port_speed_mbps: '',
+        });
+    });
+
+    it('edits the CPU and disk limits', async () => {
+        const wrapper = mountFields();
+
+        await wrapper.find('#cpu_limit').setValue('1.5');
+        await flushPromises();
+        await wrapper.find('#disk_iops').setValue('500');
+        await flushPromises();
+
+        expect(wrapper.props('values')).toEqual({
+            ...values,
+            cpu_limit: 1.5,
+            disk_iops: 500,
         });
     });
 

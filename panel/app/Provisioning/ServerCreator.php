@@ -242,6 +242,7 @@ final readonly class ServerCreator
             'disk_mib' => $order->spec->diskMib,
             'port_speed_mbps' => $order->spec->portSpeedMbps,
             'traffic_bytes' => $order->spec->trafficBytes,
+            ...$order->spec->limits->columns(),
             'root_password' => $order->rootPassword,
             // The billing system may fetch the initial password once (docs/adr/0007).
             'root_password_unrevealed' => true,

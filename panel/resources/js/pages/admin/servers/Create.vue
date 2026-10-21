@@ -80,6 +80,10 @@ const form = useForm({
         ipv6_count: 0,
         port_speed_mbps: '',
         traffic_gb: '',
+        cpu_limit: '',
+        cpu_units: '',
+        disk_mb_s: '',
+        disk_iops: '',
     } as NewServerResources,
     os_template:
         props.selectedOsTemplate ?? props.osTemplates[0]?.value ?? null,
@@ -174,6 +178,10 @@ const resources = computed<NewServerResources>(() => {
               ipv6_count: pkg.ipv6_count,
               port_speed_mbps: pkg.port_speed_mbps ?? '',
               traffic_gb: pkg.traffic_gb ?? '',
+              cpu_limit: pkg.cpu_limit ?? '',
+              cpu_units: pkg.cpu_units ?? '',
+              disk_mb_s: pkg.disk_mb_s ?? '',
+              disk_iops: pkg.disk_iops ?? '',
           }
         : form.resources;
 });
@@ -329,6 +337,10 @@ const submit = () => {
                       storage,
                       port_speed_mbps: optionalNumber(entered.port_speed_mbps),
                       traffic_gb: optionalNumber(entered.traffic_gb),
+                      cpu_limit: optionalNumber(entered.cpu_limit),
+                      cpu_units: optionalNumber(entered.cpu_units),
+                      disk_mb_s: optionalNumber(entered.disk_mb_s),
+                      disk_iops: optionalNumber(entered.disk_iops),
                   },
     ).submit(store(), {
         // Back to the first step with an error.
