@@ -57,6 +57,7 @@ The first deployment is the maintainers' own hosting company, but the project is
 | Realtime | Laravel Reverb + `laravel-echo` / `pusher-js` | Live server statistics (ADR 0036); later live task progress |
 | Tests | Pest (PHPUnit), Vitest via `vp test` + happy-dom + Vue Test Utils | |
 | Code quality | Laravel Pint, PHPStan/Larastan (level 8), `vp check` (Oxfmt + Oxlint), vue-tsc, shellcheck | |
+| Security scanning | GitHub CodeQL (default setup: JavaScript/TypeScript, workflows), Semgrep CE with `p/php` (`.github/workflows/semgrep.yml`, category `semgrep`) | CodeQL has no PHP support; both report to code scanning and never fail CI |
 | WHMCS module | Standalone PHP, compatible with WHMCS's minimum PHP | Runs on the WHMCS server, no Laravel/Composer |
 | Deployment | **Docker Compose** (primary) + **native installer** for Debian/Ubuntu | See 3.9 |
 

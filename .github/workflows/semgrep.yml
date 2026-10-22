@@ -1,0 +1,61 @@
+# Static analysis of the PHP code (panel and billing modules) with Semgrep CE.
+# CodeQL (default setup) covers JavaScript/TypeScript and the workflows but has no
+# PHP support. Findings go to code scanning under the category "semgrep" and never
+# fail this workflow: `semgrep scan` exits 0 with findings unless `--error` is given.
+name: Semgrep
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    # Weekly, so rules added to the registry reach main without a push.
+    - cron: '23 4 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: semgrep-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  php:
+    name: Semgrep (PHP)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    env:
+      SEMGREP_VERSION: '1.182.1'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Install Semgrep
+        run: pipx install "semgrep==${SEMGREP_VERSION}"
+
+      # p/php includes the Laravel rules (SQL injection, unsafe validators).
+      # Tests and fixtures are left out; vendor/ is not installed here.
+      - name: Scan
+        run: >
+          semgrep scan
+          --config p/php
+          --metrics=off
+          --exclude=tests
+          --sarif --output=semgrep.sarif
+          panel integrations
+
+      # Pull requests from forks and Dependabot get a read-only token, which cannot
+      # upload results; the scan above still runs for them.
+      - name: Upload to code scanning
+        if: >-
+          github.event_name != 'pull_request' ||
+          (github.event.pull_request.head.repo.full_name == github.repository &&
+          github.actor != 'dependabot[bot]')
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: semgrep.sarif
+          category: semgrep
