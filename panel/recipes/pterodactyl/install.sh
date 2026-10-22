@@ -99,7 +99,8 @@ SQL
 pm_step 45 "Installing the panel's PHP packages"
 [ -f "$PTERO_DIR/.env" ] || cp "$PTERO_DIR/.env.example" "$PTERO_DIR/.env"
 chmod 0640 "$PTERO_DIR/.env"
-(cd "$PTERO_DIR" && COMPOSER_ALLOW_SUPERUSER=1 composer install --no-dev --optimize-autoloader --no-interaction --no-progress)
+# The runner sets no HOME, which Composer needs for its cache and settings.
+(cd "$PTERO_DIR" && COMPOSER_HOME=/root/.config/composer COMPOSER_ALLOW_SUPERUSER=1 composer install --no-dev --optimize-autoloader --no-interaction --no-progress)
 chown -R www-data:www-data "$PTERO_DIR"
 chmod -R 755 "$PTERO_DIR/storage" "$PTERO_DIR/bootstrap/cache"
 # The key encrypts node tokens, API keys and 2FA secrets: never generate a new one.

@@ -112,7 +112,7 @@ ptero_user_exists() {
 # values reach PHP through the environment, never through the code.
 ptero_set_password() {
     # shellcheck disable=SC2016
-    (cd "$PTERO_DIR" && PTERO_USERNAME=$1 PTERO_PASSWORD=$2 runuser -u www-data -- php artisan --no-interaction tinker --execute '
+    (cd "$PTERO_DIR" && PTERO_USERNAME=$1 PTERO_PASSWORD=$2 runuser -u www-data -- env HOME=/var/www php artisan --no-interaction tinker --execute '
         $user = \Pterodactyl\Models\User::query()->where("username", getenv("PTERO_USERNAME"))->firstOrFail();
         $user->password = getenv("PTERO_PASSWORD");
         $user->save();
