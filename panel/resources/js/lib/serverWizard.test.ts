@@ -4,6 +4,7 @@ import {
     automaticFit,
     groupFit,
     groupStorages,
+    makesTestServer,
     nodeProblems,
     nodeStorages,
     WIZARD_STEPS,
@@ -165,5 +166,16 @@ describe('automaticFit', () => {
             total: 0,
             fitting: 0,
         });
+    });
+
+    it('makes a test server of an inactive OS template', () => {
+        const templates = [
+            { value: 'debian', active: true },
+            { value: 'pardus', active: false },
+        ];
+
+        expect(makesTestServer(templates, 'pardus')).toBe(true);
+        expect(makesTestServer(templates, 'debian')).toBe(false);
+        expect(makesTestServer(templates, null)).toBe(false);
     });
 });

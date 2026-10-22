@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Resources\Api\V1;
 
+use App\Domain\Usage\TrafficPeriods;
 use App\Enums\IpVersion;
 use App\Enums\NetworkModel;
 use App\Models\IpAddress;
@@ -45,6 +46,8 @@ class ServerResource extends JsonResource
             'hostname' => $this->hostname,
             'status' => $this->status->value,
             'suspension_reason' => $this->suspension_reason,
+            // traffic or usage when the panel suspended the server itself (docs/adr/0039); null otherwise.
+            'suspension_cause' => $this->suspension_cause?->value,
             // New CPU or memory wait for a restart of the server (start/reboot through the API).
             'reboot_required' => $this->reboot_required,
             // "running", "stopped" or null when Proxmox could not be asked; only on GET /servers/{id}.
@@ -60,6 +63,8 @@ class ServerResource extends JsonResource
                 'port_speed_mbps' => $this->port_speed_mbps,
                 'traffic_bytes' => $this->traffic_bytes,
             ],
+            // The current traffic period (docs/adr/0039).
+            'traffic' => $this->traffic(),
             'addresses' => $this->ipAddresses->map(fn (IpAddress $address) => [
                 'address' => $address->address,
                 'version' => $address->pool->version->value,
@@ -77,6 +82,22 @@ class ServerResource extends JsonResource
             'created_at' => $this->created_at?->toIso8601String(),
             'provisioned_at' => $this->provisioned_at?->toIso8601String(),
             'terminated_at' => $this->terminated_at?->toIso8601String(),
+        ];
+    }
+
+    /**
+     * @return array{period_start: string, period_end: string, in_bytes: int, out_bytes: int, counted_bytes: int}
+     */
+    private function traffic(): array
+    {
+        $usage = TrafficPeriods::usage($this->resource);
+
+        return [
+            'period_start' => $usage['period_start'],
+            'period_end' => $usage['period_end'],
+            'in_bytes' => $usage['in_bytes'],
+            'out_bytes' => $usage['out_bytes'],
+            'counted_bytes' => $usage['counted_bytes'],
         ];
     }
 }

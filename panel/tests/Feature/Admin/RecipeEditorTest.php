@@ -33,9 +33,13 @@ class RecipeEditorTest extends AdminTestCase
         return AppRecipe::query()->where('slug', $slug)->sole();
     }
 
+    /** Whether the app is offered on an Ubuntu 24.04 template, ticked for it as administrators do (docs/adr/0026). */
     private function offeredOnUbuntu(AppRecipe $app): bool
     {
-        return app(AppEligibility::class)->forCatalog($app->refresh()->load('latestVersion'), OsTemplate::factory()->create(), null) === null;
+        $template = OsTemplate::factory()->create();
+        $app->osVersions()->syncWithoutDetaching([(int) $template->operating_system_version_id]);
+
+        return app(AppEligibility::class)->forCatalog($app->refresh()->load('latestVersion'), $template, null) === null;
     }
 
     /**
@@ -69,7 +73,22 @@ class RecipeEditorTest extends AdminTestCase
         $this->post(route('admin.apps.store'), ['slug' => 'Bad_Slug', 'name' => 'Mine'])->assertSessionHasErrors('slug');
         $this->post(route('admin.apps.copy', $this->app('docker')), ['slug' => 'openvpn', 'name' => 'Mine'])->assertSessionHasErrors('slug');
 
-        $this->assertSame(16, AppRecipe::query()->count());
+        $this->post(route('admin.apps.store'), ['slug' => 'mine', 'name' => 'Mine', 'platform' => 'macos'])->assertSessionHasErrors('platform');
+
+        $this->assertSame(20, AppRecipe::query()->count());
+    }
+
+    public function test_a_new_windows_app_starts_from_the_powershell_skeleton()
+    {
+        $this->post(route('admin.apps.store'), ['slug' => 'file-server', 'name' => 'File Server', 'platform' => 'windows'])->assertSessionHasNoErrors();
+
+        $draft = $this->app('file-server')->draft();
+
+        $this->assertNotNull($draft);
+        $this->assertSame(['install.ps1', 'uninstall.ps1'], array_keys($draft->files));
+        $this->assertSame('windows', $draft->definition['requires']['platform']);
+        $this->get(route('admin.apps.edit', 'file-server'))->assertInertia(fn ($page) => $page
+            ->where('library', fn ($library) => array_keys(collect($library)->all()) === ['proxmotion.ps1', 'run.ps1', 'start.ps1', 'read-log.ps1']));
     }
 
     public function test_a_copy_of_a_bundled_app_is_an_editable_draft_and_the_original_stays()
@@ -84,7 +103,7 @@ class RecipeEditorTest extends AdminTestCase
         $this->assertSame('1.0.0', $draft?->version);
         $this->assertSame($wireguard->current()->files, $draft->files);
         $this->assertSame(['my-vpn', 'My VPN'], [$draft->definition['slug'], $draft->definition['name']]);
-        $this->assertSame(['app' => 'my-vpn', 'from' => 'wireguard@1.3.0'], AuditLog::query()->where('action', 'app.copied')->sole()->properties);
+        $this->assertSame(['app' => 'my-vpn', 'from' => 'wireguard@1.3.1'], AuditLog::query()->where('action', 'app.copied')->sole()->properties);
         $this->assertSame('WireGuard', $wireguard->current()->refresh()->definition['name'], 'The original stays as it was.');
     }
 
@@ -185,12 +204,12 @@ class RecipeEditorTest extends AdminTestCase
         $this->post(route('admin.apps.store'), ['slug' => 'uptime-kuma', 'name' => 'Uptime Kuma']);
 
         $this->get(route('admin.apps.index'))->assertInertia(fn ($page) => $page
-            ->has('apps', 17)
-            ->where('apps.11.slug', 'uptime-kuma')
-            ->where('apps.11.source', 'custom')
-            ->where('apps.11.published', false)
-            ->where('apps.11.draft_version', '1.0.0')
-            ->where('apps.11.version', null));
+            ->has('apps', 21)
+            ->where('apps.15.slug', 'uptime-kuma')
+            ->where('apps.15.source', 'custom')
+            ->where('apps.15.published', false)
+            ->where('apps.15.draft_version', '1.0.0')
+            ->where('apps.15.version', null));
     }
 
     public function test_the_editor_opens_bundled_apps_for_editing_and_custom_drafts_with_their_errors()
@@ -199,41 +218,47 @@ class RecipeEditorTest extends AdminTestCase
             ->component('admin/apps/Edit')
             ->where('app.editable', true)
             ->where('app.modified', false)
-            ->where('app.bundled_version', '1.3.0')
+            ->where('app.bundled_version', '1.3.1')
             ->where('app.source', 'bundled')
             ->where('draft', null)
-            ->where('published.version', '1.3.0')
+            ->where('published.version', '1.3.1')
             ->where('published.definition.slug', 'wireguard')
             ->where('published.files', fn ($files) => collect($files)->has('lib.sh'))
             ->where('library', fn ($library) => collect($library)->has('proxmotion.sh'))
-            ->where('osGroups.rhel.families', ['almalinux', 'rocky', 'centos', 'fedora']));
+            ->where('systems.slug', 'wireguard'));
 
         $this->post(route('admin.apps.copy', $this->app('wireguard')), ['slug' => 'my-vpn', 'name' => 'My VPN']);
 
         $this->get(route('admin.apps.edit', $this->app('my-vpn')))->assertInertia(fn ($page) => $page
             ->where('app.editable', true)
-            ->where('app.copied_from', ['slug' => 'wireguard', 'name' => 'WireGuard', 'version' => '1.3.0'])
+            ->where('app.copied_from', ['slug' => 'wireguard', 'name' => 'WireGuard', 'version' => '1.3.1'])
             ->where('app.upstream_version', null)
             ->where('draft.version', '1.0.0')
             ->where('draft.errors', [])
             ->where('versions.0.status', 'draft'));
     }
 
-    public function test_the_os_picker_gets_the_family_and_version_pairs_of_active_linux_templates()
+    public function test_the_editor_ticks_the_apps_systems_and_the_drafts_suggestions()
     {
-        OsTemplate::factory()->create(['family' => 'debian', 'version' => '13']);
-        OsTemplate::factory()->create(['family' => 'debian', 'version' => '12']);
-        OsTemplate::factory()->create(['name' => 'Debian 12 (copy)', 'family' => 'debian', 'version' => '12']);
-        OsTemplate::factory()->create(['family' => 'Ubuntu', 'version' => '24.04']);
-        OsTemplate::factory()->create(['family' => 'rocky', 'version' => '9', 'is_active' => false]);
-        OsTemplate::factory()->windows()->create();
+        $trixie = OsTemplate::factory()->create(['distribution' => 'debian', 'version' => '13'])->operating_system_version_id;
+        $rocky = OsTemplate::factory()->create(['distribution' => 'rocky', 'version' => '9'])->operating_system_version_id;
+        $docker = $this->app('docker');
+        $docker->osVersions()->attach($rocky);
 
-        $this->get(route('admin.apps.edit', $this->app('docker')))->assertInertia(fn ($page) => $page
-            ->where('osTemplates', [
-                ['family' => 'debian', 'version' => '12'],
-                ['family' => 'debian', 'version' => '13'],
-                ['family' => 'ubuntu', 'version' => '24.04'],
-            ]));
+        // The ticks are the app's, not the recipe's (docs/adr/0026): the draft only changes what is suggested.
+        $draft = $docker->latestVersion?->definition ?? [];
+        $draft['requires']['os'] = ['distributions' => ['rocky']];
+        unset($draft['requires']['min_versions'], $draft['requires']['max_versions']);
+        $this->save($docker, Yaml::dump($draft, 6, 4), $docker->latestVersion?->files ?? [])->assertSessionHasNoErrors();
+
+        $this->get(route('admin.apps.edit', $docker))->assertInertia(fn ($page) => $page
+            ->where('osVersions', fn ($versions) => collect($versions)->pluck('id')->contains($trixie))
+            ->where('systems', ['slug' => 'docker', 'platform' => 'linux', 'os_version_ids' => [$rocky], 'suggested_ids' => [$rocky]]));
+
+        // Saved at once, without publishing.
+        $this->put(route('admin.apps.systems', $docker), ['os_version_ids' => [$rocky, $trixie]])->assertSessionHasNoErrors();
+        $this->assertNotNull($docker->refresh()->draft());
+        $this->assertEqualsCanonicalizing([$rocky, $trixie], $docker->osVersions()->pluck('operating_system_versions.id')->all());
     }
 
     public function test_versions_are_compared_in_the_history()
@@ -259,38 +284,38 @@ class RecipeEditorTest extends AdminTestCase
         $definition['resources']['min_memory_mib'] = 1024;
 
         $this->save($wireguard, Yaml::dump($definition, 6, 4), $wireguard->current()->files)->assertSessionHasNoErrors();
-        $this->assertSame('1.3.0-local.1', $wireguard->draft()?->version);
+        $this->assertSame('1.3.1-local.1', $wireguard->draft()?->version);
         $this->assertFalse($wireguard->refresh()->isModified(), 'A draft changes nothing yet.');
 
         $this->post(route('admin.apps.publish', $wireguard), ['bump' => 'major'])->assertSessionHasNoErrors();
         $wireguard->refresh();
-        $this->assertSame('1.3.0-local.1', $wireguard->current()->version, 'Bundled edits ignore the bump.');
+        $this->assertSame('1.3.1-local.1', $wireguard->current()->version, 'Bundled edits ignore the bump.');
         $this->assertSame(AppRecipeVersion::ORIGIN_LOCAL, $wireguard->current()->origin);
         $this->assertTrue($wireguard->isModified());
         $this->assertSame(1024, $wireguard->recipe()->minMemoryMib);
 
-        // A panel update ships wireguard 1.3.1: it is kept, not offered.
-        $this->app->instance(RecipeLoader::class, $this->recipesWithWireguard('1.3.1'));
+        // A panel update ships wireguard 1.3.2: it is kept, not offered.
+        $this->app->instance(RecipeLoader::class, $this->recipesWithWireguard('1.3.2'));
         $this->assertSame(['wireguard'], app(RecipeSynchronizer::class)->sync()['held']);
         $wireguard->refresh();
-        $this->assertSame('1.3.0-local.1', $wireguard->current()->version);
-        $this->assertSame(AppRecipeVersionStatus::Archived, $wireguard->versions()->where('version', '1.3.1')->sole()->status);
+        $this->assertSame('1.3.1-local.1', $wireguard->current()->version);
+        $this->assertSame(AppRecipeVersionStatus::Archived, $wireguard->versions()->where('version', '1.3.2')->sole()->status);
 
         $this->get(route('admin.apps.edit', $wireguard))->assertInertia(fn ($page) => $page
             ->where('app.modified', true)
-            ->where('app.bundled_version', '1.3.1')
+            ->where('app.bundled_version', '1.3.2')
             ->where('app.bundled_newer', true));
 
         // A second edit is numbered after the newest bundled version.
         $this->save($wireguard, Yaml::dump($wireguard->current()->definition, 6, 4), $wireguard->current()->files);
-        $this->assertSame('1.3.1-local.1', $wireguard->draft()?->version);
+        $this->assertSame('1.3.2-local.1', $wireguard->draft()?->version);
 
         $this->post(route('admin.apps.revert', $wireguard))->assertSessionHasNoErrors();
         $wireguard->refresh();
-        $this->assertSame('1.3.1', $wireguard->current()->version);
+        $this->assertSame('1.3.2', $wireguard->current()->version);
         $this->assertFalse($wireguard->isModified());
         $this->assertNull($wireguard->draft(), 'Going back drops the draft.');
-        $this->assertSame(AppRecipeVersionStatus::Archived, $wireguard->versions()->where('version', '1.3.0-local.1')->sole()->status);
+        $this->assertSame(AppRecipeVersionStatus::Archived, $wireguard->versions()->where('version', '1.3.1-local.1')->sole()->status);
         $this->assertSame(1, AuditLog::query()->where('action', 'app.reverted')->count());
         $this->post(route('admin.apps.revert', $wireguard))->assertSessionHasErrors('app');
     }

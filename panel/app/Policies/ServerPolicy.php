@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Policies;
 
 use App\Enums\ServerStatus;
+use App\Enums\TaskType;
 use App\Models\Server;
 use App\Models\User;
 
@@ -22,6 +23,17 @@ class ServerPolicy
     public function reinstall(User $user, Server $server): bool
     {
         return $server->status === ServerStatus::Active;
+    }
+
+    /**
+     * Rebuilding from scratch deletes a half-built VM and creates the server
+     * again (docs/adr/0032 §7): only for a creation that failed, or ended
+     * without updating the server.
+     */
+    public function rebuild(User $user, Server $server): bool
+    {
+        return ($server->status === ServerStatus::Error || $server->isStranded())
+            && $server->tasks()->latest('id')->first()?->type === TaskType::Create;
     }
 
     /**

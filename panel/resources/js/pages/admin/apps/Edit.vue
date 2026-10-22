@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import AppSystemsPicker from '@/components/admin/AppSystemsPicker.vue';
+import type { AppOsVersion } from '@/components/admin/AppSystemsPicker.vue';
 import { Head, Link, router, useForm, usePage, usePoll } from '@inertiajs/vue3';
 import {
     ArrowLeft,
@@ -25,7 +27,6 @@ import NativeSelect from '@/components/admin/NativeSelect.vue';
 import StatusBadge from '@/components/admin/StatusBadge.vue';
 import CodeEditor from '@/components/apps/CodeEditor.vue';
 import GbInput from '@/components/apps/GbInput.vue';
-import OsPicker from '@/components/apps/OsPicker.vue';
 import RecipeFieldsEditor from '@/components/apps/RecipeFieldsEditor.vue';
 import Heading from '@/components/Heading.vue';
 import AppInputFields from '@/components/servers/AppInputFields.vue';
@@ -33,7 +34,6 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { useDateTime } from '@/composables/useDateTime';
-import type { TemplateVersion } from '@/lib/osPicker';
 import { CATEGORIES, editable, languageOf, pruned } from '@/lib/recipes';
 import type {
     RecipeAction,
@@ -115,9 +115,15 @@ const props = defineProps<{
         published_at: string | null;
         created_at: string | null;
     }[];
-    osGroups: Record<string, { families: string[]; os_release: string[] }>;
-    /** Family and version pairs of the active Linux OS templates. */
-    osTemplates: TemplateVersion[];
+    /** The operating system versions apps can be ticked for (docs/adr/0026). */
+    osVersions: AppOsVersion[];
+    /** The app's ticks and what its recipe suggests; saved at once, not with the draft. */
+    systems: {
+        slug: string;
+        platform: string;
+        suggested_ids: number[];
+        os_version_ids: number[];
+    };
     library: Record<string, string>;
     trials: Trial[];
     /** Active test servers, with the reason when the draft does not fit one. */
@@ -212,9 +218,13 @@ const switchTab = (next: Tab) => {
 
 // Files
 const fileNames = computed(() => Object.keys(files.value).sort());
+const windows = computed(
+    () => definition.value.requires?.platform === 'windows',
+);
+const installScript = definition.value.lifecycle?.install?.script;
 const selectedFile = ref<string | null>(
-    fileNames.value.includes('install.sh')
-        ? 'install.sh'
+    installScript !== undefined && fileNames.value.includes(installScript)
+        ? installScript
         : (fileNames.value[0] ?? null),
 );
 const newFile = ref('');
@@ -236,7 +246,7 @@ const addFile = () => {
     files.value = {
         ...files.value,
         [name]: name.endsWith('.ps1')
-            ? '$ErrorActionPreference = "Stop"\n'
+            ? '$ErrorActionPreference = \'Stop\'\nSet-StrictMode -Version 3.0\n. "$env:PROXMOTION_APP_DIR\\proxmotion.ps1"\n'
             : '#!/bin/bash\nset -euo pipefail\n# shellcheck source=/dev/null\n. "$PROXMOTION_APP_DIR/proxmotion.sh"\n',
     };
     selectedFile.value = name;
@@ -908,23 +918,7 @@ const statusLabels = {
                 <h3 class="text-sm font-medium">
                     {{ $t('Operating systems') }}
                 </h3>
-                <p
-                    v-if="definition.requires.platform !== 'linux'"
-                    class="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm"
-                >
-                    {{
-                        $t(
-                            'This recipe is for Windows, which apps do not support yet; change it in the YAML view.',
-                        )
-                    }}
-                </p>
-                <OsPicker
-                    v-else
-                    v-model="definition.requires"
-                    :templates="osTemplates"
-                    :groups="osGroups"
-                    :readonly="readonly"
-                />
+                <AppSystemsPicker :app="systems" :os-versions="osVersions" />
             </div>
 
             <div class="grid gap-2">
@@ -1105,7 +1099,11 @@ const statusLabels = {
                         <Input
                             v-model="newFile"
                             class="h-8 font-mono text-xs"
-                            placeholder="actions/add-user.sh"
+                            :placeholder="
+                                windows
+                                    ? 'actions/add-user.ps1'
+                                    : 'actions/add-user.sh'
+                            "
                             @keydown.enter.prevent="addFile"
                         />
                         <Button

@@ -118,7 +118,7 @@ class Module
         }
 
         $order = new ServerOrder($this->params);
-        $payload = $order->payload($this->packageFor($order));
+        $payload = $order->payload($this->packageFor($order), $order->domain() === null && $this->locationNamesServers($order->location()));
         $app = $order->app();
 
         if ($app !== null) {
@@ -138,14 +138,35 @@ class Module
             $this->storePassword($this->client->fetchPassword((string) $task['server']['id']));
         }
 
+        // Named by the location's template (docs/adr/0031): the service's domain follows.
+        if (!isset($payload['hostname']) && isset($task['server']['hostname']) && function_exists('localAPI')) {
+            localAPI('UpdateClientProduct', ['serviceid' => $this->params['serviceid'], 'domain' => (string) $task['server']['hostname']]);
+        }
+
         return 'success';
+    }
+
+    /**
+     * Whether the location names servers ordered without a hostname (docs/adr/0031).
+     */
+    private function locationNamesServers(string $location): bool
+    {
+        foreach ($this->client->locations() as $candidate) {
+            if (($candidate['id'] ?? null) === $location) {
+                return !empty($candidate['generates_hostnames']);
+            }
+        }
+
+        return false;
     }
 
     public function suspend(): string
     {
         $server = $this->requireServer();
 
-        if ($server['status'] === 'suspended') {
+        // A server Proxmotion suspended over its traffic quota or a usage limit is suspended again,
+        // so that the suspension becomes WHMCS's and Proxmotion never lifts it (docs/adr/0039 §8).
+        if ($server['status'] === 'suspended' && empty($server['suspension_cause'])) {
             return 'success';
         }
 
@@ -403,6 +424,146 @@ class Module
     }
 
     /**
+     * Change the server's firewall (docs/adr/0035). $input "op" says how:
+     * "policy" (default_policy), "add" (a rule from the form), "delete", "up" or
+     * "down" (index), or "ruleset" (ruleset, mode). Proxmotion takes the
+     * whole list of rules, so the current ones are read first.
+     *
+     * @param array<string, mixed> $input from the form
+     */
+    public function firewall(array $input): string
+    {
+        $server = $this->requireActiveServer();
+        $id = (string) $server['id'];
+        $op = isset($input['op']) ? (string) $input['op'] : '';
+
+        if ($op === 'ruleset') {
+            $ruleset = isset($input['ruleset']) ? trim((string) $input['ruleset']) : '';
+
+            if ($ruleset === '') {
+                return $this->lang->get('firewall_ruleset_required');
+            }
+
+            $mode = isset($input['mode']) && $input['mode'] === 'append' ? 'append' : 'replace';
+            $this->client->applyFirewallRuleset($id, $ruleset, $mode, $this->idempotencyKey('firewall-ruleset'));
+
+            return 'success';
+        }
+
+        $firewall = $this->client->firewall($id);
+        $policy = self::policyOf($firewall);
+        $rules = self::firewallRules($firewall);
+        $index = isset($input['index']) && is_numeric($input['index']) ? (int) $input['index'] : -1;
+
+        if ($op === 'policy') {
+            $policy = isset($input['default_policy']) && $input['default_policy'] === 'drop' ? 'drop' : 'accept';
+        } elseif ($op === 'add') {
+            $rules[] = self::ruleFromForm($input);
+        } elseif ($op === 'delete' && isset($rules[$index])) {
+            array_splice($rules, $index, 1);
+        } elseif (($op === 'up' || $op === 'down') && isset($rules[$index])) {
+            $other = $op === 'up' ? $index - 1 : $index + 1;
+
+            if (!isset($rules[$other])) {
+                return 'success';
+            }
+
+            $moved = $rules[$index];
+            $rules[$index] = $rules[$other];
+            $rules[$other] = $moved;
+        } else {
+            return $this->lang->get('firewall_unknown');
+        }
+
+        $this->client->updateFirewall($id, $policy, $rules, $this->idempotencyKey('firewall'));
+
+        return 'success';
+    }
+
+    /**
+     * What happens to incoming traffic no rule matches: "accept" or "drop".
+     *
+     * @param array<string, mixed> $firewall
+     */
+    private static function policyOf(array $firewall): string
+    {
+        return isset($firewall['default_policy']) && $firewall['default_policy'] === 'drop' ? 'drop' : 'accept';
+    }
+
+    /**
+     * The rules of a firewall as Proxmotion takes them back.
+     *
+     * @param array<string, mixed> $firewall
+     * @return list<array<string, string|null>>
+     */
+    private static function firewallRules(array $firewall): array
+    {
+        $rules = [];
+
+        foreach (isset($firewall['rules']) && is_array($firewall['rules']) ? $firewall['rules'] : [] as $rule) {
+            if (!is_array($rule)) {
+                continue;
+            }
+
+            $rules[] = [
+                'action' => isset($rule['action']) ? (string) $rule['action'] : 'accept',
+                'protocol' => isset($rule['protocol']) ? (string) $rule['protocol'] : 'tcp',
+                'port' => isset($rule['port']) && $rule['port'] !== '' ? (string) $rule['port'] : null,
+                'source' => isset($rule['source']) && $rule['source'] !== '' ? (string) $rule['source'] : null,
+                'comment' => isset($rule['comment']) && $rule['comment'] !== '' ? (string) $rule['comment'] : null,
+            ];
+        }
+
+        return $rules;
+    }
+
+    /**
+     * A new rule from the client area form; Proxmotion validates it.
+     *
+     * @param array<string, mixed> $input
+     * @return array<string, string|null>
+     */
+    private static function ruleFromForm(array $input): array
+    {
+        $text = function (string $key) use ($input) {
+            $value = isset($input[$key]) ? trim((string) $input[$key]) : '';
+
+            return $value === '' ? null : $value;
+        };
+        $protocol = in_array($text('protocol'), ['tcp', 'udp', 'icmp', 'any'], true) ? (string) $text('protocol') : 'tcp';
+
+        return [
+            'action' => $text('rule_action') === 'drop' ? 'drop' : 'accept',
+            'protocol' => $protocol,
+            'port' => $protocol !== 'icmp' ? $text('port') : null,
+            'source' => $text('source'),
+            'comment' => $text('comment'),
+        ];
+    }
+
+    /**
+     * Cancel a running installation, or with a run one of its uninstalls,
+     * upgrades or actions (docs/adr/0030). Possible in any server status: it
+     * only stops a script.
+     *
+     * @param array<string, mixed> $input installation, run (from the form)
+     */
+    public function cancelApp(array $input): string
+    {
+        $server = $this->requireServer();
+        $installation = isset($input['installation']) ? (string) $input['installation'] : '';
+        $run = isset($input['run']) ? trim((string) $input['run']) : '';
+
+        if ($run === '') {
+            $this->client->cancelApp((string) $server['id'], $installation, $this->idempotencyKey('app-cancel'));
+        } else {
+            $this->client->cancelAppRun((string) $server['id'], $installation, $run, $this->idempotencyKey('app-run-cancel'));
+        }
+
+        return 'success';
+    }
+
+    /**
      * Uninstall an app (docs/adr/0016): its recipe's uninstall script runs in the server.
      *
      * @param array<string, mixed> $input installation (from the form)
@@ -486,6 +647,50 @@ class Module
     }
 
     /**
+     * UsageUpdate (WHMCS's daily cron, once per WHMCS server): the counted
+     * traffic of the current period (docs/adr/0039) and the quota of every
+     * server of the billing system, written to its WHMCS service in MB.
+     * Disk usage is not known to Proxmotion and left alone.
+     */
+    public function usageUpdate(UsageStore $store): string
+    {
+        $serverId = isset($this->params['serverid']) ? (int) $this->params['serverid'] : 0;
+
+        if ($serverId <= 0) {
+            return 'The WHMCS server of the usage update is not known.';
+        }
+
+        foreach ($this->client->allServers() as $server) {
+            $serviceId = isset($server['external_id']) ? (string) $server['external_id'] : '';
+
+            // A terminated server of a service may sit next to its live one; other billing systems' ids are not numbers.
+            if (($server['status'] ?? null) === 'terminated' || preg_match('/^[1-9][0-9]{0,18}$/', $serviceId) !== 1 || !isset($server['traffic']) || !is_array($server['traffic'])) {
+                continue;
+            }
+
+            $quota = isset($server['resources']['traffic_bytes']) ? (int) $server['resources']['traffic_bytes'] : 0;
+
+            $store->updateBandwidth(
+                $serverId,
+                (int) $serviceId,
+                self::megabytes(isset($server['traffic']['counted_bytes']) ? (int) $server['traffic']['counted_bytes'] : 0),
+                $quota > 0 ? max(1, self::megabytes($quota)) : 0
+            );
+        }
+
+        return 'success';
+    }
+
+    /**
+     * Bytes as whole MB for WHMCS's usage statistics, decimal like
+     * Proxmotion's traffic (a 100 GB quota is 100000 MB).
+     */
+    private static function megabytes(int $bytes): int
+    {
+        return (int) round(max(0, $bytes) / 1000000);
+    }
+
+    /**
      * The client area overview: server details and actions.
      *
      * @return array<string, mixed>
@@ -502,6 +707,7 @@ class Module
             'addonsUrl' => $this->addonsUrl(),
             'installations' => [],
             'appsBusy' => false,
+            'firewall' => null,
         ];
 
         try {
@@ -531,6 +737,7 @@ class Module
                     $vars['appsBusy'] = count(array_filter($vars['installations'], function (array $installation) {
                         return $installation['busy'];
                     })) > 0;
+                    $vars['firewall'] = $this->presentFirewall($this->client->firewall((string) $server['id']), $this->client->firewallRulesets());
                 }
             }
         } catch (ApiException $e) {
@@ -568,11 +775,24 @@ class Module
             $addresses[] = htmlspecialchars($address['address'] . ($address['ptr'] !== null ? ' (' . $address['ptr'] . ')' : ''));
         }
 
-        return [
+        $fields = [
             'Proxmotion server' => '<a href="' . htmlspecialchars($url) . '" target="_blank" rel="noopener">' . htmlspecialchars((string) $server['hostname']) . '</a>',
             'Server status' => htmlspecialchars((string) $server['status'] . (isset($server['power_state']) ? ' (' . $server['power_state'] . ')' : '')),
             'IP addresses' => $addresses === [] ? '—' : implode('<br>', $addresses),
         ];
+
+        // Suspended by Proxmotion over its traffic quota or a usage limit (docs/adr/0039).
+        if (!empty($server['suspension_cause'])) {
+            $fields['Server status'] .= '<br>' . htmlspecialchars('Suspended by Proxmotion (' . $server['suspension_cause'] . ')' . (isset($server['suspension_reason']) && is_string($server['suspension_reason']) ? ': ' . $server['suspension_reason'] : ''));
+        }
+
+        $traffic = $this->presentTraffic($server, Lang::load('english'));
+
+        if ($traffic !== null) {
+            $fields['Traffic this period'] = htmlspecialchars($traffic['summary'] . ' — ' . $traffic['details']);
+        }
+
+        return $fields;
     }
 
     /**
@@ -703,6 +923,57 @@ class Module
     }
 
     /**
+     * The firewall for the template (docs/adr/0035).
+     *
+     * @param array<string, mixed> $firewall
+     * @param list<array<string, mixed>> $rulesets
+     * @return array<string, mixed>
+     */
+    private function presentFirewall(array $firewall, array $rulesets): array
+    {
+        $rules = [];
+
+        foreach (self::firewallRules($firewall) as $index => $rule) {
+            $rules[] = [
+                'index' => $index,
+                'action' => $this->lang->get($rule['action'] === 'drop' ? 'firewall_block' : 'firewall_allow'),
+                'allows' => $rule['action'] !== 'drop',
+                'protocol' => $rule['protocol'] === 'any' ? $this->lang->get('firewall_any') : strtoupper((string) $rule['protocol']),
+                'port' => $rule['port'] !== null ? $rule['port'] : $this->lang->get('firewall_all_ports'),
+                'source' => $rule['source'] !== null ? $rule['source'] : $this->lang->get('firewall_anywhere'),
+                'comment' => $rule['comment'],
+                'first' => $index === 0,
+                'last' => false,
+            ];
+        }
+
+        if ($rules !== []) {
+            $rules[count($rules) - 1]['last'] = true;
+        }
+
+        $apps = [];
+
+        foreach (isset($firewall['app_rules']) && is_array($firewall['app_rules']) ? $firewall['app_rules'] : [] as $rule) {
+            if (is_array($rule) && isset($rule['app'], $rule['protocol'], $rule['port'])) {
+                $apps[] = ['app' => (string) $rule['app'], 'port' => (int) $rule['port'], 'protocol' => strtoupper((string) $rule['protocol'])];
+            }
+        }
+
+        return [
+            'blocks' => self::policyOf($firewall) === 'drop',
+            'rules' => $rules,
+            'appRules' => $apps,
+            'rulesets' => array_map(function (array $ruleset) {
+                return [
+                    'id' => isset($ruleset['id']) ? (string) $ruleset['id'] : '',
+                    'name' => isset($ruleset['name']) ? (string) $ruleset['name'] : '',
+                    'description' => isset($ruleset['description']) && is_string($ruleset['description']) ? $ruleset['description'] : '',
+                ];
+            }, $rulesets),
+        ];
+    }
+
+    /**
      * @param array<string, mixed> $server
      * @return array<string, mixed>
      */
@@ -728,7 +999,97 @@ class Module
             'memory' => $this->lang->get('memory', ['size' => self::size(isset($resources['memory_mib']) ? (int) $resources['memory_mib'] : 0)]),
             'disk' => $this->lang->get('disk', ['size' => self::size(isset($resources['disk_mib']) ? (int) $resources['disk_mib'] : 0)]),
             'addresses' => $this->addressesOf($server),
+            'traffic' => $this->presentTraffic($server, $this->lang),
+            'suspension' => $status === 'suspended' ? $this->presentSuspension($server) : null,
         ];
+    }
+
+    /**
+     * The traffic of the current period against the quota (docs/adr/0039), or
+     * null when Proxmotion does not say (a panel before traffic accounting).
+     *
+     * @param array<string, mixed> $server
+     * @return array{used: string, quota: string|null, percent: int|null, over: bool, summary: string, details: string, resets: string}|null
+     */
+    private function presentTraffic(array $server, Lang $lang): ?array
+    {
+        if (!isset($server['traffic']) || !is_array($server['traffic'])) {
+            return null;
+        }
+
+        $traffic = $server['traffic'];
+        $used = isset($traffic['counted_bytes']) ? max(0, (int) $traffic['counted_bytes']) : 0;
+        $quota = isset($server['resources']['traffic_bytes']) ? (int) $server['resources']['traffic_bytes'] : 0;
+        $percent = $quota > 0 ? (int) min(100, floor($used * 100.0 / $quota)) : null;
+        $resets = self::dateOf(isset($traffic['period_end']) ? (string) $traffic['period_end'] : '');
+        $replace = [
+            'used' => self::bytes($used),
+            'quota' => $quota > 0 ? self::bytes($quota) : '',
+            'percent' => $percent !== null ? $percent : 0,
+            'received' => self::bytes(isset($traffic['in_bytes']) ? (int) $traffic['in_bytes'] : 0),
+            'sent' => self::bytes(isset($traffic['out_bytes']) ? (int) $traffic['out_bytes'] : 0),
+            'date' => $resets,
+        ];
+
+        return [
+            'used' => $replace['used'],
+            'quota' => $quota > 0 ? $replace['quota'] : null,
+            'percent' => $percent,
+            'over' => $quota > 0 && $used >= $quota,
+            'summary' => $lang->get($quota > 0 ? 'traffic_of_quota' : 'traffic_no_limit', $replace),
+            'details' => $lang->get('traffic_details', $replace),
+            'resets' => $resets,
+        ];
+    }
+
+    /**
+     * Why Proxmotion suspended the server itself (docs/adr/0039), or null
+     * when the suspension is WHMCS's or an administrator's.
+     *
+     * @param array<string, mixed> $server
+     * @return array{cause: string, message: string, reason: string|null}|null
+     */
+    private function presentSuspension(array $server): ?array
+    {
+        $cause = isset($server['suspension_cause']) && is_string($server['suspension_cause']) ? $server['suspension_cause'] : '';
+
+        if ($cause !== 'traffic' && $cause !== 'usage') {
+            return null;
+        }
+
+        return [
+            'cause' => $cause,
+            'message' => $this->lang->get('suspended_' . $cause, [
+                'date' => self::dateOf(isset($server['traffic']['period_end']) ? (string) $server['traffic']['period_end'] : ''),
+            ]),
+            // Proxmotion's English explanation, e.g. "Traffic quota exceeded: 101 GB of 100 GB."
+            'reason' => isset($server['suspension_reason']) && is_string($server['suspension_reason']) ? $server['suspension_reason'] : null,
+        ];
+    }
+
+    /**
+     * The date of an ISO 8601 time as Proxmotion sent it (its own time zone).
+     */
+    private static function dateOf(string $time): string
+    {
+        return preg_match('/^\d{4}-\d{2}-\d{2}/', $time, $match) === 1 ? $match[0] : '';
+    }
+
+    /**
+     * Traffic in bytes as "512 MB", "4.2 GB" or "1.5 TB", in decimal units
+     * like Proxmotion shows traffic (1 GB = 10⁹ bytes, as the traffic_gb option).
+     */
+    public static function bytes(int $bytes): string
+    {
+        $bytes = max(0, $bytes);
+
+        if ($bytes < 1000000000) {
+            return (int) round($bytes / 1000000) . ' MB';
+        }
+
+        $value = $bytes >= 1000000000000 ? $bytes / 1000000000000 : $bytes / 1000000000;
+
+        return rtrim(rtrim(number_format($value, 1, '.', ''), '0'), '.') . ($bytes >= 1000000000000 ? ' TB' : ' GB');
     }
 
     /**
@@ -860,6 +1221,7 @@ class Module
             'statusLabel' => $this->lang->get('app_status_' . $status),
             'busy' => in_array($status, ['queued', 'installing', 'uninstalling', 'upgrading'], true),
             'failed' => $status === 'failed',
+            'canCancel' => $status === 'installing',
             'danger' => in_array($status, ['failed', 'uninstall_failed', 'upgrade_failed'], true),
             'progress' => isset($installation['progress']) ? (int) $installation['progress'] : 0,
             'error' => isset($installation['error']) && is_string($installation['error']) ? $installation['error'] : null,
@@ -928,6 +1290,7 @@ class Module
             'statusLabel' => $this->lang->get('app_run_status_' . $status),
             'busy' => in_array($status, ['queued', 'running'], true),
             'failed' => $status === 'failed',
+            'canCancel' => $status === 'running',
             'error' => isset($run['error']) && is_string($run['error']) ? $run['error'] : null,
             'outputs' => $this->presentOutputs($run),
         ];

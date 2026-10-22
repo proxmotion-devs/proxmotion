@@ -13,6 +13,8 @@ use App\Models\Server;
 use App\Models\Task;
 use App\Provisioning\IpAllocator;
 use App\Provisioning\Network\NetworkConfig;
+use App\Provisioning\Network\ServerFirewall;
+use App\Provisioning\ResourceLimits;
 use App\Proxmox\Data\BootDisk;
 use App\Proxmox\ProxmoxClientFactory;
 use App\Proxmox\Resources\QemuResource;
@@ -20,7 +22,7 @@ use RuntimeException;
 
 /**
  * Applies a server's new resources (recorded by ResourceChanger) to its VM:
- * cores, memory and port speed → grow the disk → anti-spoofing addresses
+ * cores, memory, port speed and limits → grow the disk → anti-spoofing addresses
  * (new ones in, released ones out) → restart if asked → additional addresses
  * inside the guest (ADR 0009) → file system grown inside the guest (ADR 0010).
  * Every step looks at Proxmox first, so running it again is safe.
@@ -40,6 +42,7 @@ final readonly class ChangeResourcesPipeline
         private PowerPipeline $power,
         private GuestScripts $guestScripts,
         private GuestAddresses $guestAddresses,
+        private ServerFirewall $firewallRules,
     ) {}
 
     public function run(Task $task): void
@@ -78,7 +81,9 @@ final readonly class ChangeResourcesPipeline
             $params['net0'] = $network['net0'];
         }
 
-        $qemu->updateConfig($server->vmid, $params);
+        // CPU and disk limits (docs/adr/0034); Proxmox applies them to a running VM at once.
+        $limits = ResourceLimits::of($server)->proxmoxConfig($current);
+        $qemu->updateConfig($server->vmid, [...$params, ...$limits['params']], $limits['delete']);
 
         // Fills it in for servers created before the panel recorded MAC addresses.
         $server->forceFill(['mac_address' => $this->network->macAddress($current) ?? $server->mac_address])->save();
@@ -112,6 +117,8 @@ final readonly class ChangeResourcesPipeline
 
         // Only now, out of the firewall, may another server get them.
         $this->ips->releaseAddresses($releasing);
+        // The isolation sets follow the pools of the server's addresses (docs/adr/0034).
+        $this->firewallRules->apply($qemu, $server);
         $task->completeStep('addresses');
     }
 

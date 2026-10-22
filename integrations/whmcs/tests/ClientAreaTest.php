@@ -83,7 +83,7 @@ class ClientAreaTest extends ModuleTestCase
     public function test_the_overview_shows_actions_uninstall_and_recent_runs()
     {
         $this->showsServer();
-        $this->api = new FakeTransport();
+        $this->freshApi();
         $this->serviceHas($this->server());
         $this->api->on('GET /servers/' . self::SERVER_ID, 200, ['data' => $this->server()]);
         $this->api->on('GET /os-templates', 200, ['data' => []]);
@@ -96,7 +96,7 @@ class ClientAreaTest extends ModuleTestCase
         $this->assertTrue($installation['canUninstall']);
         $this->assertSame('İstemci ekle', $installation['actions'][0]['label']);
         $this->assertSame('İstemci adı', $installation['actions'][0]['inputs'][0]['label']);
-        $this->assertSame(['id' => 'run-uuid', 'label' => 'İstemci ekle', 'status' => 'succeeded', 'statusLabel' => 'Tamamlandı', 'busy' => false, 'failed' => false, 'error' => null], array_diff_key($installation['runs'][0], ['outputs' => true]));
+        $this->assertSame(['id' => 'run-uuid', 'label' => 'İstemci ekle', 'status' => 'succeeded', 'statusLabel' => 'Tamamlandı', 'busy' => false, 'failed' => false, 'canCancel' => false, 'error' => null], array_diff_key($installation['runs'][0], ['outputs' => true]));
         $this->assertSame('client.conf', $installation['runs'][0]['outputs'][0]['filename']);
         $this->assertSame(['Kaldır', 'systemctl failed'], [$installation['runs'][1]['label'], $installation['runs'][1]['error']]);
         $this->assertFalse($installation['runBusy']);
@@ -163,7 +163,7 @@ class ClientAreaTest extends ModuleTestCase
     public function test_the_overview_lists_installed_and_installable_apps_in_the_customers_language()
     {
         $this->showsServer();
-        $this->api = new FakeTransport();
+        $this->freshApi();
         $this->serviceHas($this->server());
         $this->api->on('GET /servers/' . self::SERVER_ID, 200, ['data' => $this->server()]);
         $this->api->on('GET /os-templates', 200, ['data' => []]);
@@ -215,6 +215,23 @@ class ClientAreaTest extends ModuleTestCase
         $this->assertSame('success', $this->module()->retryApp(['installation' => 'installation-uuid']));
         $this->assertSame(['POST /servers/' . self::SERVER_ID . '/apps/installation-uuid/retry'], array_values(array_filter($this->api->sent(), function ($route) {
             return strpos($route, '/retry') !== false;
+        })));
+    }
+
+    public function test_a_running_installation_or_run_can_be_cancelled()
+    {
+        $this->serviceHas($this->server(['status' => 'suspended']));
+        $this->api->on('POST /servers/' . self::SERVER_ID . '/apps/installation-uuid/cancel', 202, ['data' => self::installation(['status' => 'failed'])]);
+        $this->api->on('POST /servers/' . self::SERVER_ID . '/apps/installation-uuid/runs/run-uuid/cancel', 202, ['data' => self::appRun(['status' => 'failed'])]);
+
+        // Also while the server is not active: cancelling only stops a script.
+        $this->assertSame('success', $this->module()->cancelApp(['installation' => 'installation-uuid']));
+        $this->assertSame('success', $this->module()->cancelApp(['installation' => 'installation-uuid', 'run' => 'run-uuid']));
+        $this->assertSame([
+            'POST /servers/' . self::SERVER_ID . '/apps/installation-uuid/cancel',
+            'POST /servers/' . self::SERVER_ID . '/apps/installation-uuid/runs/run-uuid/cancel',
+        ], array_values(array_filter($this->api->sent(), function ($route) {
+            return strpos($route, '/cancel') !== false;
         })));
     }
 
@@ -282,7 +299,7 @@ class ClientAreaTest extends ModuleTestCase
         $this->serviceHas(null);
         $this->assertSame('The server of this service was not found. Please contact support.', $this->module()->clientArea()['templateVariables']['pmx']['error']);
 
-        $this->api = new FakeTransport();
+        $this->freshApi();
         $this->api->on('GET /servers?external_id=42', 503, ['message' => 'Proxmox could not be reached.']);
         $this->assertSame('The server details cannot be shown right now. Please try again later.', $this->module()->clientArea()['templateVariables']['pmx']['error']);
     }
@@ -365,7 +382,7 @@ class ClientAreaTest extends ModuleTestCase
     public function test_the_reinstall_form_offers_apps_the_server_may_install_with_their_defaults()
     {
         $this->showsServer();
-        $this->api = new FakeTransport();
+        $this->freshApi();
         $this->serviceHas($this->server());
         $this->api->on('GET /servers/' . self::SERVER_ID, 200, ['data' => $this->server()]);
         $this->api->on('GET /os-templates', 200, ['data' => [['id' => 'os-uuid', 'name' => 'Ubuntu 24.04']]]);
@@ -386,7 +403,7 @@ class ClientAreaTest extends ModuleTestCase
     public function test_paid_apps_without_a_right_are_offered_to_buy()
     {
         $this->showsServer();
-        $this->api = new FakeTransport();
+        $this->freshApi();
         $this->serviceHas($this->server());
         $this->api->on('GET /servers/' . self::SERVER_ID, 200, ['data' => $this->server()]);
         $this->api->on('GET /os-templates', 200, ['data' => []]);

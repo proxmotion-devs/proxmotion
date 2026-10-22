@@ -7,6 +7,7 @@ namespace App\Http\Requests\Admin;
 use App\Models\Package;
 use App\Models\Server;
 use App\Provisioning\ResourceChange;
+use App\Provisioning\ResourceLimits;
 use App\Provisioning\ServerSpec;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
@@ -34,6 +35,8 @@ class ChangeResourcesRequest extends FormRequest
             'ipv6_count' => ['required', 'integer', 'between:0,64'],
             'port_speed_mbps' => ['nullable', 'integer', 'between:1,400000'],
             'traffic_gb' => ['nullable', 'integer', 'between:1,10000000'],
+            // Empty: unlimited (docs/adr/0034).
+            ...ResourceLimits::rules(),
             'reboot' => ['boolean'],
         ];
     }
@@ -63,6 +66,7 @@ class ChangeResourcesRequest extends FormRequest
                 ipv6Count: $this->integer('ipv6_count'),
                 portSpeedMbps: $this->filled('port_speed_mbps') ? $this->integer('port_speed_mbps') : null,
                 trafficBytes: $this->filled('traffic_gb') ? $this->integer('traffic_gb') * 1000 ** 3 : null,
+                limits: ResourceLimits::fromRequest($this),
             ),
             package: $this->package(),
             reboot: $this->boolean('reboot'),

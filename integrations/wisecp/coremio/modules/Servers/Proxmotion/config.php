@@ -30,8 +30,10 @@ return [
     ],
     'supported' => [
         'cards' => [
+            // The traffic of the month against the quota (docs/adr/0039).
+            'gauges' => ['bandwidth'],
             'server_info' => ['hostname', 'ip_address', 'os', 'virtualization', 'location', 'status'],
-            'resource_allocation' => ['cpu_cores', 'ram', 'disk_space', 'ipv4', 'ipv6'],
+            'resource_allocation' => ['cpu_cores', 'ram', 'disk_space', 'bandwidth', 'ipv4', 'ipv6'],
             'quick_access' => ['vnc-console'],
         ],
         'tools' => [

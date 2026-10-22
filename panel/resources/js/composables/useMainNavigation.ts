@@ -11,6 +11,8 @@ import {
     Network,
     Package,
     Server,
+    Settings,
+    Shield,
     TriangleAlert,
     Users,
 } from '@lucide/vue';
@@ -22,12 +24,14 @@ import { index as billingSystems } from '@/routes/admin/billing-systems';
 import { index as clusters } from '@/routes/admin/clusters';
 import { index as dnsProviders } from '@/routes/admin/dns-providers';
 import { index as drifts } from '@/routes/admin/drifts';
+import { index as firewallRulesets } from '@/routes/admin/firewall-rulesets';
 import { index as ipPools } from '@/routes/admin/ip-pools';
 import { index as locations } from '@/routes/admin/locations';
 import { index as osTemplates } from '@/routes/admin/os-templates';
 import { index as packages } from '@/routes/admin/packages';
 import { index as placementGroups } from '@/routes/admin/placement-groups';
 import { index as servers } from '@/routes/admin/servers';
+import { edit as panelSettings } from '@/routes/admin/settings';
 import { index as users } from '@/routes/admin/users';
 import type { NavItem } from '@/types';
 
@@ -50,10 +54,16 @@ export function useMainNavigation(): ComputedRef<NavItem[]> {
             href: placementGroups(),
             icon: LayoutDashboard,
         },
+        {
+            title: 'Firewall rule sets',
+            href: firewallRulesets(),
+            icon: Shield,
+        },
         { title: 'Apps', href: apps(), icon: AppWindow },
         { title: 'Drift report', href: drifts(), icon: TriangleAlert },
         { title: 'Administrators', href: users(), icon: Users },
         { title: 'Billing systems', href: billingSystems(), icon: KeyRound },
+        { title: 'Panel settings', href: panelSettings(), icon: Settings },
         { title: 'Help', href: help(), icon: LifeBuoy },
     ]);
 }

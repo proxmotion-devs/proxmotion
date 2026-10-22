@@ -1,13 +1,16 @@
 <script setup lang="ts">
 import { Head, Link, useForm } from '@inertiajs/vue3';
+import { trans } from 'laravel-vue-i18n';
 import { Pencil, Plus } from '@lucide/vue';
 import { computed, ref } from 'vue';
 import ConfirmDelete from '@/components/admin/ConfirmDelete.vue';
 import FormDialog from '@/components/admin/FormDialog.vue';
 import FormField from '@/components/admin/FormField.vue';
 import GuideBox from '@/components/admin/GuideBox.vue';
+import NativeSelect from '@/components/admin/NativeSelect.vue';
 import StatusBadge from '@/components/admin/StatusBadge.vue';
 import Heading from '@/components/Heading.vue';
+import LimitFields from '@/components/servers/LimitFields.vue';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
@@ -18,7 +21,7 @@ import type { OptionalNumber } from '@/lib/forms';
 import { destroy, index, store, update } from '@/routes/admin/packages';
 import { index as placementGroupsIndex } from '@/routes/admin/placement-groups';
 import { NETWORK_MODELS } from '@/types/admin';
-import type { NetworkModel, Package } from '@/types/admin';
+import type { NetworkModel, Option, Package } from '@/types/admin';
 
 defineOptions({
     layout: { breadcrumbs: [{ title: 'Packages', href: index() }] },
@@ -29,7 +32,14 @@ type Choice = { id: number; name: string; location: string };
 const props = defineProps<{
     packages: Package[];
     placementGroups: Choice[];
+    /** docs/adr/0035 §3 */
+    firewallRulesets: Option[];
 }>();
+
+const rulesetOptions = computed(() => [
+    { value: '', label: trans('None: no rules, everything is allowed') },
+    ...props.firewallRulesets,
+]);
 
 // Placement groups grouped by location for the checkboxes.
 const byLocation = (choices: Choice[]) => {
@@ -74,6 +84,10 @@ const form = useForm({
     disk_gib: 40,
     traffic_gb: 2000 as OptionalNumber,
     port_speed_mbps: 1000 as OptionalNumber,
+    cpu_limit: '' as OptionalNumber,
+    cpu_units: '' as OptionalNumber,
+    disk_mb_s: '' as OptionalNumber,
+    disk_iops: '' as OptionalNumber,
     ipv4_count: 1,
     ipv6_count: 1,
     snapshot_slots: 1,
@@ -82,6 +96,7 @@ const form = useForm({
     is_active: true,
     sort_order: 0,
     placement_group_ids: [] as number[],
+    firewall_ruleset: '' as string | null,
 });
 
 const openForm = (pkg: Package | null) => {
@@ -99,6 +114,10 @@ const openForm = (pkg: Package | null) => {
                           ? ''
                           : Math.round(pkg.traffic_bytes / 1000 ** 3),
                   port_speed_mbps: pkg.port_speed_mbps ?? '',
+                  cpu_limit: pkg.cpu_limit ?? '',
+                  cpu_units: pkg.cpu_units ?? '',
+                  disk_mb_s: pkg.disk_mb_s ?? '',
+                  disk_iops: pkg.disk_iops ?? '',
                   ipv4_count: pkg.ipv4_count,
                   ipv6_count: pkg.ipv6_count,
                   snapshot_slots: pkg.snapshot_slots,
@@ -107,6 +126,7 @@ const openForm = (pkg: Package | null) => {
                   is_active: pkg.is_active,
                   sort_order: pkg.sort_order,
                   placement_group_ids: [...pkg.placement_group_ids],
+                  firewall_ruleset: pkg.firewall_ruleset ?? '',
               }
             : {
                   name: '',
@@ -115,6 +135,10 @@ const openForm = (pkg: Package | null) => {
                   disk_gib: 40,
                   traffic_gb: 2000,
                   port_speed_mbps: 1000,
+                  cpu_limit: '',
+                  cpu_units: '',
+                  disk_mb_s: '',
+                  disk_iops: '',
                   ipv4_count: 1,
                   ipv6_count: 1,
                   snapshot_slots: 1,
@@ -123,6 +147,7 @@ const openForm = (pkg: Package | null) => {
                   is_active: true,
                   sort_order: 0,
                   placement_group_ids: [],
+                  firewall_ruleset: '',
               },
     );
     form.reset();
@@ -148,6 +173,10 @@ const submit = () => {
         ...data,
         traffic_gb: optionalNumber(data.traffic_gb),
         port_speed_mbps: optionalNumber(data.port_speed_mbps),
+        cpu_limit: optionalNumber(data.cpu_limit),
+        cpu_units: optionalNumber(data.cpu_units),
+        disk_mb_s: optionalNumber(data.disk_mb_s),
+        disk_iops: optionalNumber(data.disk_iops),
     })).submit(editing.value ? update(editing.value.uuid) : store(), {
         preserveScroll: true,
         onSuccess: () => (dialogOpen.value = false),
@@ -397,6 +426,25 @@ const modelLabel = (value: string) =>
                 />
             </FormField>
         </div>
+        <LimitFields
+            v-model:cpu-limit="form.cpu_limit"
+            v-model:cpu-units="form.cpu_units"
+            v-model:disk-mb-s="form.disk_mb_s"
+            v-model:disk-iops="form.disk_iops"
+            :errors="form.errors"
+        />
+        <FormField
+            label="Firewall rule set"
+            for="firewall_ruleset"
+            :error="form.errors.firewall_ruleset"
+            hint="New servers start with its rules and what it does with other traffic."
+        >
+            <NativeSelect
+                id="firewall_ruleset"
+                v-model="form.firewall_ruleset"
+                :options="rulesetOptions"
+            />
+        </FormField>
         <div class="grid gap-4 sm:grid-cols-4">
             <FormField
                 label="IPv4 addresses"

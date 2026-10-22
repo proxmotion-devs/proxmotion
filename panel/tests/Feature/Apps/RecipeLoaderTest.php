@@ -72,7 +72,8 @@ class RecipeLoaderTest extends TestCase
     {
         $recipes = (new RecipeLoader)->all();
 
-        $this->assertSame(['aapanel', 'coolify', 'cpanel', 'cyberpanel', 'docker', 'fastpanel', 'hestiacp', 'lamp', 'lemp', 'nodejs', 'openvpn', 'plesk', 'portainer', 'whmcs', 'wireguard', 'wordpress'], array_keys($recipes));
+        $this->assertSame(['aapanel', 'chocolatey', 'coolify', 'cpanel', 'cyberpanel', 'docker', 'fastpanel', 'hestiacp', 'iis', 'lamp', 'lemp', 'nodejs', 'openvpn', 'plesk', 'portainer', 'pterodactyl', 'sqlserver-express', 'whmcs', 'wireguard', 'wordpress'], array_keys($recipes));
+        $this->assertSame(['install.ps1', 'uninstall.ps1', 'actions/reset-password.ps1', 'lib.ps1'], array_keys($recipes['sqlserver-express']['files']));
         $this->assertSame(['install.sh', 'uninstall.sh', 'upgrade.sh', 'actions/add-client.sh', 'actions/revoke-client.sh', 'actions/list-clients.sh', 'lib.sh'], array_keys($recipes['wireguard']['files']));
         $this->artisan('apps:validate')->assertSuccessful();
     }
@@ -132,7 +133,7 @@ class RecipeLoaderTest extends TestCase
 
     public function test_apps_validate_reports_invalid_recipes()
     {
-        $this->editRecipe('version: 1.3.0', 'version: one');
+        $this->editRecipe('version: 1.3.1', 'version: one');
         $this->app->instance(RecipeLoader::class, $this->loader());
 
         $this->artisan('apps:validate')->assertFailed();
@@ -153,11 +154,11 @@ class RecipeLoaderTest extends TestCase
         $this->assertSame(['created' => [], 'updated' => [], 'held' => [], 'deactivated' => [], 'skipped' => []], $sync(), 'Nothing changed.');
 
         $recipe->forceFill(['is_active' => false])->save();
-        $this->editRecipe('version: 1.3.0', 'version: 1.4.0');
+        $this->editRecipe('version: 1.3.1', 'version: 1.4.0');
         $this->assertSame(['created' => [], 'updated' => ['openvpn'], 'held' => [], 'deactivated' => [], 'skipped' => []], $sync());
         $recipe->refresh();
         $this->assertSame('1.4.0', $recipe->current()->version);
-        $this->assertSame(['1.3.0', '1.4.0'], $recipe->versions()->orderBy('id')->pluck('version')->all(), 'Earlier versions are kept.');
+        $this->assertSame(['1.3.1', '1.4.0'], $recipe->versions()->orderBy('id')->pluck('version')->all(), 'Earlier versions are kept.');
         $this->assertFalse($recipe->is_active, 'The administrator deactivated it.');
 
         $recipe->forceFill(['is_active' => true])->save();
@@ -179,7 +180,7 @@ class RecipeLoaderTest extends TestCase
             app(RecipeSynchronizer::class)->sync();
             $this->fail('The changed version was accepted.');
         } catch (RecipeInvalid $e) {
-            $this->assertSame(['Version 1.3.0 changed but is used by installations: raise the version.'], $e->errors);
+            $this->assertSame(['Version 1.3.1 changed but is used by installations: raise the version.'], $e->errors);
         }
 
         $this->assertStringNotContainsString('changed', $recipe->current()->refresh()->files['install.sh']);
@@ -221,8 +222,9 @@ class RecipeLoaderTest extends TestCase
         $this->assertSame(1, $recipe->format);
         $this->assertSame(['install' => ['script' => 'install.sh', 'timeout_minutes' => 7]], $recipe->lifecycle);
         $this->assertSame(['install.sh'], array_keys($files));
-        $this->assertTrue($recipe->supports('linux', 'ubuntu', '24.04', []));
-        $this->assertFalse($recipe->supports('linux', 'ubuntu', '22.04', ['systemd', 'apt', 'bash']), 'Format 1 lists exact versions.');
+        $this->assertTrue($recipe->suggests('linux', 'ubuntu', '24.04'));
+        $this->assertFalse($recipe->suggests('linux', 'ubuntu', '22.04'), 'Format 1 lists exact versions.');
+        $this->assertTrue($recipe->suggests('linux', 'linuxmint', '22', 'ubuntu', '24.04'), 'Matched as the distribution it is compatible with.');
     }
 
     public function test_unknown_formats_are_refused()
@@ -285,6 +287,36 @@ class RecipeLoaderTest extends TestCase
 
         $this->artisan('apps:make', ['slug' => 'uptime-kuma'])->assertFailed();
         $this->artisan('apps:make', ['slug' => 'Bad_Slug'])->assertFailed();
+    }
+
+    public function test_apps_make_writes_a_valid_windows_skeleton()
+    {
+        $this->app->instance(RecipeLoader::class, $this->loader());
+
+        $this->artisan('apps:make', ['slug' => 'file-server', '--platform' => 'windows'])->assertSuccessful();
+
+        ['recipe' => $recipe, 'files' => $files] = $this->loader()->load('file-server');
+        $this->assertSame('windows', $recipe->platform);
+        $this->assertSame(['install.ps1', 'uninstall.ps1'], array_keys($files));
+        $this->assertStringContainsString('proxmotion.ps1', $files['install.ps1']);
+
+        $this->artisan('apps:make', ['slug' => 'other-app', '--platform' => 'macos'])->assertFailed();
+    }
+
+    public function test_windows_recipes_use_powershell_scripts_only()
+    {
+        $this->app->instance(RecipeLoader::class, $this->loader());
+        $this->artisan('apps:make', ['slug' => 'file-server', '--platform' => 'windows']);
+        $yaml = $this->directory.'/file-server/recipe.yaml';
+        file_put_contents($yaml, str_replace('script: uninstall.ps1', 'script: uninstall.sh', (string) file_get_contents($yaml)));
+        touch($this->directory.'/file-server/uninstall.sh');
+
+        try {
+            $this->loader()->load('file-server');
+            $this->fail('A shell script was accepted in a Windows recipe.');
+        } catch (RecipeInvalid $e) {
+            $this->assertContains('uninstall.sh: Windows recipes use .ps1 scripts.', $e->errors);
+        }
     }
 
     public function test_an_invalid_recipe_stops_the_sync_before_anything_is_written()

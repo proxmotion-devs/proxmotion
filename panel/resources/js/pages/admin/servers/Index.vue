@@ -2,6 +2,7 @@
 import { Head, Link, router } from '@inertiajs/vue3';
 import { Download, Plus } from '@lucide/vue';
 import ServerStatusBadge from '@/components/admin/ServerStatusBadge.vue';
+import StatusBadge from '@/components/admin/StatusBadge.vue';
 import Heading from '@/components/Heading.vue';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -91,8 +92,14 @@ const toggleTerminated = (value: boolean | 'indeterminate') => {
                                 :href="show(server.uuid)"
                                 class="font-medium hover:underline"
                             >
-                                {{ server.hostname }}
+                                {{ server.vm_name ?? server.hostname }}
                             </Link>
+                            <div
+                                v-if="server.vm_name"
+                                class="text-xs text-muted-foreground"
+                            >
+                                {{ server.hostname }}
+                            </div>
                             <div
                                 class="font-mono text-xs text-muted-foreground"
                             >
@@ -100,7 +107,14 @@ const toggleTerminated = (value: boolean | 'indeterminate') => {
                             </div>
                         </td>
                         <td class="px-4 py-3">
-                            <ServerStatusBadge :status="server.status" />
+                            <div class="flex flex-wrap gap-1">
+                                <ServerStatusBadge :status="server.status" />
+                                <StatusBadge
+                                    v-if="server.unprotected"
+                                    tone="warning"
+                                    label="Anti-spoofing off"
+                                />
+                            </div>
                         </td>
                         <td class="px-4 py-3 font-mono text-xs">
                             {{ server.external_id ?? '—' }}

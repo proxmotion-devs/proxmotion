@@ -7,6 +7,7 @@ namespace App\Models;
 use App\Enums\NetworkModel;
 use App\Enums\ServerOrigin;
 use App\Enums\ServerStatus;
+use App\Enums\SuspensionCause;
 use App\Enums\TaskStatus;
 use App\Models\Concerns\HasPublicUuid;
 use Database\Factories\ServerFactory;
@@ -38,6 +39,7 @@ use Illuminate\Support\Carbon;
  * @property int $vmid
  * @property string|null $mac_address
  * @property string $hostname
+ * @property string|null $vm_name the Proxmox VM name of a server named from its template before 2026-10-20, its primary address (docs/adr/0031 §2a); see vmName()
  * @property ServerStatus $status
  * @property ServerOrigin $origin
  * @property bool $is_test drafts of apps may be tried on it (docs/adr/0018 §7); never has a billing system
@@ -47,15 +49,25 @@ use Illuminate\Support\Carbon;
  * @property int $disk_mib
  * @property int|null $port_speed_mbps
  * @property int|null $traffic_bytes
+ * @property string|null $cpu_limit at most this many cores' worth of CPU time, e.g. "1.50" (docs/adr/0034); null: unlimited
+ * @property int|null $cpu_units relative CPU weight on a busy node
+ * @property int|null $disk_mb_s read and write throughput of the boot disk, MB/s each
+ * @property int|null $disk_iops read and write operations per second of the boot disk, each
  * @property string|null $root_password
  * @property bool $root_password_unrevealed the billing system has not fetched the current root password yet
  * @property bool $reboot_required changed CPU or memory waits for the VM's next restart
  * @property string|null $ssh_keys
  * @property string|null $suspension_reason
+ * @property SuspensionCause|null $suspension_cause set when the panel suspended the server itself (docs/adr/0039)
  * @property int|null $billing_system_id the billing system that owns the server; only its API tokens see it
  * @property string|null $external_id billing service id, unique within the billing system
  * @property string|null $external_client_id billing customer id
  * @property Carbon|null $provisioned_at
+ * @property array{checked_at: string, checks: list<array{key: string, status: string, params: array<string, string>, detail: string|null}>}|null $verification the latest checks from inside the server (ServerVerifier)
+ * @property Carbon|null $firewall_checked_at when FirewallChecker last compared its VM firewall (docs/adr/0033)
+ * @property string $firewall_policy what happens to incoming traffic no firewall rule matches: accept or drop (docs/adr/0035)
+ * @property array{time: int, uptime: int|null, net_in: int|null, net_out: int|null, disk_read: int|null, disk_write: int|null}|null $usage_counters Proxmox's counters at the previous collection (UsageCollector)
+ * @property bool $usage_exempt usage violations are recorded but never acted on (docs/adr/0039)
  * @property Carbon|null $terminated_at
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
@@ -88,11 +100,20 @@ class Server extends Model
             'disk_mib' => 'integer',
             'port_speed_mbps' => 'integer',
             'traffic_bytes' => 'integer',
+            'cpu_limit' => 'decimal:2',
+            'cpu_units' => 'integer',
+            'disk_mb_s' => 'integer',
+            'disk_iops' => 'integer',
             'root_password' => 'encrypted',
             'root_password_unrevealed' => 'boolean',
             'reboot_required' => 'boolean',
             'is_test' => 'boolean',
             'provisioned_at' => 'datetime',
+            'verification' => 'array',
+            'firewall_checked_at' => 'datetime',
+            'suspension_cause' => SuspensionCause::class,
+            'usage_counters' => 'array',
+            'usage_exempt' => 'boolean',
             'terminated_at' => 'datetime',
         ];
     }
@@ -171,6 +192,24 @@ class Server extends Model
     }
 
     /**
+     * Whether its firewall drops incoming traffic no rule allows (docs/adr/0035).
+     */
+    public function blocksByDefault(): bool
+    {
+        return $this->firewall_policy === 'drop';
+    }
+
+    /**
+     * The inbound rules of its firewall, in order (docs/adr/0035).
+     *
+     * @return HasMany<ServerFirewallRule, $this>
+     */
+    public function firewallRules(): HasMany
+    {
+        return $this->hasMany(ServerFirewallRule::class)->orderBy('position');
+    }
+
+    /**
      * @return HasMany<Task, $this>
      */
     public function tasks(): HasMany
@@ -179,11 +218,37 @@ class Server extends Model
     }
 
     /**
+     * Its moves to other nodes, clusters and locations (docs/adr/0037), newest first.
+     *
+     * @return HasMany<ServerMove, $this>
+     */
+    public function moves(): HasMany
+    {
+        return $this->hasMany(ServerMove::class)->latest('id');
+    }
+
+    /**
      * @return HasMany<ServerDrift, $this>
      */
     public function drifts(): HasMany
     {
         return $this->hasMany(ServerDrift::class);
+    }
+
+    /**
+     * @return HasMany<TrafficPeriod, $this>
+     */
+    public function trafficPeriods(): HasMany
+    {
+        return $this->hasMany(TrafficPeriod::class);
+    }
+
+    /**
+     * @return HasMany<UsageViolation, $this>
+     */
+    public function usageViolations(): HasMany
+    {
+        return $this->hasMany(UsageViolation::class);
     }
 
     /**
@@ -202,6 +267,16 @@ class Server extends Model
     public function appEntitlements(): HasMany
     {
         return $this->hasMany(AppEntitlement::class);
+    }
+
+    /**
+     * The name of its Proxmox VM: the hostname, or the primary address of a
+     * server named from its location's template before 2026-10-20 that has
+     * not been reinstalled since (docs/adr/0031 §2a).
+     */
+    public function vmName(): string
+    {
+        return $this->vm_name ?? $this->hostname;
     }
 
     /**

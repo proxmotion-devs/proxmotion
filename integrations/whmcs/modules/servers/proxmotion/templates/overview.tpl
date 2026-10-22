@@ -15,6 +15,13 @@
             <div class="alert alert-warning">{$pmx.lang.reboot_required|escape}</div>
         {/if}
 
+        {if $server.suspension}
+            <div class="alert alert-danger">
+                {$server.suspension.message|escape}
+                {if $server.suspension.reason}<br><small>{$server.suspension.reason|escape}</small>{/if}
+            </div>
+        {/if}
+
         <div class="row">
             <div class="col-sm-6">
                 <table class="table table-condensed">
@@ -61,6 +68,21 @@
                         <th>{$pmx.lang.resources|escape}</th>
                         <td>{$server.cpu|escape} · {$server.memory|escape} · {$server.disk|escape}</td>
                     </tr>
+                    {if $server.traffic}
+                        <tr>
+                            <th>{$pmx.lang.traffic|escape}</th>
+                            <td>
+                                {$server.traffic.summary|escape}
+                                {if $server.traffic.quota}
+                                    <div class="progress" style="margin: 5px 0;">
+                                        <div class="progress-bar {if $server.traffic.over}progress-bar-danger{elseif $server.traffic.percent >= 80}progress-bar-warning{else}progress-bar-success{/if}" role="progressbar" aria-valuenow="{$server.traffic.percent}" aria-valuemin="0" aria-valuemax="100" style="width: {$server.traffic.percent}%;"></div>
+                                    </div>
+                                {/if}
+                                {if $server.traffic.over}<div class="text-danger">{$pmx.lang.traffic_over|escape}</div>{/if}
+                                <small class="text-muted">{$server.traffic.details|escape}</small>
+                            </td>
+                        </tr>
+                    {/if}
                 </table>
             </div>
 
@@ -104,6 +126,122 @@
                     <a href="{$pmxAction}ResetPassword" class="btn btn-default" onclick="return confirm('{$pmx.lang.reset_password_confirm|escape:'javascript'}');">{$pmx.lang.reset_password|escape}</a>
                 </div>
             </div>
+
+            {if $pmx.firewall}
+                {assign var=firewall value=$pmx.firewall}
+                <hr>
+                <h4>
+                    {$pmx.lang.firewall|escape}
+                    {if $firewall.blocks}
+                        <span class="label label-success">{$pmx.lang.firewall_blocks|escape}</span>
+                    {else}
+                        <span class="label label-default">{$pmx.lang.firewall_allows|escape}</span>
+                    {/if}
+                </h4>
+                <p class="text-muted">{$pmx.lang.firewall_intro|escape}</p>
+                <form method="post" action="{$pmxAction}Firewall" class="form-inline" style="margin-bottom: 10px;"{if !$firewall.blocks} onsubmit="return confirm('{$pmx.lang.firewall_block_confirm|escape:'javascript'}');"{/if}>
+                    <input type="hidden" name="token" value="{$token}">
+                    <input type="hidden" name="op" value="policy">
+                    <input type="hidden" name="default_policy" value="{if $firewall.blocks}accept{else}drop{/if}">
+                    <button type="submit" class="btn btn-{if $firewall.blocks}default{else}primary{/if} btn-sm">{if $firewall.blocks}{$pmx.lang.firewall_allow_rest|escape}{else}{$pmx.lang.firewall_block_rest|escape}{/if}</button>
+                </form>
+
+                <table class="table table-condensed">
+                    <thead>
+                        <tr>
+                            <th>{$pmx.lang.firewall_action|escape}</th>
+                            <th>{$pmx.lang.firewall_protocol|escape}</th>
+                            <th>{$pmx.lang.firewall_port|escape}</th>
+                            <th>{$pmx.lang.firewall_source|escape}</th>
+                            <th>{$pmx.lang.firewall_comment|escape}</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {foreach from=$firewall.rules item=rule}
+                            <tr>
+                                <td><span class="label label-{if $rule.allows}success{else}danger{/if}">{$rule.action|escape}</span></td>
+                                <td>{$rule.protocol|escape}</td>
+                                <td><code>{$rule.port|escape}</code></td>
+                                <td><code>{$rule.source|escape}</code></td>
+                                <td>{$rule.comment|escape}</td>
+                                <td class="text-right">
+                                    {if !$rule.first}
+                                        <form method="post" action="{$pmxAction}Firewall" style="display: inline;">
+                                            <input type="hidden" name="token" value="{$token}">
+                                            <input type="hidden" name="op" value="up">
+                                            <input type="hidden" name="index" value="{$rule.index|escape}">
+                                            <button type="submit" class="btn btn-default btn-xs">{$pmx.lang.firewall_up|escape}</button>
+                                        </form>
+                                    {/if}
+                                    {if !$rule.last}
+                                        <form method="post" action="{$pmxAction}Firewall" style="display: inline;">
+                                            <input type="hidden" name="token" value="{$token}">
+                                            <input type="hidden" name="op" value="down">
+                                            <input type="hidden" name="index" value="{$rule.index|escape}">
+                                            <button type="submit" class="btn btn-default btn-xs">{$pmx.lang.firewall_down|escape}</button>
+                                        </form>
+                                    {/if}
+                                    <form method="post" action="{$pmxAction}Firewall" style="display: inline;" onsubmit="return confirm('{$pmx.lang.firewall_delete_confirm|escape:'javascript'}');">
+                                        <input type="hidden" name="token" value="{$token}">
+                                        <input type="hidden" name="op" value="delete">
+                                        <input type="hidden" name="index" value="{$rule.index|escape}">
+                                        <button type="submit" class="btn btn-danger btn-xs">{$pmx.lang.firewall_delete|escape}</button>
+                                    </form>
+                                </td>
+                            </tr>
+                        {foreachelse}
+                            <tr><td colspan="6" class="text-muted">{$pmx.lang.firewall_no_rules|escape}</td></tr>
+                        {/foreach}
+                    </tbody>
+                </table>
+
+                <form method="post" action="{$pmxAction}Firewall" class="form-inline" style="margin-bottom: 10px;">
+                    <input type="hidden" name="token" value="{$token}">
+                    <input type="hidden" name="op" value="add">
+                    <select name="rule_action" class="form-control input-sm" aria-label="{$pmx.lang.firewall_action|escape}">
+                        <option value="accept">{$pmx.lang.firewall_allow|escape}</option>
+                        <option value="drop">{$pmx.lang.firewall_block|escape}</option>
+                    </select>
+                    <select name="protocol" class="form-control input-sm" aria-label="{$pmx.lang.firewall_protocol|escape}">
+                        <option value="tcp">TCP</option>
+                        <option value="udp">UDP</option>
+                        <option value="icmp">ICMP</option>
+                        <option value="any">{$pmx.lang.firewall_any|escape}</option>
+                    </select>
+                    <input type="text" name="port" class="form-control input-sm" placeholder="{$pmx.lang.firewall_port|escape}" title="{$pmx.lang.firewall_port_hint|escape}" size="11" maxlength="11">
+                    <input type="text" name="source" class="form-control input-sm" placeholder="{$pmx.lang.firewall_anywhere|escape}" title="{$pmx.lang.firewall_source_hint|escape}" maxlength="64">
+                    <input type="text" name="comment" class="form-control input-sm" placeholder="{$pmx.lang.firewall_comment|escape}" maxlength="60">
+                    <button type="submit" class="btn btn-default btn-sm">{$pmx.lang.firewall_add|escape}</button>
+                </form>
+
+                {if $firewall.rulesets}
+                    <form method="post" action="{$pmxAction}Firewall" class="form-inline" style="margin-bottom: 10px;" onsubmit="return confirm('{$pmx.lang.firewall_ruleset_confirm|escape:'javascript'}');">
+                        <input type="hidden" name="token" value="{$token}">
+                        <input type="hidden" name="op" value="ruleset">
+                        <label for="pmx-ruleset">{$pmx.lang.firewall_ruleset|escape}</label>
+                        <select id="pmx-ruleset" name="ruleset" class="form-control input-sm">
+                            {foreach from=$firewall.rulesets item=ruleset}
+                                <option value="{$ruleset.id|escape}" title="{$ruleset.description|escape}">{$ruleset.name|escape}</option>
+                            {/foreach}
+                        </select>
+                        <select name="mode" class="form-control input-sm">
+                            <option value="replace">{$pmx.lang.firewall_ruleset_replace|escape}</option>
+                            <option value="append">{$pmx.lang.firewall_ruleset_append|escape}</option>
+                        </select>
+                        <button type="submit" class="btn btn-default btn-sm">{$pmx.lang.firewall_ruleset_apply|escape}</button>
+                    </form>
+                {/if}
+
+                {if $firewall.appRules}
+                    <p class="text-muted">
+                        {$pmx.lang.firewall_apps|escape}
+                        {foreach from=$firewall.appRules item=appRule}
+                            <code>{$appRule.port|escape}/{$appRule.protocol|escape}</code> ({$appRule.app|escape})
+                        {/foreach}
+                    </p>
+                {/if}
+            {/if}
 
             {if $pmx.osTemplates}
                 <hr>
@@ -171,6 +309,13 @@
                                             {/if}
                                         </div>
                                     {/foreach}
+                                    {if $installation.canCancel}
+                                        <form method="post" action="{$pmxAction}CancelApp" class="form-inline" onsubmit="return confirm('{$pmx.lang.app_cancel_confirm|escape:'javascript'|escape}');">
+                                            <input type="hidden" name="token" value="{$token}">
+                                            <input type="hidden" name="installation" value="{$installation.id|escape}">
+                                            <button type="submit" class="btn btn-default btn-sm">{$pmx.lang.app_cancel|escape}</button>
+                                        </form>
+                                    {/if}
                                     {if $installation.failed}
                                         <form method="post" action="{$pmxAction}RetryApp" class="form-inline">
                                             <input type="hidden" name="token" value="{$token}">
@@ -255,6 +400,14 @@
                                                     {$run.label|escape}:
                                                     <span class="label {if $run.status == 'succeeded'}label-success{elseif $run.failed}label-danger{elseif $run.busy}label-warning{else}label-default{/if}">{$run.statusLabel|escape}</span>
                                                     {if $run.error}<span class="text-danger">{$run.error|escape}</span>{/if}
+                                                    {if $run.canCancel}
+                                                        <form method="post" action="{$pmxAction}CancelApp" style="display: inline" onsubmit="return confirm('{$pmx.lang.app_cancel_confirm|escape:'javascript'|escape}');">
+                                                            <input type="hidden" name="token" value="{$token}">
+                                                            <input type="hidden" name="installation" value="{$installation.id|escape}">
+                                                            <input type="hidden" name="run" value="{$run.id|escape}">
+                                                            <button type="submit" class="btn btn-link btn-xs">{$pmx.lang.app_cancel|escape}</button>
+                                                        </form>
+                                                    {/if}
                                                     {foreach from=$run.outputs item=output}
                                                         <span class="text-muted">{$output.label|escape}:</span>
                                                         {if $output.file}

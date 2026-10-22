@@ -3,9 +3,12 @@
 namespace Tests\Feature\Admin;
 
 use App\Enums\NetworkModel;
+use App\Enums\OsFamily;
 use App\Enums\OsPlatform;
 use App\Models\Cluster;
 use App\Models\Node;
+use App\Models\OperatingSystem;
+use App\Models\OperatingSystemVersion;
 use App\Models\OsTemplate;
 use App\Models\Package;
 use App\Models\ProxmoxTemplate;
@@ -16,6 +19,14 @@ use Inertia\Testing\AssertableInertia as Assert;
  */
 class CatalogManagementTest extends AdminTestCase
 {
+    /** A version of the administrators' list (docs/adr/0026). */
+    private function systemVersion(string $name, string $version, string $platform = 'linux'): OperatingSystemVersion
+    {
+        $system = OperatingSystem::query()->firstOrCreate(['name' => $name], ['platform' => $platform]);
+
+        return $system->versions()->create(['version' => $version]);
+    }
+
     public function test_os_templates_can_be_mapped_to_proxmox_templates()
     {
         $node = Node::factory()->create();
@@ -25,28 +36,32 @@ class CatalogManagementTest extends AdminTestCase
             'vmid' => 9000,
             'name' => 'ubuntu-2404',
         ]);
+        $noble = $this->systemVersion('Ubuntu', '24.04');
 
         $this->post(route('admin.os-templates.store'), [
             'name' => 'Ubuntu 24.04',
-            'family' => 'ubuntu',
-            'version' => '24.04',
+            'operating_system_version_id' => $noble->id,
             'is_active' => true,
             'sort_order' => 1,
             'proxmox_template_ids' => [$template->id],
-        ])->assertSessionHasNoErrors();
+        ])->assertSessionHasNoErrors()
+            ->assertSessionHas('inertia.flash_data.toast.message', 'OS template created. Create a server from it, then use Check against a server to confirm the system.');
 
         $os = OsTemplate::query()->sole();
         $this->assertSame([$template->id], $os->proxmoxTemplates()->pluck('proxmox_templates.id')->all());
+        $this->assertSame(['ubuntu', '24.04', OsFamily::Debian, OsPlatform::Linux], [$os->distribution, $os->version, $os->family, $os->platform]);
 
         $this->get(route('admin.os-templates.index'))
             ->assertInertia(fn (Assert $page) => $page
                 ->where('templates.0.proxmox_template_ids', [$template->id])
-                ->where('proxmoxTemplates.0.vmid', 9000));
+                ->where('templates.0.operating_system_version_id', $noble->id)
+                ->where('proxmoxTemplates.0.vmid', 9000)
+                ->where('systems.0.name', 'Ubuntu')
+                ->where('systems.0.versions.0', ['id' => $noble->id, 'version' => '24.04', 'templates' => 1]));
 
         $this->put(route('admin.os-templates.update', $os), [
             'name' => 'Ubuntu 24.04 LTS',
-            'family' => 'ubuntu',
-            'version' => '24.04',
+            'operating_system_version_id' => $noble->id,
             'is_active' => false,
             'sort_order' => 1,
             'proxmox_template_ids' => [],
@@ -56,27 +71,30 @@ class CatalogManagementTest extends AdminTestCase
         $this->assertFalse($os->refresh()->is_active);
     }
 
-    public function test_the_platform_follows_the_family()
+    public function test_a_template_takes_the_system_version_and_platform_of_its_version()
     {
+        $this->post(route('admin.os-templates.store'), ['name' => 'Windows', 'is_active' => true])
+            ->assertSessionHasErrors('operating_system_version_id');
+        $this->post(route('admin.os-templates.store'), ['name' => 'Windows', 'operating_system_version_id' => 999, 'is_active' => true])
+            ->assertSessionHasErrors('operating_system_version_id');
+
         $this->post(route('admin.os-templates.store'), [
             'name' => 'Windows Server 2022',
-            'family' => 'windows',
-            'version' => '2022',
+            'operating_system_version_id' => $this->systemVersion('Windows Server', '2022', 'windows')->id,
             'is_active' => true,
         ])->assertSessionHasNoErrors();
 
         $os = OsTemplate::query()->sole();
-        $this->assertSame(OsPlatform::Windows, $os->platform);
+        $this->assertSame(['windows-server', '2022', OsFamily::Windows, OsPlatform::Windows], [$os->distribution, $os->version, $os->family, $os->platform]);
 
+        // Any system administrators add; an unknown one is of no family.
         $this->put(route('admin.os-templates.update', $os), [
-            'name' => 'Debian 12',
-            'family' => 'debian',
-            'version' => '12',
+            'name' => 'Zorin OS 17',
+            'operating_system_version_id' => $this->systemVersion('Zorin OS', '17')->id,
             'is_active' => true,
-            'platform' => 'windows',
         ])->assertSessionHasNoErrors();
 
-        $this->assertSame(OsPlatform::Linux, $os->refresh()->platform);
+        $this->assertSame(['zorin-os', '17', OsFamily::Other, OsPlatform::Linux], [$os->refresh()->distribution, $os->version, $os->family, $os->platform]);
     }
 
     public function test_templates_not_offered_yet_are_suggested_once_per_name()
@@ -87,28 +105,22 @@ class CatalogManagementTest extends AdminTestCase
             'cluster_id' => $node->cluster_id, 'node_id' => $node->id, 'vmid' => $vmid, 'name' => $name,
         ]);
         $ubuntu = [$template($first, 9000, 'ubuntu-2404-cloud')->id, $template($second, 9001, 'ubuntu-2404-cloud')->id];
+        $template($first, 9003, 'rocky-linux-9.5');
         $mapped = $template($first, 9002, 'debian-12');
-        OsTemplate::factory()->create()->proxmoxTemplates()->attach($mapped);
+        OsTemplate::factory()->create(['distribution' => 'debian', 'version' => '12'])->proxmoxTemplates()->attach($mapped);
+        $noble = $this->systemVersion('Ubuntu', '24.04');
+        $rocky = $this->systemVersion('Rocky Linux', '9');
 
         $this->get(route('admin.os-templates.index'))
             ->assertInertia(fn (Assert $page) => $page
-                ->has('found', 1)
+                ->has('found', 2)
                 ->where('found.0.name', 'ubuntu-2404-cloud')
                 ->where('found.0.proxmox_template_ids', $ubuntu)
-                ->where('found.0.guess', ['name' => 'Ubuntu 24.04 LTS', 'family' => 'ubuntu', 'version' => '24.04'])
+                ->where('found.0.guess', ['name' => 'Ubuntu 24.04 LTS', 'operating_system_version_id' => $noble->id])
                 ->has('found.0.places', 2)
-                ->has('proxmoxTemplates', 3));
-    }
-
-    public function test_os_template_family_is_validated()
-    {
-        $this->post(route('admin.os-templates.store'), [
-            'name' => 'X',
-            'family' => 'beos',
-            'version' => '1',
-            'is_active' => true,
-            'sort_order' => 0,
-        ])->assertSessionHasErrors('family');
+                // Rocky Linux is recognised by its name; 9.5 is a point release of 9.
+                ->where('found.1.guess.operating_system_version_id', $rocky->id)
+                ->has('proxmoxTemplates', 4));
     }
 
     public function test_packages_store_friendly_units_as_mib_and_bytes()
@@ -134,6 +146,23 @@ class CatalogManagementTest extends AdminTestCase
         $this->assertSame(2000 * 1000 ** 3, $package->traffic_bytes);
         $this->assertNull($package->port_speed_mbps);
         $this->assertEquals([NetworkModel::Bridged, NetworkModel::Routed], $package->network_models->all());
+    }
+
+    public function test_packages_store_cpu_and_disk_limits()
+    {
+        // docs/adr/0034
+        $this->post(route('admin.packages.store'), [
+            'name' => 'VPS S', 'cpu_cores' => 2, 'memory_mib' => 2048, 'disk_gib' => 40,
+            'ipv4_count' => 1, 'ipv6_count' => 0, 'snapshot_slots' => 0, 'backup_slots' => 0,
+            'network_models' => ['bridged'], 'is_active' => true, 'sort_order' => 0,
+            'cpu_limit' => 1.25, 'cpu_units' => null, 'disk_mb_s' => 200, 'disk_iops' => '',
+        ])->assertSessionHasNoErrors();
+
+        $package = Package::query()->sole();
+        $this->assertSame(['1.25', null, 200, null], [$package->cpu_limit, $package->cpu_units, $package->disk_mb_s, $package->disk_iops]);
+
+        $this->get(route('admin.packages.index'))
+            ->assertInertia(fn (Assert $page) => $page->where('packages.0.cpu_limit', 1.25)->where('packages.0.disk_mb_s', 200));
     }
 
     public function test_unlimited_traffic_is_stored_as_null()

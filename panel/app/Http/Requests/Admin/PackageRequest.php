@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace App\Http\Requests\Admin;
 
 use App\Enums\NetworkModel;
+use App\Models\FirewallRuleset;
+use App\Provisioning\ResourceLimits;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -27,6 +29,10 @@ class PackageRequest extends FormRequest
             'disk_gib' => ['required', 'integer', 'between:1,65536'],
             'traffic_gb' => ['nullable', 'integer', 'between:1,10000000'],
             'port_speed_mbps' => ['nullable', 'integer', 'between:1,400000'],
+            // Empty: unlimited (docs/adr/0034).
+            ...ResourceLimits::rules(),
+            // New servers start with these rules and its default policy (docs/adr/0035 §3).
+            'firewall_ruleset' => ['nullable', 'string', Rule::exists('firewall_rulesets', 'uuid')],
             'ipv4_count' => ['required', 'integer', 'between:0,64'],
             'ipv6_count' => ['required', 'integer', 'between:0,64'],
             'snapshot_slots' => ['required', 'integer', 'between:0,100'],
@@ -54,11 +60,12 @@ class PackageRequest extends FormRequest
      */
     public function packageData(): array
     {
-        $data = $this->safe()->except(['disk_gib', 'traffic_gb', 'placement_group_ids']);
+        $data = $this->safe()->except(['disk_gib', 'traffic_gb', 'placement_group_ids', 'firewall_ruleset']);
+        $data['firewall_ruleset_id'] = $this->filled('firewall_ruleset') ? FirewallRuleset::query()->where('uuid', $this->string('firewall_ruleset'))->value('id') : null;
         $data['disk_mib'] = $this->integer('disk_gib') * 1024;
         $data['traffic_bytes'] = $this->filled('traffic_gb') ? $this->integer('traffic_gb') * 1000 ** 3 : null;
         $data['port_speed_mbps'] = $this->filled('port_speed_mbps') ? $this->integer('port_speed_mbps') : null;
 
-        return $data;
+        return [...$data, ...ResourceLimits::fromRequest($this)->columns()];
     }
 }

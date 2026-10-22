@@ -45,6 +45,22 @@ class GuestAgentTest extends TestCase
         $this->assertFalse($this->agent()->ping(100));
     }
 
+    public function test_commands_the_guest_blocks_say_how_to_allow_them()
+    {
+        // AlmaLinux 9's qemu-ga allows only a list of commands without guest-exec.
+        $this->proxmox->agentBlocked[100] = ['exec'];
+
+        $this->assertTrue($this->agent()->ping(100));
+
+        try {
+            $this->agent()->exec(100, ['true']);
+            $this->fail('The blocked command was accepted.');
+        } catch (GuestAgentException $e) {
+            $this->assertStringContainsString('refuses guest-exec', $e->getMessage());
+            $this->assertStringContainsString('/etc/sysconfig/qemu-ga', $e->getMessage());
+        }
+    }
+
     public function test_files_are_written_base64_encoded_and_read_back()
     {
         $content = "#!/bin/sh\necho 'hi'\n".random_bytes(64);

@@ -64,7 +64,7 @@ class ServerProvisioningTest extends TestCase
 
         $task = $server->tasks()->sole();
         $this->assertSame(TaskStatus::Succeeded, $task->status);
-        $this->assertSame(['clone', 'configure', 'resize', 'firewall', 'start', 'wait_agent'], array_column($task->steps, 'key'));
+        $this->assertSame(['clone', 'configure', 'resize', 'firewall', 'start', 'wait_agent', 'verify'], array_column($task->steps, 'key'));
     }
 
     public function test_a_server_becomes_active_only_once_its_guest_agent_answers()

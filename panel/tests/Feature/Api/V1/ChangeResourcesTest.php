@@ -56,6 +56,21 @@ class ChangeResourcesTest extends ApiTestCase
         $this->api('GET', "/api/v1/servers/{$server->uuid}")->assertJsonPath('data.reboot_required', false);
     }
 
+    public function test_limits_come_from_the_package_and_stay_without_one()
+    {
+        // docs/adr/0034: the API takes no overrides for them.
+        $limited = Package::factory()->create([
+            'cpu_cores' => 2, 'memory_mib' => 4096, 'disk_mib' => 40960, 'ipv4_count' => 1, 'ipv6_count' => 0,
+            'cpu_limit' => 1.5, 'disk_iops' => 1000, 'network_models' => [NetworkModel::Bridged],
+        ]);
+
+        $this->api('POST', $this->url(), ['package' => $limited->uuid])->assertAccepted();
+        $this->assertSame(['1.50', 1000], [$this->server->refresh()->cpu_limit, $this->server->disk_iops]);
+
+        $this->api('POST', $this->url(), ['resources' => ['memory_mib' => 6144, 'cpu_limit' => 4]])->assertAccepted();
+        $this->assertSame(['1.50', 1000], [$this->server->refresh()->cpu_limit, $this->server->disk_iops]);
+    }
+
     public function test_resources_are_changed_and_the_rest_is_kept()
     {
         $this->api('POST', $this->url(), ['resources' => ['memory_mib' => 6144, 'ipv4_count' => 2], 'reboot' => true])->assertAccepted();

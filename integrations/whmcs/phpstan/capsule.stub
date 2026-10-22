@@ -55,6 +55,13 @@ namespace Illuminate\Database\Query {
         public function delete(): int
         {
         }
+
+        /**
+         * @param array<string, mixed> $values
+         */
+        public function update(array $values): int
+        {
+        }
     }
 }
 

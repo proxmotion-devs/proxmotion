@@ -73,6 +73,6 @@ class LocaleTest extends TestCase
                 'name' => 'Test User',
                 'email' => '',
             ])
-            ->assertSessionHasErrors(['email' => 'E-posta adresi mutlaka gereklidir.']);
+            ->assertSessionHasErrors(['email' => 'E-posta adresi alanı zorunludur.']);
     }
 }

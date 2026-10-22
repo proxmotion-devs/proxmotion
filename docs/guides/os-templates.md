@@ -10,8 +10,9 @@ Building them takes two steps:
 
 Nothing is installed on the hypervisor, and the node never needs internet access.
 
-To build a template from an installer ISO by hand instead (other distributions, Windows
-Server, or a custom installation), see [iso-templates.md](iso-templates.md).
+To build a template from an installer ISO by hand instead (other distributions or a custom
+installation), see [iso-templates.md](iso-templates.md); Windows Server templates have their own
+guide, [windows-templates.md](windows-templates.md).
 
 > **Status:** this procedure has not yet been tested end to end against a real Proxmox VE
 > node, and the container path (Windows without WSL, macOS) has not been tested at all.
@@ -261,8 +262,10 @@ monthly):
 3. On the node: `REFRESH=1 ./build-templates.sh` (optionally with `ONLY=…`). This builds a new
    dated template next to the old one; the old one is not touched.
 4. In the panel, sync the cluster and map the OS template to the new Proxmox template.
-5. Delete the old template in Proxmox. Servers are full clones, so existing servers do not
-   depend on it.
+5. Delete the old template in Proxmox once nothing uses it. Full clones do not depend on it;
+   while **linked clones** (OS template *Clone method*, [ADR 0027](../adr/0027-linked-clones.md))
+   use its base disk, Proxmox refuses to delete it, so keep it until those servers are
+   reinstalled or terminated.
 
 ---
 
@@ -279,6 +282,9 @@ monthly):
 | `A VM that is not a template uses the name …` | Rename or remove that VM, then run again |
 | The panel does not list the template | Set `POOL` to the panel's resource pool (or add the template to the pool in Proxmox), then sync |
 | Servers boot but the panel cannot reach the guest agent | The template was not built from a prepared image; rebuild it with these scripts |
+| `Command guest-exec has been disabled` (AlmaLinux, Rocky, RHEL, CentOS, Fedora) | Their `qemu-guest-agent` blocks `guest-exec` and file access by default. In the template (and on servers already cloned from it): `sed -i -e 's/^FILTER_RPC_ARGS=.*/FILTER_RPC_ARGS=""/' -e 's/^BLACKLIST_RPC=.*/BLACKLIST_RPC=/' /etc/sysconfig/qemu-ga && systemctl restart qemu-guest-agent` (see [iso-templates.md](iso-templates.md#4-prepare-the-system-for-cloning)) |
+| The *wait_agent* step says `cloud-init finished with status error` or `was still running after 10 minutes` | A new server becomes active only once `cloud-init status` reports it has finished, so the guest scripts (hostname, addresses) run after cloud-init. Check `cloud-init status --long` and `/var/log/cloud-init.log` inside the server; a template that needs the network to reach a mirror waits for it |
+| `mkdir failed … Permission denied` or `failed to open file '/var/lib/proxmotion/…'` (AlmaLinux, Rocky, RHEL) | SELinux confines the commands the guest agent runs. In the template and on servers already cloned from it: `dnf install -y policycoreutils-python-utils && semanage permissive -a virt_qemu_ga_t` (only the agent's domain becomes permissive). `ausearch -m avc -ts recent` shows what was denied |
 
 ## Why not reuse Virtualizor templates?
 

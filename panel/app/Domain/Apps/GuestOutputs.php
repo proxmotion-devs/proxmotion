@@ -30,7 +30,7 @@ final class GuestOutputs
 
         if (array_filter($declared, fn (RecipeOutput $output) => ! $output->isFile()) !== []) {
             try {
-                $decoded = json_decode($agent->readFile($vmid, $directory.'/outputs.json')->content, true);
+                $decoded = json_decode(self::withoutBom($agent->readFile($vmid, $directory.'/outputs.json')->content), true);
                 $texts = is_array($decoded) ? $decoded : [];
             } catch (ProxmoxException) {
                 $texts = [];
@@ -71,7 +71,7 @@ final class GuestOutputs
      */
     public static function status(GuestAgentResource $agent, int $vmid, string $directory): array
     {
-        $status = json_decode($agent->readFile($vmid, $directory.'/status.json')->content, true);
+        $status = json_decode(self::withoutBom($agent->readFile($vmid, $directory.'/status.json')->content), true);
         $status = is_array($status) ? $status : [];
 
         return [
@@ -80,5 +80,13 @@ final class GuestOutputs
             'message' => is_string($status['message'] ?? null) && $status['message'] !== '' ? $status['message'] : null,
             'progress' => is_int($status['progress'] ?? null) ? max(0, min(99, $status['progress'])) : null,
         ];
+    }
+
+    /**
+     * A Windows script may write JSON with a UTF-8 byte order mark (docs/adr/0029).
+     */
+    private static function withoutBom(string $json): string
+    {
+        return str_starts_with($json, "\u{FEFF}") ? substr($json, 3) : $json;
     }
 }

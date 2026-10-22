@@ -11,7 +11,6 @@ use App\Enums\ServerOrigin;
 use App\Enums\ServerStatus;
 use App\Enums\TaskStatus;
 use App\Enums\TaskType;
-use App\Http\Middleware\HandleInertiaRequests;
 use App\Models\AppRecipe;
 use App\Models\AuditLog;
 use App\Models\BillingSystem;
@@ -24,14 +23,16 @@ use App\Models\ProxmoxTemplate;
 use App\Models\Server;
 use App\Models\Task;
 use App\Models\User;
+use App\Provisioning\ServerCreator;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\Concerns\BuildsInfrastructure;
+use Tests\Concerns\OffersApps;
 use Tests\Support\FakeProxmoxCluster;
 use Tests\Unit\PublicKeyTest;
 
 class ServerManagementTest extends AdminTestCase
 {
-    use BuildsInfrastructure;
+    use BuildsInfrastructure, OffersApps;
 
     private FakeProxmoxCluster $proxmox;
 
@@ -102,6 +103,75 @@ class ServerManagementTest extends AdminTestCase
                 ->where('server.status', 'active')
                 ->where('server.addresses.0.address', '203.0.113.2')
                 ->has('tasks', 1));
+    }
+
+    public function test_without_a_hostname_the_location_template_names_the_server()
+    {
+        // docs/adr/0031: no template, so a hostname is required.
+        $this->post(route('admin.servers.store'), $this->payload(['hostname' => '']))
+            ->assertSessionHasErrors(['hostname' => "Enter a hostname: the location {$this->location->name} has no hostname template."]);
+        $this->assertSame(0, Server::query()->count());
+
+        $this->location->update(['hostname_template' => 'ip-{ip}.example.com']);
+
+        $this->get(route('admin.servers.create'))
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('locations.0.code', 'ist1')
+                ->where('locations.0.hostname_template', 'ip-{ip}.example.com'));
+
+        $this->post(route('admin.servers.store'), $this->payload(['hostname' => '']))->assertSessionHasNoErrors();
+
+        $server = Server::query()->sole();
+        $this->assertSame('ip-203-0-113-2.example.com', $server->hostname);
+        $this->assertSame('ip-203-0-113-2.example.com', $this->proxmox->vms[$server->vmid]['config']['name']);
+
+        // The VM is named after the hostname (docs/adr/0031 §2a); the pages title it so.
+        $this->get(route('admin.servers.index'))
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('servers.data.0.vm_name', null)
+                ->where('servers.data.0.hostname', 'ip-203-0-113-2.example.com'));
+
+        // A server named after its address before 2026-10-20 is titled by it, with the hostname below.
+        $server->forceFill(['vm_name' => '203.0.113.2'])->save();
+        $this->get(route('admin.servers.show', $server))
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('server.vm_name', '203.0.113.2')
+                ->where('server.hostname', 'ip-203-0-113-2.example.com'));
+    }
+
+    public function test_an_inactive_template_can_be_tried_on_a_server_before_customers_see_it()
+    {
+        // docs/adr/0024 §8: the OS template check links here with the template preselected.
+        $this->osTemplate->forceFill(['is_active' => false, 'name' => 'Pardus 23.4'])->save();
+        $active = OsTemplate::factory()->create(['name' => 'Debian 13', 'distribution' => 'debian', 'version' => '13']);
+
+        $this->get(route('admin.servers.create', ['os_template' => $this->osTemplate->uuid]))
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('osTemplates.0', ['value' => $active->uuid, 'label' => 'Debian 13', 'active' => true])
+                ->where('osTemplates.1', ['value' => $this->osTemplate->uuid, 'label' => 'Pardus 23.4 (inactive)', 'active' => false])
+                ->where('selectedOsTemplate', $this->osTemplate->uuid));
+
+        $this->get(route('admin.servers.create', ['os_template' => 'not-a-template']))
+            ->assertInertia(fn (Assert $page) => $page->where('selectedOsTemplate', null));
+
+        // Never for a customer: not with a billing system.
+        $whmcs = BillingSystem::factory()->create();
+        $this->post(route('admin.servers.store'), $this->payload(['billing_system' => $whmcs->uuid]))
+            ->assertSessionHasErrors(['os_template' => 'An inactive OS template can only be used for a server without a billing system: it becomes a test server.']);
+        $this->assertSame(0, Server::query()->count());
+
+        $this->post(route('admin.servers.store'), $this->payload())->assertSessionHasNoErrors();
+        $server = Server::query()->sole();
+        $this->assertSame($this->osTemplate->id, $server->os_template_id);
+        $this->assertTrue($server->is_test, 'A server of an inactive template is a test server.');
+    }
+
+    public function test_the_creator_refuses_an_inactive_template_for_a_billing_system()
+    {
+        $this->osTemplate->forceFill(['is_active' => false])->save();
+
+        $this->expectExceptionMessage(ServerCreator::INACTIVE_TEMPLATE);
+        app(ServerCreator::class)->create($this->order(['billingSystem' => BillingSystem::factory()->create()]));
     }
 
     public function test_an_admin_can_choose_the_node_and_storage()
@@ -385,30 +455,24 @@ class ServerManagementTest extends AdminTestCase
         $this->post(route('admin.servers.store'), $this->payload(['root_password' => 'chosen-password-123']));
         $server = Server::query()->sole();
 
-        $this->post(route('admin.servers.password', $server))->assertSessionHas('revealed_password', 'chosen-password-123');
+        $this->get(route('admin.servers.show', $server))->assertDontSee('chosen-password-123');
+
+        // As the page's Show button asks for it: JSON, not a page visit.
+        $this->postJson(route('admin.servers.password', $server))
+            ->assertOk()
+            ->assertExactJson(['password' => 'chosen-password-123'])
+            ->assertSessionMissing('revealed_password');
     }
 
-    public function test_revealing_the_password_reloads_only_the_password()
+    public function test_the_page_has_no_password_prop()
     {
         $this->post(route('admin.servers.store'), $this->payload(['root_password' => 'chosen-password-123']));
         $server = Server::query()->sole();
+        $this->postJson(route('admin.servers.password', $server))->assertOk();
 
-        // As the page's reveal button asks for it: the redirect back keeps the partial reload headers.
-        $page = $this->from(route('admin.servers.show', $server))
-            ->withHeaders([
-                'X-Inertia' => 'true',
-                'X-Inertia-Version' => (string) app(HandleInertiaRequests::class)->version(request()),
-                'X-Inertia-Partial-Component' => 'admin/servers/Show',
-                'X-Inertia-Partial-Data' => 'revealedPassword',
-            ])
-            ->followingRedirects()
-            ->post(route('admin.servers.password', $server))
-            ->assertOk();
-
-        $this->assertSame('chosen-password-123', $page->json('props.revealedPassword'));
-        $this->assertNull($page->json('props.agent'), 'The guest agent is not asked again.');
-        $this->assertNull($page->json('props.power'));
-        $this->assertNull($page->json('deferredProps'));
+        // Inertia keeps page props in the browser's history state.
+        $this->get(route('admin.servers.show', $server))
+            ->assertInertia(fn (Assert $page) => $page->missing('revealedPassword'));
     }
 
     public function test_input_is_validated()
@@ -436,6 +500,7 @@ class ServerManagementTest extends AdminTestCase
     public function test_the_create_form_offers_the_apps_each_template_fits()
     {
         app(RecipeSynchronizer::class)->sync();
+        $this->offerApps();
         $windows = OsTemplate::factory()->windows()->create();
 
         $this->get(route('admin.servers.create'))
@@ -449,6 +514,7 @@ class ServerManagementTest extends AdminTestCase
     public function test_a_server_can_be_created_with_an_app()
     {
         app(RecipeSynchronizer::class)->sync();
+        $this->offerApps();
 
         $this->post(route('admin.servers.store'), $this->payload(['app' => 'openvpn', 'app_inputs' => ['port' => 1195]]))
             ->assertSessionHasNoErrors();
@@ -463,6 +529,7 @@ class ServerManagementTest extends AdminTestCase
     public function test_apps_that_do_not_fit_and_invalid_app_inputs_are_shown_on_the_form()
     {
         app(RecipeSynchronizer::class)->sync();
+        $this->offerApps();
         AppRecipe::query()->where('slug', 'docker')->update(['is_active' => false]);
 
         $this->post(route('admin.servers.store'), $this->payload(['app' => 'docker']))->assertSessionHasErrors('app');
@@ -475,6 +542,7 @@ class ServerManagementTest extends AdminTestCase
     public function test_admins_can_grant_and_revoke_paid_apps()
     {
         app(RecipeSynchronizer::class)->sync();
+        $this->offerApps();
         $openvpn = AppRecipe::query()->with('latestVersion')->where('slug', 'openvpn')->firstOrFail();
         $version = $openvpn->latestVersion;
         $this->assertNotNull($version);
@@ -608,7 +676,7 @@ class ServerManagementTest extends AdminTestCase
     {
         $this->proxmox->permissions = [
             '/' => ['Sys.Audit', 'Datastore.Audit', 'VM.Audit'],
-            '/pool/proxmotion' => ['VM.Audit', 'VM.Allocate', 'VM.Clone', 'VM.PowerMgmt', 'VM.Console', 'VM.Config.CPU', 'VM.Config.Memory', 'VM.Config.Disk', 'VM.Config.Network', 'VM.Config.Cloudinit', 'VM.Config.Options', 'VM.GuestAgent.Unrestricted'],
+            '/pool/proxmotion' => ['VM.Audit', 'VM.Allocate', 'VM.Clone', 'VM.PowerMgmt', 'VM.Console', 'VM.Config.CPU', 'VM.Config.Memory', 'VM.Config.Disk', 'VM.Config.Network', 'VM.Config.Cloudinit', 'VM.Config.Options', 'VM.Migrate', 'VM.GuestAgent.Unrestricted'],
             '/storage' => ['Datastore.AllocateSpace'],
         ];
 

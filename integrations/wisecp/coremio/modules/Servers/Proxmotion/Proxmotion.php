@@ -32,13 +32,16 @@ class Proxmotion extends ServerModule
     private const BUSY = ['pending', 'provisioning', 'reinstalling', 'terminating'];
 
     /** Tools that need a running server, hidden while it is busy or not active. */
-    private const SERVER_TOOLS = ['start-server', 'stop-server', 'restart-server', 'poweroff-server', 'reset-password', 'reinstall-os', 'vnc-console', 'hostname-change', 'reverse-dns', 'apps'];
+    private const SERVER_TOOLS = ['start-server', 'stop-server', 'restart-server', 'poweroff-server', 'reset-password', 'reinstall-os', 'vnc-console', 'hostname-change', 'reverse-dns', 'apps', 'firewall'];
 
     /** App installation statuses during which the installer still runs. */
     private const APP_BUSY = ['queued', 'installing', 'uninstalling', 'upgrading'];
 
     /** Reference of the paid app rights this module grants for add-ons (ADR 0019). */
     private const ADDON_REFERENCE = 'wisecp-addon';
+
+    /** Traffic is shown in decimal GB, as Proxmotion shows it and sells it (extra_traffic_gb). */
+    private const GB = 1000000000;
 
     private ApiClient $api;
 
@@ -71,8 +74,8 @@ class Proxmotion extends ServerModule
     }
 
     /**
-     * The App Marketplace is a tool of the module's own (WISECP has none):
-     * its page is pages/tools/apps.php.
+     * The App Marketplace and the firewall are tools of the module's own
+     * (WISECP has neither): their pages are in pages/tools/.
      */
     public function configure_features(): void
     {
@@ -84,7 +87,19 @@ class Proxmotion extends ServerModule
             'icon' => 'bi bi-grid',
             'page' => 'apps',
             'type' => 'page-loader',
-            'capabilities' => ['list', 'install', 'retry', 'download', 'uninstall', 'upgrade', 'action'],
+            'capabilities' => ['list', 'install', 'retry', 'cancel', 'download', 'uninstall', 'upgrade', 'action'],
+        ]);
+
+        // The server's firewall (docs/adr/0035): pages/tools/firewall.php.
+        $this->add_tool('firewall', [
+            'name' => $this->text('tool_firewall'),
+            'label' => $this->text('tool_firewall'),
+            'group' => 'system',
+            'order' => 16,
+            'icon' => 'bi bi-shield-check',
+            'page' => 'firewall',
+            'type' => 'page-loader',
+            'capabilities' => ['list', 'policy', 'add', 'delete', 'up', 'down', 'ruleset'],
         ]);
     }
 
@@ -98,6 +113,8 @@ class Proxmotion extends ServerModule
     {
         $filters = parent::get_tool_action_data_filters();
         $filters['apps'] = ['secret_inputs' => null, 'app' => 'route', 'installation' => 'route', 'run' => 'route', 'app_action' => 'identifier', 'output' => 'identifier'];
+        // Proxmotion validates the rest of a rule; rule_action, as WISECP removes "action".
+        $filters['firewall'] = ['ruleset' => 'route', 'mode' => 'identifier', 'rule_action' => 'identifier', 'protocol' => 'identifier', 'index' => 'identifier', 'default_policy' => 'identifier'];
 
         return $filters;
     }
@@ -240,7 +257,8 @@ class Proxmotion extends ServerModule
             return $this->created((string) $existing['id'], null);
         }
 
-        $payload = $order->payload($this->packageFor($order));
+        // The service gets the hostname Proxmotion generated through created() (docs/adr/0031).
+        $payload = $order->payload($this->packageFor($order), $order->givenHostname() === null && $this->locationNamesServers($order->location()));
         $app = $order->app();
 
         if ($app !== null) {
@@ -270,7 +288,9 @@ class Proxmotion extends ServerModule
     {
         $server = $this->requireServer();
 
-        if ($server['status'] !== 'suspended') {
+        // A server Proxmotion suspended over its traffic quota or a usage limit is suspended again,
+        // so that the suspension becomes WISECP's and Proxmotion never lifts it (docs/adr/0039 §8).
+        if ($server['status'] !== 'suspended' || ! empty($server['suspension_cause'])) {
             $reason = trim((string) ($this->service['suspended_reason'] ?? ''));
             $this->api->suspend((string) $server['id'], $reason !== '' ? $reason : null, $this->idempotencyKey('suspend'));
         }
@@ -423,8 +443,12 @@ class Proxmotion extends ServerModule
         $status = (string) $server['status'];
         $power = is_string($server['power_state'] ?? null) ? $server['power_state'] : 'unknown';
         $shown = $status === 'active' ? $power : $status;
+        $traffic = self::trafficItem($server);
 
         return [
+            'gauges' => [
+                'bandwidth' => $traffic,
+            ],
             'server_info' => [
                 'hostname' => ['value' => (string) $server['hostname']],
                 'ip_address' => ['value' => $ipv4[0]['address'] ?? ($addresses[0]['address'] ?? ''), 'copyable' => true],
@@ -444,9 +468,33 @@ class Proxmotion extends ServerModule
                 'cpu_cores' => ['value' => $this->text('cpu_cores', ['count' => (int) ($resources['cpu_cores'] ?? 0)])],
                 'ram' => ['value' => self::size((int) ($resources['memory_mib'] ?? 0))],
                 'disk_space' => ['value' => self::size((int) ($resources['disk_mib'] ?? 0))],
+                'bandwidth' => $traffic,
                 'ipv4' => ['value' => (string) count($ipv4)],
                 'ipv6' => ['value' => (string) (count($addresses) - count($ipv4))],
             ],
+        ];
+    }
+
+    /**
+     * The counted traffic of the current month against the quota (docs/adr/0039)
+     * as WISECP's bandwidth gauge and resource row take it: GB, "unlimited"
+     * without a quota, nothing known from a panel before traffic accounting.
+     *
+     * @param array<string, mixed> $server
+     * @return array{used: float|null, total: float|string|null, unit: string}
+     */
+    private static function trafficItem(array $server): array
+    {
+        if (! is_array($server['traffic'] ?? null)) {
+            return ['used' => null, 'total' => null, 'unit' => 'GB'];
+        }
+
+        $quota = (int) ($server['resources']['traffic_bytes'] ?? 0);
+
+        return [
+            'used' => round(max(0, (int) ($server['traffic']['counted_bytes'] ?? 0)) / self::GB, 2),
+            'total' => $quota > 0 ? round($quota / self::GB, 2) : 'unlimited',
+            'unit' => 'GB',
         ];
     }
 
@@ -480,6 +528,10 @@ class Proxmotion extends ServerModule
     {
         if ($tool === 'apps') {
             return $this->appsData((string) $this->requireActiveServer()['id']);
+        }
+
+        if ($tool === 'firewall') {
+            return $this->firewallData((string) $this->requireActiveServer()['id']);
         }
 
         $server = $this->api->server((string) $this->requireActiveServer()['id']);
@@ -527,6 +579,7 @@ class Proxmotion extends ServerModule
             'apps' => match ($action) {
                 'install' => $this->installApp($id, trim((string) ($data['app'] ?? '')), (string) ($data['secret_inputs'] ?? '')),
                 'retry' => $this->retryApp($id, trim((string) ($data['installation'] ?? ''))),
+                'cancel' => $this->cancelApp($id, trim((string) ($data['installation'] ?? '')), trim((string) ($data['run'] ?? ''))),
                 // Reinstall with an app (ADR 0016 §5): WISECP's own reinstall tool has no place for one.
                 'reinstall' => empty($data['confirm'])
                     ? throw new Exception($this->text('reinstall_confirm_required'))
@@ -538,6 +591,7 @@ class Proxmotion extends ServerModule
                 'action' => $this->runAppAction($id, trim((string) ($data['installation'] ?? '')), trim((string) ($data['app_action'] ?? '')), (string) ($data['secret_inputs'] ?? '')),
                 default => throw new Exception('Unknown action: ' . $action),
             },
+            'firewall' => $this->firewall($id, $action, $data),
             default => throw new Exception('Unknown tool: ' . $tool),
         };
     }
@@ -697,6 +751,24 @@ class Proxmotion extends ServerModule
      *
      * @return array<string, mixed>
      */
+    private function cancelApp(string $id, string $installation, string $run): array
+    {
+        if ($installation === '') {
+            throw new Exception($this->text('app_not_found'));
+        }
+
+        if ($run === '') {
+            $this->api->cancelApp($id, $installation, $this->idempotencyKey('app-cancel'));
+        } else {
+            $this->api->cancelAppRun($id, $installation, $run, $this->idempotencyKey('app-run-cancel'));
+        }
+
+        return ['status' => 'successful', 'message' => $this->text('app_cancelled'), 'successToast' => true];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
     private function uninstallApp(string $id, string $installation): array
     {
         if ($installation === '') {
@@ -766,6 +838,154 @@ class Proxmotion extends ServerModule
         }
 
         return $inputs;
+    }
+
+    /**
+     * The firewall tool's page (docs/adr/0035): on or off, the rules, the
+     * app ports and the rule sets that can be applied.
+     *
+     * @return array<string, mixed>
+     */
+    private function firewallData(string $id): array
+    {
+        $firewall = $this->api->firewall($id);
+
+        return [
+            'default_policy' => self::policyOf($firewall),
+            'rules' => self::firewallRules($firewall),
+            'app_rules' => array_values(array_filter(
+                is_array($firewall['app_rules'] ?? null) ? $firewall['app_rules'] : [],
+                static fn (mixed $rule): bool => is_array($rule) && isset($rule['app'], $rule['protocol'], $rule['port']),
+            )),
+            'rulesets' => array_map(static fn (array $ruleset): array => [
+                'id' => (string) ($ruleset['id'] ?? ''),
+                'name' => (string) ($ruleset['name'] ?? ''),
+                'description' => is_string($ruleset['description'] ?? null) ? $ruleset['description'] : '',
+            ], $this->api->firewallRulesets()),
+        ];
+    }
+
+    /**
+     * Change the firewall: "policy" (default_policy), "add" (a rule), "delete", "up"
+     * or "down" (index), or "ruleset" (ruleset, mode). Proxmotion takes the
+     * whole list of rules, so the current ones are read first.
+     *
+     * @param array<string, mixed> $data
+     * @return array<string, mixed>
+     */
+    private function firewall(string $id, string $action, array $data): array
+    {
+        $done = ['status' => 'successful', 'message' => $this->text('firewall_saved'), 'successToast' => true];
+
+        if ($action === 'ruleset') {
+            $ruleset = trim((string) ($data['ruleset'] ?? ''));
+
+            if ($ruleset === '') {
+                throw new Exception($this->text('firewall_ruleset_required'));
+            }
+
+            $this->api->applyFirewallRuleset($id, $ruleset, ($data['mode'] ?? '') === 'append' ? 'append' : 'replace', $this->idempotencyKey('firewall-ruleset'));
+
+            return $done;
+        }
+
+        $firewall = $this->api->firewall($id);
+        $policy = self::policyOf($firewall);
+        $rules = self::firewallRules($firewall);
+        $index = is_numeric($data['index'] ?? null) ? (int) $data['index'] : -1;
+
+        switch ($action) {
+            case 'policy':
+                $policy = ($data['default_policy'] ?? '') === 'drop' ? 'drop' : 'accept';
+                break;
+            case 'add':
+                $rules[] = self::ruleFromForm($data);
+                break;
+            case 'delete':
+                if (! isset($rules[$index])) {
+                    throw new Exception($this->text('firewall_unknown'));
+                }
+
+                array_splice($rules, $index, 1);
+                break;
+            case 'up':
+            case 'down':
+                $other = $action === 'up' ? $index - 1 : $index + 1;
+
+                if (! isset($rules[$index], $rules[$other])) {
+                    throw new Exception($this->text('firewall_unknown'));
+                }
+
+                [$rules[$index], $rules[$other]] = [$rules[$other], $rules[$index]];
+                break;
+            default:
+                throw new Exception('Unknown action: ' . $action);
+        }
+
+        $this->api->updateFirewall($id, $policy, $rules, $this->idempotencyKey('firewall'));
+
+        return $done;
+    }
+
+    /**
+     * What happens to incoming traffic no rule matches.
+     *
+     * @param array<string, mixed> $firewall
+     * @return 'accept'|'drop'
+     */
+    private static function policyOf(array $firewall): string
+    {
+        return ($firewall['default_policy'] ?? null) === 'drop' ? 'drop' : 'accept';
+    }
+
+    /**
+     * The rules of a firewall as Proxmotion takes them back.
+     *
+     * @param array<string, mixed> $firewall
+     * @return list<array{action: string, protocol: string, port: string|null, source: string|null, comment: string|null}>
+     */
+    private static function firewallRules(array $firewall): array
+    {
+        $text = static fn (array $rule, string $key): ?string => is_scalar($rule[$key] ?? null) && (string) $rule[$key] !== '' ? (string) $rule[$key] : null;
+        $rules = [];
+
+        foreach (is_array($firewall['rules'] ?? null) ? $firewall['rules'] : [] as $rule) {
+            if (is_array($rule)) {
+                $rules[] = [
+                    'action' => $text($rule, 'action') ?? 'accept',
+                    'protocol' => $text($rule, 'protocol') ?? 'tcp',
+                    'port' => $text($rule, 'port'),
+                    'source' => $text($rule, 'source'),
+                    'comment' => $text($rule, 'comment'),
+                ];
+            }
+        }
+
+        return $rules;
+    }
+
+    /**
+     * A new rule from the tool's form; Proxmotion validates it.
+     *
+     * @param array<string, mixed> $data
+     * @return array{action: string, protocol: string, port: string|null, source: string|null, comment: string|null}
+     */
+    private static function ruleFromForm(array $data): array
+    {
+        $text = static function (string $key) use ($data): ?string {
+            $value = trim((string) ($data[$key] ?? ''));
+
+            return $value === '' ? null : $value;
+        };
+        $protocol = in_array($text('protocol'), ['tcp', 'udp', 'icmp', 'any'], true) ? (string) $text('protocol') : 'tcp';
+
+        return [
+            'action' => $text('rule_action') === 'drop' ? 'drop' : 'accept',
+            'protocol' => $protocol,
+            'port' => $protocol !== 'icmp' ? $text('port') : null,
+            'source' => $text('source'),
+            'comment' => $text('comment'),
+        ];
     }
 
     /**
@@ -901,6 +1121,7 @@ class Proxmotion extends ServerModule
             'status_label' => $this->text('app_status_' . $status),
             'busy' => in_array($status, self::APP_BUSY, true),
             'failed' => $status === 'failed',
+            'can_cancel' => $status === 'installing',
             'danger' => in_array($status, ['failed', 'uninstall_failed', 'upgrade_failed'], true),
             'progress' => (int) ($installation['progress'] ?? 0),
             'step' => is_string($installation['step'] ?? null) ? $installation['step'] : null,
@@ -968,6 +1189,7 @@ class Proxmotion extends ServerModule
             'status_label' => $this->text('app_run_status_' . $status),
             'busy' => in_array($status, ['queued', 'running'], true),
             'failed' => $status === 'failed',
+            'can_cancel' => $status === 'running',
             'error' => is_string($run['error'] ?? null) ? $run['error'] : null,
             'outputs' => $this->presentOutputs($run),
         ];
@@ -1077,6 +1299,20 @@ class Proxmotion extends ServerModule
         }
 
         return null;
+    }
+
+    /**
+     * Whether the location names servers ordered without a hostname (docs/adr/0031).
+     */
+    private function locationNamesServers(string $location): bool
+    {
+        foreach ($this->api->locations() as $candidate) {
+            if (($candidate['id'] ?? null) === $location) {
+                return ! empty($candidate['generates_hostnames']);
+            }
+        }
+
+        return false;
     }
 
     /**

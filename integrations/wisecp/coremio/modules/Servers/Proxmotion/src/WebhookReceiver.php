@@ -152,7 +152,7 @@ final class WebhookReceiver
             'server.unsuspended' => $this->changeStatus($service, $current(), 'active', 'suspended', 'active'),
             'server.terminated' => $this->terminated($service, $hostname),
             'server.failed' => $this->failed($service, $hostname, $error),
-            // server.reinstalled, task.succeeded, task.failed: the module log is enough.
+            // server.reinstalled, server.moved, task.succeeded, task.failed: the module log is enough.
             default => 'Logged.',
         };
     }

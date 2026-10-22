@@ -208,11 +208,13 @@ final readonly class AppLogs
         $raw = '';
 
         try {
-            $server = $log->installation->server;
+            $installation = $log->installation;
+            $server = $installation->server;
             $agent = $this->clients->forCluster($server->cluster)->guestAgent($server->node->name);
 
             for ($i = 0; $i < self::MAX_CHUNKS; $i++) {
-                $chunk = $this->chunk($agent, $server->vmid, $log->guestFile(), $log->offset + strlen($raw));
+                $command = AppGuest::readCommand($installation->platform(), $installation->guestDirectory(), $log->guestFile(), $log->offset + strlen($raw), self::CHUNK_BYTES);
+                $chunk = $this->chunk($agent, $server->vmid, $command);
                 $raw .= $chunk;
 
                 if (strlen($chunk) < self::CHUNK_BYTES) {
@@ -255,11 +257,13 @@ final readonly class AppLogs
     }
 
     /**
+     * @param  non-empty-list<string>  $command  AppGuest::readCommand()
+     *
      * @throws ProxmoxException
      */
-    private function chunk(GuestAgentResource $agent, int $vmid, string $file, int $offset): string
+    private function chunk(GuestAgentResource $agent, int $vmid, array $command): string
     {
-        $result = $agent->run($vmid, ['/bin/bash', '-c', self::READ_SCRIPT, 'proxmotion-log', $file, (string) $offset, (string) self::CHUNK_BYTES], timeoutSeconds: 15);
+        $result = $agent->run($vmid, $command, timeoutSeconds: 15);
 
         // A file that is not there yet reads as empty.
         if (! $result->succeeded()) {

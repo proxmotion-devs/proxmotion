@@ -45,7 +45,7 @@ class CreateServerTest extends ApiTestCase
             'id' => $task->uuid,
             'type' => 'create',
             'status' => 'succeeded',
-            'server' => ['id' => $server->uuid, 'external_id' => 'whmcs-2001', 'status' => 'active'],
+            'server' => ['id' => $server->uuid, 'external_id' => 'whmcs-2001', 'hostname' => 'web1.example.com', 'status' => 'active'],
             'steps' => array_map(fn (array $step) => ['key' => $step['key'], 'status' => 'done', 'message' => null], $task->steps),
             'error' => null,
             'created_at' => $task->created_at?->toIso8601String(),
@@ -67,6 +67,30 @@ class CreateServerTest extends ApiTestCase
         $log = AuditLog::query()->where('action', 'server.created')->sole();
         $this->assertSame($this->token->id, $log->api_token_id);
         $this->assertSame(['hostname' => 'web1.example.com', 'external_id' => 'whmcs-2001'], $log->properties);
+    }
+
+    public function test_without_a_hostname_the_location_template_names_the_server()
+    {
+        // docs/adr/0031: no template, so a hostname is required.
+        $this->api('POST', '/api/v1/servers', $this->payload(['hostname' => null]))
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['hostname' => "Enter a hostname: the location {$this->location->name} has no hostname template."]);
+
+        $this->location->update(['hostname_template' => 'ip-{ip}.example.com']);
+
+        $this->api('GET', '/api/v1/locations')->assertJsonPath('data.0.generates_hostnames', true);
+
+        $payload = $this->payload();
+        unset($payload['hostname']);
+
+        $this->api('POST', '/api/v1/servers', $payload)
+            ->assertAccepted()
+            ->assertJsonPath('data.server.hostname', 'ip-203-0-113-2.example.com');
+
+        $server = Server::query()->sole();
+        $this->assertSame('ip-203-0-113-2.example.com', $server->hostname);
+        $this->assertSame('ip-203-0-113-2.example.com', $server->ipAddresses()->sole()->ptr);
+        $this->assertSame(['hostname' => 'ip-203-0-113-2.example.com', 'external_id' => 'whmcs-2001'], AuditLog::query()->where('action', 'server.created')->sole()->properties);
     }
 
     public function test_resources_of_the_package_can_be_overridden()
@@ -128,7 +152,7 @@ class CreateServerTest extends ApiTestCase
     {
         $this->api('POST', '/api/v1/servers', [])
             ->assertUnprocessable()
-            ->assertJsonValidationErrors(['external_id', 'location', 'os_template', 'hostname', 'network_model', 'resources.cpu_cores']);
+            ->assertJsonValidationErrors(['external_id', 'location', 'os_template', 'network_model', 'resources.cpu_cores']);
 
         $this->api('POST', '/api/v1/servers', $this->payload([
             'hostname' => 'not a hostname',

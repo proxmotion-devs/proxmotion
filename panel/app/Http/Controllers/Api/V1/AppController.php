@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Api\V1;
 
+use App\Domain\Apps\AppCanceller;
 use App\Domain\Apps\AppEligibility;
 use App\Domain\Apps\AppInstallConflict;
 use App\Domain\Apps\AppInstaller;
@@ -57,7 +58,7 @@ class AppController extends ApiController
         $server = $request->filled('server') ? Server::query()->with('osTemplate')->where('uuid', $request->string('server'))->first() : null;
         $mode = $request->enum('mode', AppInstallMode::class) ?? AppInstallMode::Post;
 
-        $apps = AppRecipe::query()->with('latestVersion')->where('is_active', true)->orderBy('name')->get();
+        $apps = AppRecipe::query()->with(['latestVersion', 'osVersions.operatingSystem'])->where('is_active', true)->orderBy('name')->get();
 
         if ($server === null) {
             return AppResource::collection($apps->filter(fn (AppRecipe $app) => $eligibility->forCatalog($app, $osTemplate, $package, $mode) === null)->values());
@@ -120,6 +121,43 @@ class AppController extends ApiController
     }
 
     /**
+     * Cancel a running installation (docs/adr/0030): 202 with the
+     * installation, failed at once (app.failed); the installer is stopped
+     * inside the server in the background.
+     */
+    public function cancel(Request $request, Server $server, AppInstallation $installation, AppCanceller $canceller): JsonResponse
+    {
+        $this->ensureBelongs($server, $installation);
+
+        try {
+            $installation = $canceller->cancelInstallation($installation, $this->token($request), $request->ip());
+        } catch (AppInstallConflict $e) {
+            return $this->conflict($e->translatedMessage());
+        }
+
+        return $this->installationAccepted($installation);
+    }
+
+    /**
+     * Cancel a running uninstall, upgrade or action (docs/adr/0030): 202 with
+     * the run, failed at once; the script is stopped inside the server in
+     * the background.
+     */
+    public function cancelRun(Request $request, Server $server, AppInstallation $installation, AppRun $run, AppCanceller $canceller): JsonResponse
+    {
+        $this->ensureBelongs($server, $installation);
+        $this->ensureRunBelongs($installation, $run);
+
+        try {
+            $run = $canceller->cancelRun($run, $this->token($request), $request->ip());
+        } catch (AppInstallConflict $e) {
+            return $this->conflict($e->translatedMessage());
+        }
+
+        return (new AppRunResource($run->refresh()->load(['installation.version', 'targetVersion', 'task'])))->response()->setStatusCode(202);
+    }
+
+    /**
      * Uninstall (docs/adr/0016 §4): 202 with the run; the installation is
      * removed when it succeeds (app.uninstalled / app.uninstall_failed).
      */
@@ -176,10 +214,7 @@ class AppController extends ApiController
     public function run(Request $request, Server $server, AppInstallation $installation, AppRun $run): JsonResponse
     {
         $this->ensureBelongs($server, $installation);
-
-        if ($run->app_installation_id !== $installation->id) {
-            throw (new ModelNotFoundException)->setModel(AppRun::class, [$run->uuid]);
-        }
+        $this->ensureRunBelongs($installation, $run);
 
         return (new AppRunResource($run->load(['installation.version', 'targetVersion', 'task'])))
             ->withOutputs($this->token($request)->hasScope(ApiScope::AppsSecrets))
@@ -210,6 +245,13 @@ class AppController extends ApiController
     {
         if ($installation->server_id !== $server->id || $installation->is_trial) {
             throw (new ModelNotFoundException)->setModel(AppInstallation::class, [$installation->uuid]);
+        }
+    }
+
+    private function ensureRunBelongs(AppInstallation $installation, AppRun $run): void
+    {
+        if ($run->app_installation_id !== $installation->id) {
+            throw (new ModelNotFoundException)->setModel(AppRun::class, [$run->uuid]);
         }
     }
 

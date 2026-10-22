@@ -45,6 +45,11 @@ class ProvisioningException extends RuntimeException
         return new self('This OS template is not available on any cluster in this location.');
     }
 
+    public static function firewallOff(): self
+    {
+        return new self('The Proxmox firewall is off on every cluster of this location that has this OS template, so new servers could spoof addresses.');
+    }
+
     public static function noAddresses(string $version): self
     {
         return new self('No free :version addresses are left in this location for the chosen network model.', ['version' => $version]);

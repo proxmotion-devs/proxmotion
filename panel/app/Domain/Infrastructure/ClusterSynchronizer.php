@@ -32,6 +32,7 @@ final readonly class ClusterSynchronizer
         private ProxmoxClientFactory $clients,
         private ProtectedAddresses $protected,
         private DriftDetector $drift,
+        private FirewallChecker $firewall,
     ) {}
 
     /**
@@ -48,29 +49,33 @@ final readonly class ClusterSynchronizer
             $storages = $client->cluster()->storages();
             $guests = $client->cluster()->guests();
             $bridges = $this->fetchBridges($client, $nodes);
+            $firewall = $client->cluster()->firewall();
         } catch (ProxmoxException $e) {
             $cluster->forceFill(['last_sync_error' => $e->getMessage()])->save();
 
             throw $e;
         }
 
-        DB::transaction(function () use ($cluster, $version, $status, $nodes, $storages, $guests, $bridges) {
+        DB::transaction(function () use ($cluster, $version, $status, $nodes, $storages, $guests, $bridges, $firewall) {
             $cluster->forceFill([
                 'type' => $status->isCluster() ? ClusterType::Cluster : ClusterType::Standalone,
                 'proxmox_cluster_name' => $status->clusterName,
                 'pve_version' => $version !== '' ? $version : null,
                 'last_synced_at' => now(),
                 'last_sync_error' => null,
+                // Without these the VM firewalls stop no spoofing (docs/adr/0033).
+                'firewall_enabled' => $firewall->enabled,
+                'firewall_ebtables' => $firewall->ebtables,
             ])->save();
 
-            $nodeModels = $this->syncNodes($cluster, $nodes);
+            $nodeModels = $this->syncNodes($cluster, $nodes, $status->nodeAddresses);
             $this->syncStorages($nodeModels, $storages);
             $this->syncBridges($nodeModels, $bridges);
             $this->syncTemplates($cluster, $nodeModels, $guests);
             $this->reserveNodeAddresses($cluster);
         });
 
-        $this->drift->detect($cluster, $guests);
+        $this->drift->detect($cluster, $guests, $this->firewall->check($cluster, $guests));
     }
 
     /**
@@ -92,9 +97,10 @@ final readonly class ClusterSynchronizer
 
     /**
      * @param  list<NodeInfo>  $nodes
+     * @param  array<string, string>  $addresses  per node name: its address in the cluster (ClusterStatus)
      * @return array<string, Node> keyed by node name
      */
-    private function syncNodes(Cluster $cluster, array $nodes): array
+    private function syncNodes(Cluster $cluster, array $nodes, array $addresses = []): array
     {
         $models = [];
 
@@ -104,6 +110,8 @@ final readonly class ClusterSynchronizer
                 'cpu_cores' => $info->cpuCores,
                 'memory_bytes' => $info->memoryBytes,
                 'last_seen_at' => $info->online ? now() : null,
+                // Where a server moved in from another cluster is sent to (docs/adr/0037 §5).
+                'address' => $addresses[$info->name] ?? null,
             ], fn ($value) => $value !== null);
 
             $models[$info->name] = $this->upsert($cluster->nodes(), ['name' => $info->name], [

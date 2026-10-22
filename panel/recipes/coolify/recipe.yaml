@@ -1,7 +1,7 @@
 format: 2
 slug: coolify
 name: Coolify
-version: 1.0.0
+version: 1.0.1
 category: container
 description:
     en: Coolify, a self-hostable platform to deploy applications, databases and services from Git or Docker images, with automatic HTTPS.
@@ -10,7 +10,7 @@ maintainers: [{ name: Proxmotion }]
 homepage: https://coolify.io/
 requires:
     platform: linux
-    os: [debian]
+    os: { families: [debian] }
     min_versions: { ubuntu: '22.04', debian: '12' }
 resources: { min_memory_mib: 2048, min_disk_mib: 30720, min_cores: 2 }
 network_models: [bridged, routed]

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Admin;
 
+use App\Domain\Settings\PanelSettings;
 use App\Http\Controllers\Controller;
 use App\Models\BillingSystem;
 use App\Models\Cluster;
@@ -31,7 +32,7 @@ class HelpController extends Controller
                 'packages' => Package::query()->exists(),
                 'billing_systems' => BillingSystem::query()->exists(),
             ],
-            'docsUrl' => config('proxmotion.docs_url'),
+            'docsUrl' => PanelSettings::get('docs_url'),
         ]);
     }
 }

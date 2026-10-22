@@ -6,6 +6,8 @@ namespace App\Provisioning;
 
 use App\Domain\Apps\AppInstaller;
 use App\Domain\Apps\AppNotEligible;
+use App\Domain\Firewall\ServerFirewalls;
+use App\Domain\Networking\ReverseDns\ReverseDns;
 use App\Enums\IpVersion;
 use App\Enums\NetworkModel;
 use App\Enums\ServerOrigin;
@@ -13,13 +15,13 @@ use App\Enums\ServerStatus;
 use App\Enums\TaskType;
 use App\Models\ApiToken;
 use App\Models\Cluster;
+use App\Models\IpAddress;
 use App\Models\PlacementGroup;
 use App\Models\Server;
 use App\Models\User;
 use App\Provisioning\Exceptions\ProvisioningException;
 use App\Provisioning\Placement\NodePlacer;
 use App\Provisioning\Placement\PlacementRules;
-use App\Proxmox\ProxmoxClientFactory;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -32,12 +34,16 @@ use Illuminate\Validation\ValidationException;
  */
 final readonly class ServerCreator
 {
+    public const string INACTIVE_TEMPLATE = 'An inactive OS template can only be used for a server without a billing system: it becomes a test server.';
+
     public function __construct(
         private NodePlacer $placer,
         private IpAllocator $ips,
-        private ProxmoxClientFactory $clients,
+        private VmidAllocator $vmids,
         private TaskRunner $tasks,
         private AppInstaller $apps,
+        private HostnameGenerator $hostnames,
+        private ReverseDns $reverseDns,
     ) {}
 
     /**
@@ -49,6 +55,15 @@ final readonly class ServerCreator
     {
         if ($order->networkModel === NetworkModel::Nat) {
             throw ProvisioningException::unsupportedNetworkModel();
+        }
+
+        // An inactive template is not offered to customers yet: administrators try it on a test server (docs/adr/0024 §8).
+        if (! $order->osTemplate->is_active && $order->billingSystem !== null) {
+            throw new ProvisioningException(self::INACTIVE_TEMPLATE);
+        }
+
+        if ($order->hostname === null && ($order->location->hostname_template ?? '') === '') {
+            throw new ProvisioningException('Enter a hostname: the location :location has no hostname template.', ['location' => $order->location->name]);
         }
 
         $spec = $order->spec;
@@ -114,7 +129,7 @@ final readonly class ServerCreator
                 storage: $order->storage,
             ));
             $cluster = $placement->node->cluster;
-            $vmid = $this->firstFreeVmid($cluster);
+            $vmid = $this->vmids->firstFree($cluster);
 
             return DB::transaction(function () use ($order, $spec, $placement, $cluster, $vmid, $ipv4Pool, $ipv6Pool, $primary, $additional, $appInputs, $actor) {
                 $server = $this->insertServer($order, $placement, $cluster, $vmid);
@@ -129,6 +144,10 @@ final readonly class ServerCreator
 
                 $chosen = ($primary !== null ? 1 : 0) + count($additional);
                 $this->ips->assign($server, $ipv4Pool, $spec->ipv4Count - $chosen, $ipv6Pool, $spec->ipv6Count);
+
+                if ($order->hostname === null) {
+                    $this->nameServer($server, $order);
+                }
 
                 if ($order->app !== null) {
                     $this->apps->queueOrdered($server, $order->app, $appInputs, $actor, null);
@@ -182,6 +201,26 @@ final readonly class ServerCreator
         return $inLocation;
     }
 
+    /**
+     * The hostname from the location's template (docs/adr/0031), which also
+     * becomes the PTR of the primary address of each version. The Proxmox VM
+     * is named after it, so cloud-init sets it at the first boot.
+     *
+     * @throws ProvisioningException
+     */
+    private function nameServer(Server $server, NewServer $order): void
+    {
+        $hostname = $this->hostnames->generate($server, $order->location);
+        $server->forceFill(['hostname' => $hostname])->save();
+
+        // Primary first within each version (Server::ipAddresses()).
+        $byVersion = $server->ipAddresses()->with('pool')->get()->groupBy(fn (IpAddress $address) => $address->pool->version->value);
+
+        foreach ($byVersion as $addresses) {
+            $this->reverseDns->setGenerated($addresses->firstOrFail(), $hostname);
+        }
+    }
+
     private function insertServer(NewServer $order, Placement\Placement $placement, Cluster $cluster, int $vmid): Server
     {
         $server = new Server;
@@ -193,7 +232,8 @@ final readonly class ServerCreator
             'storage_id' => $placement->storage->id,
             'os_template_id' => $order->osTemplate->id,
             'vmid' => $vmid,
-            'hostname' => strtolower($order->hostname),
+            // Without one, named from its addresses once they are assigned (nameServer()).
+            'hostname' => strtolower($order->hostname ?? ''),
             'status' => ServerStatus::Pending,
             'origin' => ServerOrigin::Provisioned,
             'network_model' => $order->networkModel,
@@ -202,6 +242,7 @@ final readonly class ServerCreator
             'disk_mib' => $order->spec->diskMib,
             'port_speed_mbps' => $order->spec->portSpeedMbps,
             'traffic_bytes' => $order->spec->trafficBytes,
+            ...$order->spec->limits->columns(),
             'root_password' => $order->rootPassword,
             // The billing system may fetch the initial password once (docs/adr/0007).
             'root_password_unrevealed' => true,
@@ -209,32 +250,17 @@ final readonly class ServerCreator
             'billing_system_id' => $order->billingSystem?->id,
             'external_id' => $order->externalId,
             'external_client_id' => $order->externalClientId,
+            // A server of an inactive template is a test server (docs/adr/0024 §8).
+            'is_test' => ! $order->osTemplate->is_active,
         ])->save();
 
-        return $server;
-    }
+        // The package's firewall rule set (docs/adr/0035 §3).
+        $ruleset = $order->package?->firewallRuleset;
 
-    /**
-     * The first VMID that is free both on Proxmox and in the panel (terminated
-     * servers keep their VMID in the panel's history). The per-location lock
-     * serialises orders; the unique index on (cluster_id, vmid) is the final guard.
-     *
-     * @throws ProvisioningException
-     */
-    private function firstFreeVmid(Cluster $cluster): int
-    {
-        $proxmox = $this->clients->forCluster($cluster)->cluster();
-        // Optionally keep the panel's VMs in their own range, apart from VMs managed by hand.
-        $candidate = max($proxmox->nextVmid(), (int) config('proxmotion.provisioning.min_vmid'));
-
-        for ($attempt = 0; $attempt < 50; $attempt++, $candidate++) {
-            $takenInPanel = Server::query()->where('cluster_id', $cluster->id)->where('vmid', $candidate)->exists();
-
-            if (! $takenInPanel && $proxmox->isVmidFree($candidate)) {
-                return $candidate;
-            }
+        if ($ruleset !== null && $ruleset->is_active) {
+            ServerFirewalls::startWith($server, $ruleset);
         }
 
-        throw new ProvisioningException('No free VMID found on the cluster.');
+        return $server;
     }
 }

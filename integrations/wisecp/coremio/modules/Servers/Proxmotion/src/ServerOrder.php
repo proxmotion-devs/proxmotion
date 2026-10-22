@@ -47,18 +47,24 @@ final class ServerOrder
 
     /**
      * @param array<string, mixed>|null $package the package from GET /packages, needed for extra_* add-ons
+     * @param bool $locationNamesServers whether the location names servers without a hostname (GET /locations: generates_hostnames)
      * @return array<string, mixed>
      */
-    public function payload(?array $package): array
+    public function payload(?array $package, bool $locationNamesServers = false): array
     {
         $payload = [
             'external_id' => $this->serviceId,
             'external_client_id' => $this->clientId,
             'package' => $this->packageId(),
-            'location' => $this->choice('location'),
+            'location' => $this->location(),
             'os_template' => $this->choice('os_template'),
-            'hostname' => $this->hostname(),
         ];
+
+        $hostname = $this->hostname($locationNamesServers);
+
+        if ($hostname !== null) {
+            $payload['hostname'] = $hostname;
+        }
 
         $networkModel = $this->setting('network_model');
 
@@ -213,9 +219,19 @@ final class ServerOrder
     }
 
     /**
-     * The customer's hostname, else the service's, if valid; otherwise "vps<service id>".
+     * The customer's hostname, else the service's, if valid. Otherwise null
+     * when the location names the server itself (its hostname template,
+     * docs/adr/0031), else "vps<service id>".
      */
-    public function hostname(): string
+    public function hostname(bool $locationNamesServers = false): ?string
+    {
+        return $this->givenHostname() ?? ($locationNamesServers ? null : 'vps' . $this->serviceId);
+    }
+
+    /**
+     * The customer's hostname, else the service's, if valid.
+     */
+    public function givenHostname(): ?string
     {
         foreach ([(string) ($this->requirements['hostname'] ?? ''), $this->hostname] as $candidate) {
             $candidate = rtrim(strtolower(trim($candidate)), '.');
@@ -225,7 +241,15 @@ final class ServerOrder
             }
         }
 
-        return 'vps' . $this->serviceId;
+        return null;
+    }
+
+    /**
+     * The customer's location, else the product's.
+     */
+    public function location(): string
+    {
+        return $this->choice('location');
     }
 
     public static function isHostname(string $value): bool

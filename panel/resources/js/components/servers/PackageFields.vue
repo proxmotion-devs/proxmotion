@@ -50,6 +50,10 @@ const values = computed(() => {
         [trans('IPv6 addresses'), String(pkg.ipv6_count)],
         [trans('Port speed'), limit(pkg.port_speed_mbps, 'Mbps')],
         [trans('Monthly traffic'), limit(pkg.traffic_gb, 'GB')],
+        // CPU and disk limits (docs/adr/0034).
+        [trans('CPU limit'), limit(pkg.cpu_limit, trans('cores'))],
+        [trans('Disk speed'), limit(pkg.disk_mb_s, 'MB/s')],
+        [trans('Disk operations'), limit(pkg.disk_iops, 'IOPS')],
     ];
 });
 

@@ -1,14 +1,24 @@
 <script setup lang="ts">
 import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3';
 import { FileUp, Pencil, Plus } from '@lucide/vue';
-import { ref } from 'vue';
+import { trans } from 'laravel-vue-i18n';
+import { computed, ref, watch } from 'vue';
 import FormDialog from '@/components/admin/FormDialog.vue';
+import AppSystemsDialog from '@/components/admin/AppSystemsDialog.vue';
+import type { AppOsVersion } from '@/components/admin/AppSystemsPicker.vue';
 import FormField from '@/components/admin/FormField.vue';
+import NativeSelect from '@/components/admin/NativeSelect.vue';
 import GuideBox from '@/components/admin/GuideBox.vue';
 import StatusBadge from '@/components/admin/StatusBadge.vue';
 import Heading from '@/components/Heading.vue';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import {
+    matchesFilters,
+    osFilterOptions,
+    type OsFilter,
+    type PlatformFilter,
+} from '@/lib/appFilters';
 import {
     edit,
     importMethod as importRoute,
@@ -27,7 +37,8 @@ defineOptions({
     layout: { breadcrumbs: [{ title: 'Apps', href: index() }] },
 });
 
-defineProps<{
+const props = defineProps<{
+    osVersions: AppOsVersion[];
     apps: {
         slug: string;
         name: string;
@@ -39,7 +50,10 @@ defineProps<{
         version: string | null;
         category: string;
         description: AppText;
-        os: string[];
+        platform: string;
+        recipe_os: string[];
+        suggested_ids: number[];
+        os_version_ids: number[];
         billing: 'free' | 'paid';
         is_active: boolean;
         installed_count: number;
@@ -51,6 +65,86 @@ const page = usePage<{ locale: string }>();
 const describe = (text: AppText) =>
     (page.props.locale === 'tr' ? text.tr : null) ?? text.en;
 
+// The operating system versions an app is offered on (docs/adr/0026).
+// The app whose systems are open, by slug: the props refresh after each tick.
+const systemsSlug = ref<string | null>(null);
+const systemsFor = computed(
+    () => props.apps.find((app) => app.slug === systemsSlug.value) ?? null,
+);
+const systemsOpen = computed({
+    get: () => systemsFor.value !== null,
+    set: (value: boolean) => {
+        if (!value) {
+            systemsSlug.value = null;
+        }
+    },
+});
+
+/** "Ubuntu 22.04, 24.04 · Debian 12". */
+const tickedLabel = (ids: number[]) => {
+    const bySystem = new Map<string, string[]>();
+
+    for (const version of props.osVersions) {
+        if (ids.includes(version.id)) {
+            bySystem.set(version.system, [
+                ...(bySystem.get(version.system) ?? []),
+                version.version,
+            ]);
+        }
+    }
+
+    return [...bySystem.entries()]
+        .map(([system, versions]) => `${system} ${versions.join(', ')}`)
+        .join(' · ');
+};
+
+// Filters by platform and by the systems an app is ticked for.
+const platformFilter = ref<PlatformFilter>('all');
+const osFilter = ref<OsFilter>('all');
+
+const platformFilterOptions = computed(() => [
+    { value: 'all' as const, label: trans('All platforms') },
+    { value: 'linux' as const, label: trans('Linux') },
+    { value: 'windows' as const, label: trans('Windows') },
+]);
+
+const osOptions = computed(() => [
+    { value: 'all', label: trans('All operating systems') },
+    { value: 'none', label: trans('Not offered on any system') },
+    ...osFilterOptions(
+        props.osVersions,
+        platformFilter.value,
+        trans('All versions'),
+    ),
+]);
+
+// A system of the other platform is no longer listed.
+watch(platformFilter, () => {
+    if (!osOptions.value.some((option) => option.value === osFilter.value)) {
+        osFilter.value = 'all';
+    }
+});
+
+const filteredApps = computed(() =>
+    props.apps.filter((app) =>
+        matchesFilters(
+            app,
+            platformFilter.value,
+            osFilter.value,
+            props.osVersions,
+        ),
+    ),
+);
+
+const filtered = computed(
+    () => platformFilter.value !== 'all' || osFilter.value !== 'all',
+);
+
+const clearFilters = () => {
+    platformFilter.value = 'all';
+    osFilter.value = 'all';
+};
+
 const toggle = (slug: string, active: boolean) =>
     router.visit(update(slug), {
         data: { is_active: active },
@@ -58,7 +152,12 @@ const toggle = (slug: string, active: boolean) =>
     });
 
 const createOpen = ref(false);
-const createForm = useForm({ slug: '', name: '' });
+const createForm = useForm({ slug: '', name: '', platform: 'linux' });
+// Windows apps run PowerShell scripts (docs/adr/0029).
+const platformOptions = [
+    { value: 'linux', label: 'Linux' },
+    { value: 'windows', label: 'Windows' },
+];
 
 // Import a recipe zip as a new custom app (docs/adr/0018 §5); the panel opens its editor.
 const importOpen = ref(false);
@@ -152,6 +251,44 @@ const submitCreate = () =>
             </ol>
         </GuideBox>
 
+        <div v-if="apps.length" class="flex flex-wrap items-center gap-2">
+            <NativeSelect
+                v-model="platformFilter"
+                :options="platformFilterOptions"
+                :aria-label="$t('Platform')"
+                class="w-auto"
+                data-test="platform-filter"
+            />
+            <NativeSelect
+                v-model="osFilter"
+                :options="osOptions"
+                :aria-label="$t('Operating system')"
+                class="w-auto"
+                data-test="os-filter"
+            />
+            <Button
+                v-if="filtered"
+                variant="ghost"
+                size="sm"
+                data-test="clear-filters"
+                @click="clearFilters"
+            >
+                {{ $t('Clear filters') }}
+            </Button>
+            <span
+                v-if="filtered"
+                class="text-xs text-muted-foreground"
+                data-test="filter-count"
+            >
+                {{
+                    $t(':shown of :total apps', {
+                        shown: String(filteredApps.length),
+                        total: String(apps.length),
+                    })
+                }}
+            </span>
+        </div>
+
         <div class="overflow-x-auto rounded-xl border">
             <table class="w-full text-sm">
                 <thead class="bg-muted/50 text-left text-muted-foreground">
@@ -167,7 +304,11 @@ const submitCreate = () =>
                     </tr>
                 </thead>
                 <tbody>
-                    <tr v-for="app in apps" :key="app.slug" class="border-t">
+                    <tr
+                        v-for="app in filteredApps"
+                        :key="app.slug"
+                        class="border-t"
+                    >
                         <td class="px-4 py-3">
                             <span class="font-medium">{{ app.name }}</span>
                             <span class="ml-1 text-xs text-muted-foreground">{{
@@ -208,7 +349,23 @@ const submitCreate = () =>
                             </p>
                         </td>
                         <td class="px-4 py-3 text-xs">
-                            <div v-for="os in app.os" :key="os">{{ os }}</div>
+                            <span v-if="app.os_version_ids.length">{{
+                                tickedLabel(app.os_version_ids)
+                            }}</span>
+                            <StatusBadge
+                                v-else
+                                tone="warning"
+                                label="Not offered on any system"
+                            />
+                            <Button
+                                variant="link"
+                                size="sm"
+                                class="block h-auto px-0 text-xs"
+                                :data-test="`systems-${app.slug}`"
+                                @click="systemsSlug = app.slug"
+                            >
+                                {{ $t('Choose systems') }}
+                            </Button>
                         </td>
                         <td class="px-4 py-3">{{ app.installed_count }}</td>
                         <td class="px-4 py-3 text-right whitespace-nowrap">
@@ -249,10 +406,26 @@ const submitCreate = () =>
                             }}
                         </td>
                     </tr>
+                    <tr v-else-if="filteredApps.length === 0">
+                        <td
+                            colspan="4"
+                            class="px-4 py-10 text-center text-muted-foreground"
+                            data-test="no-filtered-apps"
+                        >
+                            {{ $t('No apps match the filters.') }}
+                        </td>
+                    </tr>
                 </tbody>
             </table>
         </div>
     </div>
+
+    <AppSystemsDialog
+        v-if="systemsFor"
+        v-model:open="systemsOpen"
+        :app="systemsFor"
+        :os-versions="osVersions"
+    />
 
     <FormDialog
         v-model:open="createOpen"
@@ -272,6 +445,18 @@ const submitCreate = () =>
         </FormField>
         <FormField label="Name" for="new_name" :error="createForm.errors.name">
             <Input id="new_name" v-model="createForm.name" />
+        </FormField>
+        <FormField
+            label="Platform"
+            for="new_platform"
+            hint="Linux apps run shell scripts, Windows apps PowerShell scripts."
+            :error="createForm.errors.platform"
+        >
+            <NativeSelect
+                id="new_platform"
+                v-model="createForm.platform"
+                :options="platformOptions"
+            />
         </FormField>
     </FormDialog>
 

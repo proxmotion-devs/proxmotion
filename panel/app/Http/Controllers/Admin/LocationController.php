@@ -26,6 +26,8 @@ class LocationController extends Controller
                     'code' => $location->code,
                     'country_code' => $location->country_code,
                     'description' => $location->description,
+                    'hostname_template' => $location->hostname_template,
+                    'protected_networks' => $location->protected_networks ?? [],
                     'clusters_count' => $location->getAttribute('clusters_count'),
                     'ip_pools_count' => $location->getAttribute('ip_pools_count'),
                 ]),

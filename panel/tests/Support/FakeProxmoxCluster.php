@@ -3,6 +3,9 @@
 namespace Tests\Support;
 
 use App\Domain\Apps\AppLogs;
+use App\Domain\Servers\GuestScripts;
+use App\Domain\Servers\ServerVerifier;
+use App\Proxmox\Data\BootDisk;
 use GuzzleHttp\Promise\Create;
 use GuzzleHttp\Promise\PromiseInterface;
 use GuzzleHttp\Psr7\Response as Psr7Response;
@@ -16,8 +19,11 @@ use Illuminate\Support\Facades\Http;
  */
 class FakeProxmoxCluster
 {
-    /** @var array<int, array{node: string, pool: string|null, template: bool, status: string, config: array<string, mixed>, ipset: list<string>|null, firewall: array<string, mixed>}> */
+    /** @var array<int, array{node: string, pool: string|null, template: bool, status: string, config: array<string, mixed>, ipset: list<string>|null, ipsets?: array<string, list<string>>, firewall: array<string, mixed>, rules: list<array<string, mixed>>}> ipset: ipfilter-net0, ipsets: the other IP sets by name */
     public array $vms = [];
+
+    /** @var array<string, int> GET /cluster/firewall/options */
+    public array $datacenterFirewall = ['enable' => 1];
 
     /** @var list<array{method: string, path: string, data: array<string, mixed>}> */
     public array $writes = [];
@@ -36,11 +42,32 @@ class FakeProxmoxCluster
     /** When set, clone tasks of this VMID fail with this exit status. */
     public ?string $failClone = null;
 
+    /** When set, linked clone requests (full=0) are refused with this message. */
+    public ?string $refuseLinkedClone = null;
+
+    /** When set, config changes with tags are refused with this message (limited user tag access). */
+    public ?string $refuseTags = null;
+
     /** @var array<int, list<string>> UPIDs reported as running per VMID; they finish once polled */
     public array $activeTasks = [];
 
     /** @var list<string> UPIDs whose status was requested, in order */
     public array $polledTasks = [];
+
+    /** @var array<string, int> per task type (qmclone, qmdestroy, qmstart…): status checks that still report it running */
+    public array $runningPolls = [];
+
+    /**
+     * @var array<int, list<array<string, mixed>>> per VMID: what network-get-interfaces answers; by default
+     *                                             loopback and eth0 with net0's MAC and the firewall IP set's addresses
+     */
+    public array $guestInterfaces = [];
+
+    /** @var array<int, string> per VMID: what the ServerVerifier script prints; by default every check passes */
+    public array $verifyOutput = [];
+
+    /** @var array<int, list<list<string>>> per VMID: commands of the ServerVerifier checks (kept out of guestCommands) */
+    public array $verifyCommands = [];
 
     /**
      * @var array<int, array<string, mixed>> per VMID: changes of a running VM that wait for its next start,
@@ -50,6 +77,15 @@ class FakeProxmoxCluster
 
     /** @var array<int, bool> VMIDs whose guest agent does not answer */
     public array $agentDown = [];
+
+    /** @var array<int, list<string>> agent commands (exec, file-read, …) each guest blocks, as RHEL-family qemu-ga does by default */
+    public array $agentBlocked = [];
+
+    /** @var array<int, array<string, mixed>> per VMID: more fields of status/current (cpu, mem, netin, uptime, …) */
+    public array $stats = [];
+
+    /** @var array<int, list<array<string, mixed>>> per VMID: what rrddata answers */
+    public array $rrd = [];
 
     /** @var array<int, bool> VMIDs that /cluster/resources lists with maxdisk 0, as Proxmox can for stopped VMs */
     public array $unknownDiskSize = [];
@@ -70,6 +106,16 @@ class FakeProxmoxCluster
      */
     public $execHandler = null;
 
+    /**
+     * What "cloud-init status" prints per VM, one answer per check; the last repeats ("status: done" by default).
+     *
+     * @var array<int, list<string>>
+     */
+    public array $cloudInitStatus = [];
+
+    /** @var array<int, int> how often cloud-init was checked per VM (kept out of guestCommands) */
+    public array $cloudInitChecks = [];
+
     /** How often an app log was read (kept out of guestCommands). */
     public int $guestLogReads = 0;
 
@@ -78,6 +124,43 @@ class FakeProxmoxCluster
 
     /** @var array<int, array{exitcode: int, out: string, err: string, polls: int}> */
     private array $processes = [];
+
+    /** When set, migrations (migrate, remote_migrate) fail with this exit status and move nothing. */
+    public ?string $failMigration = null;
+
+    /** When set, adding a VM to a pool is refused with this message. */
+    public ?string $refusePool = null;
+
+    /** @var list<array<string, mixed>> remote_migrate requests, the endpoint included */
+    public array $remoteMigrations = [];
+
+    /** @var array<string, string> per API host: the node that answers there (remote migrations land on it) */
+    public array $hostNodes = [];
+
+    /** @var array<string, self> the clusters by API host, when several are installed (installAll()) */
+    private array $network = [];
+
+    /** @var list<string> nodes of the cluster, for /cluster/status */
+    public array $nodes = ['pve1'];
+
+    /**
+     * Fake several clusters at once, each answering on its own API host:
+     * remote migrations go from one to the other (docs/adr/0037).
+     *
+     * @param  array<string, self>  $clusters  by API host
+     */
+    public static function installAll(array $clusters): void
+    {
+        foreach ($clusters as $cluster) {
+            $cluster->network = $clusters;
+        }
+
+        Http::preventStrayRequests()->fake(function (Request $request) use ($clusters) {
+            $host = (string) parse_url($request->url(), PHP_URL_HOST);
+
+            return ($clusters[$host] ?? throw new \RuntimeException("No fake Proxmox answers on {$host}."))->handle($request);
+        });
+    }
 
     public function addTemplate(int $vmid, string $node = 'pve1', ?string $pool = 'proxmotion', int $diskMib = 3584): self
     {
@@ -94,7 +177,9 @@ class FakeProxmoxCluster
                 'net0' => 'virtio=BC:24:11:00:00:01,bridge=vmbr0',
             ],
             'ipset' => null,
+            'ipsets' => [],
             'firewall' => [],
+            'rules' => [],
         ];
 
         return $this;
@@ -146,6 +231,9 @@ class FakeProxmoxCluster
                 ...array_fill_keys($this->unpropagatedPermissions[$query['path']] ?? [], 0),
             ]]),
             $path === '/cluster/resources' => $this->ok($this->resources()),
+            $path === '/cluster/firewall/options' => $this->ok($this->datacenterFirewall),
+            $path === '/cluster/status' => $this->ok(array_map(fn (string $node) => ['type' => 'node', 'name' => $node, 'online' => 1], $this->nodes)),
+            (bool) preg_match('#^/pools/([^/]+)$#', $path, $m) && $method === 'PUT' => $this->addToPool(urldecode($m[1]), (int) ($data['vms'] ?? 0)),
             (bool) preg_match('#^/nodes/([^/]+)/tasks$#', $path) => $this->ok(array_map(
                 fn (string $upid) => ['upid' => $upid],
                 $this->activeTasks[(int) ($query['vmid'] ?? 0)] ?? [],
@@ -185,6 +273,16 @@ class FakeProxmoxCluster
 
         if ($suffix === '/clone' && $method === 'POST') {
             $newId = (int) $data['newid'];
+            $linked = (string) ($data['full'] ?? '1') === '0';
+
+            if ($linked && isset($data['storage'])) {
+                return Create::promiseFor(new Psr7Response(400, ['Content-Type' => 'application/json'], '{"data":null}', '1.1', "Parameter verification failed. storage: parameter 'storage' not allowed for linked clones"));
+            }
+
+            if ($linked && $this->refuseLinkedClone !== null) {
+                return Create::promiseFor(new Psr7Response(500, ['Content-Type' => 'application/json'], '{"data":null}', '1.1', $this->refuseLinkedClone));
+            }
+
             $this->vms[$newId] = [
                 ...$this->vms[$vmid],
                 'node' => (string) ($data['target'] ?? $node),
@@ -193,7 +291,10 @@ class FakeProxmoxCluster
                 'status' => 'stopped',
             ];
             $this->vms[$newId]['config']['name'] = $data['name'];
-            $this->vms[$newId]['config']['scsi0'] = str_replace("base-{$vmid}", "vm-{$newId}", (string) $this->vms[$vmid]['config']['scsi0']);
+            // A linked clone's volume names its base volume, as on thin LVM and ZFS.
+            $this->vms[$newId]['config']['scsi0'] = $linked
+                ? (string) preg_replace('/^([^:]+):(base-\d+-disk-\d+)/', "\$1:\$2/vm-{$newId}-disk-0", (string) $this->vms[$vmid]['config']['scsi0'])
+                : str_replace("base-{$vmid}", "vm-{$newId}", (string) $this->vms[$vmid]['config']['scsi0']);
 
             return $this->upid($node, $this->failClone !== null ? 'qmclone-fail' : 'qmclone', $newId);
         }
@@ -204,21 +305,30 @@ class FakeProxmoxCluster
         }
 
         return match (true) {
+            $suffix === '/migrate' && $method === 'GET' => $this->ok(['running' => $vm['status'] === 'running' ? 1 : 0, 'local_resources' => [], 'local_disks' => []]),
+            $suffix === '/migrate' && $method === 'POST' => $this->migrate($node, $vmid, $data),
+            $suffix === '/remote_migrate' && $method === 'POST' => $this->remoteMigrate($node, $vmid, $data),
             $suffix === '' && $method === 'DELETE' => $this->destroyVm($node, $vmid),
             $suffix === '/config' && $method === 'GET' => $this->ok($vm['config']),
             $suffix === '/config' && $method === 'PUT' => $this->updateConfig($vmid, $data),
             $suffix === '/pending' && $method === 'GET' => $this->pendingOf($vmid),
             $suffix === '/resize' && $method === 'PUT' => $this->resize($vmid, $data),
-            $suffix === '/status/current' => $this->ok(['status' => $vm['status']]),
+            $suffix === '/status/current' => $this->ok([...($this->stats[$vmid] ?? []), 'status' => $vm['status']]),
+            $suffix === '/rrddata' => $this->ok($this->rrd[$vmid] ?? []),
             (bool) preg_match('#^/status/(start|stop|shutdown|reboot)$#', $suffix, $m) => $this->power($node, $vmid, $m[1]),
             $suffix === '/vncproxy' && $method === 'POST' => $this->vncProxy($node, $vmid),
             str_starts_with($suffix, '/agent/') => $this->agent($vmid, substr($suffix, 7), $data),
+            $suffix === '/firewall/options' && $method === 'GET' => $this->ok($vm['firewall']),
             $suffix === '/firewall/options' => $this->firewallOptions($vmid, $data),
-            $suffix === '/firewall/ipset' && $method === 'GET' => $this->ok($vm['ipset'] === null ? [] : [['name' => 'ipfilter-net0']]),
-            $suffix === '/firewall/ipset' => $this->createIpset($vmid),
-            $suffix === '/firewall/ipset/ipfilter-net0' && $method === 'GET' => $this->ok(array_map(fn ($cidr) => ['cidr' => $cidr], $vm['ipset'] ?? [])),
-            $suffix === '/firewall/ipset/ipfilter-net0' => $this->addToIpset($vmid, (string) $data['cidr']),
-            str_starts_with($suffix, '/firewall/ipset/ipfilter-net0/') && $method === 'DELETE' => $this->removeFromIpset($vmid, rawurldecode(substr($suffix, strlen('/firewall/ipset/ipfilter-net0/')))),
+            $suffix === '/firewall/rules' && $method === 'GET' => $this->ok(array_map(fn (array $rule, int $pos) => [...$rule, 'pos' => $pos], $vm['rules'], array_keys($vm['rules']))),
+            $suffix === '/firewall/rules' => $this->addRule($vmid, $data),
+            (bool) preg_match('#^/firewall/rules/(\d+)$#', $suffix, $m) && $method === 'DELETE' => $this->deleteRule($vmid, (int) $m[1]),
+            $suffix === '/firewall/ipset' && $method === 'GET' => $this->ok($this->ipsetNames($vm)),
+            $suffix === '/firewall/ipset' => $this->createIpset($vmid, (string) ($data['name'] ?? 'ipfilter-net0')),
+            (bool) preg_match('#^/firewall/ipset/([A-Za-z0-9_-]+)$#', $suffix, $m) && $method === 'GET' => $this->ok(array_map(fn ($cidr) => ['cidr' => $cidr], $this->ipsetEntries($vm, $m[1]))),
+            (bool) preg_match('#^/firewall/ipset/([A-Za-z0-9_-]+)$#', $suffix, $m) && $method === 'DELETE' => $this->deleteIpset($vmid, $m[1]),
+            (bool) preg_match('#^/firewall/ipset/([A-Za-z0-9_-]+)$#', $suffix, $m) => $this->addToIpset($vmid, (string) $data['cidr'], $m[1]),
+            (bool) preg_match('#^/firewall/ipset/([A-Za-z0-9_-]+)/(.+)$#', $suffix, $m) && $method === 'DELETE' => $this->removeFromIpset($vmid, rawurldecode($m[2]), $m[1]),
             default => Http::response(['data' => null], 501),
         };
     }
@@ -254,6 +364,10 @@ class FakeProxmoxCluster
             return Create::promiseFor(new Psr7Response(500, ['Content-Type' => 'application/json'], '{"data":null}', '1.1', 'QEMU guest agent is not running'));
         }
 
+        if (in_array($command, $this->agentBlocked[$vmid] ?? [], true)) {
+            return Create::promiseFor(new Psr7Response(500, ['Content-Type' => 'application/json'], '{"data":null}', '1.1', "Agent error: Command guest-{$command} has been disabled: the command is not allowed"));
+        }
+
         switch ($command) {
             case 'ping':
                 return $this->ok(['result' => []]);
@@ -275,13 +389,28 @@ class FakeProxmoxCluster
                 $commandLine = array_values((array) $data['command']);
                 $input = isset($data['input-data']) ? (string) $data['input-data'] : null;
 
-                // Reading an app log (AppLogs::READ_SCRIPT): a byte range of a guest file, base64-encoded.
-                if (($commandLine[2] ?? null) === AppLogs::READ_SCRIPT) {
+                // Reading an app log (AppGuest::readCommand(), Linux and Windows): a byte range of a guest file, base64-encoded.
+                $read = match (true) {
+                    ($commandLine[2] ?? null) === AppLogs::READ_SCRIPT => 4,
+                    str_ends_with($commandLine[6] ?? '', '/read-log.ps1') => 7,
+                    default => null,
+                };
+
+                if (($commandLine[3] ?? null) === ServerVerifier::SCRIPT_NAME || str_contains($commandLine[4] ?? '', 'Resolve-DnsName')) {
+                    // The checks after a create or reinstall (kept out of guestCommands).
+                    $this->verifyCommands[$vmid][] = $commandLine;
+                    [$exitCode, $out, $err] = [0, $this->verifyOutput[$vmid] ?? $this->passingChecks($vmid, $commandLine), ''];
+                } elseif ($commandLine === GuestScripts::CLOUD_INIT_STATUS_COMMAND) {
+                    // The cloud-init check of a new Linux system (kept out of guestCommands).
+                    $answers = $this->cloudInitStatus[$vmid] ?? ['status: done'];
+                    [$exitCode, $out, $err] = [0, $answers[min($this->cloudInitChecks[$vmid] ?? 0, count($answers) - 1)]."\n", ''];
+                    $this->cloudInitChecks[$vmid] = ($this->cloudInitChecks[$vmid] ?? 0) + 1;
+                } elseif ($read !== null) {
                     $this->guestLogReads++;
-                    $file = $this->guestFiles[$vmid][$commandLine[4]] ?? null;
+                    $file = $this->guestFiles[$vmid][$commandLine[$read]] ?? null;
                     [$exitCode, $out, $err] = $file === null
-                        ? [1, '', 'dd: failed to open: No such file or directory']
-                        : [0, base64_encode(substr($file, (int) $commandLine[5], (int) $commandLine[6])), ''];
+                        ? [1, '', 'No such file or directory']
+                        : [0, base64_encode(substr($file, (int) $commandLine[$read + 1], (int) $commandLine[$read + 2])), ''];
                 } else {
                     $this->guestCommands[] = ['vmid' => $vmid, 'command' => $commandLine, 'input' => $input];
                     [$exitCode, $out, $err] = $this->execHandler !== null ? ($this->execHandler)($commandLine, $input) : [0, '', ''];
@@ -304,6 +433,8 @@ class FakeProxmoxCluster
                     'out-data' => $process['out'],
                     'err-data' => $process['err'],
                 ], fn ($value) => $value !== ''));
+            case 'network-get-interfaces':
+                return $this->ok(['result' => $this->guestInterfaces[$vmid] ?? $this->defaultInterfaces($vmid)]);
             case 'set-user-password':
                 $this->guestPasswords[$vmid][(string) $data['username']] = (string) $data['password'];
 
@@ -311,6 +442,52 @@ class FakeProxmoxCluster
             default:
                 return Http::response(['data' => null], 501);
         }
+    }
+
+    /**
+     * Loopback and eth0 with net0's MAC address and every address of the firewall IP set.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function defaultInterfaces(int $vmid): array
+    {
+        $config = $this->vms[$vmid]['config'];
+        $mac = preg_match('/=([0-9A-F]{2}(:[0-9A-F]{2}){5})/i', (string) ($config['net0'] ?? ''), $match) === 1 ? strtolower($match[1]) : '';
+        $addresses = array_map(fn (string $cidr) => [
+            'ip-address' => explode('/', $cidr)[0],
+            'ip-address-type' => str_contains($cidr, ':') ? 'ipv6' : 'ipv4',
+        ], $this->vms[$vmid]['ipset'] ?? []);
+
+        return [
+            ['name' => 'lo', 'hardware-address' => '00:00:00:00:00:00', 'ip-addresses' => [['ip-address' => '127.0.0.1', 'ip-address-type' => 'ipv4']]],
+            ['name' => 'eth0', 'hardware-address' => $mac, 'ip-addresses' => $addresses],
+        ];
+    }
+
+    /**
+     * What the ServerVerifier script prints when everything is as the panel
+     * set it up: the VM name as hostname, the boot disk's size, every gateway
+     * answering and DNS resolving.
+     *
+     * @param  list<string>  $command
+     */
+    private function passingChecks(int $vmid, array $command): string
+    {
+        $config = $this->vms[$vmid]['config'];
+        $disk = BootDisk::fromConfig($config);
+        $gateways = ($command[3] ?? null) === ServerVerifier::SCRIPT_NAME
+            ? array_filter([$command[4] ?? '-', $command[5] ?? '-'], fn (string $gateway) => $gateway !== '-')
+            : (preg_match_all("/'([0-9a-f.:]+)'/i", explode('$name', $command[4] ?? '')[0], $matches) > 0 ? $matches[1] : []);
+
+        $lines = ['hostname='.($config['name'] ?? ''), 'disk='.($disk === null ? '' : $disk->sizeMib * 1024 * 1024)];
+
+        foreach ($gateways as $gateway) {
+            $lines[] = "gateway={$gateway} ok";
+        }
+
+        $lines[] = 'dns=ok';
+
+        return implode("\n", $lines)."\n";
     }
 
     private function vncProxy(string $node, int $vmid): PromiseInterface
@@ -336,14 +513,21 @@ class FakeProxmoxCluster
 
     private function taskStatus(string $upid): PromiseInterface
     {
-        $failed = str_contains($upid, ':qmclone-fail:');
+        $failed = str_contains($upid, '-fail:');
         $this->polledTasks[] = $upid;
+        $type = explode(':', $upid)[5] ?? '';
+
+        if (($this->runningPolls[$type] ?? 0) > 0) {
+            $this->runningPolls[$type]--;
+
+            return $this->ok(['status' => 'running']);
+        }
 
         foreach ($this->activeTasks as $vmid => $upids) {
             $this->activeTasks[$vmid] = array_values(array_diff($upids, [$upid]));
         }
 
-        return $this->ok(['status' => 'stopped', 'exitstatus' => $failed ? (string) $this->failClone : 'OK']);
+        return $this->ok(['status' => 'stopped', 'exitstatus' => $failed ? (string) (str_contains($upid, ':qmigrate-fail:') ? $this->failMigration : $this->failClone) : 'OK']);
     }
 
     /**
@@ -351,6 +535,16 @@ class FakeProxmoxCluster
      */
     private function updateConfig(int $vmid, array $data): PromiseInterface
     {
+        if ($this->refuseTags !== null && array_key_exists('tags', $data)) {
+            return Create::promiseFor(new Psr7Response(403, ['Content-Type' => 'application/json'], '{"data":null}', '1.1', $this->refuseTags));
+        }
+
+        foreach (array_filter(explode(',', (string) ($data['delete'] ?? ''))) as $key) {
+            unset($this->vms[$vmid]['config'][$key]);
+        }
+
+        unset($data['delete']);
+
         foreach ($data as $key => $value) {
             // Without hotplug, Proxmox keeps CPU and memory changes of a running VM for its next start.
             if ($this->vms[$vmid]['status'] === 'running' && in_array($key, ['cores', 'sockets', 'memory'], true) && (string) ($this->vms[$vmid]['config'][$key] ?? '') !== (string) $value) {
@@ -399,6 +593,83 @@ class FakeProxmoxCluster
         return $this->upid($node, "qm{$action}", $vmid);
     }
 
+    /**
+     * Within the cluster: the VM moves to the target node; local disks to targetstorage.
+     *
+     * @param  array<string, mixed>  $data
+     */
+    private function migrate(string $node, int $vmid, array $data): PromiseInterface
+    {
+        if ($this->failMigration !== null) {
+            return $this->upid($node, 'qmigrate-fail', $vmid);
+        }
+
+        $this->vms[$vmid]['node'] = (string) $data['target'];
+
+        if (isset($data['targetstorage'])) {
+            $this->vms[$vmid]['config']['scsi0'] = (string) preg_replace('/^[^:]+:/', $data['targetstorage'].':', (string) $this->vms[$vmid]['config']['scsi0']);
+        }
+
+        return $this->upid($node, 'qmigrate', $vmid);
+    }
+
+    /**
+     * To another cluster (installAll()): the VM, its config and firewall are
+     * copied to the node behind the endpoint's host under target-vmid, in no
+     * pool; disks go to target-storage, net0 to target-bridge. With delete,
+     * the source is gone; otherwise it stays stopped and locked.
+     *
+     * @param  array<string, mixed>  $data
+     */
+    private function remoteMigrate(string $node, int $vmid, array $data): PromiseInterface
+    {
+        $this->remoteMigrations[] = ['vmid' => $vmid, ...$data];
+
+        if ($this->failMigration !== null) {
+            return $this->upid($node, 'qmigrate-fail', $vmid);
+        }
+
+        preg_match('/(?:^|,)host=([^,]+)/', (string) $data['target-endpoint'], $host);
+        $target = $this->network[$host[1] ?? ''] ?? null;
+
+        if ($target === null) {
+            return Create::promiseFor(new Psr7Response(500, ['Content-Type' => 'application/json'], '{"data":null}', '1.1', 'no route to target endpoint'));
+        }
+
+        $newId = (int) ($data['target-vmid'] ?? $vmid);
+        $vm = $this->vms[$vmid];
+        $vm['node'] = $target->hostNodes[$host[1]] ?? $target->nodes[0];
+        $vm['pool'] = null;
+        $vm['status'] = ($data['online'] ?? '0') === '1' && $vm['status'] === 'running' ? 'running' : 'stopped';
+        $vm['config']['scsi0'] = (string) preg_replace('/^[^:]+:[^,]+/', $data['target-storage'].":vm-{$newId}-disk-0", (string) $vm['config']['scsi0']);
+        $vm['config']['net0'] = (string) preg_replace('/bridge=[^,]+/', 'bridge='.$data['target-bridge'], (string) $vm['config']['net0']);
+        $target->vms[$newId] = $vm;
+
+        if (($data['delete'] ?? '0') === '1') {
+            unset($this->vms[$vmid]);
+        } else {
+            $this->vms[$vmid]['status'] = 'stopped';
+            $this->vms[$vmid]['config']['lock'] = 'migrate';
+        }
+
+        return $this->upid($node, 'qmigrate', $vmid);
+    }
+
+    private function addToPool(string $pool, int $vmid): PromiseInterface
+    {
+        if ($this->refusePool !== null) {
+            return Create::promiseFor(new Psr7Response(403, ['Content-Type' => 'application/json'], '{"data":null}', '1.1', $this->refusePool));
+        }
+
+        if (($this->vms[$vmid]['pool'] ?? null) === $pool) {
+            return Create::promiseFor(new Psr7Response(500, ['Content-Type' => 'application/json'], '{"data":null}', '1.1', "VM {$vmid} is already a pool member"));
+        }
+
+        $this->vms[$vmid]['pool'] = $pool;
+
+        return $this->ok(null);
+    }
+
     private function destroyVm(string $node, int $vmid): PromiseInterface
     {
         unset($this->vms[$vmid]);
@@ -411,21 +682,89 @@ class FakeProxmoxCluster
      */
     private function firewallOptions(int $vmid, array $data): PromiseInterface
     {
-        $this->vms[$vmid]['firewall'] = $data;
+        // Like Proxmox, a PUT changes only the options it names.
+        $this->vms[$vmid]['firewall'] = [...$this->vms[$vmid]['firewall'], ...$data];
 
         return $this->ok(null);
     }
 
-    private function createIpset(int $vmid): PromiseInterface
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    private function addRule(int $vmid, array $data): PromiseInterface
     {
-        $this->vms[$vmid]['ipset'] = [];
+        // New rules go to the top, as Proxmox puts them without `pos`.
+        array_unshift($this->vms[$vmid]['rules'], $data);
 
         return $this->ok(null);
     }
 
-    private function removeFromIpset(int $vmid, string $cidr): PromiseInterface
+    private function deleteRule(int $vmid, int $pos): PromiseInterface
     {
-        $this->vms[$vmid]['ipset'] = array_values(array_filter($this->vms[$vmid]['ipset'] ?? [], fn (string $entry) => $entry !== $cidr));
+        array_splice($this->vms[$vmid]['rules'], $pos, 1);
+
+        return $this->ok(null);
+    }
+
+    /**
+     * @param  array<string, mixed>  $vm
+     * @return list<array{name: string}>
+     */
+    private function ipsetNames(array $vm): array
+    {
+        /** @var array<string, list<string>> $others */
+        $others = $vm['ipsets'] ?? [];
+        $names = [...($vm['ipset'] === null ? [] : ['ipfilter-net0']), ...array_keys($others)];
+
+        return array_map(fn (string $name) => ['name' => $name], $names);
+    }
+
+    /**
+     * @param  array<string, mixed>  $vm
+     * @return list<string>
+     */
+    private function ipsetEntries(array $vm, string $name): array
+    {
+        /** @var list<string> */
+        return $name === 'ipfilter-net0' ? ($vm['ipset'] ?? []) : ($vm['ipsets'][$name] ?? []);
+    }
+
+    private function createIpset(int $vmid, string $name): PromiseInterface
+    {
+        if ($name === 'ipfilter-net0') {
+            $this->vms[$vmid]['ipset'] = [];
+        } else {
+            $this->vms[$vmid]['ipsets'][$name] = [];
+        }
+
+        return $this->ok(null);
+    }
+
+    private function deleteIpset(int $vmid, string $name): PromiseInterface
+    {
+        // Like Proxmox without `force`: only an empty set can be deleted.
+        if ($this->ipsetEntries($this->vms[$vmid], $name) !== []) {
+            return Create::promiseFor(new Psr7Response(500, ['Content-Type' => 'application/json'], '{"data":null}', '1.1', 'IPSet not empty'));
+        }
+
+        if ($name === 'ipfilter-net0') {
+            $this->vms[$vmid]['ipset'] = null;
+        } else {
+            unset($this->vms[$vmid]['ipsets'][$name]);
+        }
+
+        return $this->ok(null);
+    }
+
+    private function removeFromIpset(int $vmid, string $cidr, string $name): PromiseInterface
+    {
+        $keep = fn (array $entries) => array_values(array_filter($entries, fn (string $entry) => $entry !== $cidr));
+
+        if ($name === 'ipfilter-net0') {
+            $this->vms[$vmid]['ipset'] = $keep($this->vms[$vmid]['ipset'] ?? []);
+        } else {
+            $this->vms[$vmid]['ipsets'][$name] = $keep($this->vms[$vmid]['ipsets'][$name] ?? []);
+        }
 
         return $this->ok(null);
     }
@@ -448,9 +787,13 @@ class FakeProxmoxCluster
         return $this->ok(array_values($entries));
     }
 
-    private function addToIpset(int $vmid, string $cidr): PromiseInterface
+    private function addToIpset(int $vmid, string $cidr, string $name): PromiseInterface
     {
-        $this->vms[$vmid]['ipset'][] = $cidr;
+        if ($name === 'ipfilter-net0') {
+            $this->vms[$vmid]['ipset'][] = $cidr;
+        } else {
+            $this->vms[$vmid]['ipsets'][$name][] = $cidr;
+        }
 
         return $this->ok(null);
     }
@@ -475,6 +818,8 @@ class FakeProxmoxCluster
                 'maxcpu' => (int) ($vm['config']['cores'] ?? 2),
                 'maxmem' => (int) ($vm['config']['memory'] ?? 2048) * 1024 ** 2,
                 'maxdisk' => ($this->unknownDiskSize[$vmid] ?? false) ? 0 : (preg_match('/size=(\d+)M/', (string) ($vm['config']['scsi0'] ?? ''), $size) === 1 ? (int) $size[1] * 1024 ** 2 : 20 * 1024 ** 3),
+                // What the VM is doing (cpu, mem, netin, uptime, …), as for status/current (docs/adr/0039).
+                ...array_diff_key($this->stats[$vmid] ?? [], ['status' => true]),
             ];
         }
 

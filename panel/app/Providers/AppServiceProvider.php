@@ -3,6 +3,8 @@
 namespace App\Providers;
 
 use App\Models\ApiToken;
+use App\Support\Broadcasting\ReverbFallback;
+use App\Support\Database\SqliteConnector;
 use Carbon\CarbonImmutable;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
@@ -19,7 +21,8 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        // IMMEDIATE SQLite transactions on PHP 8.3 too (config/database.php).
+        $this->app->bind('db.connector.sqlite', SqliteConnector::class);
     }
 
     /**
@@ -28,6 +31,9 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         $this->configureDefaults();
+
+        // Before the channels are registered (bootstrap/app.php, after boot): an unconfigured Reverb must not stop the panel.
+        ReverbFallback::apply(config());
 
         // Billing API (docs/adr/0008): per token, set by AuthenticateApiToken.
         RateLimiter::for('api', function (Request $request): Limit {

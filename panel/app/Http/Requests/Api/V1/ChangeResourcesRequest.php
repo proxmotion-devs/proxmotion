@@ -8,6 +8,7 @@ use App\Enums\IpVersion;
 use App\Models\Package;
 use App\Models\Server;
 use App\Provisioning\ResourceChange;
+use App\Provisioning\ResourceLimits;
 use App\Provisioning\ServerSpec;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
@@ -69,6 +70,7 @@ class ChangeResourcesRequest extends FormRequest
             ipv6Count: $this->addressCount($server, IpVersion::V6),
             portSpeedMbps: $server->port_speed_mbps,
             trafficBytes: $server->traffic_bytes,
+            limits: ResourceLimits::of($server),
         );
         $value = fn (string $key, ?int $default): ?int => $this->filled("resources.{$key}") ? $this->integer("resources.{$key}") : $default;
 
@@ -81,6 +83,8 @@ class ChangeResourcesRequest extends FormRequest
                 ipv6Count: (int) $value('ipv6_count', $base->ipv6Count),
                 portSpeedMbps: $value('port_speed_mbps', $base->portSpeedMbps),
                 trafficBytes: $value('traffic_bytes', $base->trafficBytes),
+                // From the package, or kept: the API takes no overrides (docs/adr/0034).
+                limits: $base->limits,
             ),
             package: $package,
             reboot: $this->boolean('reboot'),

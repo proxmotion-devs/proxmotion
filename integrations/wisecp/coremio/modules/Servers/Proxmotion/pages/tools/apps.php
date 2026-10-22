@@ -155,6 +155,11 @@ $inputsHtml = static function (array $inputs, string $prefix) use ($e, $inputTyp
                                     <span class="text-muted small ms-2"><?= $e($installation['progress'] ?? 0) ?>%<?= isset($installation['step']) ? ' · ' . $e($installation['step']) : '' ?></span>
                                 <?php endif; ?>
                             </div>
+                            <?php if (! empty($installation['can_cancel'])): ?>
+                                <button type="button" class="btn btn-sm btn-outline-danger" onclick="pmxAppCancel(this)" data-installation="<?= $e($installation['id'] ?? '') ?>" data-confirm="<?= $t('app_cancel_confirm') ?>">
+                                    <i class="bi bi-stop-circle me-1"></i><?= $t('app_cancel') ?>
+                                </button>
+                            <?php endif; ?>
                             <?php if (! empty($installation['failed'])): ?>
                                 <button type="button" class="btn btn-sm btn-outline-secondary" onclick="pmxAppRetry(this)" data-installation="<?= $e($installation['id'] ?? '') ?>">
                                     <i class="bi bi-arrow-repeat me-1"></i><?= $t('app_retry') ?>
@@ -213,6 +218,9 @@ $inputsHtml = static function (array $inputs, string $prefix) use ($e, $inputTyp
                                         <span class="badge <?= ($run['status'] ?? '') === 'succeeded' ? 'bg-success' : (! empty($run['failed']) ? 'bg-danger' : (! empty($run['busy']) ? 'bg-warning text-dark' : 'bg-secondary')) ?> ms-1"><?= $e($run['status_label'] ?? '') ?></span>
                                         <?php if (isset($run['error'])): ?>
                                             <span class="text-danger ms-1"><?= $e($run['error']) ?></span>
+                                        <?php endif; ?>
+                                        <?php if (! empty($run['can_cancel'])): ?>
+                                            <button type="button" class="btn btn-link btn-sm text-danger p-0 ms-1" onclick="pmxAppCancel(this)" data-installation="<?= $e($installation['id'] ?? '') ?>" data-run="<?= $e($run['id'] ?? '') ?>" data-confirm="<?= $t('app_cancel_confirm') ?>"><?= $t('app_cancel') ?></button>
                                         <?php endif; ?>
                                         <?= $outputsHtml(is_array($run['outputs'] ?? null) ? $run['outputs'] : [], (string) ($installation['id'] ?? ''), (string) ($run['id'] ?? '')) ?>
                                     </div>
@@ -374,6 +382,21 @@ $inputsHtml = static function (array $inputs, string $prefix) use ($e, $inputTyp
         });
 
         return false;
+    };
+
+    window.pmxAppCancel = function (button) {
+        if (!window.confirm(button.getAttribute('data-confirm'))) {
+            return;
+        }
+
+        request_tool_action(TOOL, 'cancel', {
+            installation: button.getAttribute('data-installation'),
+            run: button.getAttribute('data-run') || '',
+        }, {
+            button: button,
+            successToast: true,
+            afterDone: function () { reload_module_content(TOOL); },
+        });
     };
 
     window.pmxAppUninstall = function (button) {

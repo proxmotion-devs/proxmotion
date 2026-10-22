@@ -15,9 +15,14 @@ class Hostname implements ValidationRule
 {
     private const PATTERN = '/^(?=.{1,253}$)[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*$/i';
 
+    public static function isValid(string $value): bool
+    {
+        return preg_match(self::PATTERN, $value) === 1;
+    }
+
     public function validate(string $attribute, mixed $value, Closure $fail): void
     {
-        if (! is_string($value) || preg_match(self::PATTERN, $value) !== 1) {
+        if (! is_string($value) || ! self::isValid($value)) {
             $fail(__('The :attribute must be a valid hostname, e.g. web1.example.com.'));
         }
     }

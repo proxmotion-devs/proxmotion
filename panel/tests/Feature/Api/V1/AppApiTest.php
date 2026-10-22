@@ -22,6 +22,7 @@ use App\Models\WebhookDelivery;
 use App\Models\WebhookEndpoint;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
+use Tests\Concerns\OffersApps;
 use Tests\Concerns\PublishesRecipeVersions;
 
 /**
@@ -30,7 +31,7 @@ use Tests\Concerns\PublishesRecipeVersions;
  */
 class AppApiTest extends ApiTestCase
 {
-    use PublishesRecipeVersions;
+    use OffersApps, PublishesRecipeVersions;
 
     private Server $server;
 
@@ -39,6 +40,8 @@ class AppApiTest extends ApiTestCase
         parent::setUp();
 
         app(RecipeSynchronizer::class)->sync();
+
+        $this->offerApps();
         $this->server = $this->provisionedServer();
     }
 
@@ -59,7 +62,7 @@ class AppApiTest extends ApiTestCase
 
     public function test_the_catalog_lists_active_apps_with_their_inputs()
     {
-        AppRecipe::query()->whereIn('slug', ['aapanel', 'coolify', 'cpanel', 'cyberpanel', 'docker', 'fastpanel', 'hestiacp', 'lamp', 'lemp', 'nodejs', 'plesk', 'portainer', 'whmcs', 'wordpress'])->update(['is_active' => false]);
+        AppRecipe::query()->whereIn('slug', ['aapanel', 'chocolatey', 'coolify', 'cpanel', 'cyberpanel', 'docker', 'fastpanel', 'hestiacp', 'iis', 'lamp', 'lemp', 'nodejs', 'plesk', 'portainer', 'pterodactyl', 'sqlserver-express', 'whmcs', 'wordpress'])->update(['is_active' => false]);
 
         $response = $this->api('GET', '/api/v1/apps')->assertOk();
 
@@ -69,26 +72,22 @@ class AppApiTest extends ApiTestCase
             ->assertJsonPath('data.0.outputs.0.filename', 'client.ovpn');
     }
 
-    public function test_the_catalog_leaves_out_template_versions_above_max_versions()
+    public function test_the_catalog_follows_the_versions_ticked_for_each_app()
     {
         $wireguard = AppRecipe::query()->where('slug', 'wireguard')->firstOrFail();
-        $version = $wireguard->latestVersion;
-        $this->assertNotNull($version);
-        $definition = $version->definition;
-        $definition['requires']['max_versions'] = ['debian' => '12'];
-        $version->forceFill(['definition' => $definition])->save();
-        $trixie = OsTemplate::factory()->create(['family' => 'debian', 'version' => '13']);
-        $bookworm = OsTemplate::factory()->create(['family' => 'debian', 'version' => '12']);
+        $trixie = OsTemplate::factory()->create(['distribution' => 'debian', 'version' => '13']);
+        $bookworm = OsTemplate::factory()->create(['distribution' => 'debian', 'version' => '12']);
+        $wireguard->osVersions()->attach($bookworm->operating_system_version_id);
         $ids = fn (OsTemplate $template): array => array_column($this->api('GET', '/api/v1/apps?os_template='.$template->uuid)->json('data'), 'id');
 
-        $this->assertNotContains('wireguard', $ids($trixie));
-        $this->assertContains('openvpn', $ids($trixie));
-        $this->assertContains('wireguard', $ids($bookworm));
+        // Only what administrators ticked (docs/adr/0026), whatever the recipes say.
+        $this->assertSame([], $ids($trixie));
+        $this->assertSame(['wireguard'], $ids($bookworm));
 
         $response = $this->api('GET', '/api/v1/apps')->assertOk();
+        $this->assertSame([['family' => 'ubuntu', 'versions' => ['24.04']], ['family' => 'debian', 'versions' => ['12']]], array_column($response->json('data'), 'os', 'id')['wireguard']);
         $apps = array_column($response->json('data'), 'requires', 'id');
-        $this->assertSame(['platform' => 'linux', 'os' => ['debian'], 'min_versions' => ['ubuntu' => '22.04', 'debian' => '12'], 'max_versions' => ['debian' => '12']], $apps['wireguard']);
-        $this->assertSame([], $apps['openvpn']['max_versions']);
+        $this->assertSame(['platform' => 'linux', 'os' => ['debian'], 'os_families' => ['debian'], 'distributions' => [], 'min_versions' => ['ubuntu' => '22.04', 'debian' => '12'], 'max_versions' => []], $apps['wireguard']);
         $this->assertStringContainsString('"max_versions":{}', $response->getContent() ?: '', 'An empty map is an object.');
     }
 
@@ -99,7 +98,7 @@ class AppApiTest extends ApiTestCase
 
         $this->assertSame([], $this->api('GET', '/api/v1/apps?os_template='.$windows->uuid)->assertOk()->json('data'));
         $this->assertSame(['nodejs', 'openvpn', 'wireguard'], array_column($this->api('GET', '/api/v1/apps?package='.$small->uuid)->json('data'), 'id'));
-        $this->assertSame(['coolify', 'cyberpanel', 'docker', 'portainer', 'fastpanel', 'hestiacp', 'lamp', 'lemp', 'nodejs', 'openvpn', 'plesk', 'whmcs', 'wireguard', 'wordpress', 'aapanel', 'cpanel'], array_column($this->api('GET', '/api/v1/apps?os_template='.$this->osTemplate->uuid.'&server='.$this->server->uuid)->json('data'), 'id'));
+        $this->assertSame(['coolify', 'cyberpanel', 'docker', 'portainer', 'fastpanel', 'hestiacp', 'lamp', 'lemp', 'nodejs', 'openvpn', 'plesk', 'pterodactyl', 'whmcs', 'wireguard', 'wordpress', 'aapanel', 'cpanel'], array_column($this->api('GET', '/api/v1/apps?os_template='.$this->osTemplate->uuid.'&server='.$this->server->uuid)->json('data'), 'id'));
     }
 
     public function test_paid_apps_are_listed_and_say_whether_the_server_is_entitled()
@@ -138,7 +137,7 @@ class AppApiTest extends ApiTestCase
     {
         $this->api('POST', "/api/v1/servers/{$this->server->uuid}/apps", ['app' => 'openvpn', 'inputs' => ['port' => 443, 'protocol' => 'tcp']])
             ->assertAccepted()
-            ->assertJsonPath('data.app', ['id' => 'openvpn', 'name' => 'OpenVPN', 'version' => '1.3.0'])
+            ->assertJsonPath('data.app', ['id' => 'openvpn', 'name' => 'OpenVPN', 'version' => '1.3.1'])
             ->assertJsonPath('data.server.external_id', 'whmcs-1001')
             ->assertJsonPath('data.status', 'installing')
             ->assertJsonPath('data.inputs', ['port' => 443, 'protocol' => 'tcp'])
@@ -329,7 +328,7 @@ class AppApiTest extends ApiTestCase
         $this->publishVersion('wireguard', '1.4.0', changes: ['inputs' => $inputs]);
 
         $this->api('GET', $uri)
-            ->assertJsonPath('data.app.version', '1.3.0')
+            ->assertJsonPath('data.app.version', '1.3.1')
             ->assertJsonPath('data.upgrade.version', '1.4.0')
             ->assertJsonPath('data.upgrade.inputs.0.key', 'dns')
             ->assertJsonCount(1, 'data.upgrade.inputs');
@@ -374,6 +373,48 @@ class AppApiTest extends ApiTestCase
         $this->api('POST', "/api/v1/servers/{$this->server->uuid}/apps/{$foreign->uuid}/actions/add_client", ['inputs' => ['name' => 'x1']])->assertNotFound();
         $this->api('GET', "/api/v1/servers/{$this->server->uuid}/apps/{$installation->uuid}/runs/{$foreignRun->uuid}")->assertNotFound();
         $this->assertSame(0, AppRun::query()->where('app_installation_id', $installation->id)->count());
+    }
+
+    public function test_cancelling_answers_202_with_the_failed_installation_and_sends_a_webhook()
+    {
+        Queue::fake([DeliverWebhook::class]);
+        WebhookEndpoint::factory()->for($this->billingSystem)->create();
+        $installation = AppInstallation::query()->where('uuid', $this->api('POST', "/api/v1/servers/{$this->server->uuid}/apps", ['app' => 'wireguard'])->json('data.id'))->sole();
+
+        $this->api('POST', "/api/v1/servers/{$this->server->uuid}/apps/{$installation->uuid}/cancel")
+            ->assertAccepted()
+            ->assertJsonPath('data.status', 'failed')
+            ->assertJsonPath('data.error', 'Cancelled by the billing system.');
+
+        $this->assertSame('failed', json_decode(WebhookDelivery::query()->where('event', 'app.failed')->sole()->payload, true)['data']['installation']['status']);
+        $this->api('POST', "/api/v1/servers/{$this->server->uuid}/apps/{$installation->uuid}/cancel")
+            ->assertConflict()
+            ->assertExactJson(['message' => 'Only a running installation can be cancelled.']);
+    }
+
+    public function test_cancelling_a_run_answers_202_with_the_run()
+    {
+        $installation = $this->installed();
+        $run = $this->api('POST', "/api/v1/servers/{$this->server->uuid}/apps/{$installation->uuid}/actions/list_clients")->assertAccepted()->json('data.id');
+
+        $this->api('POST', "/api/v1/servers/{$this->server->uuid}/apps/{$installation->uuid}/runs/{$run}/cancel")
+            ->assertAccepted()
+            ->assertJsonPath('data.status', 'failed')
+            ->assertJsonPath('data.error', 'Cancelled by the billing system.');
+        $this->api('POST', "/api/v1/servers/{$this->server->uuid}/apps/{$installation->uuid}/runs/{$run}/cancel")->assertConflict();
+    }
+
+    public function test_installations_and_runs_of_other_servers_cannot_be_cancelled()
+    {
+        $installation = $this->installed();
+        $other = $this->provisionedServer('whmcs-1002');
+        $foreign = AppInstallation::factory()->for($other)->create(['status' => AppInstallationStatus::Installing]);
+        $foreignRun = AppRun::query()->forceCreate(['uuid' => (string) Str::uuid(), 'app_installation_id' => $foreign->id, 'kind' => 'action', 'action' => 'add_client', 'status' => 'running', 'inputs' => []]);
+
+        $this->api('POST', "/api/v1/servers/{$this->server->uuid}/apps/{$foreign->uuid}/cancel")->assertNotFound();
+        $this->api('POST', "/api/v1/servers/{$this->server->uuid}/apps/{$installation->uuid}/runs/{$foreignRun->uuid}/cancel")->assertNotFound();
+        $this->assertSame(AppInstallationStatus::Installing, $foreign->refresh()->status);
+        $this->assertSame('running', $foreignRun->refresh()->status->value);
     }
 
     public function test_a_finished_installation_is_sent_as_a_webhook_without_outputs()

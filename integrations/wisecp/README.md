@@ -18,7 +18,7 @@ Design: [ADR 0014](../../docs/adr/0014-wisecp-module.md).
 | Cancel (terminate) | Deletes the server and its disks; the addresses are released |
 | Upgrade / downgrade | The new product's package and resources, with the same rules as ordering. CPU and memory take effect at the server's next restart unless *Restart after upgrades* is on. The disk only grows. |
 | Change password | Sets the root password (12 to 128 characters) |
-| Service page | Hostname, IP address, OS, location, status and resources; tools: start, shut down, restart, force stop, reset root password, reinstall OS, VNC console, hostname change, reverse DNS, apps |
+| Service page | Hostname, IP address, OS, location, status and resources, the month's traffic against the quota; tools: start, shut down, restart, force stop, reset root password, reinstall OS, VNC console, hostname change, reverse DNS, apps |
 
 The root password: the customer's order answer or the service's password when it has
 12 to 128 characters, otherwise Proxmotion generates one and the module stores it on the
@@ -65,7 +65,7 @@ Product requirements (questions on the order form) can be mapped to the module:
 |---|---|
 | `os_template` | Selection whose option values are OS template ids from Proxmotion |
 | `location` | Selection whose option values are location ids |
-| `hostname` | Text: the server's hostname (otherwise the service's, or `vps<service id>`) |
+| `hostname` | Text: the server's hostname (otherwise the service's; without a valid one, a location with a hostname template in Proxmotion names the server, e.g. `ip-203-0-113-10.example.com`, and the service takes that name, otherwise `vps<service id>`) |
 | `ssh_key` | Text area: an SSH public key installed for root |
 | `root_password` | Password: 12 to 128 characters |
 | `app` | Selection whose option values are app ids from Proxmotion (and `none`): installed once the server has booted (see *Apps at order time*) |
@@ -111,6 +111,18 @@ reinstalling or terminating the server, and when it is not active.
 The **VNC console** opens Proxmotion's console in a new tab through a link that is
 valid for 60 seconds and works once; it opens only this server's console.
 
+### Traffic
+
+Proxmotion counts each server's traffic per month (ADR 0039 in the Proxmotion repository).
+The service page shows the counted traffic of the current month against the server's quota
+in WISECP's *Bandwidth* gauge and resource row, in decimal GB like the `extra_traffic_gb`
+add-on (1 GB = 10⁹ bytes); without a quota the total is `unlimited`, and a panel from before
+traffic accounting leaves both empty. The figures are read from `GET /servers/{id}` each
+time the page opens. Not done: WISECP's metrics collection (`metrics_usage`), traffic
+graphs, and a note on the page when Proxmotion suspended the server over its quota or a
+usage limit (WISECP shows the suspension itself). Whether WISECP's templates show the
+gauge and the `unlimited` total as expected is unverified.
+
 ### Apps
 
 The **Apps** tool (the module's own page, `pages/tools/apps.php`: WISECP has no app
@@ -143,6 +155,19 @@ WISECP's own **Reinstall** tool has no place for an app, so the Apps tool also o
 **Reinstall with an app**: the OS, one of the apps that fit the server, that it may
 install and that need no setting without a default (installed with its defaults), and a
 confirmation. Proxmotion checks the app again against the chosen OS.
+
+### Firewall
+
+The module adds a **Firewall** tool of its own (`pages/tools/firewall.php`, Proxmotion
+docs/adr/0035), shown while the server is active: the inbound rules in order, which always
+apply, with up, down and delete, a button to allow or block everything else, a form to add a rule (allow or block, TCP, UDP, ICMP or any, a
+port or range such as `1000-2000`, a source address or network, a comment), the rule sets
+administrators prepared in Proxmotion (in place of the customer's rules or after them),
+and the ports the server's apps open. Switched to blocking without a rule that allows
+anything, it lets SSH (Linux) or RDP (Windows) in. Every change reads the current rules and
+sends the whole list with an `Idempotency-Key`; Proxmotion's message is shown when a rule
+is wrong. The field of a rule's action is `rule_action`, because WISECP removes `action`
+from tool data. Like the Apps tool, it is unverified whether WISECP shows an added tool.
 
 ## Webhooks
 

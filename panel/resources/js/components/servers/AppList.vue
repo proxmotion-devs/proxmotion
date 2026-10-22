@@ -2,6 +2,7 @@
 import { router, useForm, usePage } from '@inertiajs/vue3';
 import {
     CircleArrowUp,
+    CircleStop,
     Eye,
     PackagePlus,
     Play,
@@ -22,11 +23,13 @@ import { Button } from '@/components/ui/button';
 import { useDateTime } from '@/composables/useDateTime';
 import {
     action as actionRoute,
+    cancel as cancelRoute,
     outputs as outputsRoute,
     retry,
     uninstall,
     upgrade as upgradeRoute,
 } from '@/routes/admin/app-installations';
+import { cancel as cancelRunRoute } from '@/routes/admin/app-runs';
 import type {
     AppAction,
     AppInput,
@@ -263,6 +266,34 @@ const submitUpgrade = () => {
     });
 };
 
+// Cancel a running installer or run (docs/adr/0030)
+const cancelOpen = ref(false);
+const cancelling = ref<{ app: AppInstallation; run: AppRun | null } | null>(
+    null,
+);
+const cancelForm = useForm({});
+
+const openCancel = (app: AppInstallation, run: AppRun | null = null) => {
+    cancelling.value = { app, run };
+    cancelOpen.value = true;
+};
+
+const submitCancel = () => {
+    if (cancelling.value === null) {
+        return;
+    }
+
+    const { app, run } = cancelling.value;
+
+    cancelForm.submit(
+        run === null ? cancelRoute(app.uuid) : cancelRunRoute(run.uuid),
+        {
+            preserveScroll: true,
+            onSuccess: () => (cancelOpen.value = false),
+        },
+    );
+};
+
 const runLabel = (run: AppRun) => {
     if (run.kind === 'upgrade') {
         return trans('Upgrade to :version', {
@@ -390,6 +421,15 @@ const openRunLog = (app: AppInstallation, run: AppRun) => {
                                             formatDateTime(run.created_at)
                                         }}</span>
                                         <button
+                                            v-if="run.status === 'running'"
+                                            type="button"
+                                            class="text-destructive underline underline-offset-2 hover:text-destructive/80"
+                                            data-test="app-run-cancel"
+                                            @click="openCancel(app, run)"
+                                        >
+                                            {{ $t('Cancel') }}
+                                        </button>
+                                        <button
                                             v-if="run.log"
                                             type="button"
                                             class="underline underline-offset-2 hover:text-foreground"
@@ -479,6 +519,17 @@ const openRunLog = (app: AppInstallation, run: AppRun) => {
                                                 version: app.upgrade.version,
                                             })
                                         }}
+                                    </Button>
+                                    <Button
+                                        v-if="app.status === 'installing'"
+                                        variant="outline"
+                                        size="sm"
+                                        class="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                                        data-test="app-cancel"
+                                        @click="openCancel(app)"
+                                    >
+                                        <CircleStop class="h-4 w-4" />
+                                        {{ $t('Cancel') }}
                                     </Button>
                                     <Button
                                         v-if="app.status === 'failed'"
@@ -600,6 +651,22 @@ const openRunLog = (app: AppInstallation, run: AppRun) => {
         @submit="submitUninstall"
     >
         <p class="text-sm font-medium">{{ removing?.app }}</p>
+    </FormDialog>
+
+    <FormDialog
+        v-model:open="cancelOpen"
+        :title="cancelling?.run ? 'Cancel script' : 'Cancel installation'"
+        description="The script is stopped inside the server where it is, nothing it did is undone: the app may be left half installed. Retry or uninstall the app afterwards, or reinstall the server."
+        submit-label="Stop script"
+        :processing="cancelForm.processing"
+        @submit="submitCancel"
+    >
+        <p class="text-sm font-medium">
+            {{ cancelling?.app.app }}
+            <template v-if="cancelling?.run">
+                · {{ runLabel(cancelling.run) }}</template
+            >
+        </p>
     </FormDialog>
 
     <AppLogDialog

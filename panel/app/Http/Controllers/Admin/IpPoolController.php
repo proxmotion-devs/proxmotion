@@ -174,6 +174,7 @@ class IpPoolController extends Controller
             'dns_provider' => $pool->dnsProvider?->uuid,
             'reverse_zone' => $pool->reverse_zone,
             'rdns_require_forward' => $pool->rdns_require_forward,
+            'isolate_guests' => $pool->isolate_guests,
         ];
     }
 

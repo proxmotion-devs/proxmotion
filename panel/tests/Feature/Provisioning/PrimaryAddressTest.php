@@ -100,6 +100,21 @@ class PrimaryAddressTest extends TestCase
         $this->assertSame([$first, $second, false], [$audit->properties['before'], $audit->properties['after'], $audit->properties['released']]);
     }
 
+    public function test_the_vm_notes_and_address_tag_follow_the_primary()
+    {
+        $server = $this->server(ipv4: 2);
+        [$first, $second] = $this->addresses($server);
+        $this->assertSame($first, $this->proxmox->vms[$server->vmid]['config']['tags']);
+        // Tags of the administrators stay.
+        $this->proxmox->vms[$server->vmid]['config']['tags'] = "customer-a;{$first}";
+
+        $this->change($server, $second);
+
+        $config = $this->proxmox->vms[$server->vmid]['config'];
+        $this->assertSame("customer-a;{$second}", $config['tags']);
+        $this->assertSame("Managed by Proxmotion. Server {$server->uuid}\n\nPrimary address: {$second}", $config['description']);
+    }
+
     public function test_a_free_address_replaces_the_primary_and_the_old_one_is_released()
     {
         $server = $this->server();
@@ -209,30 +224,15 @@ class PrimaryAddressTest extends TestCase
         $this->server(primary: $taken);
     }
 
-    public function test_admins_change_the_primary_from_the_server_page()
+    public function test_the_server_page_marks_the_primary()
     {
         $server = $this->server(ipv4: 2);
-        [$first, $second] = $this->addresses($server);
 
+        // Administrators change it with Edit IP addresses (docs/adr/0028); the billing API keeps POST .../primary-address.
         $this->actingAs($this->admin)
             ->get(route('admin.servers.show', $server))
             ->assertInertia(fn (Assert $page) => $page
                 ->where('server.addresses.0.primary', true)
                 ->where('server.addresses.1.primary', false));
-
-        $this->actingAs($this->admin)
-            ->from(route('admin.servers.show', $server))
-            ->post(route('admin.servers.primary-address', $server), ['address' => $second])
-            ->assertRedirect(route('admin.servers.show', $server))
-            ->assertSessionHasNoErrors();
-
-        $this->assertSame([$second, $first], $this->addresses($server));
-
-        $this->actingAs($this->admin)
-            ->post(route('admin.servers.primary-address', $server), ['address' => '198.51.100.5'])
-            ->assertSessionHasErrors('address');
-        $this->actingAs($this->admin)
-            ->post(route('admin.servers.primary-address', $server), [])
-            ->assertSessionHasErrors('ip_version');
     }
 }

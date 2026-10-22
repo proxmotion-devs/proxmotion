@@ -11,6 +11,7 @@ use App\Http\Controllers\Admin\ClusterController;
 use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Admin\DnsProviderController;
 use App\Http\Controllers\Admin\DriftController;
+use App\Http\Controllers\Admin\FirewallRulesetController;
 use App\Http\Controllers\Admin\GuestScriptController;
 use App\Http\Controllers\Admin\HelpController;
 use App\Http\Controllers\Admin\IpAddressController;
@@ -18,10 +19,15 @@ use App\Http\Controllers\Admin\IpPoolController;
 use App\Http\Controllers\Admin\IpPoolRdnsController;
 use App\Http\Controllers\Admin\LocationController;
 use App\Http\Controllers\Admin\NodeController;
+use App\Http\Controllers\Admin\OperatingSystemController;
 use App\Http\Controllers\Admin\OsTemplateController;
 use App\Http\Controllers\Admin\PackageController;
+use App\Http\Controllers\Admin\PanelSettingsController;
 use App\Http\Controllers\Admin\PlacementGroupController;
 use App\Http\Controllers\Admin\ServerController;
+use App\Http\Controllers\Admin\ServerFirewallController;
+use App\Http\Controllers\Admin\ServerMoveController;
+use App\Http\Controllers\Admin\ServerStatsController;
 use App\Http\Controllers\Admin\StorageController;
 use App\Http\Controllers\Admin\TaskController;
 use App\Http\Controllers\Admin\UserController;
@@ -37,6 +43,8 @@ use Illuminate\Support\Facades\Route;
 
 Route::get('/', DashboardController::class)->name('dashboard');
 Route::get('help', HelpController::class)->name('help');
+Route::get('settings', [PanelSettingsController::class, 'edit'])->name('settings.edit');
+Route::put('settings', [PanelSettingsController::class, 'update'])->name('settings.update');
 
 Route::get('drifts', [DriftController::class, 'index'])->name('drifts.index');
 Route::post('drifts/{drift}/accept', [DriftController::class, 'accept'])->name('drifts.accept');
@@ -49,6 +57,9 @@ Route::resource('locations', LocationController::class)->only(['index', 'store',
 Route::resource('clusters', ClusterController::class)->only(['index', 'store', 'show', 'update', 'destroy']);
 Route::post('clusters/{cluster}/sync', [ClusterController::class, 'sync'])->name('clusters.sync');
 Route::post('clusters/{cluster}/permissions', [ClusterController::class, 'checkPermissions'])->name('clusters.permissions');
+// The token servers from other clusters are moved in with (docs/adr/0037 §5).
+Route::put('clusters/{cluster}/incoming', [ClusterController::class, 'updateIncoming'])->middleware('throttle:10,1')->name('clusters.incoming');
+Route::post('clusters/{cluster}/incoming/permissions', [ClusterController::class, 'checkIncomingPermissions'])->name('clusters.incoming.permissions');
 Route::patch('nodes/{node}', [NodeController::class, 'update'])->name('nodes.update');
 Route::patch('storages/{storage}', [StorageController::class, 'update'])->name('storages.update');
 
@@ -65,19 +76,34 @@ Route::post('ip-pools/{ipPool}/addresses/keep-only', [IpAddressController::class
 Route::patch('ip-addresses/{ipAddress}', [IpAddressController::class, 'update'])->name('ip-addresses.update');
 Route::delete('ip-addresses/{ipAddress}', [IpAddressController::class, 'destroy'])->name('ip-addresses.destroy');
 
+// The operating systems and versions OS templates are of (docs/adr/0026).
+Route::post('operating-systems', [OperatingSystemController::class, 'store'])->name('operating-systems.store');
+Route::put('operating-systems/{operatingSystem}', [OperatingSystemController::class, 'update'])->name('operating-systems.update');
+Route::delete('operating-systems/{operatingSystem}', [OperatingSystemController::class, 'destroy'])->name('operating-systems.destroy');
+Route::post('operating-systems/{operatingSystem}/versions', [OperatingSystemController::class, 'storeVersion'])->name('operating-systems.versions.store');
+Route::delete('operating-systems/{operatingSystem}/versions/{version}', [OperatingSystemController::class, 'destroyVersion'])->scopeBindings()->name('operating-systems.versions.destroy');
+
 Route::resource('os-templates', OsTemplateController::class)->only(['index', 'store', 'update', 'destroy'])
     ->parameters(['os-templates' => 'osTemplate']);
+Route::get('os-templates/{osTemplate}/os-release', [OsTemplateController::class, 'osRelease'])->middleware('throttle:20,1')->name('os-templates.os-release');
 Route::get('os-templates/{osTemplate}/scripts', [GuestScriptController::class, 'index'])->name('os-templates.scripts');
 Route::put('os-templates/{osTemplate}/scripts/{event}', [GuestScriptController::class, 'update'])->name('os-templates.scripts.update');
 Route::delete('os-templates/{osTemplate}/scripts/{event}', [GuestScriptController::class, 'destroy'])->name('os-templates.scripts.destroy');
+Route::post('os-templates/{osTemplate}/scripts/{event}/publish', [GuestScriptController::class, 'publish'])->name('os-templates.scripts.publish');
+Route::delete('os-templates/{osTemplate}/scripts/{event}/draft', [GuestScriptController::class, 'discard'])->name('os-templates.scripts.discard');
 Route::post('os-templates/{osTemplate}/scripts/{event}/run', [GuestScriptController::class, 'run'])->middleware('throttle:10,1')->name('os-templates.scripts.run');
+Route::get('guest-script-logs/{guestScriptLog}', [GuestScriptController::class, 'log'])->name('guest-script-logs.show');
 
 Route::resource('packages', PackageController::class)->only(['index', 'store', 'update', 'destroy']);
 Route::resource('placement-groups', PlacementGroupController::class)->only(['index', 'store', 'update', 'destroy'])
     ->parameters(['placement-groups' => 'placementGroup']);
+// docs/adr/0035 §3
+Route::resource('firewall-rulesets', FirewallRulesetController::class)->only(['index', 'store', 'update', 'destroy'])
+    ->parameters(['firewall-rulesets' => 'firewallRuleset']);
 
 Route::get('apps', [AppController::class, 'index'])->name('apps.index');
 Route::patch('apps/{appRecipe}', [AppController::class, 'update'])->name('apps.update');
+Route::put('apps/{appRecipe}/systems', [AppController::class, 'systems'])->name('apps.systems');
 // Recipe editor (docs/adr/0018).
 Route::post('apps', [AppRecipeController::class, 'store'])->name('apps.store');
 Route::post('apps/import', [AppRecipeController::class, 'import'])->middleware('throttle:20,1')->name('apps.import');
@@ -95,6 +121,8 @@ Route::delete('apps/{appRecipe}', [AppRecipeController::class, 'destroy'])->name
 Route::get('app-logs/{appLog}', [AppLogController::class, 'show'])->middleware('throttle:120,1')->name('app-logs.show');
 Route::post('app-installations/{appInstallation}/outputs', [AppController::class, 'outputs'])->middleware('throttle:20,1')->name('app-installations.outputs');
 Route::post('app-installations/{appInstallation}/retry', [AppController::class, 'retry'])->middleware('throttle:10,1')->name('app-installations.retry');
+Route::post('app-installations/{appInstallation}/cancel', [AppController::class, 'cancel'])->middleware('throttle:10,1')->name('app-installations.cancel');
+Route::post('app-runs/{appRun}/cancel', [AppController::class, 'cancelRun'])->middleware('throttle:10,1')->name('app-runs.cancel');
 Route::post('app-installations/{appInstallation}/uninstall', [AppController::class, 'uninstall'])->middleware('throttle:10,1')->name('app-installations.uninstall');
 Route::post('app-installations/{appInstallation}/upgrade', [AppController::class, 'upgrade'])->middleware('throttle:10,1')->name('app-installations.upgrade');
 Route::post('app-installations/{appInstallation}/actions/{action}', [AppController::class, 'action'])->where('action', '[a-z][a-z0-9_]{0,39}')->middleware('throttle:20,1')->name('app-installations.action');
@@ -119,16 +147,29 @@ Route::resource('servers', ServerController::class)->only(['index', 'create', 's
 Route::post('servers/{server}/suspend', [ServerController::class, 'suspend'])->name('servers.suspend');
 Route::post('servers/{server}/unsuspend', [ServerController::class, 'unsuspend'])->name('servers.unsuspend');
 Route::post('servers/{server}/power/{action}', [ServerController::class, 'power'])->middleware('throttle:20,1')->name('servers.power');
+// Live figures of the server page, which also mark it as watched (docs/adr/0036).
+Route::get('servers/{server}/stats', ServerStatsController::class)->middleware('throttle:30,1')->name('servers.stats');
 Route::post('servers/{server}/retry', [ServerController::class, 'retry'])->name('servers.retry');
+Route::post('servers/{server}/rebuild', [ServerController::class, 'rebuild'])->middleware('throttle:10,1')->name('servers.rebuild');
+Route::post('servers/{server}/verify', [ServerController::class, 'verify'])->middleware('throttle:10,1')->name('servers.verify');
+Route::put('servers/{server}/firewall', [ServerFirewallController::class, 'update'])->middleware('throttle:20,1')->name('servers.firewall');
+Route::post('servers/{server}/firewall/ruleset', [ServerFirewallController::class, 'ruleset'])->middleware('throttle:20,1')->name('servers.firewall.ruleset');
+Route::post('servers/{server}/anti-spoofing', [ServerController::class, 'enableAntiSpoofing'])->middleware('throttle:10,1')->name('servers.enable-anti-spoofing');
 Route::post('tasks/{task}/fail', [TaskController::class, 'fail'])->name('tasks.fail');
 Route::post('servers/{server}/password', [ServerController::class, 'revealPassword'])->middleware('throttle:20,1')->name('servers.password');
 Route::post('servers/{server}/rdns', RdnsController::class)->middleware('throttle:30,1')->name('servers.rdns');
 Route::post('servers/{server}/reinstall', [ServerController::class, 'reinstall'])->middleware('throttle:10,1')->name('servers.reinstall');
 Route::post('servers/{server}/resources', [ServerController::class, 'changeResources'])->middleware('throttle:10,1')->name('servers.resources');
-Route::post('servers/{server}/primary-address', [ServerController::class, 'changePrimaryAddress'])->middleware('throttle:10,1')->name('servers.primary-address');
+Route::post('servers/{server}/addresses', [ServerController::class, 'changeAddresses'])->middleware('throttle:10,1')->name('servers.addresses');
+Route::post('servers/{server}/addresses/reapply', [ServerController::class, 'reapplyAddresses'])->middleware('throttle:10,1')->name('servers.reapply-addresses');
 Route::post('servers/{server}/hostname', [ServerController::class, 'changeHostname'])->middleware('throttle:10,1')->name('servers.hostname');
 Route::post('servers/{server}/reset-password', [ServerController::class, 'resetPassword'])->middleware('throttle:10,1')->name('servers.reset-password');
+// Moving servers to other nodes, clusters and locations (docs/adr/0037).
+Route::post('servers/{server}/move', [ServerMoveController::class, 'store'])->middleware('throttle:10,1')->name('servers.move');
+Route::post('servers/{server}/moves/{move}/finish', [ServerMoveController::class, 'finish'])->middleware('throttle:10,1')->name('servers.moves.finish');
 Route::put('servers/{server}/test', [AppController::class, 'testServer'])->name('servers.test');
+// Violations of traffic quotas and usage limits are recorded but never acted on (docs/adr/0039).
+Route::put('servers/{server}/usage-exempt', [ServerController::class, 'usageExempt'])->name('servers.usage-exempt');
 Route::post('servers/{server}/trial-reset', [AppController::class, 'resetTestServer'])->middleware('throttle:10,1')->name('servers.trial-reset');
 Route::post('servers/{server}/apps', [AppController::class, 'install'])->middleware('throttle:10,1')->name('servers.apps');
 Route::post('servers/{server}/app-entitlements', [AppEntitlementController::class, 'store'])->middleware('throttle:20,1')->name('servers.app-entitlements');

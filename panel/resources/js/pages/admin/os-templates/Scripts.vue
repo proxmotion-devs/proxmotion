@@ -1,16 +1,31 @@
 <script setup lang="ts">
-import { Head, router, setLayoutProps, useForm } from '@inertiajs/vue3';
-import { Play, RotateCcw, Save } from '@lucide/vue';
-import { reactive } from 'vue';
+import {
+    Head,
+    router,
+    setLayoutProps,
+    useForm,
+    usePoll,
+} from '@inertiajs/vue3';
+import { Play, RotateCcw, Save, Trash2, Upload } from '@lucide/vue';
+import { computed, reactive, ref, watch } from 'vue';
+import GuestScriptRuns from '@/components/admin/GuestScriptRuns.vue';
 import NativeSelect from '@/components/admin/NativeSelect.vue';
 import StatusBadge from '@/components/admin/StatusBadge.vue';
 import CodeEditor from '@/components/apps/CodeEditor.vue';
 import Heading from '@/components/Heading.vue';
 import { Button } from '@/components/ui/button';
-import { destroy, run, update } from '@/routes/admin/os-templates/scripts';
+import { Checkbox } from '@/components/ui/checkbox';
+import {
+    destroy,
+    discard,
+    publish,
+    run,
+    update,
+} from '@/routes/admin/os-templates/scripts';
 import { index, scripts as scriptsPage } from '@/routes/admin/os-templates';
 import type {
     GuestScriptEvent,
+    GuestScriptRun,
     GuestScriptSlot,
     OsPlatform,
     Option,
@@ -19,8 +34,10 @@ import type {
 const props = defineProps<{
     template: { uuid: string; name: string; platform: OsPlatform };
     scripts: GuestScriptSlot[];
+    logs: Record<GuestScriptEvent, GuestScriptRun[]>;
     servers: Option[];
     maxBytes: number;
+    canTrace: boolean;
 }>();
 
 setLayoutProps({
@@ -51,11 +68,12 @@ const eventDescriptions: Record<GuestScriptEvent, string> = {
         'Replaces the guest agent setting the password. The new password arrives on standard input; if the script fails, the reset fails and no new password is shown.',
 };
 
+// The editor shows the draft when there is one, otherwise what runs now.
+const shown = (slot: GuestScriptSlot) =>
+    slot.draft ?? slot.content ?? slot.default ?? '';
+
 const forms = Object.fromEntries(
-    props.scripts.map((slot) => [
-        slot.event,
-        useForm({ script: slot.content ?? slot.default ?? '' }),
-    ]),
+    props.scripts.map((slot) => [slot.event, useForm({ script: shown(slot) })]),
 ) as Record<GuestScriptEvent, ReturnType<typeof useForm<{ script: string }>>>;
 
 const tryOn = reactive(
@@ -66,27 +84,109 @@ const tryOn = reactive(
         ]),
     ) as Record<GuestScriptEvent, string | null>,
 );
+const trace = reactive(
+    Object.fromEntries(
+        props.scripts.map((slot) => [slot.event, false]),
+    ) as Record<GuestScriptEvent, boolean>,
+);
+
+// After a reload the editor follows what was saved, published or discarded.
+const resync = (event: GuestScriptEvent) => {
+    const slot = props.scripts.find((item) => item.event === event);
+
+    if (slot) {
+        forms[event].defaults({ script: shown(slot) });
+        forms[event].reset();
+    }
+};
 
 const save = (event: GuestScriptEvent) => {
     forms[event].submit(update([props.template.uuid, event]), {
         preserveScroll: true,
+        onSuccess: () => resync(event),
     });
 };
 
-const reset = (slot: GuestScriptSlot) => {
-    router.visit(destroy([props.template.uuid, slot.event]), {
+const visit = (
+    route: Parameters<typeof router.visit>[0],
+    event: GuestScriptEvent,
+) => {
+    router.visit(route, {
+        preserveScroll: true,
+        onSuccess: () => resync(event),
+    });
+};
+
+// Trials are queued: follow the runs until a new one has shown up and
+// finished (or none started within a minute, e.g. no queue worker).
+const awaiting = ref<{
+    event: GuestScriptEvent;
+    after: string | null;
+    since: number;
+} | null>(null);
+const running = computed(() =>
+    Object.values(props.logs).some((runs) =>
+        runs.some((item) => item.status === 'running'),
+    ),
+);
+const { start: startPolling, stop: stopPolling } = usePoll(
+    2000,
+    { only: ['logs'] },
+    { autoStart: false },
+);
+
+watch(
+    () => awaiting.value !== null || running.value,
+    (value) => (value ? startPolling() : stopPolling()),
+    { immediate: true },
+);
+watch(
+    () => props.logs,
+    (logs) => {
+        const wait = awaiting.value;
+
+        if (wait === null) {
+            return;
+        }
+
+        const newest = logs[wait.event]?.[0];
+        const arrived =
+            newest !== undefined &&
+            newest.uuid !== wait.after &&
+            newest.status !== 'running';
+
+        if (arrived || Date.now() - wait.since > 60000) {
+            awaiting.value = null;
+        }
+    },
+);
+
+const tryScript = (slot: GuestScriptSlot) => {
+    const after = props.logs[slot.event]?.[0]?.uuid ?? null;
+
+    router.visit(run([props.template.uuid, slot.event]), {
+        data: {
+            server: tryOn[slot.event],
+            draft: slot.draft !== null,
+            trace: props.canTrace && trace[slot.event],
+        },
         preserveScroll: true,
         onSuccess: () => {
-            forms[slot.event].defaults({ script: slot.default ?? '' });
-            forms[slot.event].reset();
-        },
-    });
-};
+            const newest = props.logs[slot.event]?.[0];
 
-const tryScript = (event: GuestScriptEvent) => {
-    router.visit(run([props.template.uuid, event]), {
-        data: { server: tryOn[event] },
-        preserveScroll: true,
+            // With a synchronous queue the run has finished already.
+            if (
+                newest === undefined ||
+                newest.uuid === after ||
+                newest.status === 'running'
+            ) {
+                awaiting.value = {
+                    event: slot.event,
+                    after,
+                    since: Date.now(),
+                };
+            }
+        },
     });
 };
 
@@ -128,6 +228,11 @@ const bytes = (text: string) => new TextEncoder().encode(text).length;
                             label="Default"
                         />
                         <StatusBadge v-else tone="neutral" label="None" />
+                        <StatusBadge
+                            v-if="slot.draft !== null"
+                            tone="warning"
+                            label="Draft"
+                        />
                     </h2>
                     <p class="max-w-3xl text-sm text-muted-foreground">
                         {{ $t(eventDescriptions[slot.event]) }}
@@ -160,6 +265,17 @@ const bytes = (text: string) => new TextEncoder().encode(text).length;
                 {{ forms[slot.event].errors.script }}
             </p>
 
+            <p
+                v-if="slot.draft !== null"
+                class="text-sm text-amber-700 dark:text-amber-400"
+            >
+                {{
+                    $t(
+                        'You are editing a draft. Operations keep running the published script until you publish the draft; trial runs use the draft.',
+                    )
+                }}
+            </p>
+
             <div class="flex flex-wrap items-center gap-2">
                 <Button
                     :disabled="
@@ -169,12 +285,40 @@ const bytes = (text: string) => new TextEncoder().encode(text).length;
                     @click="save(slot.event)"
                 >
                     <Save class="h-4 w-4" />
-                    {{ $t('Save') }}
+                    {{ $t('Save draft') }}
+                </Button>
+                <Button
+                    v-if="slot.draft !== null"
+                    variant="outline"
+                    :disabled="forms[slot.event].isDirty"
+                    :title="
+                        forms[slot.event].isDirty
+                            ? $t('Save the script first.')
+                            : undefined
+                    "
+                    @click="
+                        visit(publish([template.uuid, slot.event]), slot.event)
+                    "
+                >
+                    <Upload class="h-4 w-4" />
+                    {{ $t('Publish') }}
+                </Button>
+                <Button
+                    v-if="slot.draft !== null"
+                    variant="outline"
+                    @click="
+                        visit(discard([template.uuid, slot.event]), slot.event)
+                    "
+                >
+                    <Trash2 class="h-4 w-4" />
+                    {{ $t('Discard draft') }}
                 </Button>
                 <Button
                     v-if="slot.content !== null"
                     variant="outline"
-                    @click="reset(slot)"
+                    @click="
+                        visit(destroy([template.uuid, slot.event]), slot.event)
+                    "
                 >
                     <RotateCcw class="h-4 w-4" />
                     {{ $t('Reset to default') }}
@@ -191,11 +335,25 @@ const bytes = (text: string) => new TextEncoder().encode(text).length;
                 <div
                     v-if="
                         slot.can_be_tried &&
-                        (slot.content !== null || slot.default !== null)
+                        (slot.content !== null ||
+                            slot.draft !== null ||
+                            slot.default !== null)
                     "
                     class="ml-auto flex flex-wrap items-center gap-2"
                 >
                     <template v-if="servers.length">
+                        <label
+                            v-if="canTrace"
+                            class="flex items-center gap-2 text-sm"
+                            :title="
+                                $t(
+                                    'Runs the script with sh -x: every command is printed to the error output before it runs.',
+                                )
+                            "
+                        >
+                            <Checkbox v-model="trace[slot.event]" />
+                            {{ $t('Trace commands') }}
+                        </label>
                         <NativeSelect
                             v-model="tryOn[slot.event]"
                             :options="servers"
@@ -212,10 +370,14 @@ const bytes = (text: string) => new TextEncoder().encode(text).length;
                                     ? $t('Save the script first.')
                                     : undefined
                             "
-                            @click="tryScript(slot.event)"
+                            @click="tryScript(slot)"
                         >
                             <Play class="h-4 w-4" />
-                            {{ $t('Run on server') }}
+                            {{
+                                slot.draft !== null
+                                    ? $t('Run draft on server')
+                                    : $t('Run on server')
+                            }}
                         </Button>
                     </template>
                     <span v-else class="text-xs text-muted-foreground">{{
@@ -223,6 +385,8 @@ const bytes = (text: string) => new TextEncoder().encode(text).length;
                     }}</span>
                 </div>
             </div>
+
+            <GuestScriptRuns :runs="logs[slot.event] ?? []" />
         </section>
     </div>
 </template>

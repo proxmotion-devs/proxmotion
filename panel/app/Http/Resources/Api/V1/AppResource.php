@@ -4,10 +4,10 @@ declare(strict_types=1);
 
 namespace App\Http\Resources\Api\V1;
 
-use App\Domain\Apps\OsFamilies;
 use App\Domain\Apps\RecipeAction;
 use App\Domain\Apps\RecipeInput;
 use App\Domain\Apps\RecipeOutput;
+use App\Domain\Infrastructure\Distributions;
 use App\Models\AppRecipe;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -44,11 +44,14 @@ class AppResource extends JsonResource
             'category' => $recipe->category,
             'description' => $recipe->description,
             'format' => $recipe->format,
-            // Format 2 recipes name families or groups (requires.os); `os` then lists the template families they cover, with any version.
-            'os' => $recipe->format === 1 ? $recipe->os : array_map(fn (string $family) => ['family' => $family, 'versions' => []], OsFamilies::expand($recipe->families ?? [])),
+            // The operating systems administrators offer the app on (docs/adr/0026), by system slug with their versions.
+            'os' => $this->offeredOn(),
             'requires' => [
                 'platform' => $recipe->platform,
-                'os' => $recipe->families,
+                // Deprecated: families and distributions in one list, as before.
+                'os' => $recipe->families === null && $recipe->distributions === null ? null : [...($recipe->families ?? []), ...($recipe->distributions ?? [])],
+                'os_families' => $recipe->families,
+                'distributions' => $recipe->distributions,
                 'min_versions' => (object) $recipe->minVersions,
                 'max_versions' => (object) $recipe->maxVersions,
             ],
@@ -68,5 +71,23 @@ class AppResource extends JsonResource
             'actions' => array_map(fn (RecipeAction $action) => $action->toArray(), $recipe->actions),
             'entitled' => $this->when($this->entitled !== null, fn () => $this->entitled),
         ];
+    }
+
+    /**
+     * The ticked versions grouped by system, as v1's `os` always was: `family`
+     * is the system's slug (the templates' `distribution`).
+     *
+     * @return list<array{family: string, versions: list<string>}>
+     */
+    private function offeredOn(): array
+    {
+        $systems = [];
+
+        foreach ($this->osVersions->loadMissing('operatingSystem') as $version) {
+            $slug = Distributions::apiName($version->operatingSystem->slug);
+            $systems[$slug][] = $version->version;
+        }
+
+        return array_map(fn (string $slug, array $versions) => ['family' => $slug, 'versions' => $versions], array_keys($systems), array_values($systems));
     }
 }

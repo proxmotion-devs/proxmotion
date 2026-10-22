@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Domain\Apps;
 
+use App\Enums\OsPlatform;
 use App\Proxmox\Resources\GuestAgentResource;
 use Closure;
 use Opis\JsonSchema\Errors\ErrorFormatter;
@@ -18,9 +19,6 @@ use Symfony\Component\Yaml\Yaml;
  */
 final class RecipeLoader
 {
-    /** Shared files the panel writes next to every recipe's install.sh. */
-    public const LIBRARY_FILES = ['proxmotion.sh', 'run.sh'];
-
     public function __construct(private readonly ?string $directory = null) {}
 
     public function directory(): string
@@ -146,8 +144,11 @@ final class RecipeLoader
                 continue;
             }
 
-            if (strlen($content) > GuestAgentResource::MAX_WRITE_BYTES) {
-                $errors[] = "{$script} is larger than ".GuestAgentResource::MAX_WRITE_BYTES.' bytes.';
+            // A .ps1 file gets a byte order mark on its way into the server (AppGuest::content()).
+            $limit = GuestAgentResource::MAX_WRITE_BYTES - (str_ends_with($script, '.ps1') && ! str_starts_with($content, "\u{FEFF}") ? 3 : 0);
+
+            if (strlen($content) > $limit) {
+                $errors[] = "{$script} is larger than {$limit} bytes.";
             }
 
             $files[$script] = $content;
@@ -163,19 +164,27 @@ final class RecipeLoader
     }
 
     /**
-     * The shared helper and runner scripts (recipes/_lib).
+     * The shared helper and runner scripts of a platform (recipes/_lib).
      *
      * @return array<string, string>
      */
-    public function library(): array
+    public function library(string $platform = 'linux'): array
     {
         $files = [];
 
-        foreach (self::LIBRARY_FILES as $name) {
+        foreach (AppGuest::LIBRARY_FILES[$platform] ?? [] as $name) {
             $files[$name] = (string) file_get_contents($this->directory().'/_lib/'.$name);
         }
 
         return $files;
+    }
+
+    /**
+     * The script that stops runners of a platform (docs/adr/0030).
+     */
+    public function stopScript(OsPlatform $platform): string
+    {
+        return (string) file_get_contents($this->directory().'/_lib/'.AppGuest::STOP_FILES[$platform->value]);
     }
 
     /**
@@ -285,12 +294,10 @@ final class RecipeLoader
             }
         }
 
-        if ($recipe->families !== null) {
-            foreach (['min_versions' => $recipe->minVersions, 'max_versions' => $recipe->maxVersions] as $field => $versions) {
-                foreach (array_keys($versions) as $family) {
-                    if (! OsFamilies::matches($recipe->families, $family)) {
-                        $errors[] = "requires.{$field}: {$family} is not covered by requires.os.";
-                    }
+        foreach (['min_versions' => $recipe->minVersions, 'max_versions' => $recipe->maxVersions] as $field => $versions) {
+            foreach (array_keys($versions) as $distribution) {
+                if (! $recipe->coversDistribution($distribution)) {
+                    $errors[] = "requires.{$field}: {$distribution} is not covered by requires.os.";
                 }
             }
         }

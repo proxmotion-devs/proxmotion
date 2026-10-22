@@ -1,7 +1,7 @@
 format: 2
 slug: whmcs
 name: WHMCS
-version: 1.0.2
+version: 1.0.3
 category: web
 description:
     en: The WHMCS billing and automation platform on nginx, PHP-FPM with the ionCube Loader and MariaDB, installed from your own WHMCS download with your licence key.
@@ -10,7 +10,7 @@ maintainers: [{ name: Proxmotion }]
 homepage: https://www.whmcs.com/
 requires:
     platform: linux
-    os: [debian]
+    os: { families: [debian] }
     # WHMCS 9 needs PHP 8.2 or 8.3: Debian 12 and Ubuntu 24.04 ship them.
     min_versions: { debian: '12', ubuntu: '24.04' }
     max_versions: { debian: '12', ubuntu: '24.04' }

@@ -54,14 +54,49 @@
             "properties": {
                 "platform": { "enum": ["linux", "windows"] },
                 "os": {
-                    "description": "Template families (ubuntu, rocky, …) or groups like /etc/os-release ID_LIKE: debian (Debian, Ubuntu), rhel (RHEL, AlmaLinux, Rocky, CentOS, Fedora), suse, arch. Omitted: any OS of the platform.",
-                    "type": "array",
-                    "minItems": 1,
-                    "uniqueItems": true,
-                    "items": {
-                        "type": "string",
-                        "pattern": "^[a-z][a-z0-9-]*$"
-                    }
+                    "description": "Operating systems (docs/adr/0024): families (debian, rhel, suse, arch, like /etc/os-release ID_LIKE) and single distributions (os-release IDs: debian, ubuntu, almalinux, …). Omitted: any OS of the platform. Older recipes use a list: debian, rhel, suse and arch are families there, other names distributions.",
+                    "oneOf": [
+                        {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "minProperties": 1,
+                            "properties": {
+                                "families": {
+                                    "type": "array",
+                                    "minItems": 1,
+                                    "uniqueItems": true,
+                                    "items": {
+                                        "enum": [
+                                            "debian",
+                                            "rhel",
+                                            "suse",
+                                            "arch",
+                                            "windows"
+                                        ]
+                                    }
+                                },
+                                "distributions": {
+                                    "type": "array",
+                                    "minItems": 1,
+                                    "uniqueItems": true,
+                                    "items": {
+                                        "type": "string",
+                                        "pattern": "^[a-z0-9][a-z0-9._-]*$",
+                                        "maxLength": 32
+                                    }
+                                }
+                            }
+                        },
+                        {
+                            "type": "array",
+                            "minItems": 1,
+                            "uniqueItems": true,
+                            "items": {
+                                "type": "string",
+                                "pattern": "^[a-z][a-z0-9-]*$"
+                            }
+                        }
+                    ]
                 },
                 "capabilities": {
                     "description": "Deprecated: package managers are read as OS groups (apt → debian, dnf → rhel); use os.",
@@ -83,17 +118,18 @@
                     }
                 },
                 "min_versions": {
+                    "description": "Lowest supported version per distribution (os-release ID).",
                     "type": "object",
-                    "propertyNames": { "pattern": "^[a-z][a-z0-9-]*$" },
+                    "propertyNames": { "pattern": "^[a-z0-9][a-z0-9._-]*$" },
                     "additionalProperties": {
                         "type": "string",
                         "pattern": "^[0-9][0-9.]*$"
                     }
                 },
                 "max_versions": {
-                    "description": "Highest supported version per family; a template version is compared by as many parts as given (12 covers 12.7).",
+                    "description": "Highest supported version per distribution (os-release ID); a template version is compared by as many parts as given (12 covers 12.7).",
                     "type": "object",
-                    "propertyNames": { "pattern": "^[a-z][a-z0-9-]*$" },
+                    "propertyNames": { "pattern": "^[a-z0-9][a-z0-9._-]*$" },
                     "additionalProperties": {
                         "type": "string",
                         "pattern": "^[0-9][0-9.]*$"

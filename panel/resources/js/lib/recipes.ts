@@ -39,6 +39,9 @@ export type RecipeAction = {
     timeout_minutes?: number;
 };
 
+/** `requires.os` of format 2 (docs/adr/0024 §4). */
+export type OsRequirement = { families?: string[]; distributions?: string[] };
+
 export type RecipeDefinition = {
     format?: number;
     slug?: string;
@@ -50,9 +53,9 @@ export type RecipeDefinition = {
     homepage?: string;
     requires: {
         platform: string;
-        /** Template families or groups (debian, rhel, …); none: any OS of the platform. */
-        os?: string[];
-        /** Read from older recipes only; converted to `os` by editable(). */
+        /** Families and distributions (docs/adr/0024 §4); none: any OS of the platform. */
+        os?: OsRequirement;
+        /** Read from older recipes only (with a list `os`); converted by editable(). */
         capabilities?: string[];
         families?: string[];
         min_versions?: Record<string, string>;
@@ -104,9 +107,26 @@ const CAPABILITY_GROUPS: Record<string, string> = {
     pacman: 'arch',
 };
 
+/** Names of older list-form recipes that meant a family (docs/adr/0024 §4). */
+const FAMILY_NAMES: Record<string, string> = {
+    debian: 'debian',
+    rhel: 'rhel',
+    suse: 'suse',
+    arch: 'arch',
+    windows: 'windows',
+    archlinux: 'arch',
+    opensuse: 'suse',
+};
+
+/** Version keys of older recipes that are now os-release IDs. */
+const OLD_DISTRIBUTIONS: Record<string, string> = {
+    archlinux: 'arch',
+    opensuse: 'opensuse-leap',
+};
+
 /**
  * The OS groups older recipes meant with package-manager capabilities
- * ("apt|dnf" → debian, rhel), like OsFamilies::fromCapabilities().
+ * ("apt|dnf" → debian, rhel), like Recipe::operatingSystems().
  */
 export function osFromCapabilities(capabilities: string[]): string[] {
     const groups = capabilities
@@ -118,6 +138,43 @@ export function osFromCapabilities(capabilities: string[]): string[] {
 }
 
 /**
+ * The list form of older recipes as families and distributions: the group
+ * names were families, other names distributions (Recipe::operatingSystems()).
+ */
+export function osFromList(names: string[]): OsRequirement | undefined {
+    const families = new Set<string>();
+    const distributions = new Set<string>();
+
+    for (const name of names.map((value) => value.toLowerCase())) {
+        if (name in FAMILY_NAMES) {
+            families.add(FAMILY_NAMES[name]);
+        } else {
+            distributions.add(name);
+        }
+    }
+
+    if (families.size === 0 && distributions.size === 0) {
+        return undefined;
+    }
+
+    return {
+        ...(families.size ? { families: [...families] } : {}),
+        ...(distributions.size ? { distributions: [...distributions] } : {}),
+    };
+}
+
+function renamedLimits(
+    limits: Record<string, string> | undefined,
+): Record<string, string> {
+    return Object.fromEntries(
+        Object.entries(limits ?? {}).map(([name, version]) => [
+            OLD_DISTRIBUTIONS[name] ?? name,
+            version,
+        ]),
+    );
+}
+
+/**
  * Fill the parts the forms bind to, so a format 2 definition from the
  * server (or a new one) can be edited field by field.
  */
@@ -126,14 +183,27 @@ export function editable(definition: RecipeDefinition): RecipeDefinition {
 
     copy.description ??= { en: '' };
     copy.requires ??= { platform: 'linux' };
-    // Older recipes: `families`, or package managers as capabilities (docs/adr/0016 §3).
-    copy.requires.os ??=
-        copy.requires.families ??
-        osFromCapabilities(copy.requires.capabilities ?? []);
+    // Older recipes: a list `os`, `families`, or package managers as capabilities (docs/adr/0024 §4).
+    const legacy = copy.requires as RecipeDefinition['requires'] & {
+        os?: OsRequirement | string[];
+    };
+    const os = Array.isArray(legacy.os)
+        ? osFromList(legacy.os)
+        : (legacy.os ??
+          osFromList(
+              legacy.families ?? osFromCapabilities(legacy.capabilities ?? []),
+          ));
+
+    if (os) {
+        copy.requires.os = os;
+    } else {
+        delete copy.requires.os;
+    }
+
     delete copy.requires.families;
     delete copy.requires.capabilities;
-    copy.requires.min_versions ??= {};
-    copy.requires.max_versions ??= {};
+    copy.requires.min_versions = renamedLimits(copy.requires.min_versions);
+    copy.requires.max_versions = renamedLimits(copy.requires.max_versions);
     copy.resources ??= {
         min_memory_mib: 512,
         min_disk_mib: 5120,

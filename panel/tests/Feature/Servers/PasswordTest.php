@@ -78,7 +78,7 @@ class PasswordTest extends TestCase
     public function test_resets_and_reveals_are_audited_without_the_password()
     {
         $this->reset();
-        $this->actingAs($this->admin)->from(route('admin.servers.show', $this->server))->post(route('admin.servers.password', $this->server));
+        $this->actingAs($this->admin)->postJson(route('admin.servers.password', $this->server))->assertOk();
 
         $this->assertSame(['server.password_reset', 'server.password_revealed'], AuditLog::query()->orderBy('id')->pluck('action')->all());
         $password = (string) $this->server->refresh()->root_password;
@@ -93,8 +93,8 @@ class PasswordTest extends TestCase
         $this->server->forceFill(['root_password_unrevealed' => true])->save();
 
         $this->actingAs($this->admin)
-            ->post(route('admin.servers.password', $this->server))
-            ->assertSessionHas('revealed_password', 'old-password-value');
+            ->postJson(route('admin.servers.password', $this->server))
+            ->assertExactJson(['password' => 'old-password-value']);
 
         $this->assertTrue($this->server->refresh()->root_password_unrevealed);
     }

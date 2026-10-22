@@ -1,7 +1,7 @@
 format: 2
 slug: cyberpanel
 name: CyberPanel
-version: 1.0.0
+version: 1.0.3
 category: control-panel
 description:
     en: The free CyberPanel hosting control panel on OpenLiteSpeed with MariaDB and, optionally, mail, DNS and FTP. Needs a freshly installed server.
@@ -10,9 +10,9 @@ maintainers: [{ name: Proxmotion }]
 homepage: https://cyberpanel.net/
 requires:
     platform: linux
-    os: [ubuntu, almalinux, rocky]
-    min_versions: { ubuntu: '22.04', almalinux: '8', rocky: '8' }
-    max_versions: { ubuntu: '26.04', almalinux: '10', rocky: '8' }
+    os: { distributions: [ubuntu, almalinux] }
+    min_versions: { ubuntu: '22.04', almalinux: '8' }
+    max_versions: { ubuntu: '26.04', almalinux: '10' }
 resources: { min_memory_mib: 1024, min_disk_mib: 10240, min_cores: 1 }
 network_models: [bridged, routed]
 install_modes: [order, post]

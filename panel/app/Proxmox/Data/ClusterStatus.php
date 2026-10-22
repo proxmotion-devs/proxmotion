@@ -11,11 +11,13 @@ final readonly class ClusterStatus
 {
     /**
      * @param  list<string>  $nodes
+     * @param  array<string, string>  $nodeAddresses  per node name: its address in the cluster (`ip`), where Proxmox reports one
      */
     public function __construct(
         public ?string $clusterName,
         public bool $quorate,
         public array $nodes,
+        public array $nodeAddresses = [],
     ) {}
 
     public function isCluster(): bool
@@ -31,16 +33,22 @@ final readonly class ClusterStatus
         $clusterName = null;
         $quorate = true;
         $nodes = [];
+        $addresses = [];
 
         foreach ($entries as $entry) {
             if (($entry['type'] ?? null) === 'cluster') {
                 $clusterName = (string) ($entry['name'] ?? '');
                 $quorate = (bool) ($entry['quorate'] ?? false);
             } elseif (($entry['type'] ?? null) === 'node') {
-                $nodes[] = (string) $entry['name'];
+                $name = (string) $entry['name'];
+                $nodes[] = $name;
+
+                if (is_string($entry['ip'] ?? null) && filter_var($entry['ip'], FILTER_VALIDATE_IP) !== false) {
+                    $addresses[$name] = $entry['ip'];
+                }
             }
         }
 
-        return new self($clusterName ?: null, $quorate, $nodes);
+        return new self($clusterName ?: null, $quorate, $nodes, $addresses);
     }
 }

@@ -35,6 +35,8 @@ return Application::configure(basePath: dirname(__DIR__))
                 ->group(base_path('routes/internal.php'));
         },
     )
+    // Private channels are for administrators only, behind the same checks as admin pages (docs/adr/0036).
+    ->withBroadcasting(__DIR__.'/../routes/channels.php', ['middleware' => ['web', 'auth', 'verified', '2fa']])
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->encryptCookies(except: ['appearance', 'sidebar_state']);
         // Guest scripts (admin OS template page) are stored exactly as typed.

@@ -13,7 +13,10 @@ use App\Models\Node;
 use App\Models\OsTemplate;
 use App\Models\Package;
 use App\Models\PlacementGroup;
+use App\Provisioning\HostnameGenerator;
 use App\Provisioning\NewServer;
+use App\Provisioning\ResourceLimits;
+use App\Provisioning\ServerCreator;
 use App\Provisioning\ServerSpec;
 use App\Rules\Hostname;
 use App\Rules\SshPublicKeys;
@@ -53,6 +56,8 @@ class ServerRequest extends FormRequest
             // Empty: unlimited.
             'port_speed_mbps' => ['nullable', 'integer', 'between:1,400000'],
             'traffic_gb' => ['nullable', 'integer', 'between:1,10000000'],
+            // Custom servers only, empty: unlimited (docs/adr/0034).
+            ...ResourceLimits::rules(),
             // Custom servers only: "group", the best node of a placement group (docs/adr/0020);
             // "node", the node (and optionally storage) chosen here.
             'placement' => [Rule::requiredIf($custom), Rule::prohibitedIf(! $custom), 'nullable', Rule::in(['group', 'node'])],
@@ -60,9 +65,11 @@ class ServerRequest extends FormRequest
             'node' => ['nullable', 'required_if:placement,node', 'string', Rule::exists('nodes', 'uuid')],
             // Empty: the storage of the node with the most room.
             'storage' => ['nullable', 'string', 'max:191'],
-            'os_template' => ['required', 'string', Rule::exists('os_templates', 'uuid')->where('is_active', true)],
+            // Inactive templates too: administrators try a template on a server before offering it (docs/adr/0024 §8).
+            'os_template' => ['required', 'string', Rule::exists('os_templates', 'uuid')],
             'network_model' => ['required', Rule::enum(NetworkModel::class)->except([NetworkModel::Nat])],
-            'hostname' => ['required', 'string', 'max:253', new Hostname],
+            // Empty: generated from the location's hostname template (docs/adr/0031).
+            'hostname' => ['nullable', 'string', 'max:253', new Hostname],
             // Empty: the first pool of the location with room for the server's addresses.
             'ipv4_pool' => ['nullable', 'string', Rule::exists('ip_pools', 'uuid')],
             // Chosen IPv4 addresses, the first one primary; missing ones are the next free of the pool.
@@ -93,8 +100,17 @@ class ServerRequest extends FormRequest
                 $validator->errors()->add('network_model', __('This package does not allow the selected network model.'));
             }
 
+            if (! $this->filled('hostname') && ($problem = HostnameGenerator::missingHostname($this->string('location')->toString())) !== null) {
+                $validator->errors()->add('hostname', $problem);
+            }
+
             if ($this->custom() && $this->integer('ipv4_count') + $this->integer('ipv6_count') === 0) {
                 $validator->errors()->add('ipv4_count', __('A server needs at least one IP address.'));
+            }
+
+            // docs/adr/0024 §8: customers never get a server of a template not offered to them.
+            if ($this->billingSystem() !== null && OsTemplate::query()->where('uuid', $this->string('os_template'))->where('is_active', false)->exists()) {
+                $validator->errors()->add('os_template', __(ServerCreator::INACTIVE_TEMPLATE));
             }
         }];
     }
@@ -107,7 +123,7 @@ class ServerRequest extends FormRequest
             package: $this->package(),
             osTemplate: OsTemplate::query()->where('uuid', $this->string('os_template'))->firstOrFail(),
             networkModel: NetworkModel::from($this->string('network_model')->toString()),
-            hostname: $this->string('hostname')->lower()->toString(),
+            hostname: $this->filled('hostname') ? $this->string('hostname')->lower()->toString() : null,
             rootPassword: $this->filled('root_password') ? $this->string('root_password')->toString() : Str::password(20, symbols: false),
             sshKeys: PublicKey::implode(PublicKey::parseMany($this->string('ssh_keys')->toString())),
             externalId: $this->filled('external_id') ? $this->string('external_id')->trim()->toString() : null,
@@ -183,6 +199,7 @@ class ServerRequest extends FormRequest
             ipv6Count: $this->integer('ipv6_count'),
             portSpeedMbps: $this->filled('port_speed_mbps') ? $this->integer('port_speed_mbps') : null,
             trafficBytes: $this->filled('traffic_gb') ? $this->integer('traffic_gb') * 1000 ** 3 : null,
+            limits: ResourceLimits::fromRequest($this),
         );
     }
 }

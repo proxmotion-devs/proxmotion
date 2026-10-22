@@ -26,7 +26,8 @@ final readonly class NewServer
         public ServerSpec $spec,
         public OsTemplate $osTemplate,
         public NetworkModel $networkModel,
-        public string $hostname,
+        /** Null: generated from the location's template once the addresses are assigned (docs/adr/0031). */
+        public ?string $hostname,
         #[SensitiveParameter] public string $rootPassword,
         public ?Package $package = null,
         public ?string $sshKeys = null,

@@ -51,4 +51,5 @@ require_once __DIR__ . '/../modules/servers/proxmotion/proxmotion.php';
 require_once __DIR__ . '/FakeTransport.php';
 require_once __DIR__ . '/FakeWebhookStore.php';
 require_once __DIR__ . '/FakeServiceStore.php';
+require_once __DIR__ . '/FakeUsageStore.php';
 require_once __DIR__ . '/ModuleTestCase.php';

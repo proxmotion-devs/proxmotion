@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Domain\Servers;
 
+use App\Domain\Settings\PanelSettings;
 use App\Enums\ApiScope;
 use App\Enums\ServerStatus;
 use App\Models\ApiToken;
@@ -126,7 +127,7 @@ final readonly class ConsoleSessions
 
     private function maxMinutes(): int
     {
-        return max(1, (int) config('proxmotion.console.max_minutes'));
+        return max(1, (int) PanelSettings::get('console_max_minutes'));
     }
 
     private function ticketKey(string $ticket): string

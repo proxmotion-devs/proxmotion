@@ -20,6 +20,7 @@ final readonly class ServerSpec
         public int $ipv6Count,
         public ?int $portSpeedMbps = null,
         public ?int $trafficBytes = null,
+        public ResourceLimits $limits = new ResourceLimits,
     ) {}
 
     public static function fromPackage(Package $package): self
@@ -32,6 +33,7 @@ final readonly class ServerSpec
             ipv6Count: $package->ipv6_count,
             portSpeedMbps: $package->port_speed_mbps,
             trafficBytes: $package->traffic_bytes,
+            limits: ResourceLimits::of($package),
         );
     }
 }

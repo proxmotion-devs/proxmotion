@@ -1,7 +1,7 @@
 format: 2
 slug: wordpress
 name: WordPress
-version: 1.0.2
+version: 1.0.3
 category: web
 description:
     en: WordPress on nginx, PHP-FPM and MariaDB, optionally with a Let's Encrypt certificate for its domain.
@@ -10,7 +10,7 @@ maintainers: [{ name: Proxmotion }]
 homepage: https://wordpress.org/
 requires:
     platform: linux
-    os: [debian]
+    os: { families: [debian] }
     min_versions: { ubuntu: '22.04', debian: '12' }
 resources: { min_memory_mib: 1024, min_disk_mib: 10240, min_cores: 1 }
 network_models: [bridged, routed]

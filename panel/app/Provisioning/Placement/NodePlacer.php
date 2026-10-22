@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Provisioning\Placement;
 
 use App\Enums\NodeStatus;
+use App\Models\Cluster;
 use App\Models\Location;
 use App\Models\Node;
 use App\Models\OsTemplate;
@@ -14,6 +15,7 @@ use App\Models\Server;
 use App\Models\Storage;
 use App\Provisioning\Exceptions\ProvisioningException;
 use App\Provisioning\ServerSpec;
+use Closure;
 use Illuminate\Support\Collection;
 
 /**
@@ -22,6 +24,9 @@ use Illuminate\Support\Collection;
  * A node qualifies when it is online, not in maintenance, belongs to an active
  * cluster, has the OS template, has the bridge the server's network uses, and
  * still has room for the server's CPU, memory and disk after over-commit.
+ *
+ * Clusters whose datacenter firewall or ebtables the last sync found off are
+ * skipped, since their VM firewalls would stop no spoofing (docs/adr/0033).
  *
  * Administrators may also choose the node, and optionally its storage: the
  * same checks apply to that node, except that a node in maintenance may be
@@ -41,10 +46,18 @@ final class NodePlacer
 
         $templates = $osTemplate->proxmoxTemplates()
             ->whereHas('cluster', fn ($query) => $query->where('location_id', $location->id)->where('is_active', true))
+            ->with('cluster')
             ->get();
 
         if ($templates->isEmpty()) {
             throw ProvisioningException::noTemplate();
+        }
+
+        // Anti-spoofing only works where the datacenter firewall does (docs/adr/0033).
+        $templates = $templates->filter(fn (ProxmoxTemplate $template) => $template->cluster->guestFirewallProblem() === null)->values();
+
+        if ($templates->isEmpty()) {
+            throw ProvisioningException::firewallOff();
         }
 
         $nodes = Node::query()
@@ -94,6 +107,10 @@ final class NodePlacer
             throw new ProvisioningException('The chosen node is not in an active cluster of this location.');
         }
 
+        if (($problem = $node->cluster->guestFirewallProblem()) !== null) {
+            throw new ProvisioningException($problem);
+        }
+
         if ($rules->groups !== null && ! in_array($node->id, PlacementGroup::nodeIdsOf($rules->groups), true)) {
             throw new ProvisioningException('The chosen node is not in a placement group this package may use.');
         }
@@ -123,6 +140,111 @@ final class NodePlacer
         }
 
         return new Placement($node, $storage, $this->pickTemplate($templates, $node));
+    }
+
+    /**
+     * Where a server moves (docs/adr/0037 §2): the node an administrator chose
+     * (checked like a chosen node of a new server, except that its cluster
+     * need not have the server's OS template) or the least used node of a
+     * placement group. Never its own node. Only clusters $clusterAllowed
+     * accepts are considered. A disk on shared storage that the target node
+     * also has stays where it is, so no storage is needed for it.
+     *
+     * @param  Closure(Cluster): ?string  $clusterAllowed  why a cluster cannot take the server, or null
+     *
+     * @throws ProvisioningException
+     */
+    public function placeMove(Server $server, ServerSpec $spec, string $bridge, PlacementRules $rules, Closure $clusterAllowed): MovePlacement
+    {
+        if ($rules->node !== null) {
+            $node = Node::query()->with(['cluster', 'storages', 'bridges'])->findOrFail($rules->node->id);
+
+            if ($node->id === $server->node_id) {
+                throw new ProvisioningException('The server is already on this node.');
+            }
+
+            if (! $node->cluster->is_active) {
+                throw new ProvisioningException('The chosen node is not in an active cluster.');
+            }
+
+            if (($problem = $node->cluster->guestFirewallProblem() ?? $clusterAllowed($node->cluster)) !== null) {
+                throw new ProvisioningException($problem);
+            }
+
+            if ($rules->groups !== null && ! in_array($node->id, PlacementGroup::nodeIdsOf($rules->groups), true)) {
+                throw new ProvisioningException('The chosen node is not in the chosen placement group.');
+            }
+
+            if ($node->status !== NodeStatus::Online) {
+                throw new ProvisioningException('The chosen node is not online.');
+            }
+
+            if (! $this->hasBridge($node, $bridge)) {
+                throw new ProvisioningException('The chosen node does not have the bridge :bridge.', ['bridge' => $bridge]);
+            }
+
+            if (! $this->fits($node, $spec)) {
+                throw new ProvisioningException('The chosen node does not have enough free CPU, memory or server slots for this server.');
+            }
+
+            $kept = $this->keptStorage($server, $node);
+            $storage = $kept ?? ($rules->storage === null ? $this->pickStorage($node, $spec, $rules->groups) : $this->chosenStorage($node, $rules->storage, $spec));
+
+            if ($storage === null) {
+                throw new ProvisioningException('No storage of the chosen node that is used for servers has room for this disk.');
+            }
+
+            return new MovePlacement($node, $storage);
+        }
+
+        if ($rules->groups === null) {
+            throw new ProvisioningException('Choose a node or a placement group.');
+        }
+
+        $nodes = Node::query()
+            ->whereIn('id', PlacementGroup::nodeIdsOf($rules->groups))
+            ->where('id', '!=', $server->node_id)
+            ->where('status', NodeStatus::Online)
+            ->where('is_maintenance', false)
+            ->whereHas('cluster', fn ($query) => $query->where('is_active', true))
+            ->with(['cluster', 'storages', 'bridges'])
+            ->get()
+            ->filter(fn (Node $node) => $node->cluster->guestFirewallProblem() === null && $clusterAllowed($node->cluster) === null);
+
+        $candidates = [];
+
+        foreach ($nodes as $node) {
+            $storage = $this->keptStorage($server, $node) ?? $this->pickStorage($node, $spec, $rules->groups);
+
+            if ($storage === null || ! $this->hasBridge($node, $bridge) || ! $this->fits($node, $spec)) {
+                continue;
+            }
+
+            $candidates[] = ['placement' => new MovePlacement($node, $storage), 'score' => $this->memoryUsageAfter($node, $spec)];
+        }
+
+        if ($candidates === []) {
+            throw ProvisioningException::noGroupCapacity();
+        }
+
+        usort($candidates, fn (array $a, array $b) => $a['score'] <=> $b['score']);
+
+        return $candidates[0]['placement'];
+    }
+
+    /**
+     * The server's own storage when it is shared and the node of the same
+     * cluster has it too: its disk stays where it is.
+     */
+    private function keptStorage(Server $server, Node $node): ?Storage
+    {
+        $storage = $server->storage;
+
+        if ($storage === null || ! $storage->is_shared || $node->cluster_id !== $server->cluster_id) {
+            return null;
+        }
+
+        return $node->storages->first(fn (Storage $candidate) => $candidate->name === $storage->name && $candidate->is_available);
     }
 
     /**

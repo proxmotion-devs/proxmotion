@@ -39,6 +39,7 @@ const form = useForm({
     vlan_tag: '' as OptionalNumber,
     nameservers: '',
     is_active: true,
+    isolate_guests: false,
     dns_provider: '' as string | null,
     reverse_zone: '',
     rdns_require_forward: false,
@@ -93,6 +94,7 @@ watch(open, (isOpen) => {
         vlan_tag: pool?.vlan_tag ?? '',
         nameservers: pool?.nameservers.join('\n') ?? '',
         is_active: pool?.is_active ?? true,
+        isolate_guests: pool?.isolate_guests ?? false,
         dns_provider: pool?.dns_provider ?? '',
         reverse_zone: pool?.reverse_zone ?? '',
         rdns_require_forward: pool?.rdns_require_forward ?? false,
@@ -269,6 +271,19 @@ const submit = () => {
             <Checkbox v-model="form.is_active" />
             {{ $t('Active (used for new servers)') }}
         </Label>
+        <div class="flex flex-col gap-1">
+            <Label class="flex items-center gap-3 font-normal">
+                <Checkbox v-model="form.isolate_guests" />
+                {{ $t('Isolate servers from each other') }}
+            </Label>
+            <p class="pl-7 text-xs text-muted-foreground">
+                {{
+                    $t(
+                        'Servers with addresses of this pool cannot reach each other in it; the gateway stays reachable. Existing servers change when you enable anti-spoofing on them.',
+                    )
+                }}
+            </p>
+        </div>
 
         <div class="grid gap-4 sm:grid-cols-2">
             <FormField

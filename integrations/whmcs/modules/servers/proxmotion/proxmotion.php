@@ -10,6 +10,7 @@
 use Proxmotion\Whmcs\ApiException;
 use Proxmotion\Whmcs\Module;
 use Proxmotion\Whmcs\ServerOrder;
+use Proxmotion\Whmcs\WhmcsUsageStore;
 
 if (!defined('WHMCS')) {
     die('This file cannot be accessed directly');
@@ -245,7 +246,19 @@ function proxmotion_AdminCustomButtonArray()
  */
 function proxmotion_ClientAreaAllowedFunctions()
 {
-    return ['Start', 'Shutdown', 'Reboot', 'Stop', 'Console', 'ResetPassword', 'Reinstall', 'SetRdns', 'ChangeHostname', 'InstallApp', 'RetryApp', 'UninstallApp', 'UpgradeApp', 'RunAppAction', 'DownloadAppFile'];
+    return ['Start', 'Shutdown', 'Reboot', 'Stop', 'Console', 'ResetPassword', 'Reinstall', 'SetRdns', 'ChangeHostname', 'InstallApp', 'RetryApp', 'CancelApp', 'UninstallApp', 'UpgradeApp', 'RunAppAction', 'DownloadAppFile', 'Firewall'];
+}
+
+/**
+ * Change the server's firewall (docs/adr/0035); the form's "op" says how.
+ *
+ * @param array<string, mixed> $params
+ */
+function proxmotion_Firewall(array $params): string
+{
+    return proxmotion_run($params, function (Module $module) {
+        return $module->firewall($_POST);
+    });
 }
 
 /**
@@ -295,6 +308,16 @@ function proxmotion_RetryApp(array $params): string
 {
     return proxmotion_run($params, function (Module $module) {
         return $module->retryApp($_POST);
+    });
+}
+
+/**
+ * @param array<string, mixed> $params
+ */
+function proxmotion_CancelApp(array $params): string
+{
+    return proxmotion_run($params, function (Module $module) {
+        return $module->cancelApp($_POST);
     });
 }
 
@@ -429,6 +452,19 @@ function proxmotion_Console(array $params): string
 
     header('Location: ' . $url, true, 302);
     exit;
+}
+
+/**
+ * WHMCS's daily usage update, once per WHMCS server of this module: the
+ * month's traffic and quota of each service (bwusage/bwlimit in MB, docs/adr/0039).
+ *
+ * @param array<string, mixed> $params
+ */
+function proxmotion_UsageUpdate(array $params): string
+{
+    return proxmotion_run($params, function (Module $module) {
+        return $module->usageUpdate(new WhmcsUsageStore());
+    });
 }
 
 /**

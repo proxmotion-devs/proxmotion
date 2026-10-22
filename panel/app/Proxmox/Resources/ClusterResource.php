@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Proxmox\Resources;
 
 use App\Proxmox\Data\ClusterStatus;
+use App\Proxmox\Data\DatacenterFirewall;
 use App\Proxmox\Data\StorageInfo;
 use App\Proxmox\Data\VmResource;
 use App\Proxmox\Exceptions\ProxmoxRequestFailed;
@@ -39,6 +40,14 @@ final readonly class ClusterResource
             VmResource::fromArray(...),
             self::listOfArrays($this->client->get('/cluster/resources', ['type' => 'vm'])),
         );
+    }
+
+    /**
+     * The datacenter firewall's options (cluster.fw; standalone nodes have one too).
+     */
+    public function firewall(): DatacenterFirewall
+    {
+        return DatacenterFirewall::fromArray((array) $this->client->get('/cluster/firewall/options'));
     }
 
     public function nextVmid(): int

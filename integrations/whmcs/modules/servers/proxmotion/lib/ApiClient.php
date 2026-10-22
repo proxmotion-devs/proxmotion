@@ -9,6 +9,9 @@ namespace Proxmotion\Whmcs;
  */
 class ApiClient
 {
+    /** GET /servers answers 50 servers per page: this is 50,000 servers. */
+    const MAX_PAGES = 1000;
+
     /** @var string e.g. https://panel.example.com/api/v1 */
     private $baseUrl;
 
@@ -71,6 +74,26 @@ class ApiClient
     public function servers(): array
     {
         return $this->listOf($this->request('GET', '/servers'));
+    }
+
+    /**
+     * Every server of the billing system, page by page (at most MAX_PAGES pages).
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function allServers(): array
+    {
+        $servers = [];
+        $page = 1;
+
+        do {
+            $response = $this->request('GET', '/servers?' . http_build_query(['page' => $page]));
+            $servers = array_merge($servers, $this->listOf($response));
+            $last = isset($response['meta']['last_page']) ? (int) $response['meta']['last_page'] : $page;
+            $page++;
+        } while ($page <= $last && $page <= self::MAX_PAGES);
+
+        return $servers;
     }
 
     /**
@@ -328,6 +351,27 @@ class ApiClient
     }
 
     /**
+     * Cancel a running installation (docs/adr/0030): it fails at once and its
+     * installer is stopped inside the server.
+     *
+     * @return array<string, mixed> the installation
+     */
+    public function cancelApp(string $id, string $installation, string $idempotencyKey): array
+    {
+        return $this->dataOf($this->request('POST', '/servers/' . rawurlencode($id) . '/apps/' . rawurlencode($installation) . '/cancel', null, $idempotencyKey));
+    }
+
+    /**
+     * Cancel a running uninstall, upgrade or action (docs/adr/0030).
+     *
+     * @return array<string, mixed> the run
+     */
+    public function cancelAppRun(string $id, string $installation, string $run, string $idempotencyKey): array
+    {
+        return $this->dataOf($this->request('POST', '/servers/' . rawurlencode($id) . '/apps/' . rawurlencode($installation) . '/runs/' . rawurlencode($run) . '/cancel', null, $idempotencyKey));
+    }
+
+    /**
      * Run the app's uninstall script (docs/adr/0016).
      *
      * @return array<string, mixed> the queued run
@@ -381,6 +425,47 @@ class ApiClient
     /**
      * A signed console link for the customer's browser (valid for 60 seconds, once).
      */
+    /**
+     * The server's firewall: default_policy, rules, app_rules (docs/adr/0035).
+     *
+     * @return array<string, mixed>
+     */
+    public function firewall(string $id): array
+    {
+        return $this->dataOf($this->request('GET', '/servers/' . rawurlencode($id) . '/firewall'));
+    }
+
+    /**
+     * Set the default policy ("accept" or "drop") and replace the rules; returns the task.
+     *
+     * @param list<array<string, string|null>> $rules
+     * @return array<string, mixed>
+     */
+    public function updateFirewall(string $id, string $policy, array $rules, string $idempotencyKey): array
+    {
+        return $this->dataOf($this->request('PUT', '/servers/' . rawurlencode($id) . '/firewall', ['default_policy' => $policy, 'rules' => $rules], $idempotencyKey));
+    }
+
+    /**
+     * Apply a rule set ("replace" or "append"); returns the task.
+     *
+     * @return array<string, mixed>
+     */
+    public function applyFirewallRuleset(string $id, string $ruleset, string $mode, string $idempotencyKey): array
+    {
+        return $this->dataOf($this->request('POST', '/servers/' . rawurlencode($id) . '/firewall/ruleset', ['ruleset' => $ruleset, 'mode' => $mode], $idempotencyKey));
+    }
+
+    /**
+     * Active firewall rule sets.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function firewallRulesets(): array
+    {
+        return $this->listOf($this->request('GET', '/firewall-rulesets'));
+    }
+
     public function consoleLink(string $id): string
     {
         $data = $this->dataOf($this->request('POST', '/servers/' . rawurlencode($id) . '/console'));

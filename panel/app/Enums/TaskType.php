@@ -20,7 +20,12 @@ enum TaskType: string
     case ChangeResources = 'change_resources';
     case GuestScript = 'guest_script';
     case ChangePrimaryAddress = 'change_primary_address';
+    case ChangeAddresses = 'change_addresses';
     case ChangeHostname = 'change_hostname';
     case InstallApp = 'install_app';
     case AppRun = 'app_run';
+    case Verify = 'verify';
+    case EnableAntiSpoofing = 'enable_anti_spoofing';
+    case ApplyFirewall = 'apply_firewall';
+    case Move = 'move';
 }

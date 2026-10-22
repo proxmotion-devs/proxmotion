@@ -93,6 +93,25 @@ paths:
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
 
+  /firewall-rulesets:
+    get:
+      tags: [Catalog]
+      summary: Active firewall rule sets
+      description: 'Scope: `catalog:read`. Rule sets customers can apply to a server''s firewall (`POST /servers/{server}/firewall/ruleset`).'
+      operationId: listFirewallRulesets
+      responses:
+        '200':
+          description: Firewall rule sets
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: { type: array, items: { $ref: '#/components/schemas/FirewallRuleset' } }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
   /apps:
     get:
       tags: [Apps]
@@ -232,7 +251,13 @@ paths:
     post:
       tags: [Servers]
       summary: Suspend an active server
-      description: 'Scope: `servers:write`. Shuts the VM down and keeps it stopped.'
+      description: |
+        Scope: `servers:write`. Shuts the VM down and keeps it stopped.
+
+        A server Proxmotion suspended itself over its traffic quota or a usage limit
+        (`suspension_cause` set, docs/adr/0039) answers `200` with the server instead: no task runs,
+        and the suspension becomes the billing system's (`suspension_cause` null, `reason` stored when
+        given), so Proxmotion never unsuspends it by itself.
       operationId: suspendServer
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
@@ -244,6 +269,14 @@ paths:
               properties:
                 reason: { type: [string, 'null'], maxLength: 255, description: Shown to administrators }
       responses:
+        '200':
+          description: The server was already suspended by Proxmotion; the suspension is now the billing system's.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/Server' }
         '202': { $ref: '#/components/responses/TaskAccepted' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
@@ -568,6 +601,89 @@ paths:
         '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/ValidationError' }
 
+  /servers/{server}/firewall:
+    parameters:
+      - $ref: '#/components/parameters/Server'
+    get:
+      tags: [Servers]
+      summary: The server's firewall
+      description: |
+        Scope: `servers:read`. The inbound rules in order, which always apply; what happens to
+        incoming traffic no rule matches (`default_policy`: `accept` or `drop`); and the ports the
+        server's apps open while it drops by default. Outgoing traffic is never filtered.
+      operationId: getServerFirewall
+      responses:
+        '200':
+          description: The firewall
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: { $ref: '#/components/schemas/Firewall' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    put:
+      tags: [Servers]
+      summary: Set the default policy and replace the rules
+      description: |
+        Scope: `servers:write`. Active and suspended servers. `rules` replaces every rule (at most
+        50, in order). Switched to `drop` without a rule that allows anything, the server gets one
+        rule letting SSH (Linux) or RDP (Windows) in. Answers `202` with the `apply_firewall` task.
+      operationId: updateServerFirewall
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [default_policy, rules]
+              properties:
+                default_policy: { type: string, enum: [accept, drop], description: What happens to incoming traffic no rule matches. }
+                rules: { type: array, maxItems: 50, items: { $ref: '#/components/schemas/FirewallRule' } }
+      responses:
+        '202': { $ref: '#/components/responses/TaskAccepted' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /servers/{server}/firewall/ruleset:
+    parameters:
+      - $ref: '#/components/parameters/Server'
+    post:
+      tags: [Servers]
+      summary: Apply a firewall rule set
+      description: |
+        Scope: `servers:write`. Its rules and default policy replace the server's (`replace`), or
+        its rules follow the server's (`append`, at most 50 rules in all; the default policy stays).
+        Answers `202` with the `apply_firewall` task.
+      operationId: applyServerFirewallRuleset
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ruleset, mode]
+              properties:
+                ruleset: { type: string, format: uuid, description: 'An active rule set from `GET /firewall-rulesets`.' }
+                mode: { type: string, enum: [replace, append] }
+      responses:
+        '202': { $ref: '#/components/responses/TaskAccepted' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
   /servers/{server}/console:
     parameters:
       - $ref: '#/components/parameters/Server'
@@ -885,6 +1001,72 @@ paths:
         '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/ValidationError' }
 
+  /servers/{server}/apps/{installation}/cancel:
+    parameters:
+      - $ref: '#/components/parameters/Server'
+      - $ref: '#/components/parameters/Installation'
+    post:
+      tags: [Apps]
+      summary: Cancel a running installation
+      description: |
+        Scope: `servers:write`. Stops an `installing` installation (docs/adr/0030): it becomes `failed`
+        at once with the error "Cancelled by the billing system." (`app.failed` is sent) and its installer
+        is stopped inside the server in the background. Nothing the installer did is undone; the
+        installation can be retried or uninstalled. `409` for other statuses, also a `queued` one.
+      operationId: cancelServerApp
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '202':
+          description: The installation was cancelled.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: { $ref: '#/components/schemas/AppInstallation' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /servers/{server}/apps/{installation}/runs/{run}/cancel:
+    parameters:
+      - $ref: '#/components/parameters/Server'
+      - $ref: '#/components/parameters/Installation'
+      - name: run
+        in: path
+        required: true
+        description: The run's `id` (UUID).
+        schema: { type: string, format: uuid }
+    post:
+      tags: [Apps]
+      summary: Cancel a running uninstall, upgrade or action
+      description: |
+        Scope: `servers:write`. Stops a `running` run (docs/adr/0030): it becomes `failed` at once with the
+        error "Cancelled by the billing system." and the script is stopped inside the server in the
+        background. A cancelled uninstall leaves the installation `uninstall_failed`, a cancelled upgrade
+        `upgrade_failed` on its old version; the usual `app.*_failed` webhook is sent. `409` for other
+        statuses, also a `queued` run.
+      operationId: cancelServerAppRun
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '202':
+          description: The run was cancelled.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: { $ref: '#/components/schemas/AppRun' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
   /servers/{server}/app-entitlements:
     parameters:
       - $ref: '#/components/parameters/Server'
@@ -1117,22 +1299,61 @@ components:
         port_speed_mbps: { type: [integer, 'null'] }
         traffic_bytes: { type: [integer, 'null'] }
         network_models: { type: array, items: { $ref: '#/components/schemas/NetworkModel' } }
+    FirewallRule:
+      type: object
+      required: [action, protocol]
+      description: One inbound rule. `port` not for `icmp`; `any` with a port is TCP and UDP to it, without one all traffic.
+      properties:
+        action: { type: string, enum: [accept, drop] }
+        protocol: { type: string, enum: [tcp, udp, icmp, any] }
+        port: { type: [string, 'null'], pattern: '^\d{1,5}(-\d{1,5})?$', examples: ['22', '1000-2000'] }
+        source: { type: [string, 'null'], description: 'An address or CIDR; null: anywhere.', examples: ['198.51.100.0/24'] }
+        comment: { type: [string, 'null'], maxLength: 60 }
+    Firewall:
+      type: object
+      required: [default_policy, rules, app_rules]
+      properties:
+        default_policy: { type: string, enum: [accept, drop], description: What happens to incoming traffic no rule matches. }
+        rules: { type: array, items: { $ref: '#/components/schemas/FirewallRule' } }
+        app_rules:
+          type: array
+          description: Ports the server's apps open while it drops by default; not editable.
+          items:
+            type: object
+            required: [app, protocol, port]
+            properties:
+              app: { type: string, description: The app's slug. }
+              protocol: { type: string, enum: [tcp, udp] }
+              port: { type: integer }
+    FirewallRuleset:
+      type: object
+      required: [id, name, description, default_policy, rules]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        description: { type: [string, 'null'] }
+        default_policy: { type: string, enum: [accept, drop] }
+        rules: { type: array, items: { $ref: '#/components/schemas/FirewallRule' } }
     Location:
       type: object
-      required: [id, name, code, country_code]
+      required: [id, name, code, country_code, generates_hostnames]
       properties:
         id: { type: string, format: uuid }
         name: { type: string }
         code: { type: string }
         country_code: { type: [string, 'null'] }
+        generates_hostnames: { type: boolean, description: 'Whether servers of this location may be ordered without a `hostname`: the location''s template then names them from their primary address and sets that name as the PTR of their primary addresses (docs/adr/0031).' }
     OsTemplate:
       type: object
-      required: [id, name, family, version]
+      required: [id, name, family, version, distribution, distribution_version, os_family]
       properties:
         id: { type: string, format: uuid }
         name: { type: string }
-        family: { type: string, examples: [ubuntu] }
-        version: { type: string, examples: ['24.04'] }
+        family: { type: string, deprecated: true, examples: [ubuntu], description: 'The slug of its operating system with the names v1 always used (`archlinux`, `opensuse`), as in an app''s `os` (docs/adr/0026). Use `distribution` and `os_family`.' }
+        version: { type: string, deprecated: true, examples: ['24.04'], description: 'The version of its operating system, as `distribution_version`.' }
+        distribution: { type: string, examples: [ubuntu, pardus], description: 'The slug of its operating system, made from the name administrators gave it (docs/adr/0026).' }
+        distribution_version: { type: string, examples: ['24.04', '23.4'], description: 'The version of its operating system, from the administrators'' list (docs/adr/0026).' }
+        os_family: { type: string, enum: [debian, rhel, suse, arch, windows, other], description: 'The family of a well-known system (like ID_LIKE in /etc/os-release); `other` for a system the panel does not know.' }
     OrderedApp:
       type: [string, 'null']
       description: |
@@ -1148,7 +1369,7 @@ components:
       additionalProperties: true
     CreateServer:
       type: object
-      required: [external_id, location, os_template, hostname]
+      required: [external_id, location, os_template]
       properties:
         external_id: { type: string, maxLength: 191, description: Service id in the billing system; unique within the token's billing system }
         external_client_id: { type: [string, 'null'], maxLength: 191, description: Customer id in the billing system }
@@ -1156,7 +1377,7 @@ components:
         location: { type: string, format: uuid }
         os_template: { type: string, format: uuid }
         network_model: { description: 'Default: the first model the package allows. Required without a package.', oneOf: [{ $ref: '#/components/schemas/NetworkModel' }, { type: 'null' }] }
-        hostname: { type: string, maxLength: 253, examples: [web1.example.com] }
+        hostname: { type: [string, 'null'], maxLength: 253, examples: [web1.example.com], description: 'Empty: named from the location''s hostname template, e.g. `ip-203-0-113-5.example.com`, which also becomes the PTR of the primary address of each version (docs/adr/0031). `422` under `hostname` when the location has none (`generates_hostnames: false`).' }
         primary_ipv4: { type: [string, 'null'], format: ipv4, description: 'A free address of the location''s pools to use as the primary IPv4 address (the other IPv4 addresses come from its pool). Empty: the next free one. `422` when it is not free.' }
         root_password: { type: [string, 'null'], minLength: 12, maxLength: 128, description: 'Empty: a random password.' }
         ssh_keys: { $ref: '#/components/schemas/SshKeys' }
@@ -1175,7 +1396,7 @@ components:
             traffic_bytes: { type: integer, minimum: 1 }
     Server:
       type: object
-      required: [id, external_id, external_client_id, hostname, status, suspension_reason, reboot_required, network_model, package, location, os_template, resources, addresses, root_password_available, created_at, provisioned_at, terminated_at]
+      required: [id, external_id, external_client_id, hostname, status, suspension_reason, suspension_cause, reboot_required, network_model, package, location, os_template, resources, traffic, addresses, root_password_available, created_at, provisioned_at, terminated_at]
       properties:
         id: { type: string, format: uuid }
         external_id: { type: [string, 'null'] }
@@ -1183,6 +1404,13 @@ components:
         hostname: { type: string }
         status: { $ref: '#/components/schemas/ServerStatus' }
         suspension_reason: { type: [string, 'null'] }
+        suspension_cause:
+          type: [string, 'null']
+          enum: [traffic, usage, null]
+          description: |
+            Set when Proxmotion suspended the server itself (docs/adr/0039): `traffic` over its traffic
+            quota (unsuspended by Proxmotion once a new period starts or the quota is raised), `usage` over
+            a usage limit (stays suspended). Null for suspensions by the billing system or an administrator.
         reboot_required: { type: boolean, description: 'Changes wait for a restart through Proxmotion (power start or reboot): new CPU or memory, a new Windows computer name' }
         power_state:
           type: [string, 'null']
@@ -1205,7 +1433,17 @@ components:
             memory_mib: { type: integer }
             disk_mib: { type: integer }
             port_speed_mbps: { type: [integer, 'null'] }
-            traffic_bytes: { type: [integer, 'null'] }
+            traffic_bytes: { type: [integer, 'null'], description: Monthly traffic quota; null is unlimited }
+        traffic:
+          type: object
+          description: Traffic of the current period (docs/adr/0039), counted every 5 minutes.
+          required: [period_start, period_end, in_bytes, out_bytes, counted_bytes]
+          properties:
+            period_start: { type: string, format: date-time }
+            period_end: { type: string, format: date-time, description: The next period starts here }
+            in_bytes: { type: integer, description: Received by the server }
+            out_bytes: { type: integer, description: Sent by the server }
+            counted_bytes: { type: integer, description: 'What counts against the quota: in + out, out or in, as set in the panel' }
         addresses:
           type: array
           items:
@@ -1227,14 +1465,15 @@ components:
       required: [id, type, status, server, steps, error, created_at, started_at, finished_at]
       properties:
         id: { type: string, format: uuid }
-        type: { type: string, enum: [create, suspend, unsuspend, terminate, adopt, start, shutdown, stop, reboot, reset_password, reinstall, change_resources, guest_script, change_primary_address, change_hostname, install_app] }
+        type: { type: string, enum: [create, suspend, unsuspend, terminate, adopt, start, shutdown, stop, reboot, reset_password, reinstall, change_resources, guest_script, change_primary_address, change_addresses, change_hostname, install_app, app_run, verify, enable_anti_spoofing, apply_firewall, move] }
         status: { type: string, enum: [queued, running, succeeded, failed] }
         server:
           type: object
-          required: [id, external_id, status]
+          required: [id, external_id, hostname, status]
           properties:
             id: { type: string, format: uuid }
             external_id: { type: [string, 'null'] }
+            hostname: { type: string, description: 'Also the name generated for a server ordered without one (docs/adr/0031).' }
             status: { $ref: '#/components/schemas/ServerStatus' }
         steps:
           type: array
@@ -1267,7 +1506,7 @@ components:
         format: { type: integer, enum: [1, 2], description: 'Recipe format (docs/adr/0016).' }
         os:
           type: array
-          description: 'Format 1: the exact OS versions. Format 2: the template families `requires.os` covers (groups expanded) with `versions` empty (any version the requirements accept); use `requires`.'
+          description: 'The operating system versions administrators offer the app on (docs/adr/0026), grouped by system slug (v1 names such as `archlinux`). The catalog filtered by `os_template` or `server` already applies them.'
           items:
             type: object
             properties:
@@ -1275,12 +1514,14 @@ components:
               versions: { type: array, items: { type: string }, examples: [['22.04', '24.04']] }
         requires:
           type: object
-          description: 'Which OS templates fit (docs/adr/0016 §3). The catalog filtered by `os_template` or `server` already applies it.'
+          description: 'What the recipe says it runs on (docs/adr/0024 §4). Only a suggestion for administrators since docs/adr/0026: the app is offered on the versions listed in `os`.'
           properties:
             platform: { type: string, enum: [linux, windows] }
-            os: { type: [array, 'null'], items: { type: string }, description: 'Template families (ubuntu, rocky, …) or groups like ID_LIKE in /etc/os-release: debian (Debian, Ubuntu), rhel (RHEL, AlmaLinux, Rocky, CentOS, Fedora), suse, arch. null: any OS of the platform.', examples: [['debian', 'rhel']] }
-            min_versions: { type: object, additionalProperties: { type: string }, examples: [{ ubuntu: '22.04' }] }
-            max_versions: { type: object, additionalProperties: { type: string }, description: 'Highest supported version per family; a template version is compared by as many parts as given (`12` covers `12.7`).', examples: [{ debian: '12' }] }
+            os: { type: [array, 'null'], deprecated: true, items: { type: string }, description: '`os_families` and `distributions` in one list. null: any OS of the platform.', examples: [['debian', 'almalinux']] }
+            os_families: { type: [array, 'null'], items: { type: string, enum: [debian, rhel, suse, arch, windows] }, description: 'Families (like ID_LIKE in /etc/os-release): every distribution of the family the panel knows. null together with `distributions`: any OS of the platform.', examples: [['debian']] }
+            distributions: { type: [array, 'null'], items: { type: string }, description: 'Single distributions (os-release IDs).', examples: [['almalinux', 'rocky']] }
+            min_versions: { type: object, additionalProperties: { type: string }, description: 'Lowest supported version per distribution.', examples: [{ ubuntu: '22.04' }] }
+            max_versions: { type: object, additionalProperties: { type: string }, description: 'Highest supported version per distribution; a template version is compared by as many parts as given (`12` covers `12.7`).', examples: [{ debian: '12' }] }
         requirements:
           type: object
           properties:
@@ -1432,6 +1673,22 @@ components:
         created_at: { type: [string, 'null'], format: date-time }
         started_at: { type: [string, 'null'], format: date-time }
         finished_at: { type: [string, 'null'], format: date-time }
+    UsageViolation:
+      type: object
+      description: A server over its traffic quota or a usage limit (docs/adr/0039).
+      required: [id, kind, value, threshold, unit, window_minutes, period_start, action, started_at, acted_at, resolved_at]
+      properties:
+        id: { type: string, format: uuid }
+        kind: { type: string, enum: [traffic, cpu, memory, disk, network] }
+        value: { type: number, description: 'Counted bytes (traffic), else the average over the window in `unit`' }
+        threshold: { type: number, description: 'The quota or limit in `unit`' }
+        unit: { type: string, enum: [bytes, percent, MB/s, Mbps] }
+        window_minutes: { type: [integer, 'null'] }
+        period_start: { type: [string, 'null'], format: date, description: The traffic period of a traffic violation }
+        action: { type: string, enum: [none, stop, suspend], description: What Proxmotion does about it, as set in the panel }
+        started_at: { type: [string, 'null'], format: date-time }
+        acted_at: { type: [string, 'null'], format: date-time }
+        resolved_at: { type: [string, 'null'], format: date-time }
     WebhookEvent:
       type: object
       description: |
@@ -1442,11 +1699,11 @@ components:
         id: { type: string, format: uuid }
         event:
           type: string
-          enum: [ping, server.provisioned, server.suspended, server.unsuspended, server.reinstalled, server.terminated, server.failed, task.succeeded, task.failed, app.installed, app.failed, app.uninstalled, app.uninstall_failed, app.upgraded, app.upgrade_failed, app.action_succeeded, app.action_failed]
+          enum: [ping, server.provisioned, server.suspended, server.unsuspended, server.reinstalled, server.terminated, server.moved, server.failed, server.usage_exceeded, task.succeeded, task.failed, app.installed, app.failed, app.uninstalled, app.uninstall_failed, app.upgraded, app.upgrade_failed, app.action_succeeded, app.action_failed]
         created_at: { type: string, format: date-time }
         data:
           type: object
-          description: '`server` and `task` for server and task events, `server` and `installation` (without outputs) for app events, plus `run` (without outputs) for uninstall, upgrade and action events, `billing_system` for `ping`.'
+          description: '`server` and `task` for server and task events, `server` and `violation` for `server.usage_exceeded`, `server` and `installation` (without outputs) for app events, plus `run` (without outputs) for uninstall, upgrade and action events, `billing_system` for `ping`.'
           properties:
             server:
               type: object
@@ -1458,6 +1715,7 @@ components:
                 hostname: { type: string }
                 status: { $ref: '#/components/schemas/ServerStatus' }
             task: { $ref: '#/components/schemas/Task' }
+            violation: { $ref: '#/components/schemas/UsageViolation' }
             installation: { $ref: '#/components/schemas/AppInstallation' }
             run: { $ref: '#/components/schemas/AppRun' }
             billing_system:
@@ -1477,7 +1735,13 @@ webhooks:
 
         - `server.provisioned`, `server.suspended`, `server.unsuspended`, `server.reinstalled`,
           `server.terminated`: the task of that type succeeded.
+        - `server.moved`: an administrator moved the server to another node, cluster or location
+          (docs/adr/0037). After a move to another location the server has new addresses: read
+          them with `GET /servers/{id}`.
         - `server.failed`: creating, reinstalling or terminating failed; the server is in `error`.
+        - `server.usage_exceeded`: the server went over its traffic quota or a usage limit
+          (docs/adr/0039), whatever Proxmotion does about it; `data` has the server and the
+          `violation`. A suspension that follows also sends `server.suspended`.
         - `task.succeeded`, `task.failed`: any task, including power actions, password resets,
           resource, address and hostname changes. A server event and its task event are separate
           deliveries with different ids.

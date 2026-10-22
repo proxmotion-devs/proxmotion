@@ -23,26 +23,37 @@ final readonly class TaskWaiter
     {
         $deadline = Carbon::now()->addSeconds($timeoutSeconds);
 
-        while (true) {
-            $status = $this->client->tasks()->status($upid);
-
-            if (! $status['running']) {
-                $exitStatus = $status['exitStatus'] ?? 'unknown';
-
-                // "WARNINGS: n" means the task succeeded with warnings.
-                if ($exitStatus !== 'OK' && ! str_starts_with($exitStatus, 'WARNINGS')) {
-                    throw ProxmoxTaskFailed::withExitStatus($upid, $exitStatus);
-                }
-
-                return;
-            }
-
+        while (! $this->check($upid)) {
             if (Carbon::now()->greaterThanOrEqualTo($deadline)) {
                 throw ProxmoxTaskFailed::timedOut($upid, $timeoutSeconds);
             }
 
             Sleep::for($pollSeconds)->seconds();
         }
+    }
+
+    /**
+     * One look at a task: whether it has finished. Staged tasks check their
+     * Proxmox tasks this way between runs instead of waiting (docs/adr/0032).
+     *
+     * @throws ProxmoxTaskFailed when the task has failed
+     */
+    public function check(Upid $upid): bool
+    {
+        $status = $this->client->tasks()->status($upid);
+
+        if ($status['running']) {
+            return false;
+        }
+
+        $exitStatus = $status['exitStatus'] ?? 'unknown';
+
+        // "WARNINGS: n" means the task succeeded with warnings.
+        if ($exitStatus !== 'OK' && ! str_starts_with($exitStatus, 'WARNINGS')) {
+            throw ProxmoxTaskFailed::withExitStatus($upid, $exitStatus);
+        }
+
+        return true;
     }
 
     /**

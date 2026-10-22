@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use App\Enums\ClusterType;
 use App\Enums\NodeStatus;
 use App\Models\Concerns\HasPublicUuid;
 use Database\Factories\NodeFactory;
@@ -23,6 +24,8 @@ use Illuminate\Support\Carbon;
  * @property string $uuid
  * @property int $cluster_id
  * @property string $name
+ * @property string|null $address its address in /cluster/status, from the sync
+ * @property string|null $api_host where its API answers, set by an administrator; overrides $address (docs/adr/0037 §5)
  * @property NodeStatus $status
  * @property bool $is_maintenance
  * @property int|null $cpu_cores
@@ -36,7 +39,7 @@ use Illuminate\Support\Carbon;
  * @property Carbon|null $updated_at
  * @property-read Cluster $cluster
  */
-#[Fillable(['is_maintenance', 'cpu_overcommit', 'memory_overcommit', 'disk_overcommit', 'max_servers'])]
+#[Fillable(['is_maintenance', 'cpu_overcommit', 'memory_overcommit', 'disk_overcommit', 'max_servers', 'api_host'])]
 class Node extends Model
 {
     /** @use HasFactory<NodeFactory> */
@@ -58,6 +61,23 @@ class Node extends Model
             'max_servers' => 'integer',
             'last_seen_at' => 'datetime',
         ];
+    }
+
+    /**
+     * Where its API answers: what an administrator set, else its address in
+     * the cluster, else the cluster's first host for a standalone node. A
+     * server moved in from another cluster lands on the node behind this
+     * address (docs/adr/0037 §5).
+     */
+    public function apiHost(): ?string
+    {
+        $host = $this->api_host ?? $this->address;
+
+        if ($host === null && $this->cluster->type === ClusterType::Standalone) {
+            return $this->cluster->hosts[0] ?? null;
+        }
+
+        return $host;
     }
 
     /**

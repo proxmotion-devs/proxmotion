@@ -153,11 +153,41 @@ class ProvisioningTest extends ModuleTestCase
     public function test_an_invalid_domain_becomes_a_generated_hostname()
     {
         $this->serviceHas(null);
+        $this->api->on('GET /locations', 200, ['data' => [['id' => 'location-uuid', 'name' => 'Istanbul', 'generates_hostnames' => false]]]);
         $this->api->on('POST /servers', 202, $this->task('create'));
 
         $this->module(['domain' => 'my_site!'])->create();
 
         $this->assertSame('vps42', $this->api->last('POST /servers')['body']['hostname']);
+        $this->assertSame([], $this->localApiCalls());
+    }
+
+    public function test_without_a_domain_a_location_with_a_hostname_template_names_the_server()
+    {
+        $this->serviceHas(null);
+        $this->api->on('GET /locations', 200, ['data' => [
+            ['id' => 'other-uuid', 'name' => 'Frankfurt', 'generates_hostnames' => false],
+            ['id' => 'location-uuid', 'name' => 'Istanbul', 'generates_hostnames' => true],
+        ]]);
+        $this->api->on('POST /servers', 202, $this->task('create', 'queued', [
+            'server' => ['id' => self::SERVER_ID, 'external_id' => '42', 'hostname' => 'ip-203-0-113-10.example.com', 'status' => 'pending'],
+        ]));
+
+        $this->module(['domain' => ''])->create();
+
+        $this->assertArrayNotHasKey('hostname', $this->api->last('POST /servers')['body']);
+        $this->assertSame([['command' => 'UpdateClientProduct', 'values' => ['serviceid' => 42, 'domain' => 'ip-203-0-113-10.example.com']]], $this->localApiCalls());
+    }
+
+    public function test_a_valid_domain_is_sent_without_asking_for_locations()
+    {
+        $this->serviceHas(null);
+        $this->api->on('POST /servers', 202, $this->task('create'));
+
+        $this->module()->create();
+
+        $this->assertSame('web1.example.com', $this->api->last('POST /servers')['body']['hostname']);
+        $this->assertNotContains('GET /locations', $this->api->sent());
     }
 
     public function test_creating_a_service_that_already_has_a_server_changes_nothing()
@@ -204,7 +234,7 @@ class ProvisioningTest extends ModuleTestCase
         $this->assertSame('success', $this->module(['suspendreason' => 'Overdue on Invoice #12'])->suspend());
         $this->assertSame(['reason' => 'Overdue on Invoice #12'], $this->api->last('POST /servers/' . self::SERVER_ID . '/suspend')['body']);
 
-        $this->api = new FakeTransport();
+        $this->freshApi();
         $this->serviceHas($this->server(['status' => 'suspended']));
         $this->api->on('POST /servers/' . self::SERVER_ID . '/unsuspend', 202, $this->task('unsuspend'));
 
@@ -217,11 +247,20 @@ class ProvisioningTest extends ModuleTestCase
         $this->serviceHas($this->server(['status' => 'suspended']));
         $this->assertSame('success', $this->module()->suspend());
 
-        $this->api = new FakeTransport();
+        $this->freshApi();
         $this->serviceHas($this->server());
         $this->assertSame('success', $this->module()->unsuspend());
 
         $this->assertSame(['GET /servers?external_id=42'], $this->api->sent());
+    }
+
+    public function test_a_server_suspended_by_proxmotion_is_suspended_again_by_whmcs()
+    {
+        $this->serviceHas($this->server(['status' => 'suspended', 'suspension_cause' => 'traffic']));
+        $this->api->on('POST /servers/' . self::SERVER_ID . '/suspend', 200, ['data' => $this->server(['status' => 'suspended'])]);
+
+        $this->assertSame('success', $this->module(['suspendreason' => 'Overdue on Invoice #12'])->suspend());
+        $this->assertSame(['reason' => 'Overdue on Invoice #12'], $this->api->last('POST /servers/' . self::SERVER_ID . '/suspend')['body']);
     }
 
     public function test_terminate()
@@ -300,7 +339,7 @@ class ProvisioningTest extends ModuleTestCase
         $this->api->on('GET /packages', 200, ['data' => []])->on('GET /servers', 200, ['data' => []]);
         $this->assertSame(['success' => true, 'error' => ''], $this->module()->testConnection());
 
-        $this->api = new FakeTransport();
+        $this->freshApi();
         $this->api->on('GET /packages', 401, ['message' => 'Unauthenticated.']);
         $this->assertSame('Unauthenticated.', $this->runCommand('testConnection'));
     }

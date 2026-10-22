@@ -1,18 +1,28 @@
 <script setup lang="ts">
 import { Head, Link, useForm } from '@inertiajs/vue3';
-import { FileCode, Pencil, Plus } from '@lucide/vue';
-import { computed, ref } from 'vue';
+import { FileCode, Pencil, Plus, ScanSearch } from '@lucide/vue';
+import { trans } from 'laravel-vue-i18n';
+import { computed, ref, watch } from 'vue';
 import ConfirmDelete from '@/components/admin/ConfirmDelete.vue';
 import FormDialog from '@/components/admin/FormDialog.vue';
 import FormField from '@/components/admin/FormField.vue';
 import GuideBox from '@/components/admin/GuideBox.vue';
 import NativeSelect from '@/components/admin/NativeSelect.vue';
+import OsReleaseCheckDialog from '@/components/admin/OsReleaseCheckDialog.vue';
+import OsSystems from '@/components/admin/OsSystems.vue';
 import StatusBadge from '@/components/admin/StatusBadge.vue';
 import Heading from '@/components/Heading.vue';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import {
+    findVersion,
+    suggestedName,
+    versionLabel,
+    versionOptions,
+} from '@/lib/osTemplates';
+import type { OperatingSystem } from '@/lib/osTemplates';
 import { index as clustersIndex } from '@/routes/admin/clusters';
 import {
     destroy,
@@ -21,7 +31,7 @@ import {
     store,
     update,
 } from '@/routes/admin/os-templates';
-import type { OsTemplate, ProxmoxTemplate } from '@/types/admin';
+import type { CloneMode, OsTemplate, ProxmoxTemplate } from '@/types/admin';
 
 defineOptions({
     layout: { breadcrumbs: [{ title: 'OS templates', href: index() }] },
@@ -32,19 +42,16 @@ type FoundTemplate = {
     name: string;
     proxmox_template_ids: number[];
     places: string[];
-    guess: { name: string; family: string; version: string };
+    /** The name and, when the list has it, the version the template name points to. */
+    guess: { name: string; operating_system_version_id: number | null };
 };
 
 const props = defineProps<{
     templates: OsTemplate[];
     proxmoxTemplates: ProxmoxTemplate[];
     found: FoundTemplate[];
-    families: string[];
+    systems: OperatingSystem[];
 }>();
-
-const familyOptions = computed(() =>
-    props.families.map((family) => ({ value: family, label: family })),
-);
 
 // The same image usually has the same name on every node and cluster, so
 // templates are picked by name: one tick maps all of them.
@@ -71,17 +78,64 @@ const mappedLabel = (template: OsTemplate) =>
         .map((candidate) => `${candidate.cluster} #${candidate.vmid}`)
         .join(', ');
 
+/** "Ubuntu 24.04" from the list, else what the template copied. */
+const systemOf = (template: OsTemplate) => {
+    const found = findVersion(
+        props.systems,
+        template.operating_system_version_id,
+    );
+
+    return found
+        ? versionLabel(found.system, found.version.version)
+        : `${template.distribution} ${template.version}`;
+};
+
+const osOptions = computed(() => versionOptions(props.systems));
+
+// docs/adr/0027: linked clones are faster but depend on the template.
+const cloneModeOptions = computed(() => [
+    {
+        value: 'full' as CloneMode,
+        label: trans('Full clone (independent copy)'),
+    },
+    {
+        value: 'linked' as CloneMode,
+        label: trans('Linked clone (faster, shares the template disk)'),
+    },
+]);
+
 const dialogOpen = ref(false);
 const editing = ref<OsTemplate | null>(null);
 
 const form = useForm({
     name: '',
-    family: 'ubuntu' as string | null,
-    version: '',
+    operating_system_version_id: null as number | null,
     is_active: true,
+    clone_mode: 'full' as CloneMode,
     sort_order: 0,
     proxmox_template_ids: [] as number[],
 });
+
+const suggestion = () => {
+    const found = findVersion(props.systems, form.operating_system_version_id);
+
+    return found ? suggestedName(found.system, found.version.version) : '';
+};
+// The name follows the system while it is still the one suggested for it.
+let suggested = '';
+
+watch(
+    () => form.operating_system_version_id,
+    () => {
+        const next = suggestion();
+
+        if (form.name === '' || form.name === suggested) {
+            form.name = next;
+        }
+
+        suggested = next;
+    },
+);
 
 const openForm = (
     template: OsTemplate | null,
@@ -91,9 +145,12 @@ const openForm = (
     form.clearErrors();
     form.defaults({
         name: template?.name ?? found?.guess.name ?? '',
-        family: template?.family ?? found?.guess.family ?? 'ubuntu',
-        version: template?.version ?? found?.guess.version ?? '',
+        operating_system_version_id:
+            template?.operating_system_version_id ??
+            found?.guess.operating_system_version_id ??
+            null,
         is_active: template?.is_active ?? true,
+        clone_mode: template?.clone_mode ?? 'full',
         sort_order: template?.sort_order ?? 0,
         proxmox_template_ids: [
             ...(template?.proxmox_template_ids ??
@@ -102,6 +159,7 @@ const openForm = (
         ],
     });
     form.reset();
+    suggested = suggestion();
     dialogOpen.value = true;
 };
 
@@ -119,6 +177,17 @@ const toggleGroup = (ids: number[], value: boolean | 'indeterminate') => {
     const others = form.proxmox_template_ids.filter((id) => !ids.includes(id));
     form.proxmox_template_ids = value === true ? [...others, ...ids] : others;
 };
+
+// The template being compared with /etc/os-release of one of its servers (docs/adr/0024 §8).
+const checking = ref<OsTemplate | null>(null);
+const checkOpen = computed({
+    get: () => checking.value !== null,
+    set: (value: boolean) => {
+        if (!value) {
+            checking.value = null;
+        }
+    },
+});
 
 const submit = () => {
     form.submit(editing.value ? update(editing.value.uuid) : store(), {
@@ -187,12 +256,21 @@ const submit = () => {
                 <li>
                     {{
                         $t(
-                            'Check the family and version: apps use them to decide whether they fit a server.',
+                            'Add the system and its version under Operating systems if they are missing, then pick the version in the template. On the Apps page, tick the versions each app runs on.',
+                        )
+                    }}
+                </li>
+                <li>
+                    {{
+                        $t(
+                            'Keep it inactive, create a test server from it, and use Check against a server (the magnifier) to confirm what the server really runs. Then activate it for customers.',
                         )
                     }}
                 </li>
             </ol>
         </GuideBox>
+
+        <OsSystems :systems="systems" />
 
         <section
             v-if="found.length"
@@ -204,7 +282,7 @@ const submit = () => {
                 <p class="text-sm text-muted-foreground">
                     {{
                         $t(
-                            'VM templates that are not offered yet. Add one to check the suggested name and version, then save.',
+                            'VM templates that are not offered yet. Add one to check the suggested name and system, then save.',
                         )
                     }}
                 </p>
@@ -219,7 +297,10 @@ const submit = () => {
                         <div class="text-sm font-medium">
                             {{ item.name }}
                             <span
-                                v-if="item.guess.family !== 'other'"
+                                v-if="
+                                    item.guess.operating_system_version_id !==
+                                    null
+                                "
                                 class="font-normal text-muted-foreground"
                                 >→ {{ item.guess.name }}</span
                             >
@@ -246,7 +327,7 @@ const submit = () => {
                     <tr>
                         <th class="px-4 py-3 font-medium">{{ $t('Name') }}</th>
                         <th class="px-4 py-3 font-medium">
-                            {{ $t('Family') }}
+                            {{ $t('System') }}
                         </th>
                         <th class="px-4 py-3 font-medium">
                             {{ $t('Proxmox templates') }}
@@ -268,9 +349,15 @@ const submit = () => {
                                 label="Inactive"
                                 class="ml-2"
                             />
+                            <StatusBadge
+                                v-if="template.clone_mode === 'linked'"
+                                tone="neutral"
+                                label="Linked clones"
+                                class="ml-2"
+                            />
                         </td>
                         <td class="px-4 py-3">
-                            {{ template.family }} {{ template.version }}
+                            {{ systemOf(template) }}
                         </td>
                         <td class="px-4 py-3 font-mono text-xs">
                             <span v-if="template.proxmox_template_ids.length">{{
@@ -298,6 +385,21 @@ const submit = () => {
                                     <Link :href="scripts(template.uuid)">
                                         <FileCode class="h-4 w-4" />
                                     </Link>
+                                </Button>
+                                <Button
+                                    v-if="template.platform === 'linux'"
+                                    variant="ghost"
+                                    size="icon"
+                                    :aria-label="
+                                        $t('Check :name against a server', {
+                                            name: template.name,
+                                        })
+                                    "
+                                    :title="$t('Check against a server')"
+                                    :data-test="`check-${template.uuid}`"
+                                    @click="checking = template"
+                                >
+                                    <ScanSearch class="h-4 w-4" />
                                 </Button>
                                 <Button
                                     variant="ghost"
@@ -337,6 +439,20 @@ const submit = () => {
         :processing="form.processing"
         @submit="submit"
     >
+        <FormField
+            label="Operating system"
+            for="os"
+            :error="form.errors.operating_system_version_id"
+            hint="From your list of operating systems above. Apps are offered on the versions ticked for them."
+        >
+            <NativeSelect
+                id="os"
+                v-model="form.operating_system_version_id"
+                :options="osOptions"
+                placeholder="Choose a version"
+                data-test="os-choice"
+            />
+        </FormField>
         <FormField label="Name" for="name" :error="form.errors.name">
             <Input
                 id="name"
@@ -345,32 +461,6 @@ const submit = () => {
                 placeholder="Ubuntu 24.04 LTS"
             />
         </FormField>
-        <div class="grid gap-4 sm:grid-cols-2">
-            <FormField
-                label="Family"
-                for="family"
-                :error="form.errors.family"
-                hint="Apps and the default scripts (Linux or Windows) follow the family."
-            >
-                <NativeSelect
-                    id="family"
-                    v-model="form.family"
-                    :options="familyOptions"
-                />
-            </FormField>
-            <FormField
-                label="Version"
-                for="version"
-                :error="form.errors.version"
-            >
-                <Input
-                    id="version"
-                    v-model="form.version"
-                    required
-                    placeholder="24.04"
-                />
-            </FormField>
-        </div>
 
         <div class="grid gap-2">
             <Label>{{ $t('Proxmox templates') }}</Label>
@@ -448,5 +538,22 @@ const submit = () => {
                 />
             </FormField>
         </div>
+        <FormField
+            label="Clone method"
+            for="clone_mode"
+            :error="form.errors.clone_mode"
+            hint="How new and reinstalled servers are copied from the Proxmox template. A linked clone is made only when the server goes on the storage the template disk is on and that storage supports it (thin LVM, ZFS, Ceph RBD, qcow2 files); otherwise a full clone is made and the task says why. While linked clones use a Proxmox template, it cannot be deleted."
+        >
+            <NativeSelect
+                id="clone_mode"
+                v-model="form.clone_mode"
+                :options="cloneModeOptions"
+            />
+        </FormField>
     </FormDialog>
+    <OsReleaseCheckDialog
+        v-if="checking"
+        v-model:open="checkOpen"
+        :template="checking"
+    />
 </template>

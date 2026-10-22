@@ -11,12 +11,15 @@ use Illuminate\Support\Carbon;
 
 /**
  * An OS template's own script for one event, replacing the default
- * (docs/adr/0010). Written only by the admin scripts page, which audits it.
+ * (docs/adr/0010), and its draft (docs/adr/0023): only content runs during
+ * operations; the draft runs only in trials until it is published. Written
+ * only by the admin scripts page, which audits it.
  *
  * @property int $id
  * @property int $os_template_id
  * @property GuestScriptEvent $event
- * @property string $content
+ * @property string|null $content null while only a draft exists (the default runs)
+ * @property string|null $draft_content
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  * @property-read OsTemplate $osTemplate

@@ -5,22 +5,21 @@ declare(strict_types=1);
 namespace App\Http\Controllers\Admin;
 
 use App\Domain\Apps\AppInstallConflict;
+use App\Domain\Apps\AppSystems;
 use App\Domain\Apps\AppTrials;
 use App\Domain\Apps\LiveAppPolls;
-use App\Domain\Apps\OsFamilies;
 use App\Domain\Apps\RecipeArchive;
 use App\Domain\Apps\RecipeEditor;
 use App\Domain\Apps\RecipeEditRefused;
 use App\Domain\Apps\RecipeInput;
 use App\Domain\Apps\RecipeInvalid;
 use App\Domain\Apps\RecipeLoader;
+use App\Domain\Apps\RecipeSkeleton;
 use App\Enums\AppRecipeVersionStatus;
-use App\Enums\OsPlatform;
 use App\Http\Controllers\Controller;
 use App\Models\AppRecipe;
 use App\Models\AppRecipeVersion;
 use App\Models\AuditLog;
-use App\Models\OsTemplate;
 use App\Models\Server;
 use App\Models\User;
 use App\Provisioning\Exceptions\ProvisioningException;
@@ -68,6 +67,9 @@ class AppRecipeController extends Controller
         $upstream = $appRecipe->isCustom() ? null : $appRecipe->latestUpstream();
         // The bundled version an edit started from: 1.2.1-local.2 → 1.2.1.
         $base = $published === null ? null : (string) preg_replace('/-local\.\d+$/', '', $published->version);
+        $versions = AppSystems::all();
+        // A draft with errors cannot be read as a recipe; the published one suggests then.
+        $recipe = ($draft !== null && $draftErrors === [] ? $draft : $published)?->recipe();
 
         return Inertia::render('admin/apps/Edit', [
             'app' => [
@@ -108,19 +110,17 @@ class AppRecipeController extends Controller
                 'published_at' => $version->reviewed_at?->toIso8601String(),
                 'created_at' => $version->created_at?->toIso8601String(),
             ]),
-            // requires.os takes template families and groups of them (docs/adr/0016 §3).
-            'osGroups' => OsFamilies::GROUPS,
-            'library' => $loader->library(),
-            // The Linux family and version pairs of the active OS templates, for the
-            // requirements' OS picker (lowest version first).
-            'osTemplates' => OsTemplate::query()
-                ->where('is_active', true)
-                ->where('platform', OsPlatform::Linux)
-                ->get(['family', 'version'])
-                ->map(fn (OsTemplate $template) => ['family' => strtolower($template->family), 'version' => $template->version])
-                ->unique(fn (array $template) => $template['family'].' '.$template['version'])
-                ->sort(fn (array $a, array $b) => strcmp($a['family'], $b['family']) ?: version_compare($a['version'], $b['version']))
-                ->values(),
+            'library' => $loader->library($recipe === null ? 'linux' : $recipe->platform),
+            // The operating system versions the app is offered on: ticked here
+            // and saved at once, not part of the recipe (docs/adr/0026).
+            'osVersions' => AppSystems::options($versions),
+            'systems' => [
+                'slug' => $appRecipe->slug,
+                'platform' => $recipe === null ? 'linux' : $recipe->platform,
+                'os_version_ids' => $appRecipe->osVersions()->pluck('operating_system_versions.id')->all(),
+                // What the saved draft (else the published version) says it runs on.
+                'suggested_ids' => $recipe === null ? [] : AppSystems::suggested($appRecipe, $versions, $recipe),
+            ],
         ]);
     }
 
@@ -204,9 +204,10 @@ class AppRecipeController extends Controller
         $data = $request->validate([
             'slug' => ['required', 'string'],
             'name' => ['required', 'string'],
+            'platform' => ['sometimes', Rule::in(RecipeSkeleton::PLATFORMS)],
         ]);
 
-        $this->editor->create($data['slug'], $data['name'], $admin, $request->ip());
+        $this->editor->create($data['slug'], $data['name'], $admin, $request->ip(), $data['platform'] ?? 'linux');
         $this->toast('success', 'App created as a draft.');
 
         return back();

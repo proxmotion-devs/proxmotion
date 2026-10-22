@@ -167,6 +167,12 @@ const { syncing, startSync } = useClusterSync();
                             <span v-else>
                                 {{ formatDateTime(cluster.last_synced_at) }}
                             </span>
+                            <div v-if="cluster.firewall_problem" class="mt-1">
+                                <StatusBadge
+                                    tone="warning"
+                                    label="Anti-spoofing off"
+                                />
+                            </div>
                         </td>
                         <td class="px-4 py-3">
                             <div class="flex justify-end gap-1">

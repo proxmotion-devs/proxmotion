@@ -8,9 +8,11 @@ use App\Domain\Apps\Recipe;
 use App\Enums\AppInstallationStatus;
 use App\Enums\AppRecipeVersionStatus;
 use Database\Factories\AppRecipeFactory;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Carbon;
 use LogicException;
@@ -32,6 +34,7 @@ use LogicException;
  * @property Carbon|null $updated_at
  * @property-read AppRecipeVersion|null $latestVersion
  * @property-read AppRecipeVersion|null $copiedFrom
+ * @property-read Collection<int, OperatingSystemVersion> $osVersions
  */
 class AppRecipe extends Model
 {
@@ -63,6 +66,16 @@ class AppRecipe extends Model
     public function latestVersion(): BelongsTo
     {
         return $this->belongsTo(AppRecipeVersion::class, 'latest_version_id');
+    }
+
+    /**
+     * The operating system versions administrators offer the app on (docs/adr/0026).
+     *
+     * @return BelongsToMany<OperatingSystemVersion, $this>
+     */
+    public function osVersions(): BelongsToMany
+    {
+        return $this->belongsToMany(OperatingSystemVersion::class);
     }
 
     /**

@@ -12,33 +12,41 @@ use App\Domain\Apps\LiveAppPolls;
 use App\Domain\Apps\OrderedAppOptions;
 use App\Domain\Apps\RecipeAction;
 use App\Domain\Apps\RecipeInput;
+use App\Domain\Firewall\ServerFirewalls;
 use App\Domain\Servers\GuestAgentProbe;
 use App\Domain\Servers\HostnameChanger;
+use App\Domain\Servers\MoveOptions;
 use App\Domain\Servers\ReinstallOptions;
 use App\Domain\Servers\ResourceOptions;
 use App\Domain\Servers\ServerPasswords;
 use App\Domain\Servers\ServerPower;
 use App\Domain\Servers\ServerReinstaller;
+use App\Domain\Usage\TrafficPeriods;
 use App\Enums\AppInstallationStatus;
 use App\Enums\AppRunKind;
 use App\Enums\AppRunStatus;
+use App\Enums\DriftType;
 use App\Enums\IpVersion;
 use App\Enums\NodeStatus;
 use App\Enums\PowerAction;
 use App\Enums\ServerStatus;
+use App\Enums\TaskStatus;
 use App\Enums\TaskType;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Admin\AddressChangeRequest;
 use App\Http\Requests\Admin\ChangeResourcesRequest;
 use App\Http\Requests\Admin\ServerRequest;
 use App\Http\Requests\HostnameRequest;
-use App\Http\Requests\PrimaryAddressRequest;
+use App\Http\Requests\RebuildRequest;
 use App\Http\Requests\ReinstallRequest;
 use App\Models\AppEntitlement;
 use App\Models\AppInstallation;
 use App\Models\AppLog;
 use App\Models\AppRecipe;
 use App\Models\AppRun;
+use App\Models\AuditLog;
 use App\Models\BillingSystem;
+use App\Models\FirewallRuleset;
 use App\Models\IpAddress;
 use App\Models\IpPool;
 use App\Models\Location;
@@ -50,20 +58,26 @@ use App\Models\Server;
 use App\Models\ServerDrift;
 use App\Models\Storage;
 use App\Models\Task;
+use App\Models\UsageViolation;
 use App\Models\User;
+use App\Provisioning\AddressChanger;
 use App\Provisioning\Exceptions\ProvisioningException;
 use App\Provisioning\Exceptions\TaskAlreadyRunning;
 use App\Provisioning\IpAllocator;
+use App\Provisioning\Network\NetworkConfig;
 use App\Provisioning\Placement\NodePlacer;
-use App\Provisioning\PrimaryAddressChanger;
 use App\Provisioning\ResourceChanger;
 use App\Provisioning\ServerCreator;
+use App\Provisioning\TaskEstimates;
 use App\Provisioning\TaskFailer;
+use App\Provisioning\TaskPlan;
 use App\Provisioning\TaskRunner;
 use App\Proxmox\Exceptions\ProxmoxException;
 use Illuminate\Container\Attributes\CurrentUser;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -88,12 +102,15 @@ class ServerController extends Controller
             'servers' => Server::query()
                 ->when(! $showTerminated, fn ($query) => $query->occupying())
                 ->with(['node:id,name', 'location:id,name', 'package:id,name', 'billingSystem:id,name', 'ipAddresses:id,server_id,address'])
+                ->withExists(['drifts as firewall_drift' => fn ($query) => $query->where('type', DriftType::FirewallMismatch)->whereNull('resolved_at')->whereNull('dismissed_at')])
                 ->latest()
                 ->paginate(50)
                 ->withQueryString()
                 ->through(fn (Server $server) => [
                     'uuid' => $server->uuid,
                     'hostname' => $server->hostname,
+                    // Shown as the title when the hostname was generated (docs/adr/0031).
+                    'vm_name' => $server->vm_name,
                     'status' => $server->status,
                     'vmid' => $server->vmid,
                     'billing_system' => $server->billingSystem?->name,
@@ -103,19 +120,23 @@ class ServerController extends Controller
                     'location' => $server->location->name,
                     'package' => $server->package?->name,
                     'addresses' => $server->ipAddresses->pluck('address'),
+                    // Its VM firewall does not stop spoofing (docs/adr/0033).
+                    'unprotected' => (bool) $server->getAttribute('firewall_drift'),
                 ]),
             'showTerminated' => $showTerminated,
         ]);
     }
 
-    public function create(OrderedAppOptions $orderedApps, NodePlacer $placer, IpAllocator $ips): Response
+    public function create(Request $request, OrderedAppOptions $orderedApps, NodePlacer $placer, IpAllocator $ips): Response
     {
-        $osTemplates = OsTemplate::query()->where('is_active', true)->orderBy('sort_order')->orderBy('name')->get();
+        // Inactive templates last: administrators may try one on a server before offering it (docs/adr/0024 §8).
+        $osTemplates = OsTemplate::query()->orderByDesc('is_active')->orderBy('sort_order')->orderBy('name')->get();
 
         return Inertia::render('admin/servers/Create', [
             'billingSystems' => BillingSystem::options(),
-            'locations' => Location::query()->orderBy('name')->get(['uuid', 'name'])
-                ->map(fn (Location $location) => ['value' => $location->uuid, 'label' => $location->name]),
+            'locations' => Location::query()->orderBy('name')->get(['uuid', 'name', 'code', 'hostname_template'])
+                // With a template, the hostname may stay empty (docs/adr/0031).
+                ->map(fn (Location $location) => ['value' => $location->uuid, 'label' => $location->name, 'code' => $location->code, 'hostname_template' => $location->hostname_template]),
             'packages' => Package::query()->where('is_active', true)->with('placementGroups:id,uuid')->orderBy('sort_order')->orderBy('name')->get()
                 ->map(fn (Package $package) => [
                     'value' => $package->uuid,
@@ -149,7 +170,14 @@ class ServerController extends Controller
                     // "<node uuid>/<storage name>" of the storages it lists; empty: those marked "use for servers".
                     'storages' => $group->storages->map(fn (Storage $storage) => "{$storage->node->uuid}/{$storage->name}")->values(),
                 ]),
-            'osTemplates' => $osTemplates->map(fn (OsTemplate $template) => ['value' => $template->uuid, 'label' => $template->name]),
+            'osTemplates' => $osTemplates->map(fn (OsTemplate $template) => [
+                'value' => $template->uuid,
+                'label' => $template->is_active ? $template->name : $template->name.' ('.__('inactive').')',
+                // An inactive one makes a test server without a billing system (docs/adr/0024 §8).
+                'active' => $template->is_active,
+            ]),
+            // ?os_template= from an OS template's check (no running server yet).
+            'selectedOsTemplate' => $osTemplates->firstWhere('uuid', $request->query('os_template'))?->uuid,
             // Apps that can come with the server (docs/adr/0016 §5).
             'apps' => fn () => $orderedApps->for($osTemplates),
             // Nodes of active clusters with the storages that take VM disks, for choosing the placement by hand.
@@ -199,9 +227,9 @@ class ServerController extends Controller
         return to_route('admin.servers.show', $server);
     }
 
-    public function show(Request $request, Server $server, GuestAgentProbe $agent, AppEligibility $eligibility, AppUpgrades $upgrades, TaskFailer $failer, LiveAppPolls $live): Response
+    public function show(Request $request, Server $server, MoveOptions $moves, GuestAgentProbe $agent, AppEligibility $eligibility, AppUpgrades $upgrades, TaskFailer $failer, LiveAppPolls $live, IpAllocator $ips, TaskPlan $plan, TaskEstimates $estimates): Response
     {
-        $server->load(['node:id,uuid,name', 'cluster:id,uuid,name', 'location:id,name', 'package:id,name', 'billingSystem:id,name', 'osTemplate:id,name,family,version,platform', 'storage:id,name', 'ipAddresses.pool:id,uuid,name,version']);
+        $server->load(['node:id,uuid,name', 'cluster:id,uuid,name', 'location:id,name', 'package:id,name', 'billingSystem:id,name', 'osTemplate:id,operating_system_version_id,name,distribution,version,family,platform', 'storage:id,name', 'ipAddresses.pool:id,uuid,name,version,bridge,vlan_tag']);
 
         // The page's refreshes while an app script runs ask the guest, so step and progress show live (docs/adr/0021).
         if (in_array('apps', explode(',', (string) $request->header('X-Inertia-Partial-Data')), true)) {
@@ -212,9 +240,13 @@ class ServerController extends Controller
             'server' => [
                 'uuid' => $server->uuid,
                 'hostname' => $server->hostname,
+                // Shown as the title when the hostname was generated (docs/adr/0031).
+                'vm_name' => $server->vm_name,
                 'status' => $server->status,
                 // In error, or stuck in a busy status after its task ended (Server::isStranded()).
                 'can_retry' => $server->status === ServerStatus::Error || $server->isStranded(),
+                // A failed creation may also be started over without its half-built VM (docs/adr/0032 §7).
+                'can_rebuild' => $request->user()?->can('rebuild', $server) ?? false,
                 'origin' => $server->origin,
                 'vmid' => $server->vmid,
                 'network_model' => $server->network_model,
@@ -228,6 +260,10 @@ class ServerController extends Controller
                 'reboot_required' => $server->reboot_required,
                 // Drafts of apps may be tried on it (docs/adr/0018 §7).
                 'is_test' => $server->is_test,
+                // Why it is suspended, and whether the panel did it itself (docs/adr/0039).
+                'suspension_reason' => $server->suspension_reason,
+                'suspension_cause' => $server->suspension_cause,
+                'usage_exempt' => $server->usage_exempt,
                 'billing_system' => $server->billingSystem?->name,
                 'external_id' => $server->external_id,
                 'external_client_id' => $server->external_client_id,
@@ -247,25 +283,63 @@ class ServerController extends Controller
                     'ptr_pending' => $address->ptr !== null && $address->ptr_synced_at === null,
                 ]),
                 'provisioned_at' => $server->provisioned_at?->toIso8601String(),
+                // The latest checks from inside the server (docs/adr/0032 §6).
+                'verification' => $server->verification,
+                // When its VM firewall was last found as anti-spoofing needs it, or compared (docs/adr/0033).
+                'firewall_checked_at' => $server->firewall_checked_at?->toIso8601String(),
                 'created_at' => $server->created_at?->toIso8601String(),
             ],
-            'tasks' => $server->tasks()->latest('id')->limit(10)->get()->map(fn (Task $task) => [
-                'uuid' => $task->uuid,
-                'type' => $task->type,
-                'status' => $task->status,
-                'steps' => $task->steps,
-                'error' => $task->error,
-                'created_at' => $task->created_at?->toIso8601String(),
-                'finished_at' => $task->finished_at?->toIso8601String(),
-                'can_fail' => $failer->canAbandon($task),
-            ]),
-            'revealedPassword' => session('revealed_password'),
+            'tasks' => $server->tasks()->latest('id')->limit(10)->get()->map(function (Task $task) use ($server, $failer, $plan, $estimates) {
+                $task->setRelation('server', $server);
+                // Steps still to come (docs/adr/0032 §5); a succeeded task shows what it did.
+                $planned = $task->status === TaskStatus::Succeeded ? [] : $plan->steps($task);
+
+                return [
+                    'uuid' => $task->uuid,
+                    'type' => $task->type,
+                    'status' => $task->status,
+                    'steps' => $task->steps,
+                    'planned_steps' => $planned,
+                    'estimate' => $estimates->remaining($task, $planned),
+                    'error' => $task->error,
+                    'created_at' => $task->created_at?->toIso8601String(),
+                    'started_at' => $task->started_at?->toIso8601String(),
+                    'finished_at' => $task->finished_at?->toIso8601String(),
+                    'can_fail' => $failer->canAbandon($task),
+                ];
+            }),
             // Outputs of one installed app, after Show details (AppController::outputs()).
             'revealedAppOutputs' => session('revealed_app_outputs'),
             // Asked from Proxmox after the page has loaded, so a slow cluster does not block it.
             'power' => Inertia::defer(fn () => $server->status === ServerStatus::Active ? $this->power->state($server) : null),
             'reinstallOptions' => fn () => ReinstallOptions::for($server),
             'resourceOptions' => fn () => ResourceOptions::for($server),
+            // Moving the server (docs/adr/0037).
+            'moveOptions' => fn () => $moves->for($server),
+            // The server's firewall and the rule sets that can be applied (docs/adr/0035).
+            'firewall' => fn () => [
+                ...app(ServerFirewalls::class)->describe($server),
+                'rulesets' => FirewallRuleset::query()->where('is_active', true)->orderBy('name')->get(['uuid', 'name'])
+                    ->map(fn (FirewallRuleset $ruleset) => ['value' => $ruleset->uuid, 'label' => $ruleset->name]),
+            ],
+            // Pools addresses may be added from: same location, network model, bridge and VLAN (docs/adr/0028).
+            'addressPools' => fn () => collect(IpVersion::cases())
+                ->flatMap(fn (IpVersion $version) => $ips->sameNetworkPools($server->location, $server->network_model, $version, $server->ipAddresses->first()?->pool))
+                ->map(fn (IpPool $pool) => [
+                    'value' => $pool->uuid,
+                    'label' => "{$pool->name} ({$pool->network})",
+                    'version' => $pool->version,
+                    // IPv6 pools make new addresses inside their network on demand.
+                    'free' => $pool->version === IpVersion::V4 ? $ips->freeIpv4Count($pool) : null,
+                    'addresses' => $pool->version === IpVersion::V4 ? $ips->freeIpv4Addresses($pool, self::CHOOSABLE_ADDRESSES) : [],
+                ])
+                ->values(),
+            // Traffic of the current period and the latest violations (docs/adr/0039).
+            'usage' => fn () => [
+                'traffic' => TrafficPeriods::usage($server),
+                'violations' => $server->usageViolations()->latest('id')->limit(10)->get()
+                    ->map(fn (UsageViolation $violation) => [...$violation->toPayload(), 'label' => $violation->kind->label()]),
+            ],
             'drifts' => $server->drifts()->visible()->with(['cluster:id,uuid,name', 'server:id,uuid,hostname,status'])->get()
                 ->map(fn (ServerDrift $drift) => DriftController::present($drift)),
             'agent' => Inertia::defer(fn () => $server->status === ServerStatus::Active ? $agent->reachable($server) : null),
@@ -386,6 +460,91 @@ class ServerController extends Controller
         return back();
     }
 
+    /**
+     * Run the checks from inside the server again (docs/adr/0032 §6).
+     */
+    public function verify(Server $server, #[CurrentUser] User $admin): RedirectResponse
+    {
+        return $this->startTask($server, TaskType::Verify, $admin, [ServerStatus::Active], 'Checking the server…');
+    }
+
+    /**
+     * Exempt the server from traffic quota and usage limit actions, or end
+     * that (docs/adr/0039). Violations are still recorded.
+     */
+    public function usageExempt(Request $request, Server $server, #[CurrentUser] User $admin): RedirectResponse
+    {
+        $exempt = (bool) $request->validate(['usage_exempt' => ['required', 'boolean']])['usage_exempt'];
+
+        if ($server->usage_exempt !== $exempt) {
+            $server->forceFill(['usage_exempt' => $exempt])->save();
+            AuditLog::record('server.usage_exempt_changed', $admin, $server, ['hostname' => $server->hostname, 'usage_exempt' => $exempt], $request->ip());
+        }
+
+        $this->toast('success', $exempt ? 'Exempt from usage limits.' : 'No longer exempt from usage limits.');
+
+        return back();
+    }
+
+    /**
+     * Turn anti-spoofing on (again) in the VM firewall: for adopted VMs, or
+     * after the firewall was changed in Proxmox (docs/adr/0033). The VM can
+     * then use only the addresses the panel records for it.
+     */
+    public function enableAntiSpoofing(Request $request, Server $server, #[CurrentUser] User $admin, NetworkConfig $network): RedirectResponse
+    {
+        if (! in_array($server->status, [ServerStatus::Active, ServerStatus::Suspended], true)) {
+            $this->toast('error', 'This action is not possible while the server is :status.', ['status' => __(ucfirst($server->status->value))]);
+
+            return back();
+        }
+
+        $addresses = $network->allowedAddresses($server);
+
+        if ($addresses === []) {
+            $this->toast('error', 'The server has no IP addresses in the panel, so the filter would cut it off. Add its addresses first.');
+
+            return back();
+        }
+
+        try {
+            DB::transaction(function () use ($request, $server, $admin, $addresses) {
+                $this->tasks->start($server, TaskType::EnableAntiSpoofing, $admin);
+                AuditLog::record('server.anti_spoofing_enabled', $admin, $server, ['hostname' => $server->hostname, 'addresses' => $addresses], $request->ip());
+            });
+        } catch (ProvisioningException $e) {
+            $this->toast('error', $e->getMessage());
+
+            return back();
+        }
+
+        $this->toast('info', 'Turning on anti-spoofing…');
+
+        return back();
+    }
+
+    /**
+     * Delete the half-built VM of a failed creation and create the server
+     * again with the same VMID, addresses and MAC address (docs/adr/0032 §7).
+     */
+    public function rebuild(RebuildRequest $request, Server $server, #[CurrentUser] User $admin): RedirectResponse
+    {
+        try {
+            DB::transaction(function () use ($request, $server, $admin) {
+                $this->tasks->start($server, TaskType::Create, $admin, input: ['fresh' => true]);
+                AuditLog::record('server.rebuilt', $admin, $server, ['hostname' => $server->hostname, 'vmid' => $server->vmid], $request->ip());
+            });
+        } catch (ProvisioningException $e) {
+            $this->toast('error', $e->getMessage());
+
+            return back();
+        }
+
+        $this->toast('info', 'Rebuilding the server from scratch…');
+
+        return back();
+    }
+
     public function retry(Server $server, #[CurrentUser] User $admin): RedirectResponse
     {
         // Retry whatever left the server in error: a delete, a reinstall or (by default) the creation.
@@ -411,9 +570,13 @@ class ServerController extends Controller
         );
     }
 
-    public function revealPassword(Request $request, Server $server, #[CurrentUser] User $admin, ServerPasswords $passwords): RedirectResponse
+    /**
+     * Fetched by the page's Show button, so the password never becomes a page
+     * prop (kept in the browser's history state) and the page is not reloaded.
+     */
+    public function revealPassword(Request $request, Server $server, #[CurrentUser] User $admin, ServerPasswords $passwords): JsonResponse
     {
-        return back()->with('revealed_password', $passwords->reveal($server, $admin, $request->ip()));
+        return response()->json(['password' => $passwords->reveal($server, $admin, $request->ip())]);
     }
 
     public function reinstall(ReinstallRequest $request, Server $server, #[CurrentUser] User $admin, ServerReinstaller $reinstaller): RedirectResponse
@@ -450,13 +613,13 @@ class ServerController extends Controller
         return back();
     }
 
-    public function changePrimaryAddress(PrimaryAddressRequest $request, Server $server, #[CurrentUser] User $admin, PrimaryAddressChanger $changer): RedirectResponse
+    public function changeAddresses(AddressChangeRequest $request, Server $server, #[CurrentUser] User $admin, AddressChanger $changer): RedirectResponse
     {
         try {
-            $changer->request($server, $request->ipVersion(), $request->address(), $admin, $request->ip());
+            $changer->request($server, $request->toChange(), $admin, $request->ip());
         } catch (ProvisioningException $e) {
-            if ($request->address() !== null && ! $e instanceof TaskAlreadyRunning) {
-                throw ValidationException::withMessages(['address' => $e->translatedMessage()]);
+            if (! $e instanceof TaskAlreadyRunning && $server->status === ServerStatus::Active) {
+                throw ValidationException::withMessages(['addresses' => $e->translatedMessage()]);
             }
 
             $this->toast('error', $e->translatedMessage());
@@ -464,7 +627,22 @@ class ServerController extends Controller
             return back();
         }
 
-        $this->toast('info', 'Changing the primary address…');
+        $this->toast('info', 'Updating the IP addresses…');
+
+        return back();
+    }
+
+    public function reapplyAddresses(Request $request, Server $server, #[CurrentUser] User $admin, AddressChanger $changer): RedirectResponse
+    {
+        try {
+            $changer->reapply($server, $admin, $request->ip());
+        } catch (ProvisioningException $e) {
+            $this->toast('error', $e->translatedMessage());
+
+            return back();
+        }
+
+        $this->toast('info', 'Applying the IP addresses again…');
 
         return back();
     }

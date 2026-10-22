@@ -31,7 +31,7 @@ Providers build their own templates (`deploy/proxmox`, `docs/guides/iso-template
 
 2. **Default plus override per template.** The defaults live in the repository and are updated with releases. An OS template has a `platform` (`linux` or `windows`) that picks the default and the interpreter, and may override the script of any event (`guest_scripts`: one row per template and event). Templates without an override, and adopted servers without a template (treated as Linux), use the default; events without a default and without an override do nothing.
 
-3. **Editing.** Administrators (all of them pass TOTP 2FA, ADR 0007) edit overrides in the admin panel (*OS templates → Scripts*), can reset an event to the default, and can run a script once on a server of that template (a `guest_script` task). Every change is written to the audit log with the previous and the new content. Scripts are limited to what one `file-write` accepts (46080 bytes).
+3. **Editing.** Administrators (all of them pass TOTP 2FA, ADR 0007) edit overrides in the admin panel (*OS templates → Scripts*), can reset an event to the default, and can run a script once on a server of that template (a `guest_script` task). Since ADR 0023 they save drafts, try them, publish them, and see every run with its output. Every change is written to the audit log with the previous and the new content. Scripts are limited to what one `file-write` accepts (46080 bytes).
 
 4. **Delivery.** For each run the panel writes, with `file-write`:
    - the script: `/usr/local/sbin/proxmotion-<name>` on Linux, `C:\ProgramData\Proxmotion\<name>.ps1` on Windows (`<name>`: `provisioned`, `addresses`, `disk`, `password`; the addresses path is the one of ADR 0009, so units installed earlier keep working);

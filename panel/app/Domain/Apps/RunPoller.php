@@ -6,6 +6,8 @@ namespace App\Domain\Apps;
 
 use App\Enums\AppRunKind;
 use App\Enums\AppRunStatus;
+use App\Jobs\StopAppScript;
+use App\Models\AppInstallation;
 use App\Models\AppRun;
 use App\Proxmox\Exceptions\ProxmoxException;
 use App\Proxmox\ProxmoxClientFactory;
@@ -17,7 +19,7 @@ use Illuminate\Support\Facades\Cache;
  * status.json in runs/<run>/. A finished action keeps its declared outputs
  * (encrypted); a finished uninstall removes the installation's directory,
  * which holds its inputs and outputs. Past its timeout the run fails, also
- * when the agent stopped answering.
+ * when the agent stopped answering, and the script is stopped (docs/adr/0030).
  */
 final readonly class RunPoller
 {
@@ -75,7 +77,7 @@ final readonly class RunPoller
             $this->runs->succeeded($run, $outputs, $status['step']);
 
             if ($run->kind === AppRunKind::Uninstall) {
-                $this->removeDirectory($agent, $server->vmid, $run->installation->guestDirectory());
+                $this->removeDirectory($agent, $server->vmid, $run->installation);
             }
 
             return;
@@ -94,10 +96,10 @@ final readonly class RunPoller
     /**
      * Best effort: a directory left behind is harmless to the panel.
      */
-    private function removeDirectory(GuestAgentResource $agent, int $vmid, string $directory): void
+    private function removeDirectory(GuestAgentResource $agent, int $vmid, AppInstallation $installation): void
     {
         try {
-            $agent->run($vmid, ['rm', '-rf', '--one-file-system', $directory]);
+            $agent->run($vmid, AppGuest::removeCommand($installation->platform(), $installation->guestDirectory()));
         } catch (ProxmoxException $e) {
             report($e);
         }
@@ -107,5 +109,6 @@ final readonly class RunPoller
     {
         $this->logs->finish($run->log);
         $this->runs->failed($run, __('The script did not finish within :minutes minutes.', ['minutes' => (string) $run->timeoutMinutes()]));
+        StopAppScript::dispatch($run->installation->id, AppGuest::runName($run->uuid));
     }
 }

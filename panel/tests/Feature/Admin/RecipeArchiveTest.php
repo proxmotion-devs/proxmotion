@@ -115,12 +115,12 @@ class RecipeArchiveTest extends AdminTestCase
         $response = $this->get(route('admin.apps.export', $wireguard))
             ->assertOk()
             ->assertHeader('Content-Type', 'application/zip')
-            ->assertDownload('wireguard-1.3.0.zip');
+            ->assertDownload('wireguard-1.3.1.zip');
         $entries = $this->entries($response);
 
         $this->assertSame(file_get_contents(base_path('recipes/wireguard/install.sh')), $entries['wireguard/install.sh']);
         $this->assertSame($wireguard->current()->definition, Yaml::parse($entries['wireguard/recipe.yaml']));
-        $this->assertSame(['app' => 'wireguard', 'version' => '1.3.0', 'draft' => false], AuditLog::query()->where('action', 'app.exported')->sole()->properties);
+        $this->assertSame(['app' => 'wireguard', 'version' => '1.3.1', 'draft' => false], AuditLog::query()->where('action', 'app.exported')->sole()->properties);
     }
 
     public function test_a_draft_can_be_exported_but_trial_copies_cannot()

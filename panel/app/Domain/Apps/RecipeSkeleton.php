@@ -7,15 +7,21 @@ namespace App\Domain\Apps;
 /**
  * A new format 2 recipe (docs/adr/0016, 0018): recipe.yaml, install and
  * uninstall scripts and a README, for `apps:make` and new apps of the
- * admin editor.
+ * admin editor; shell scripts for Linux, PowerShell for Windows (docs/adr/0029).
  */
 final class RecipeSkeleton
 {
+    public const array PLATFORMS = ['linux', 'windows'];
+
     /**
      * @return array<string, string> files by path
      */
-    public static function files(string $slug, string $name): array
+    public static function files(string $slug, string $name, string $platform = 'linux'): array
     {
+        if ($platform === 'windows') {
+            return self::windows($slug, $name);
+        }
+
         $yaml = <<<YAML
             format: 2
             slug: {$slug}
@@ -27,7 +33,7 @@ final class RecipeSkeleton
             maintainers: [{ name: Your name }]
             requires:
                 platform: linux
-                os: [debian, rhel]
+                os: { families: [debian, rhel] }
             resources: { min_memory_mib: 512, min_disk_mib: 5120, min_cores: 1 }
             network_models: [bridged, routed]
             install_modes: [post]
@@ -94,5 +100,91 @@ final class RecipeSkeleton
             MD;
 
         return ['recipe.yaml' => $yaml, 'install.sh' => $install, 'uninstall.sh' => $uninstall, 'README.md' => $readme];
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private static function windows(string $slug, string $name): array
+    {
+        $yaml = <<<YAML
+            format: 2
+            slug: {$slug}
+            name: {$name}
+            version: 0.1.0
+            category: web
+            description:
+                en: What the app is and what the customer gets.
+            maintainers: [{ name: Your name }]
+            requires:
+                platform: windows
+            resources: { min_memory_mib: 2048, min_disk_mib: 20480, min_cores: 1 }
+            network_models: [bridged, routed]
+            install_modes: [post]
+            billing: free
+            license: none
+            inputs:
+                - key: port
+                  type: port
+                  default: 8080
+                  label: { en: Port }
+            outputs:
+                - key: url
+                  type: url
+                  label: { en: Address }
+            firewall:
+                - { port: '{{ inputs.port }}', proto: tcp }
+            lifecycle:
+                install: { script: install.ps1, timeout_minutes: 20 }
+                uninstall: { script: uninstall.ps1, timeout_minutes: 10 }
+
+            YAML;
+
+        $install = <<<'PS1'
+            # Installs the app. Must be idempotent: it may run again on the same
+            # server, also after Pm-RequestRestart restarted Windows.
+            $ErrorActionPreference = 'Stop'
+            Set-StrictMode -Version 3.0
+            . "$env:PROXMOTION_APP_DIR\proxmotion.ps1"
+
+            $port = Pm-Input 'port'
+
+            Pm-Step 10 'Turning on Windows features'
+            # if (Pm-Feature -Server 'Web-Server' -Desktop 'IIS-WebServerRole') { Pm-RequestRestart }
+
+            Pm-Step 80 'Configuring'
+            # Read inputs with Pm-Input and pass them as arguments, never inside a command string.
+            Pm-FirewallPort 'app' 'TCP' $port
+
+            Pm-Output 'url' "http://$(Pm-PublicAddress):$port/"
+
+            PS1;
+
+        $uninstall = <<<'PS1'
+            # Removes what install.ps1 created. Must be idempotent.
+            $ErrorActionPreference = 'Stop'
+            Set-StrictMode -Version 3.0
+            . "$env:PROXMOTION_APP_DIR\proxmotion.ps1"
+
+            Pm-Step 50 'Removing the app'
+            Pm-RemoveFirewallPort 'app'
+
+            PS1;
+
+        $readme = <<<MD
+            # {$name}
+
+            What the recipe installs and how it is configured, and the Windows
+            releases it was written for.
+
+            | Input  | Meaning                       |
+            | ------ | ----------------------------- |
+            | `port` | Port the app listens on       |
+
+            Outputs: the app's address.
+
+            MD;
+
+        return ['recipe.yaml' => $yaml, 'install.ps1' => $install, 'uninstall.ps1' => $uninstall, 'README.md' => $readme];
     }
 }

@@ -96,7 +96,7 @@ class HostnameTest extends TestCase
 
     public function test_windows_applies_the_name_at_the_next_restart()
     {
-        $this->osTemplate->forceFill(['platform' => 'windows'])->save();
+        $this->osTemplate->forceFill(['distribution' => 'windows'])->save();
 
         $task = $this->rename();
 
@@ -108,7 +108,7 @@ class HostnameTest extends TestCase
 
     public function test_windows_is_restarted_when_asked()
     {
-        $this->osTemplate->forceFill(['platform' => 'windows'])->save();
+        $this->osTemplate->forceFill(['distribution' => 'windows'])->save();
 
         $task = $this->rename(reboot: true);
 

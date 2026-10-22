@@ -4,15 +4,18 @@ declare(strict_types=1);
 
 namespace App\Http\Requests\Admin;
 
-use App\Enums\OsPlatform;
+use App\Enums\CloneMode;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
+/**
+ * An OS template is of one version from the administrators' list of
+ * operating systems (docs/adr/0026); the system, version and platform are
+ * copied from it.
+ */
 class OsTemplateRequest extends FormRequest
 {
-    public const array FAMILIES = ['ubuntu', 'debian', 'almalinux', 'rocky', 'centos', 'fedora', 'opensuse', 'archlinux', 'windows', 'other'];
-
     /**
      * @return array<string, ValidationRule|array<mixed>|string>
      */
@@ -20,9 +23,9 @@ class OsTemplateRequest extends FormRequest
     {
         return [
             'name' => ['required', 'string', 'max:100'],
-            'family' => ['required', Rule::in(self::FAMILIES)],
-            'version' => ['required', 'string', 'max:32'],
+            'operating_system_version_id' => ['required', 'integer', Rule::exists('operating_system_versions', 'id')],
             'is_active' => ['required', 'boolean'],
+            'clone_mode' => ['sometimes', Rule::enum(CloneMode::class)],
             'sort_order' => ['sometimes', 'integer', 'between:0,65535'],
             'proxmox_template_ids' => ['array'],
             'proxmox_template_ids.*' => ['integer', 'distinct', Rule::exists('proxmox_templates', 'id')],
@@ -30,16 +33,12 @@ class OsTemplateRequest extends FormRequest
     }
 
     /**
-     * The OS template's columns. The platform (which default guest scripts
-     * run) follows the family; administrators no longer pick it.
+     * The OS template's columns.
      *
      * @return array<string, mixed>
      */
     public function templateData(): array
     {
-        $data = $this->safe()->except('proxmox_template_ids');
-        $data['platform'] = $data['family'] === 'windows' ? OsPlatform::Windows : OsPlatform::Linux;
-
-        return $data;
+        return $this->safe()->except('proxmox_template_ids');
     }
 }

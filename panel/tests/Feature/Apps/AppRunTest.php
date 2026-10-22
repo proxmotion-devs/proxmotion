@@ -27,6 +27,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Validation\ValidationException;
 use Tests\Concerns\BuildsInfrastructure;
+use Tests\Concerns\OffersApps;
 use Tests\Support\FakeProxmoxCluster;
 use Tests\TestCase;
 
@@ -37,7 +38,7 @@ use Tests\TestCase;
  */
 class AppRunTest extends TestCase
 {
-    use BuildsInfrastructure, RefreshDatabase;
+    use BuildsInfrastructure, OffersApps, RefreshDatabase;
 
     private FakeProxmoxCluster $proxmox;
 
@@ -54,6 +55,7 @@ class AppRunTest extends TestCase
         $this->server = app(ServerCreator::class)->create($this->order())->refresh();
         $this->admin = User::factory()->create();
         app(RecipeSynchronizer::class)->sync();
+        $this->offerApps();
     }
 
     private function installed(string $slug = 'wireguard'): AppInstallation

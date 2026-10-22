@@ -1,7 +1,7 @@
 format: 2
 slug: plesk
 name: Plesk
-version: 1.0.0
+version: 1.0.1
 category: control-panel
 description:
     en: The Plesk Obsidian hosting control panel through Plesk's one-click installer. Needs a freshly installed server and a Plesk licence (a trial can be chosen on the first login).
@@ -10,7 +10,7 @@ maintainers: [{ name: Proxmotion }]
 homepage: https://www.plesk.com/
 requires:
     platform: linux
-    os: [debian, almalinux, rocky]
+    os: { families: [debian], distributions: [almalinux, rocky] }
     min_versions: { debian: '12', ubuntu: '22.04', almalinux: '8', rocky: '8' }
     max_versions: { rocky: '8' }
 resources: { min_memory_mib: 2048, min_disk_mib: 20480, min_cores: 1 }

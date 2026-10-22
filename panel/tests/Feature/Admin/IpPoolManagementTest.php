@@ -222,6 +222,25 @@ class IpPoolManagementTest extends AdminTestCase
         $this->assertFalse($pool->is_active);
     }
 
+    public function test_pools_isolate_their_servers_only_when_turned_on()
+    {
+        // docs/adr/0034
+        $pool = IpPool::factory()->create();
+        $this->assertFalse($pool->refresh()->isolate_guests, 'Off by default.');
+
+        $this->put(route('admin.ip-pools.update', $pool), [
+            'name' => $pool->name,
+            'network_model' => 'bridged',
+            'gateway' => $pool->gateway,
+            'bridge' => 'vmbr0',
+            'nameservers' => [],
+            'is_active' => true,
+            'isolate_guests' => true,
+        ])->assertSessionHasNoErrors();
+
+        $this->assertTrue($pool->refresh()->isolate_guests);
+    }
+
     public function test_single_ips_lists_and_ranges_can_be_added_inside_the_network_only()
     {
         $pool = IpPool::factory()->create(['network' => '203.0.113.0/24']);

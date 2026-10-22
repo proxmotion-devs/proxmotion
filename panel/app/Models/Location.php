@@ -19,14 +19,26 @@ use Illuminate\Support\Carbon;
  * @property string $code
  * @property string|null $country_code
  * @property string|null $description
+ * @property string|null $hostname_template hostnames of servers ordered without one, e.g. "ip-{ip}.example.com" (docs/adr/0031)
+ * @property list<string>|null $protected_networks CIDRs its servers may not open connections to (docs/adr/0034)
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  */
-#[Fillable(['name', 'code', 'country_code', 'description'])]
+#[Fillable(['name', 'code', 'country_code', 'description', 'hostname_template', 'protected_networks'])]
 class Location extends Model
 {
     /** @use HasFactory<LocationFactory> */
     use HasFactory, HasPublicUuid;
+
+    /**
+     * @return array<string, string>
+     */
+    protected function casts(): array
+    {
+        return [
+            'protected_networks' => 'array',
+        ];
+    }
 
     /**
      * @return HasMany<Cluster, $this>

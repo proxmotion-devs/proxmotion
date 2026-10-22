@@ -1,5 +1,12 @@
 <script setup lang="ts">
-import { Head, Link, router, setLayoutProps, usePoll } from '@inertiajs/vue3';
+import {
+    Head,
+    Link,
+    router,
+    setLayoutProps,
+    useHttp,
+    usePoll,
+} from '@inertiajs/vue3';
 import { Eye, Monitor, Pause, Play, RotateCcw } from '@lucide/vue';
 import { trans } from 'laravel-vue-i18n';
 import { computed, ref, watch } from 'vue';
@@ -9,31 +16,45 @@ import ServerStatusBadge from '@/components/admin/ServerStatusBadge.vue';
 import StatusBadge from '@/components/admin/StatusBadge.vue';
 import Heading from '@/components/Heading.vue';
 import AppEntitlementList from '@/components/servers/AppEntitlementList.vue';
+import AddressesDialog from '@/components/servers/AddressesDialog.vue';
 import AppList from '@/components/servers/AppList.vue';
 import PowerControls from '@/components/servers/PowerControls.vue';
 import HostnameDialog from '@/components/servers/HostnameDialog.vue';
-import PrimaryAddressDialog from '@/components/servers/PrimaryAddressDialog.vue';
+import MoveDialog from '@/components/servers/MoveDialog.vue';
+import MoveHistory from '@/components/servers/MoveHistory.vue';
 import RdnsDialog from '@/components/servers/RdnsDialog.vue';
+import RebuildDialog from '@/components/servers/RebuildDialog.vue';
+import AntiSpoofingButton from '@/components/servers/AntiSpoofingButton.vue';
+import FirewallSection from '@/components/servers/FirewallSection.vue';
+import ReapplyAddressesButton from '@/components/servers/ReapplyAddressesButton.vue';
 import ReinstallDialog from '@/components/servers/ReinstallDialog.vue';
+import RemoveAddressButton from '@/components/servers/RemoveAddressButton.vue';
 import ResourcesDialog from '@/components/servers/ResourcesDialog.vue';
 import ResetPasswordButton from '@/components/servers/ResetPasswordButton.vue';
+import ServerChecks from '@/components/servers/ServerChecks.vue';
+import ServerStatsCards from '@/components/servers/ServerStatsCards.vue';
 import TaskList from '@/components/servers/TaskList.vue';
+import UsageSection from '@/components/servers/UsageSection.vue';
 import { Button } from '@/components/ui/button';
 import { useDateTime } from '@/composables/useDateTime';
 import { formatMib, formatTraffic } from '@/lib/format';
 import { show as showCluster } from '@/routes/admin/clusters';
 import { show as showPool } from '@/routes/admin/ip-pools';
 import {
+    addresses as changeAddresses,
     appEntitlements as grantEntitlement,
     apps as installApp,
     console as openConsole,
     destroy,
+    enableAntiSpoofing,
     hostname as changeHostname,
     index,
+    move as moveServer,
     password,
     power as powerRoute,
-    primaryAddress,
     rdns,
+    reapplyAddresses,
+    rebuild,
     reinstall,
     resetPassword,
     resources,
@@ -43,19 +64,28 @@ import {
     test as testServer,
     trialReset,
     unsuspend,
+    usageExempt,
+    verify,
 } from '@/routes/admin/servers';
+import { finish as finishMove } from '@/routes/admin/servers/moves';
 import { NETWORK_MODELS } from '@/types/admin';
 import type {
+    AddressPoolOption,
     AppEntitlement,
     AppInstallation,
     AppOption,
+    MoveOptions,
     NetworkModel,
     Option,
     OsPlatform,
     PowerAction,
+    ServerVerification,
     Drift,
     ReinstallOptions,
     ResourceOptions,
+    ServerFirewall,
+    ServerAddress,
+    ServerUsage,
     RevealedAppOutputs,
     ServerStatus,
     Task,
@@ -67,8 +97,11 @@ const props = withDefaults(
         server: {
             uuid: string;
             hostname: string;
+            /** Its address when the hostname was generated: the title (docs/adr/0031). */
+            vm_name: string | null;
             status: ServerStatus;
             can_retry: boolean;
+            can_rebuild: boolean;
             origin: 'provisioned' | 'adopted';
             vmid: number;
             network_model: NetworkModel;
@@ -83,6 +116,10 @@ const props = withDefaults(
             reboot_required: boolean;
             /** Drafts of apps may be tried on it (docs/adr/0018 §7). */
             is_test: boolean;
+            suspension_reason: string | null;
+            /** Set when the panel suspended it itself (docs/adr/0039). */
+            suspension_cause: 'traffic' | 'usage' | null;
+            usage_exempt: boolean;
             billing_system: string | null;
             external_id: string | null;
             external_client_id: string | null;
@@ -93,24 +130,26 @@ const props = withDefaults(
             package: string | null;
             os_template: string | null;
             platform: OsPlatform;
-            addresses: {
-                address: string;
-                version: 4 | 6;
-                /** The primary address of its version (listed first). */
-                primary: boolean;
-                pool: { uuid: string; name: string };
-                ptr: string | null;
-                ptr_pending: boolean;
-            }[];
+            addresses: ServerAddress[];
             provisioned_at: string | null;
+            verification: ServerVerification | null;
+            /** When the VM firewall was last compared with what anti-spoofing needs (docs/adr/0033). */
+            firewall_checked_at: string | null;
             created_at: string | null;
         };
         tasks: Task[];
-        revealedPassword: string | null;
         revealedAppOutputs: RevealedAppOutputs | null;
         reinstallOptions: ReinstallOptions;
         resourceOptions: ResourceOptions;
+        /** docs/adr/0037 */
+        moveOptions: MoveOptions;
+        /** docs/adr/0035 */
+        firewall: ServerFirewall;
+        /** Pools addresses may be added from (docs/adr/0028). */
+        addressPools: AddressPoolOption[];
         drifts: Drift[];
+        /** docs/adr/0039 */
+        usage: ServerUsage;
         /** Deferred: undefined until loaded, null when unknown. */
         power?: string | null;
         /** Deferred: whether the guest agent answers; undefined until loaded, null when unknown. */
@@ -127,10 +166,13 @@ const props = withDefaults(
     { agent: undefined },
 );
 
+// A server named from its location's template is titled by its address (docs/adr/0031).
+const title = computed(() => props.server.vm_name ?? props.server.hostname);
+
 setLayoutProps({
     breadcrumbs: [
         { title: 'Servers', href: index() },
-        { title: props.server.hostname, href: show(props.server.uuid) },
+        { title: title.value, href: show(props.server.uuid) },
     ],
 });
 
@@ -139,7 +181,19 @@ const { formatDateTime } = useDateTime();
 // Refresh while a task runs, so progress and the power state show up live.
 const { start, stop } = usePoll(
     3000,
-    { only: ['server', 'tasks', 'power', 'agent', 'apps'] },
+    // drifts too: a finished task can close one (Enable anti-spoofing, docs/adr/0033).
+    // moveOptions: the move's progress and history (docs/adr/0037).
+    {
+        only: [
+            'server',
+            'tasks',
+            'power',
+            'agent',
+            'apps',
+            'drifts',
+            'moveOptions',
+        ],
+    },
     { autoStart: false },
 );
 
@@ -169,27 +223,59 @@ const powerAction = (action: PowerAction) =>
 const post = (action: ReturnType<typeof suspend>) =>
     router.visit(action, { preserveScroll: true });
 
-// Only the password changes, so the page does not ask Proxmox for the power
-// state and the guest agent again.
-const revealPassword = () =>
-    router.visit(password(props.server.uuid), {
-        preserveScroll: true,
-        only: ['revealedPassword'],
-    });
+// Fetched as JSON and kept only here: no page visit, and the password never
+// becomes a page prop that Inertia keeps in the browser's history state.
+const passwordRequest = useHttp();
+const revealedPassword = ref<string | null>(null);
+const passwordFailed = ref(false);
+
+const revealPassword = async () => {
+    passwordFailed.value = false;
+
+    try {
+        const response = (await passwordRequest.submit(
+            password(props.server.uuid),
+        )) as { password: string | null };
+        revealedPassword.value = response.password;
+    } catch {
+        passwordFailed.value = true;
+    }
+};
+
+// A password reset, reinstall or rebuild sets a new password: the one shown is
+// hidden again whenever such a task starts or finishes.
+const passwordTask = computed(() => {
+    const task = props.tasks.find((candidate) =>
+        ['reset_password', 'reinstall', 'create'].includes(candidate.type),
+    );
+
+    return task ? `${task.uuid}:${task.status}` : null;
+});
+
+watch(passwordTask, () => (revealedPassword.value = null));
 
 const modelLabel =
     NETWORK_MODELS.find((model) => model.value === props.server.network_model)
         ?.label ?? props.server.network_model;
 
-// Overview, apps and tasks on their own tabs. The tab survives the redirect
-// back after an action (e.g. installing an app) for this server.
-type Tab = 'overview' | 'apps' | 'tasks';
+// Overview, apps, firewall and tasks on their own tabs. The tab survives the
+// redirect back after an action (e.g. installing an app) for this server.
+type Tab = 'overview' | 'apps' | 'firewall' | 'tasks';
 const tabKey = `server-tab:${props.server.uuid}`;
+
+// The firewall can be changed while the server is active or suspended (docs/adr/0035).
+const hasFirewall = computed(() =>
+    ['active', 'suspended'].includes(props.server.status),
+);
+
 const storedTab = (): Tab | null => {
     try {
         const value = sessionStorage.getItem(tabKey);
 
-        return value === 'overview' || value === 'apps' || value === 'tasks'
+        return value === 'overview' ||
+            value === 'apps' ||
+            value === 'tasks' ||
+            (value === 'firewall' && hasFirewall.value)
             ? value
             : null;
     } catch {
@@ -199,6 +285,13 @@ const storedTab = (): Tab | null => {
 const tab = ref<Tab>(
     props.revealedAppOutputs ? 'apps' : (storedTab() ?? 'overview'),
 );
+
+// A server leaving the active or suspended states (e.g. terminated) loses the tab.
+watch(hasFirewall, (value) => {
+    if (!value && tab.value === 'firewall') {
+        tab.value = 'overview';
+    }
+});
 
 watch(tab, (value) => {
     try {
@@ -215,6 +308,15 @@ const tabs = computed(() => [
         label: 'Apps',
         count: props.apps.filter((app) => app.status !== 'removed').length,
     },
+    ...(hasFirewall.value
+        ? [
+              {
+                  value: 'firewall' as Tab,
+                  label: 'Firewall',
+                  count: props.firewall.rules.length,
+              },
+          ]
+        : []),
     { value: 'tasks' as Tab, label: 'Tasks', count: null },
 ]);
 
@@ -225,6 +327,20 @@ const runningTasks = computed(() =>
 );
 
 const active = computed(() => props.server.status === 'active');
+// A firewall drift says it was changed in Proxmox; an adopted VM not compared yet may never have had it (docs/adr/0033).
+const firewallDrift = computed(() =>
+    props.drifts.some((drift) => drift.type === 'firewall_mismatch'),
+);
+const offerAntiSpoofing = computed(
+    () =>
+        ['active', 'suspended'].includes(props.server.status) &&
+        (firewallDrift.value ||
+            (props.server.origin === 'adopted' &&
+                props.server.firewall_checked_at === null)),
+);
+const antiSpoofingOn = computed(
+    () => props.server.firewall_checked_at !== null && !firewallDrift.value,
+);
 
 const toggleTestServer = () =>
     router.visit(testServer(props.server.uuid), {
@@ -255,15 +371,15 @@ const resetAfterTrial = () => {
 </script>
 
 <template>
-    <Head :title="server.hostname" />
+    <Head :title="title" />
 
     <div class="flex flex-col gap-6 p-4">
         <!-- Who the server is, its state and the everyday controls. -->
         <div class="flex flex-wrap items-start justify-between gap-4">
             <div class="flex flex-col gap-2">
                 <Heading
-                    :title="server.hostname"
-                    :description="`VMID ${server.vmid} · ${server.node} · ${server.os_template ?? '—'}`"
+                    :title="title"
+                    :description="`${server.vm_name ? `${server.hostname} · ` : ''}VMID ${server.vmid} · ${server.node} · ${server.os_template ?? '—'}`"
                 />
                 <div class="flex flex-wrap gap-2">
                     <ServerStatusBadge :status="server.status" />
@@ -304,6 +420,11 @@ const resetAfterTrial = () => {
                     <RotateCcw class="h-4 w-4" />
                     {{ $t('Retry') }}
                 </Button>
+                <RebuildDialog
+                    v-if="server.can_rebuild"
+                    :action="rebuild(server.uuid)"
+                    :hostname="server.hostname"
+                />
             </div>
         </div>
 
@@ -317,6 +438,31 @@ const resetAfterTrial = () => {
                     'Some changes take effect when the server is restarted (Start or Reboot here).',
                 )
             }}
+        </p>
+
+        <p
+            v-if="server.status === 'suspended'"
+            class="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm"
+            data-test="suspension"
+        >
+            <template v-if="server.suspension_cause === 'traffic'">
+                {{
+                    $t(
+                        'Suspended by the panel over its traffic quota. It is unsuspended when the next period starts or its quota is raised.',
+                    )
+                }}
+            </template>
+            <template v-else-if="server.suspension_cause === 'usage'">
+                {{
+                    $t(
+                        'Suspended by the panel over a usage limit. It stays suspended until you or the billing system unsuspend it.',
+                    )
+                }}
+            </template>
+            <template v-else>{{ $t('Suspended.') }}</template>
+            <span v-if="server.suspension_reason" class="block font-medium">{{
+                server.suspension_reason
+            }}</span>
         </p>
 
         <p
@@ -364,6 +510,13 @@ const resetAfterTrial = () => {
 
         <template v-if="tab === 'overview'">
             <TaskList v-if="runningTasks.length" :tasks="runningTasks" />
+
+            <!-- Live figures from Proxmox while its VM exists (docs/adr/0036). -->
+            <ServerStatsCards
+                v-if="['active', 'suspended'].includes(server.status)"
+                :server-uuid="server.uuid"
+                :port-speed-mbps="server.port_speed_mbps"
+            />
 
             <div class="grid gap-4 lg:grid-cols-3">
                 <section class="flex flex-col gap-3 rounded-xl border p-4">
@@ -424,15 +577,27 @@ const resetAfterTrial = () => {
                             >
                                 {{ revealedPassword }}
                             </dd>
-                            <dd v-else-if="server.has_password">
+                            <dd
+                                v-else-if="server.has_password"
+                                class="flex flex-col items-start gap-1"
+                            >
                                 <Button
                                     variant="outline"
                                     size="sm"
+                                    :disabled="passwordRequest.processing"
+                                    data-test="reveal-password"
                                     @click="revealPassword"
                                 >
                                     <Eye class="h-4 w-4" />
                                     {{ $t('Show') }}
                                 </Button>
+                                <span
+                                    v-if="passwordFailed"
+                                    class="text-xs text-destructive"
+                                    >{{
+                                        $t('The password could not be shown.')
+                                    }}</span
+                                >
                             </dd>
                             <dd v-else>—</dd>
                         </div>
@@ -529,6 +694,24 @@ const resetAfterTrial = () => {
                             </dd>
                         </div>
                     </dl>
+                    <!-- Moving to another node, cluster or location (docs/adr/0037). -->
+                    <MoveHistory
+                        v-if="moveOptions.moves.length"
+                        :moves="moveOptions.moves"
+                        :finish="(move) => finishMove([server.uuid, move])"
+                        :disabled="busy"
+                    />
+                    <div
+                        v-if="['active', 'suspended'].includes(server.status)"
+                        class="mt-auto flex flex-wrap gap-2"
+                    >
+                        <MoveDialog
+                            :action="moveServer(server.uuid)"
+                            :options="moveOptions"
+                            :hostname="server.hostname"
+                            :disabled="busy"
+                        />
+                    </div>
                 </section>
             </div>
 
@@ -539,13 +722,53 @@ const resetAfterTrial = () => {
                         <span class="text-sm font-normal text-muted-foreground"
                             >· {{ $t(modelLabel) }}</span
                         >
+                        <StatusBadge
+                            v-if="antiSpoofingOn"
+                            class="ml-2 align-middle"
+                            tone="success"
+                            label="Anti-spoofing on"
+                            :title="
+                                $t('Checked :time', {
+                                    time: formatDateTime(
+                                        server.firewall_checked_at,
+                                    ),
+                                })
+                            "
+                        />
+                        <StatusBadge
+                            v-else-if="firewallDrift"
+                            class="ml-2 align-middle"
+                            tone="warning"
+                            label="Anti-spoofing off"
+                        />
                     </h3>
-                    <PrimaryAddressDialog
-                        v-if="active"
-                        :action="primaryAddress(server.uuid)"
-                        :addresses="server.addresses"
-                        :disabled="busy"
-                    />
+                    <div
+                        v-if="active || offerAntiSpoofing"
+                        class="flex flex-wrap gap-2"
+                    >
+                        <AntiSpoofingButton
+                            v-if="offerAntiSpoofing"
+                            :action="enableAntiSpoofing(server.uuid)"
+                            :addresses="
+                                server.addresses.map(
+                                    (address) => address.address,
+                                )
+                            "
+                            :disabled="busy"
+                        />
+                        <ReapplyAddressesButton
+                            v-if="active"
+                            :action="reapplyAddresses(server.uuid)"
+                            :disabled="busy || server.addresses.length === 0"
+                        />
+                        <AddressesDialog
+                            v-if="active"
+                            :action="changeAddresses(server.uuid)"
+                            :addresses="server.addresses"
+                            :pools="addressPools"
+                            :disabled="busy"
+                        />
+                    </div>
                 </div>
                 <ul class="flex flex-col gap-1">
                     <li
@@ -579,10 +802,30 @@ const resetAfterTrial = () => {
                             :address="address.address"
                             :ptr="address.ptr"
                         />
+                        <RemoveAddressButton
+                            v-if="active && !address.primary"
+                            :action="changeAddresses(server.uuid)"
+                            :address="address.address"
+                            :disabled="busy"
+                        />
                     </li>
                     <li v-if="server.addresses.length === 0">—</li>
                 </ul>
             </section>
+
+            <UsageSection
+                v-if="['active', 'suspended'].includes(server.status)"
+                :usage="usage"
+                :exempt="server.usage_exempt"
+                :exempt-action="usageExempt(server.uuid)"
+            />
+
+            <ServerChecks
+                v-if="active || server.verification"
+                :verification="server.verification"
+                :action="active ? verify(server.uuid) : undefined"
+                :disabled="busy"
+            />
 
             <!-- Operations that interrupt or remove the server. -->
             <section
@@ -705,6 +948,13 @@ const resetAfterTrial = () => {
                 </div>
             </section>
         </template>
+
+        <FirewallSection
+            v-else-if="tab === 'firewall'"
+            :server="server.uuid"
+            :firewall="firewall"
+            :disabled="busy"
+        />
 
         <TaskList v-else :tasks="tasks" />
     </div>

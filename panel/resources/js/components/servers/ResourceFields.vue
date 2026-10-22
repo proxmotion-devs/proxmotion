@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import FormField from '@/components/admin/FormField.vue';
+import LimitFields from '@/components/servers/LimitFields.vue';
 import { Input } from '@/components/ui/input';
 import type { NewServerResources } from '@/types/admin';
 
@@ -86,4 +87,16 @@ const optional = (value: string | number): number | '' =>
             />
         </FormField>
     </div>
+
+    <LimitFields
+        :cpu-limit="values.cpu_limit"
+        :cpu-units="values.cpu_units"
+        :disk-mb-s="values.disk_mb_s"
+        :disk-iops="values.disk_iops"
+        :errors="errors"
+        @update:cpu-limit="(value) => set('cpu_limit', value)"
+        @update:cpu-units="(value) => set('cpu_units', value)"
+        @update:disk-mb-s="(value) => set('disk_mb_s', value)"
+        @update:disk-iops="(value) => set('disk_iops', value)"
+    />
 </template>

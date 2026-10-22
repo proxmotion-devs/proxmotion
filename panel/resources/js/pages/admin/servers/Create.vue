@@ -18,7 +18,12 @@ import { Input } from '@/components/ui/input';
 import { Spinner } from '@/components/ui/spinner';
 import { formatMib } from '@/lib/format';
 import { optionalNumber } from '@/lib/forms';
-import { firstStepWithError, WIZARD_STEPS } from '@/lib/serverWizard';
+import { hostnameExample } from '@/lib/hostnames';
+import {
+    firstStepWithError,
+    makesTestServer,
+    WIZARD_STEPS,
+} from '@/lib/serverWizard';
 import { create, index, store } from '@/routes/admin/servers';
 import { NETWORK_MODELS } from '@/types/admin';
 import type {
@@ -43,11 +48,15 @@ defineOptions({
 
 const props = defineProps<{
     billingSystems: Option[];
-    locations: Option[];
+    /** With a hostname template, the hostname may stay empty (docs/adr/0031). */
+    locations: (Option & { code: string; hostname_template: string | null })[];
     packages: PackageOption[];
     placementGroups: PlacementGroupOption[];
     ipv4Pools: Ipv4PoolOption[];
-    osTemplates: Option[];
+    /** Inactive ones make a test server without a billing system (docs/adr/0024 §8). */
+    osTemplates: (Option & { active: boolean })[];
+    /** Preselected by ?os_template= (a template checked without a running server). */
+    selectedOsTemplate?: string | null;
     apps: OrderedAppOption[];
     nodes: PlacementNode[];
 }>();
@@ -71,8 +80,13 @@ const form = useForm({
         ipv6_count: 0,
         port_speed_mbps: '',
         traffic_gb: '',
+        cpu_limit: '',
+        cpu_units: '',
+        disk_mb_s: '',
+        disk_iops: '',
     } as NewServerResources,
-    os_template: props.osTemplates[0]?.value ?? null,
+    os_template:
+        props.selectedOsTemplate ?? props.osTemplates[0]?.value ?? null,
     app: '',
     app_inputs: {} as Record<string, string | number | boolean>,
     network_model: null as NetworkModel | null,
@@ -105,6 +119,24 @@ const modes = computed(() => [
         label: trans('Custom (enter resources, choose a group or node)'),
     },
 ]);
+
+const chosenLocation = computed(() =>
+    props.locations.find((location) => location.value === form.location),
+);
+
+// Without a hostname, the server is named from its location's template (docs/adr/0031).
+const hostnameTemplate = computed(
+    () => chosenLocation.value?.hostname_template ?? '',
+);
+
+const generatedHostname = computed(() =>
+    hostnameTemplate.value === ''
+        ? ''
+        : hostnameExample(
+              hostnameTemplate.value,
+              chosenLocation.value?.code ?? '',
+          ),
+);
 
 const chosenPackage = computed(() =>
     custom.value
@@ -146,6 +178,10 @@ const resources = computed<NewServerResources>(() => {
               ipv6_count: pkg.ipv6_count,
               port_speed_mbps: pkg.port_speed_mbps ?? '',
               traffic_gb: pkg.traffic_gb ?? '',
+              cpu_limit: pkg.cpu_limit ?? '',
+              cpu_units: pkg.cpu_units ?? '',
+              disk_mb_s: pkg.disk_mb_s ?? '',
+              disk_iops: pkg.disk_iops ?? '',
           }
         : form.resources;
 });
@@ -163,6 +199,19 @@ const billingSystemOptions = computed(() => [
     { value: '', label: trans('None') },
     ...props.billingSystems,
 ]);
+
+// An inactive template is tried on a test server: no billing system, no billing ids.
+const testServer = computed(() =>
+    makesTestServer(props.osTemplates, form.os_template),
+);
+
+watch(testServer, (test) => {
+    if (test) {
+        form.billing_system = '';
+        form.external_id = '';
+        form.external_client_id = '';
+    }
+});
 
 const missing = computed(
     () => props.locations.length === 0 || props.osTemplates.length === 0,
@@ -182,7 +231,7 @@ const complete = computed<boolean[]>(() => [
         : chosenPackage.value !== undefined,
     form.os_template !== null,
     form.network_model !== null,
-    form.hostname.trim() !== '',
+    form.hostname.trim() !== '' || hostnameTemplate.value !== '',
     true,
 ]);
 
@@ -242,10 +291,19 @@ const summary = computed(() => {
                     ? ` · ${form.ipv4_addresses.join(', ')}`
                     : ''),
         ],
-        [trans('Hostname'), form.hostname],
+        [
+            trans('Hostname'),
+            form.hostname.trim() !== ''
+                ? form.hostname
+                : trans('From the location template: :template', {
+                      template: hostnameTemplate.value,
+                  }),
+        ],
         [
             trans('Billing system'),
-            optionLabel(billingSystemOptions.value, form.billing_system),
+            testServer.value
+                ? trans('None (test server)')
+                : optionLabel(billingSystemOptions.value, form.billing_system),
         ],
     ];
 });
@@ -279,6 +337,10 @@ const submit = () => {
                       storage,
                       port_speed_mbps: optionalNumber(entered.port_speed_mbps),
                       traffic_gb: optionalNumber(entered.traffic_gb),
+                      cpu_limit: optionalNumber(entered.cpu_limit),
+                      cpu_units: optionalNumber(entered.cpu_units),
+                      disk_mb_s: optionalNumber(entered.disk_mb_s),
+                      disk_iops: optionalNumber(entered.disk_iops),
                   },
     ).submit(store(), {
         // Back to the first step with an error.
@@ -452,10 +514,24 @@ const submit = () => {
                     <Input
                         id="hostname"
                         v-model="form.hostname"
-                        required
+                        :required="hostnameTemplate === ''"
                         class="font-mono"
-                        placeholder="web1.example.com"
+                        :placeholder="generatedHostname || 'web1.example.com'"
                     />
+                    <p
+                        v-if="hostnameTemplate !== ''"
+                        class="text-xs text-muted-foreground"
+                    >
+                        {{
+                            $t(
+                                'Leave empty to name the server from the location template :template, e.g. :example. Its primary addresses then get this name as PTR.',
+                                {
+                                    template: hostnameTemplate,
+                                    example: generatedHostname,
+                                },
+                            )
+                        }}
+                    </p>
                 </FormField>
                 <FormField
                     label="Root password"
@@ -484,44 +560,57 @@ const submit = () => {
                         placeholder="ssh-ed25519 AAAA… user@host"
                     />
                 </FormField>
-                <FormField
-                    label="Billing system"
-                    for="billing_system"
-                    :error="errors.billing_system"
-                    hint="Needed for billing IDs. Only this billing system's API tokens can manage the server."
+                <p
+                    v-if="testServer"
+                    class="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm"
+                    data-test="test-server-note"
                 >
-                    <NativeSelect
-                        id="billing_system"
-                        v-model="form.billing_system"
-                        :options="billingSystemOptions"
-                    />
-                </FormField>
-                <div class="grid gap-4 sm:grid-cols-2">
+                    {{
+                        $t(
+                            'The chosen OS template is inactive, so this becomes a test server without a billing system. Activate the template to offer it to customers.',
+                        )
+                    }}
+                </p>
+                <template v-else>
                     <FormField
-                        label="Billing service ID"
-                        for="external_id"
-                        :error="errors.external_id"
-                        hint="Optional. The service ID in your billing system."
+                        label="Billing system"
+                        for="billing_system"
+                        :error="errors.billing_system"
+                        hint="Needed for billing IDs. Only this billing system's API tokens can manage the server."
                     >
-                        <Input
-                            id="external_id"
-                            v-model="form.external_id"
-                            autocomplete="off"
+                        <NativeSelect
+                            id="billing_system"
+                            v-model="form.billing_system"
+                            :options="billingSystemOptions"
                         />
                     </FormField>
-                    <FormField
-                        label="Billing client ID"
-                        for="external_client_id"
-                        :error="errors.external_client_id"
-                        hint="Optional. The customer's ID in your billing system."
-                    >
-                        <Input
-                            id="external_client_id"
-                            v-model="form.external_client_id"
-                            autocomplete="off"
-                        />
-                    </FormField>
-                </div>
+                    <div class="grid gap-4 sm:grid-cols-2">
+                        <FormField
+                            label="Billing service ID"
+                            for="external_id"
+                            :error="errors.external_id"
+                            hint="Optional. The service ID in your billing system."
+                        >
+                            <Input
+                                id="external_id"
+                                v-model="form.external_id"
+                                autocomplete="off"
+                            />
+                        </FormField>
+                        <FormField
+                            label="Billing client ID"
+                            for="external_client_id"
+                            :error="errors.external_client_id"
+                            hint="Optional. The customer's ID in your billing system."
+                        >
+                            <Input
+                                id="external_client_id"
+                                v-model="form.external_client_id"
+                                autocomplete="off"
+                            />
+                        </FormField>
+                    </div>
+                </template>
             </template>
 
             <template v-else>

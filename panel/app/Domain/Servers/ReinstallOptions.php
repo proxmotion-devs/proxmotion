@@ -23,7 +23,11 @@ final class ReinstallOptions
 
         return [
             'osTemplates' => array_values($templates
-                ->map(fn (OsTemplate $template) => ['value' => $template->uuid, 'label' => $template->name])
+                ->map(fn (OsTemplate $template) => [
+                    'value' => $template->uuid,
+                    // Only servers without a billing system are offered inactive ones; they become test servers (docs/adr/0024 §8).
+                    'label' => $template->is_active ? $template->name : $template->name.' ('.__('inactive, makes it a test server').')',
+                ])
                 ->all()),
             'apps' => app(OrderedAppOptions::class)->for($templates, $server),
         ];

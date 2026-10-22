@@ -4,26 +4,39 @@ declare(strict_types=1);
 
 namespace App\Domain\Apps;
 
+use App\Domain\Infrastructure\Distributions;
 use App\Enums\AppInstallMode;
 use App\Enums\NetworkModel;
-use App\Models\OsTemplate;
+use App\Enums\OsFamily;
 
 /**
  * A validated recipe.yaml (docs/adr/0015, 0016). Format 1 recipes (no
  * `format`) are read into the same shape as format 2: their `os` list
- * becomes the families and exact versions they support, install.sh and
- * `timeout_minutes` their install step.
+ * becomes the distributions and exact versions they support, install.sh
+ * and `timeout_minutes` their install step.
+ *
+ * Operating systems (docs/adr/0024 §4): `requires.os` names families
+ * (debian, rhel, …) and distributions (ubuntu, almalinux, …) separately.
+ * The list form of older recipes is read with its old meaning: the group
+ * names are families, other names distributions.
  */
 final readonly class Recipe
 {
     public const LIFECYCLE = ['install', 'uninstall', 'upgrade'];
 
+    /** Package managers of recipes written before `os` (format 2 `capabilities`). */
+    private const array LEGACY_CAPABILITIES = ['apt' => 'debian', 'dnf' => 'rhel', 'zypper' => 'suse', 'pacman' => 'arch'];
+
+    /** Old list names that meant a whole family (archlinux and opensuse were alone in theirs). */
+    private const array LEGACY_FAMILY_NAMES = ['archlinux' => 'arch', 'opensuse' => 'suse'];
+
     /**
      * @param  array{en: string, tr?: string}  $description
      * @param  list<array{family: string, versions: list<string>}>  $os  format 1 only: exact OS versions
-     * @param  list<string>|null  $families  template families or groups (OsFamilies) it runs on; null: any of the platform
-     * @param  array<string, string>  $minVersions  lowest version per family
-     * @param  array<string, string>  $maxVersions  highest version per family
+     * @param  list<string>|null  $families  OS families it runs on (OsFamily values); null with $distributions: any OS of the platform
+     * @param  list<string>|null  $distributions  single distributions (os-release IDs) it runs on
+     * @param  array<string, string>  $minVersions  lowest version per distribution
+     * @param  array<string, string>  $maxVersions  highest version per distribution
      * @param  list<string>  $networkModels
      * @param  list<string>  $installModes
      * @param  list<RecipeInput>  $inputs
@@ -43,6 +56,7 @@ final readonly class Recipe
         public string $platform,
         public array $os,
         public ?array $families,
+        public ?array $distributions,
         public array $minVersions,
         public array $maxVersions,
         public int $minMemoryMib,
@@ -81,7 +95,8 @@ final readonly class Recipe
             $resources = $data['requirements'];
             $timeout = (int) $data['timeout_minutes'];
             $platform = 'linux';
-            $families = array_values(array_unique(array_column($os, 'family')));
+            $families = [];
+            $distributions = array_values(array_unique(array_map(Distributions::fromOldName(...), array_column($os, 'family'))));
             $minVersions = [];
             $maxVersions = [];
             $lifecycle = ['install' => ['script' => 'install.sh', 'timeout_minutes' => $timeout]];
@@ -92,14 +107,9 @@ final readonly class Recipe
             $resources = $data['resources'];
             $os = [];
             $platform = (string) $requires['platform'];
-            // `os` names families or groups; recipes written before it used `families` or package-manager `capabilities`.
-            $families = match (true) {
-                isset($requires['os']) => $list($requires['os']),
-                isset($requires['families']) => $list($requires['families']),
-                default => OsFamilies::fromCapabilities($list($requires['capabilities'] ?? null)),
-            };
-            $minVersions = array_map('strval', is_array($requires['min_versions'] ?? null) ? $requires['min_versions'] : []);
-            $maxVersions = array_map('strval', is_array($requires['max_versions'] ?? null) ? $requires['max_versions'] : []);
+            [$families, $distributions] = self::operatingSystems($requires);
+            $minVersions = self::versionLimits($requires['min_versions'] ?? null);
+            $maxVersions = self::versionLimits($requires['max_versions'] ?? null);
             $lifecycle = [];
 
             foreach (is_array($data['lifecycle'] ?? null) ? $data['lifecycle'] : [] as $operation => $step) {
@@ -126,6 +136,7 @@ final readonly class Recipe
             platform: $platform,
             os: $os,
             families: $families,
+            distributions: $distributions,
             minVersions: $minVersions,
             maxVersions: $maxVersions,
             minMemoryMib: (int) $resources['min_memory_mib'],
@@ -143,6 +154,73 @@ final readonly class Recipe
             timeoutMinutes: $timeout,
             definition: $data,
         );
+    }
+
+    /**
+     * The families and distributions of `requires`: `os` as an object
+     * (docs/adr/0024 §4), or the list form of older recipes (`os`,
+     * `families`, package-manager `capabilities`); [null, null]: any OS.
+     *
+     * @param  array<string, mixed>  $requires
+     * @return array{0: list<string>|null, 1: list<string>|null}
+     */
+    private static function operatingSystems(array $requires): array
+    {
+        $strings = fn (mixed $value): array => array_values(array_map(fn ($item) => strtolower((string) $item), is_array($value) ? $value : []));
+        $os = $requires['os'] ?? null;
+
+        if (is_array($os) && ! array_is_list($os)) {
+            return [$strings($os['families'] ?? null), $strings($os['distributions'] ?? null)];
+        }
+
+        if (is_array($os) || isset($requires['families'])) {
+            $names = $strings($os ?? $requires['families']);
+        } else {
+            $names = [];
+
+            foreach ($strings($requires['capabilities'] ?? null) as $capability) {
+                foreach (explode('|', $capability) as $manager) {
+                    if (isset(self::LEGACY_CAPABILITIES[$manager])) {
+                        $names[] = self::LEGACY_CAPABILITIES[$manager];
+                    }
+                }
+            }
+        }
+
+        if ($names === []) {
+            return [null, null];
+        }
+
+        $families = [];
+        $distributions = [];
+
+        foreach ($names as $name) {
+            $family = OsFamily::tryFrom(self::LEGACY_FAMILY_NAMES[$name] ?? $name);
+
+            if ($family !== null) {
+                $families[] = $family->value;
+            } else {
+                $distributions[] = $name;
+            }
+        }
+
+        return [array_values(array_unique($families)), array_values(array_unique($distributions))];
+    }
+
+    /**
+     * Version limits by distribution, old names (archlinux) as os-release IDs.
+     *
+     * @return array<string, string>
+     */
+    private static function versionLimits(mixed $limits): array
+    {
+        $result = [];
+
+        foreach (is_array($limits) ? $limits : [] as $distribution => $version) {
+            $result[Distributions::fromOldName((string) $distribution)] = (string) $version;
+        }
+
+        return $result;
     }
 
     /**
@@ -171,25 +249,25 @@ final readonly class Recipe
     }
 
     /**
-     * Whether the recipe can run on servers of this template (docs/adr/0016 §3).
+     * Whether the recipe's `requires.os` suggests an operating system
+     * version: only a suggestion, administrators tick the versions an app
+     * is offered on (docs/adr/0026). Matched by the system's os-release ID
+     * (or that of the system it is built on, unless the recipe names its own).
      */
-    public function supportsTemplate(OsTemplate $template): bool
+    public function suggests(string $platform, string $distribution, string $version, ?string $compatibleWith = null, ?string $compatibleVersion = null): bool
     {
-        return $this->supports($template->platform->value, $template->family, $template->version);
-    }
-
-    public function supports(string $platform, string $family, string $version): bool
-    {
-        $family = strtolower($family);
+        $own = Distributions::fromOldName($distribution);
+        $match = $compatibleWith === null ? $own : Distributions::fromOldName($compatibleWith);
+        $matchVersion = $compatibleWith === null ? $version : (string) $compatibleVersion;
 
         if ($platform !== $this->platform) {
             return false;
         }
 
-        // Format 1: the exact family and version must be listed.
+        // Format 1: the exact distribution and version must be listed.
         if ($this->format === 1) {
             foreach ($this->os as $entry) {
-                if ($entry['family'] === $family && in_array($version, $entry['versions'], true)) {
+                if (Distributions::fromOldName($entry['family']) === $match && in_array($matchVersion, $entry['versions'], true)) {
                     return true;
                 }
             }
@@ -197,15 +275,42 @@ final readonly class Recipe
             return false;
         }
 
-        if ($this->families !== null && ! OsFamilies::matches($this->families, $family)) {
+        if (! $this->coversDistribution($match) && ! in_array($own, $this->distributions ?? [], true)) {
             return false;
         }
 
-        $minimum = $this->minVersions[$family] ?? null;
-        $maximum = $this->maxVersions[$family] ?? null;
+        // The limits of its own distribution when the recipe names it, otherwise those of the one it is matched as.
+        [$limitsOf, $compared] = isset($this->minVersions[$own]) || isset($this->maxVersions[$own]) ? [$own, $version] : [$match, $matchVersion];
+        $minimum = $this->minVersions[$limitsOf] ?? null;
+        $maximum = $this->maxVersions[$limitsOf] ?? null;
 
-        return ($minimum === null || version_compare($version, $minimum, '>='))
-            && ($maximum === null || version_compare(self::versionParts($version, $maximum), $maximum, '<='));
+        return ($minimum === null || version_compare($compared, $minimum, '>='))
+            && ($maximum === null || version_compare(self::versionParts($compared, $maximum), $maximum, '<='));
+    }
+
+    /**
+     * Whether `requires.os` covers a distribution: any OS, the distribution
+     * itself, or its family among the well-known IDs (Distributions).
+     */
+    public function coversDistribution(string $distribution): bool
+    {
+        if ($this->families === null && $this->distributions === null) {
+            return true;
+        }
+
+        if (in_array($distribution, $this->distributions ?? [], true)) {
+            return true;
+        }
+
+        $families = $this->families ?? [];
+
+        if ($families === []) {
+            return false;
+        }
+
+        $family = Distributions::family($distribution);
+
+        return $family !== null && in_array($family->value, $families, true);
     }
 
     /**
@@ -237,7 +342,7 @@ final readonly class Recipe
 
     /**
      * The operating systems in short, for lists: "ubuntu 22.04, 24.04"
-     * (format 1) or "linux: debian, rhel", "ubuntu ≥ 22.04" (format 2).
+     * (format 1) or "linux: debian family, almalinux", "ubuntu ≥ 22.04" (format 2).
      *
      * @return list<string>
      */
@@ -247,14 +352,18 @@ final readonly class Recipe
             return array_map(fn (array $entry) => $entry['family'].' '.implode(', ', $entry['versions']), $this->os);
         }
 
-        $lines = [$this->platform.($this->families === null ? '' : ': '.implode(', ', $this->families))];
+        $names = [
+            ...array_map(fn (string $family) => $family.' family', $this->families ?? []),
+            ...($this->distributions ?? []),
+        ];
+        $lines = [$this->platform.($names === [] ? '' : ': '.implode(', ', $names))];
 
-        foreach ($this->minVersions as $family => $minimum) {
-            $lines[] = $family.' ≥ '.$minimum;
+        foreach ($this->minVersions as $distribution => $minimum) {
+            $lines[] = $distribution.' ≥ '.$minimum;
         }
 
-        foreach ($this->maxVersions as $family => $maximum) {
-            $lines[] = $family.' ≤ '.$maximum;
+        foreach ($this->maxVersions as $distribution => $maximum) {
+            $lines[] = $distribution.' ≤ '.$maximum;
         }
 
         return $lines;

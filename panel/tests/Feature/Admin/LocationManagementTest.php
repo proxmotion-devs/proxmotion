@@ -40,6 +40,71 @@ class LocationManagementTest extends AdminTestCase
         $this->assertNull($location->country_code);
     }
 
+    public function test_a_hostname_template_is_stored_lowercase_and_cleared_when_empty()
+    {
+        // docs/adr/0031
+        $this->post(route('admin.locations.store'), [
+            'name' => 'Istanbul',
+            'code' => 'ist1',
+            'hostname_template' => ' IP-{ip}.{location}.Example.com ',
+        ])->assertSessionHasNoErrors();
+
+        $location = Location::query()->sole();
+        $this->assertSame('ip-{ip}.{location}.example.com', $location->hostname_template);
+
+        $this->get(route('admin.locations.index'))
+            ->assertInertia(fn (Assert $page) => $page->where('locations.0.hostname_template', 'ip-{ip}.{location}.example.com'));
+
+        $this->put(route('admin.locations.update', $location), ['name' => 'Istanbul', 'code' => 'ist1', 'hostname_template' => ''])
+            ->assertSessionHasNoErrors();
+        $this->assertNull($location->refresh()->hostname_template);
+    }
+
+    public function test_protected_networks_are_stored_in_one_spelling_and_cleared_when_empty()
+    {
+        // docs/adr/0034
+        $this->post(route('admin.locations.store'), [
+            'name' => 'Istanbul',
+            'code' => 'ist1',
+            'protected_networks' => "198.51.100.7/24\n 2001:DB8:0::5 \n\n198.51.100.0/24",
+        ])->assertSessionHasNoErrors();
+
+        $location = Location::query()->sole();
+        $this->assertSame(['198.51.100.0/24', '2001:db8::5'], $location->protected_networks);
+
+        $this->get(route('admin.locations.index'))
+            ->assertInertia(fn (Assert $page) => $page->where('locations.0.protected_networks', ['198.51.100.0/24', '2001:db8::5']));
+
+        $this->put(route('admin.locations.update', $location), ['name' => 'Istanbul', 'code' => 'ist1', 'protected_networks' => ''])
+            ->assertSessionHasNoErrors();
+        $this->assertNull($location->refresh()->protected_networks);
+    }
+
+    public function test_protected_networks_must_be_addresses_or_networks()
+    {
+        $this->post(route('admin.locations.store'), ['name' => 'X', 'code' => 'x1', 'protected_networks' => "198.51.100.0/24\nnode1.example.com"])
+            ->assertSessionHasErrors(['protected_networks' => 'node1.example.com is not an address or a network in CIDR notation.']);
+        $this->post(route('admin.locations.store'), ['name' => 'X', 'code' => 'x1', 'protected_networks' => '198.51.100.0/33'])
+            ->assertSessionHasErrors('protected_networks');
+
+        $this->assertSame(0, Location::query()->count());
+    }
+
+    public function test_hostname_templates_must_name_each_server_validly()
+    {
+        $post = fn (string $template) => $this->post(route('admin.locations.store'), ['name' => 'X', 'code' => 'x1', 'hostname_template' => $template]);
+
+        $post('server.example.com')->assertSessionHasErrors(['hostname_template' => 'The hostname template needs {ip} or {vmid}, so that each server gets its own name.']);
+        $post('{ip}.{customer}.example.com')->assertSessionHasErrors(['hostname_template' => 'The hostname template may only use {ip}, {vmid} and {location}.']);
+        $post('ip_{ip}.example.com')->assertSessionHasErrors(['hostname_template' => 'The hostname template must give a valid hostname, such as ip-{ip}.example.com.']);
+        $post('-{vmid}.example.com')->assertSessionHasErrors('hostname_template');
+        // A label of 64 characters once {ip} is an IPv6 address written out (39 characters).
+        $post('ip-{ip}-'.str_repeat('a', 21).'.example.com')->assertSessionHasErrors('hostname_template');
+        $this->assertSame(0, Location::query()->count());
+
+        $post('vps{vmid}.example.com')->assertSessionHasNoErrors();
+    }
+
     public function test_codes_must_be_unique_and_slug_like()
     {
         Location::factory()->create(['code' => 'fra1']);

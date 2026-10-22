@@ -34,6 +34,37 @@ final class ClientAreaTest extends ModuleTestCase
         $this->assertSame('1', $data['resource_allocation']['ipv6']['value']);
     }
 
+    public function test_the_service_page_shows_the_months_traffic_against_the_quota(): void
+    {
+        $gb = 1000000000;
+        $server = $this->server([
+            'resources' => ['cpu_cores' => 2, 'memory_mib' => 4096, 'disk_mib' => 40960, 'port_speed_mbps' => 1000, 'traffic_bytes' => 100 * $gb],
+            'traffic' => ['period_start' => '2026-10-01T00:00:00+03:00', 'period_end' => '2026-11-01T00:00:00+03:00', 'in_bytes' => 2 * $gb, 'out_bytes' => (int) (10.5 * $gb), 'counted_bytes' => (int) (12.5 * $gb)],
+        ]);
+        $this->serviceHas($server);
+        $this->api->on('GET ' . self::SERVER, 200, ['data' => $server]);
+
+        $data = $this->module()->dashboard_data();
+
+        $this->assertSame(['used' => 12.5, 'total' => 100.0, 'unit' => 'GB'], $data['resource_allocation']['bandwidth']);
+        $this->assertSame($data['resource_allocation']['bandwidth'], $data['gauges']['bandwidth']);
+    }
+
+    public function test_traffic_without_a_quota_is_unlimited_and_unknown_from_an_older_panel(): void
+    {
+        $server = $this->server(['traffic' => ['period_start' => '2026-10-01T00:00:00+03:00', 'period_end' => '2026-11-01T00:00:00+03:00', 'in_bytes' => 0, 'out_bytes' => 4000000, 'counted_bytes' => 4000000]]);
+        $this->serviceHas($server);
+        $this->api->on('GET ' . self::SERVER, 200, ['data' => $server]);
+
+        $this->assertSame(['used' => 0.0, 'total' => 'unlimited', 'unit' => 'GB'], $this->module()->dashboard_data()['resource_allocation']['bandwidth']);
+
+        $this->api = TestProxmotion::$api = new FakeTransport;
+        $this->serviceHas($this->server());
+        $this->api->on('GET ' . self::SERVER, 200, ['data' => $this->server()]);
+
+        $this->assertSame(['used' => null, 'total' => null, 'unit' => 'GB'], $this->module()->dashboard_data()['gauges']['bandwidth']);
+    }
+
     public function test_a_server_being_installed_shows_its_status(): void
     {
         $this->serviceHas($this->server(['status' => 'provisioning']));

@@ -50,6 +50,34 @@ class ClusterSynchronizerTest extends TestCase
         $this->assertSame([9000], $cluster->proxmoxTemplates()->pluck('vmid')->all());
     }
 
+    public function test_it_records_that_the_datacenter_firewall_can_stop_spoofing()
+    {
+        $this->fakeProxmox();
+        $cluster = Cluster::factory()->create();
+
+        app(ClusterSynchronizer::class)->sync($cluster);
+
+        // The fixture enables the firewall and leaves ebtables at its default (on).
+        $cluster->refresh();
+        $this->assertTrue($cluster->firewall_enabled);
+        $this->assertTrue($cluster->firewall_ebtables);
+        $this->assertNull($cluster->guestFirewallProblem());
+    }
+
+    public function test_it_records_that_the_datacenter_firewall_cannot_stop_spoofing()
+    {
+        $this->fakeProxmox(['*/cluster/firewall/options' => Http::response(['data' => ['ebtables' => 0]])]);
+        $cluster = Cluster::factory()->create();
+
+        app(ClusterSynchronizer::class)->sync($cluster);
+
+        // Without "enable" the datacenter firewall is off.
+        $cluster->refresh();
+        $this->assertFalse($cluster->firewall_enabled);
+        $this->assertFalse($cluster->firewall_ebtables);
+        $this->assertSame('The datacenter firewall is off, so the anti-spoofing filters of its servers do nothing.', $cluster->guestFirewallProblem());
+    }
+
     public function test_it_reports_drift_after_syncing()
     {
         $this->fakeProxmox();

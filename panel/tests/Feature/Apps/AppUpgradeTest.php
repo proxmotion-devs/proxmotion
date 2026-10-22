@@ -23,6 +23,7 @@ use App\Provisioning\ServerCreator;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Validation\ValidationException;
 use Tests\Concerns\BuildsInfrastructure;
+use Tests\Concerns\OffersApps;
 use Tests\Concerns\PublishesRecipeVersions;
 use Tests\Support\FakeProxmoxCluster;
 use Tests\TestCase;
@@ -34,7 +35,7 @@ use Tests\TestCase;
  */
 class AppUpgradeTest extends TestCase
 {
-    use BuildsInfrastructure, PublishesRecipeVersions, RefreshDatabase;
+    use BuildsInfrastructure, OffersApps, PublishesRecipeVersions, RefreshDatabase;
 
     private FakeProxmoxCluster $proxmox;
 
@@ -51,6 +52,7 @@ class AppUpgradeTest extends TestCase
         $this->server = app(ServerCreator::class)->create($this->order())->refresh();
         $this->admin = User::factory()->create();
         app(RecipeSynchronizer::class)->sync();
+        $this->offerApps();
     }
 
     private function installed(string $slug = 'wireguard'): AppInstallation
@@ -97,8 +99,8 @@ class AppUpgradeTest extends TestCase
 
         $this->assertNull($target(), 'Nothing newer yet.');
 
-        $this->publishVersion('wireguard', '1.4.0', from: '>=1.0.0 <1.3.0');
-        $this->assertNull($target(), 'The range leaves out 1.3.0.');
+        $this->publishVersion('wireguard', '1.4.0', from: '>=1.0.0 <1.3.1');
+        $this->assertNull($target(), 'The range leaves out 1.3.1.');
 
         $this->publishVersion('wireguard', '1.4.1', from: null);
         $this->assertNull($target(), 'No upgrade script.');
@@ -135,7 +137,7 @@ class AppUpgradeTest extends TestCase
         $this->assertSame(['/bin/bash', $app.'/run.sh', 'upgrade.sh', $run->guestDirectory()], array_slice(collect($this->proxmox->guestCommands)->last()['command'], 4));
 
         $log = AuditLog::query()->where('action', 'app.upgrade_requested')->sole();
-        $this->assertSame(['from' => '1.3.0', 'to' => '1.4.0'], array_intersect_key($log->properties ?? [], ['from' => 1, 'to' => 1]));
+        $this->assertSame(['from' => '1.3.1', 'to' => '1.4.0'], array_intersect_key($log->properties ?? [], ['from' => 1, 'to' => 1]));
     }
 
     public function test_a_finished_upgrade_moves_the_installation_to_the_new_version_and_merges_its_outputs()

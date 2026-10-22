@@ -10,12 +10,14 @@ use App\Enums\TaskStatus;
 use App\Models\Cluster;
 use App\Models\Server;
 use App\Models\ServerDrift;
+use App\Models\ServerMove;
 use App\Proxmox\Data\VmResource;
 
 /**
  * Compares a cluster's servers with the guests the sync just read from
- * Proxmox and records the differences (ADR 0005). It makes no API calls and
- * never repairs anything: admins decide.
+ * Proxmox and records the differences (ADR 0005), with what FirewallChecker
+ * found (docs/adr/0033). It makes no API calls and never repairs anything:
+ * admins decide.
  */
 final readonly class DriftDetector
 {
@@ -23,8 +25,9 @@ final readonly class DriftDetector
 
     /**
      * @param  list<VmResource>  $guests  every guest of the cluster, from /cluster/resources
+     * @param  FirewallCheck  $firewall  the VM firewalls looked at in this sync
      */
-    public function detect(Cluster $cluster, array $guests): void
+    public function detect(Cluster $cluster, array $guests, FirewallCheck $firewall = new FirewallCheck): void
     {
         $vms = [];
 
@@ -37,6 +40,7 @@ final readonly class DriftDetector
         $nodeNames = $cluster->nodes()->pluck('name', 'id');
         $findings = [];
         $skipped = [];
+        $present = [];
 
         $servers = Server::query()
             ->where('cluster_id', $cluster->id)
@@ -59,6 +63,8 @@ final readonly class DriftDetector
 
                 continue;
             }
+
+            $present[] = $server->id;
 
             if ($vm->node !== $node) {
                 $findings[] = [DriftType::NodeMismatch, $server->vmid, $server->id, ['node' => $node], ['node' => $vm->node]];
@@ -84,7 +90,11 @@ final readonly class DriftDetector
         }
 
         if ($cluster->resource_pool !== null) {
-            $known = Server::query()->where('cluster_id', $cluster->id)->where('status', '!=', ServerStatus::Terminated)->pluck('vmid')->all();
+            $known = [
+                ...Server::query()->where('cluster_id', $cluster->id)->where('status', '!=', ServerStatus::Terminated)->pluck('vmid')->all(),
+                // A server moving in (docs/adr/0037 §6).
+                ...ServerMove::heldVmids($cluster),
+            ];
 
             foreach ($vms as $vm) {
                 if ($vm->pool === $cluster->resource_pool && ! in_array($vm->vmid, $known, true)) {
@@ -93,14 +103,18 @@ final readonly class DriftDetector
             }
         }
 
-        $this->record($cluster, $findings, $skipped);
+        // Servers whose VM firewall was not looked at this time keep their firewall drift.
+        $firewallUnchecked = array_values(array_diff($present, $firewall->checkedServerIds));
+
+        $this->record($cluster, [...$findings, ...$firewall->findings], $skipped, $firewallUnchecked);
     }
 
     /**
      * @param  list<array{DriftType, int, int|null, array<string, mixed>|null, array<string, mixed>|null}>  $findings
      * @param  list<int>  $skippedServerIds
+     * @param  list<int>  $firewallUncheckedIds
      */
-    private function record(Cluster $cluster, array $findings, array $skippedServerIds): void
+    private function record(Cluster $cluster, array $findings, array $skippedServerIds, array $firewallUncheckedIds): void
     {
         $open = ServerDrift::query()
             ->where('cluster_id', $cluster->id)
@@ -128,6 +142,10 @@ final readonly class DriftDetector
         }
 
         foreach ($open as $key => $drift) {
+            if ($drift->type === DriftType::FirewallMismatch && in_array($drift->server_id, $firewallUncheckedIds, true)) {
+                continue;
+            }
+
             if (! isset($seen[$key]) && ! in_array($drift->server_id, $skippedServerIds, true)) {
                 $drift->resolve('gone');
             }

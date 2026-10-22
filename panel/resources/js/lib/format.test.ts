@@ -4,6 +4,7 @@ import {
     formatDateTime,
     formatMib,
     formatTraffic,
+    formatUsageValue,
     percentage,
 } from '@/lib/format';
 
@@ -19,6 +20,12 @@ describe('format', () => {
     it('formats traffic in decimal units with unlimited as ∞', () => {
         expect(formatTraffic(2 * 1000 ** 4)).toBe('2 TB');
         expect(formatTraffic(null)).toBe('∞');
+    });
+
+    it('formats quota and usage limit values in their units', () => {
+        expect(formatUsageValue('bytes', 101 * 1000 ** 3)).toBe('101 GB');
+        expect(formatUsageValue('percent', 95.5)).toBe('95.5%');
+        expect(formatUsageValue('Mbps', 800)).toBe('800 Mbps');
     });
 
     it('computes percentages', () => {

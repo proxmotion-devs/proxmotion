@@ -6,14 +6,27 @@ namespace App\Domain\Infrastructure;
 
 /**
  * Guesses the operating system of a Proxmox VM template from its name
- * (e.g. "ubuntu-2404-cloud", "debian-12", "alma9", "win2022"), so an OS
- * template can be added with one click. Administrators check the guess
- * before saving; nothing is stored without them.
+ * (e.g. "ubuntu-2404-cloud", "debian-12", "alma9", "win2022", "pardus-23"),
+ * so an OS template can be added with one click. Administrators check the
+ * guess before saving; nothing is stored without them. The guessed
+ * os-release ID is matched with the administrators' operating systems
+ * (docs/adr/0026).
  */
 final class TemplateNameGuess
 {
-    /** Name fragments in the order they are looked for, with their family. */
-    private const array FAMILIES = [
+    /**
+     * Name fragments in the order they are looked for (distributions built
+     * on another one first, longer names before their short forms), with
+     * the os-release ID they stand for.
+     */
+    private const array FRAGMENTS = [
+        'pardus' => 'pardus',
+        'linuxmint' => 'linuxmint',
+        'mint' => 'linuxmint',
+        'kali' => 'kali',
+        'oraclelinux' => 'ol',
+        'oracle' => 'ol',
+        'rhel' => 'rhel',
         'ubuntu' => 'ubuntu',
         'debian' => 'debian',
         'almalinux' => 'almalinux',
@@ -22,53 +35,43 @@ final class TemplateNameGuess
         'rocky' => 'rocky',
         'centos' => 'centos',
         'fedora' => 'fedora',
-        'opensuse' => 'opensuse',
-        'suse' => 'opensuse',
-        'archlinux' => 'archlinux',
-        'arch' => 'archlinux',
+        'tumbleweed' => 'opensuse-tumbleweed',
+        'opensuse' => 'opensuse-leap',
+        'suse' => 'opensuse-leap',
+        'archlinux' => 'arch',
+        'arch' => 'arch',
         'windows' => 'windows',
         'win' => 'windows',
     ];
 
-    private const array NAMES = [
-        'ubuntu' => 'Ubuntu',
-        'debian' => 'Debian',
-        'almalinux' => 'AlmaLinux',
-        'rocky' => 'Rocky Linux',
-        'centos' => 'CentOS Stream',
-        'fedora' => 'Fedora',
-        'opensuse' => 'openSUSE',
-        'archlinux' => 'Arch Linux',
-    ];
-
     /**
-     * @return array{name: string, family: string, version: string}
+     * @return array{name: string, distribution: string, version: string}
      */
     public static function fromName(?string $templateName): array
     {
         $raw = trim((string) $templateName);
         $lower = strtolower($raw);
 
-        foreach (self::FAMILIES as $fragment => $family) {
+        foreach (self::FRAGMENTS as $fragment => $distribution) {
             $position = strpos($lower, $fragment);
 
             if ($position === false) {
                 continue;
             }
 
-            $version = self::version($family, substr($lower, $position + strlen($fragment)));
+            $version = self::version($distribution, substr($lower, $position + strlen($fragment)));
 
-            return ['name' => self::displayName($family, $version), 'family' => $family, 'version' => $version];
+            return ['name' => self::displayName($distribution, $version), 'distribution' => $distribution, 'version' => $version];
         }
 
-        return ['name' => $raw, 'family' => 'other', 'version' => self::version('other', $lower)];
+        return ['name' => $raw, 'distribution' => '', 'version' => self::version('', $lower)];
     }
 
     /**
-     * The first number after the family: "2404" and "24-04" become "24.04"
+     * The first number after the name: "2404" and "24-04" become "24.04"
      * for Ubuntu, "12.7" stays, "9" stays.
      */
-    private static function version(string $family, string $rest): string
+    private static function version(string $distribution, string $rest): string
     {
         if (preg_match('/(\d{1,4})(?:[._-](\d{1,2})(?!\d))?/', $rest, $match) !== 1) {
             return '';
@@ -77,26 +80,26 @@ final class TemplateNameGuess
         $major = $match[1];
         $minor = $match[2] ?? null;
 
-        if ($family === 'ubuntu' && $minor === null && strlen($major) === 4) {
+        if ($distribution === 'ubuntu' && $minor === null && strlen($major) === 4) {
             return substr($major, 0, 2).'.'.substr($major, 2);
         }
 
-        if ($family === 'ubuntu' && $minor !== null) {
+        if ($distribution === 'ubuntu' && $minor !== null) {
             return $major.'.'.str_pad($minor, 2, '0', STR_PAD_LEFT);
         }
 
         return $minor === null ? $major : $major.'.'.$minor;
     }
 
-    private static function displayName(string $family, string $version): string
+    private static function displayName(string $distribution, string $version): string
     {
-        if ($family === 'windows') {
+        if ($distribution === 'windows') {
             $name = strlen($version) === 4 ? 'Windows Server' : 'Windows';
         } else {
-            $name = self::NAMES[$family];
+            $name = Distributions::name($distribution);
         }
 
-        if ($family === 'ubuntu' && preg_match('/^\d\d\.04$/', $version) === 1 && (int) $version % 2 === 0) {
+        if ($distribution === 'ubuntu' && preg_match('/^\d\d\.04$/', $version) === 1 && (int) $version % 2 === 0) {
             return "{$name} {$version} LTS";
         }
 

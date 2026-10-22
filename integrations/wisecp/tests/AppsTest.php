@@ -133,7 +133,7 @@ final class AppsTest extends ModuleTestCase
         $this->assertNotNull($tool);
         $this->assertSame('Apps', $tool['label']);
         $this->assertSame('page-loader', $tool['type']);
-        $this->assertSame(['list', 'install', 'retry', 'download', 'uninstall', 'upgrade', 'action'], $tool['capabilities']);
+        $this->assertSame(['list', 'install', 'retry', 'cancel', 'download', 'uninstall', 'upgrade', 'action'], $tool['capabilities']);
         $this->assertTrue($tool['supported']);
     }
 
@@ -236,6 +236,39 @@ final class AppsTest extends ModuleTestCase
 
         $this->assertSame('successful', $result['status']);
         $this->assertMatchesRegularExpression('/^wisecp-42-app-retry-/', $this->api->last('POST ' . self::SERVER . '/apps/installation-uuid/retry')['headers']['Idempotency-Key']);
+    }
+
+    public function test_a_running_installation_or_run_can_be_cancelled(): void
+    {
+        $this->serviceHas($this->server());
+        $this->api->on('POST ' . self::SERVER . '/apps/installation-uuid/cancel', 202, ['data' => self::installation(['status' => 'failed'])]);
+        $this->api->on('POST ' . self::SERVER . '/apps/installation-uuid/runs/run-uuid/cancel', 202, ['data' => self::appRun(['status' => 'failed'])]);
+
+        $this->assertSame('successful', $this->module()->tool_action('apps', 'cancel', ['installation' => 'installation-uuid'])['status']);
+        $this->assertSame('successful', $this->module()->tool_action('apps', 'cancel', ['installation' => 'installation-uuid', 'run' => 'run-uuid'])['status']);
+        $this->assertMatchesRegularExpression('/^wisecp-42-app-cancel-/', $this->api->last('POST ' . self::SERVER . '/apps/installation-uuid/cancel')['headers']['Idempotency-Key']);
+        $this->assertMatchesRegularExpression('/^wisecp-42-app-run-cancel-/', $this->api->last('POST ' . self::SERVER . '/apps/installation-uuid/runs/run-uuid/cancel')['headers']['Idempotency-Key']);
+
+        $html = $this->page([
+            'installations' => [[
+                'id' => 'installation-uuid',
+                'name' => 'WireGuard',
+                'status' => 'installing',
+                'status_label' => 'Installing',
+                'busy' => true,
+                'failed' => false,
+                'can_cancel' => true,
+                'outputs' => [],
+                'can_uninstall' => false,
+                'actions' => [],
+                'runs' => [['id' => 'run-uuid', 'label' => 'Add a client', 'status' => 'running', 'status_label' => 'Running', 'busy' => true, 'failed' => false, 'can_cancel' => true, 'error' => null, 'outputs' => []]],
+                'run_busy' => true,
+            ]],
+            'apps' => [],
+            'installing' => true,
+        ]);
+        $this->assertStringContainsString('onclick="pmxAppCancel(this)" data-installation="installation-uuid" data-confirm=', $html);
+        $this->assertStringContainsString('data-run="run-uuid"', $html);
     }
 
     public function test_a_file_output_is_fetched_when_downloaded_and_never_logged(): void

@@ -169,7 +169,7 @@ const topics = [
             <Heading
                 variant="small"
                 title="OS templates"
-                description="Servers are full clones of a Proxmox VM template. You build each template once, from the installer ISO of the operating system, in the Proxmox web interface."
+                description="Servers are clones of a Proxmox VM template: full copies, or linked clones when the OS template asks for them. You build each template once, from the installer ISO of the operating system, in the Proxmox web interface."
             />
 
             <TemplateGuide />
@@ -253,7 +253,7 @@ const topics = [
                     <li>
                         {{
                             $t(
-                                'Delete the old template. Existing servers are full clones and do not depend on it.',
+                                'Delete the old template. Full clones do not depend on it; while linked clones use it, Proxmox refuses to delete it, so keep it until they are reinstalled or terminated.',
                             )
                         }}
                     </li>
@@ -313,7 +313,7 @@ const topics = [
                     <li>
                         {{
                             $t(
-                                'New app: choose a slug and a name. The app starts as a draft made from a working skeleton.',
+                                'New app: choose a slug, a name and the platform (Linux or Windows). The app starts as a draft made from a working skeleton.',
                             )
                         }}
                     </li>
@@ -398,6 +398,13 @@ const topics = [
                             )
                         }}
                     </li>
+                    <li>
+                        {{
+                            $t(
+                                'Windows apps use PowerShell scripts (.ps1) run as SYSTEM: start with $ErrorActionPreference = Stop, load proxmotion.ps1 and use Pm-Input, Pm-Step, Pm-Output and Pm-Fail. When Windows needs a restart, call Pm-RequestRestart: the server restarts and the script runs again from the start.',
+                            )
+                        }}
+                    </li>
                 </ul>
             </HelpQuestion>
 
@@ -418,7 +425,7 @@ const topics = [
                 <p>
                     {{
                         $t(
-                            "The app is inactive, or the server's OS template family and version, its package resources or its network model do not fit what the app's Compatibility tab asks for.",
+                            "The app is inactive, or the server's operating system and version, its package resources or its network model do not fit what the app's Compatibility tab asks for.",
                         )
                     }}
                 </p>
@@ -471,6 +478,22 @@ const topics = [
                     $t('Open Billing systems')
                 }}</Link>
             </HelpQuestion>
+
+            <HelpQuestion
+                id="billing-hostnames"
+                title="Can servers be named automatically, e.g. ip-203-0-113-5.example.com?"
+            >
+                <p>
+                    {{
+                        $t(
+                            'Give the location a hostname template such as ip-{ip}.example.com. A server ordered there without a hostname (or a WHMCS or WISECP order without a valid domain) is named from its primary address, and that name becomes the PTR of its primary addresses. Your DNS should resolve these names too. Without a template a hostname is required, and the modules send vps followed by the service id.',
+                        )
+                    }}
+                </p>
+                <Link :href="locations()" class="self-start underline">{{
+                    $t('Open Locations')
+                }}</Link>
+            </HelpQuestion>
         </section>
 
         <!-- Troubleshooting -->
@@ -511,6 +534,53 @@ const topics = [
                     {{
                         $t(
                             'The drift report lists the differences. Nothing is changed automatically; decide there what to do.',
+                        )
+                    }}
+                </p>
+            </HelpQuestion>
+
+            <HelpQuestion
+                id="trouble-anti-spoofing"
+                title="Why does a cluster say anti-spoofing does not work?"
+            >
+                <p>
+                    {{
+                        $t(
+                            "Each server's VM firewall lets it use only its own addresses and MAC address and stops ARP replies for other addresses, router advertisements and DHCP server replies. Proxmox applies none of it while the datacenter firewall or its ebtables option is off, so the panel places no new servers on such a cluster.",
+                        )
+                    }}
+                </p>
+                <p>
+                    {{
+                        $t(
+                            'In Proxmox, open Datacenter → Firewall → Options and turn on Firewall and ebtables, then sync the cluster. Check the input policy first: with DROP, allow the API (8006) and SSH to the nodes, or you lock yourself out.',
+                        )
+                    }}
+                </p>
+                <p>
+                    {{
+                        $t(
+                            "Adopted servers and servers whose VM firewall was changed in Proxmox get Enable anti-spoofing on their page. On a shared IPv6 /64 a server can still claim a neighbour's IPv6 address through NDP; give each server a routed /64 to avoid it.",
+                        )
+                    }}
+                </p>
+            </HelpQuestion>
+
+            <HelpQuestion
+                id="trouble-isolation"
+                title="Why can two servers not reach each other?"
+            >
+                <p>
+                    {{
+                        $t(
+                            'Servers with addresses of the same IP pool cannot reach each other when Isolate servers from each other is turned on for the pool (off by default), also when they belong to one customer. Turn it off if they must, then press Enable anti-spoofing on each of its servers.',
+                        )
+                    }}
+                </p>
+                <p>
+                    {{
+                        $t(
+                            "No server can open connections to the Proxmox nodes of its location or to the location's protected networks. A node that is the servers' gateway therefore cannot serve them DNS or NTP.",
                         )
                     }}
                 </p>

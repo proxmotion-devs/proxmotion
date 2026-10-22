@@ -7,8 +7,36 @@ export type Location = LocationOption & {
     code: string;
     country_code: string | null;
     description: string | null;
+    /** Names servers ordered without a hostname (docs/adr/0031). */
+    hostname_template: string | null;
+    /** CIDRs its servers may not open connections to (docs/adr/0034). */
+    protected_networks: string[];
     clusters_count: number;
     ip_pools_count: number;
+};
+
+/** Panel settings (docs/adr/0038); saved ones override .env. */
+export type PanelSettings = {
+    cross_cluster_moves: boolean;
+    move_deadline_minutes: number;
+    move_bwlimit_kib: number | null;
+    min_vmid: number;
+    provisioning_deadline_minutes: number;
+    verify_dns_name: string | null;
+    protected_networks: string[];
+    drift_stopped_grace_minutes: number;
+    console_max_minutes: number;
+    console_idle_minutes: number;
+    docs_url: string | null;
+    traffic_reset_day: number;
+    traffic_counted: 'both' | 'out' | 'in';
+    traffic_action: 'none' | 'suspend';
+    usage_cpu_percent: number | null;
+    usage_memory_percent: number | null;
+    usage_disk_mb_s: number | null;
+    usage_network_mbps: number | null;
+    usage_window_minutes: number;
+    usage_action: 'none' | 'stop' | 'suspend';
 };
 
 export type Cluster = {
@@ -27,6 +55,12 @@ export type Cluster = {
     nodes_count: number;
     last_synced_at: string | null;
     last_sync_error: string | null;
+    /** Why anti-spoofing does not work on this cluster (an English key), or null. */
+    firewall_problem: string | null;
+    /** The token servers from other clusters are moved in with (docs/adr/0037 §5). */
+    incoming_token_id: string | null;
+    receives_moves: boolean;
+    tls_fingerprint: string | null;
 };
 
 export type Storage = {
@@ -61,6 +95,10 @@ export type Node = {
     memory_overcommit: number;
     disk_overcommit: number;
     max_servers: number | null;
+    /** Its address in the cluster, from the sync. */
+    address: string | null;
+    /** Where its API answers, set by an administrator (docs/adr/0037 §5). */
+    api_host: string | null;
     last_seen_at: string | null;
     storages: Storage[];
     bridges: Bridge[];
@@ -89,6 +127,7 @@ export type IpPool = {
     dns_provider: string | null;
     reverse_zone: string | null;
     rdns_require_forward: boolean;
+    isolate_guests: boolean;
     addresses_count?: number;
     reserved_count?: number;
     assigned_count?: number;
@@ -105,13 +144,20 @@ export type IpAddress = {
 export type OsTemplate = {
     uuid: string;
     name: string;
-    family: string;
+    /** The version of the administrators' operating systems it is of (docs/adr/0026). */
+    operating_system_version_id: number | null;
+    /** The system's slug and the version, copied from it. */
+    distribution: string;
     version: string;
     platform: OsPlatform;
     is_active: boolean;
+    /** How its servers are cloned (docs/adr/0027). */
+    clone_mode: CloneMode;
     sort_order: number;
     proxmox_template_ids: number[];
 };
+
+export type CloneMode = 'full' | 'linked';
 
 export type OsPlatform = 'linux' | 'windows';
 
@@ -125,13 +171,49 @@ export type GuestScriptEvent =
 export type GuestScriptSlot = {
     event: GuestScriptEvent;
     content: string | null;
+    /** Saved but not published: runs only in trials (docs/adr/0023). */
+    draft: string | null;
     default: string | null;
     inputs: string[];
     can_be_tried: boolean;
     critical: boolean;
 };
 
-export type Package = {
+/** One run of a guest script, as the Scripts page lists it. */
+export type GuestScriptRun = {
+    uuid: string;
+    server: string;
+    server_uuid: string;
+    source: 'default' | 'published' | 'draft';
+    trace: boolean;
+    /** An administrator's trial; otherwise an operation ran it. */
+    trial: boolean;
+    status: 'running' | 'succeeded' | 'failed';
+    exit_code: number | null;
+    message: string | null;
+    started_at: string | null;
+    finished_at: string | null;
+};
+
+export type GuestScriptRunDetail = GuestScriptRun & {
+    script: string;
+    inputs: Record<string, unknown>;
+    stdout: string | null;
+    stderr: string | null;
+    output_truncated: boolean;
+    /** False for password scripts, whose output is never kept. */
+    output_kept: boolean;
+};
+
+/** CPU and disk limits (docs/adr/0034); null is unlimited. */
+export type ResourceLimitValues = {
+    cpu_limit: number | null;
+    cpu_units: number | null;
+    disk_mb_s: number | null;
+    disk_iops: number | null;
+};
+
+export type Package = ResourceLimitValues & {
     uuid: string;
     name: string;
     cpu_cores: number;
@@ -148,6 +230,8 @@ export type Package = {
     sort_order: number;
     /** Empty: any node; otherwise the groups of the ordered location (docs/adr/0020). */
     placement_group_ids: number[];
+    /** New servers start with these rules and its default policy (docs/adr/0035 §3). */
+    firewall_ruleset: string | null;
 };
 
 export type Paginated<T> = {
@@ -187,9 +271,14 @@ export type TaskType =
     | 'change_resources'
     | 'guest_script'
     | 'change_primary_address'
+    | 'change_addresses'
+    | 'enable_anti_spoofing'
+    | 'apply_firewall'
     | 'change_hostname'
     | 'install_app'
     | 'app_run'
+    | 'verify'
+    | 'move'
     | PowerAction;
 
 export type PowerAction = 'start' | 'shutdown' | 'stop' | 'reboot';
@@ -202,6 +291,8 @@ export type Option<T extends string | number = string> = {
 export type ServerListItem = {
     uuid: string;
     hostname: string;
+    /** The Proxmox VM name (its address) when the hostname was generated (docs/adr/0031). */
+    vm_name: string | null;
     status: ServerStatus;
     vmid: number;
     billing_system: string | null;
@@ -211,6 +302,8 @@ export type ServerListItem = {
     location: string;
     package: string | null;
     addresses: string[];
+    /** An open firewall drift: its VM firewall does not stop spoofing (docs/adr/0033). */
+    unprotected: boolean;
 };
 
 export type Task = {
@@ -234,15 +327,17 @@ export type DriftType =
     | 'node_mismatch'
     | 'resource_mismatch'
     | 'power_mismatch'
-    | 'unmanaged_vm';
+    | 'unmanaged_vm'
+    | 'firewall_mismatch';
 
 /** A difference between the panel and Proxmox (ADR 0005). */
 export type Drift = {
     uuid: string;
     type: DriftType;
     vmid: number;
-    expected: Record<string, string | number | null> | null;
-    actual: Record<string, string | number | null> | null;
+    /** firewall_mismatch: `addresses` the IP set should hold; `problems`, `missing` and `extra` in `actual` (docs/adr/0033). */
+    expected: Record<string, string | number | string[] | null> | null;
+    actual: Record<string, string | number | string[] | null> | null;
     first_seen_at: string;
     last_seen_at: string;
     cluster: { uuid: string; name: string };
@@ -250,7 +345,7 @@ export type Drift = {
 };
 
 /** Resources as the ResourcesDialog edits them. */
-export type ResourceValues = {
+export type ResourceValues = ResourceLimitValues & {
     cpu_cores: number;
     memory_mib: number;
     disk_gib: number;
@@ -266,18 +361,176 @@ export type ResourceOptions = {
     current: ResourceValues & { package: string };
 };
 
+/** How far a server moves (docs/adr/0037). */
+export type ServerMoveKind = 'node' | 'cluster' | 'location';
+
+export type ServerMoveStatus = 'queued' | 'running' | 'succeeded' | 'failed';
+
+/** One move of a server, newest first. */
+export type ServerMove = {
+    uuid: string;
+    kind: ServerMoveKind;
+    status: ServerMoveStatus;
+    from: string;
+    to: string;
+    error: string | null;
+    /** Proxmox moved the VM but a later step failed: a new task can finish it. */
+    can_finish: boolean;
+    created_at: string | null;
+    finished_at: string | null;
+};
+
+/** A node a server can be moved to. */
+export type MoveNodeOption = Option & {
+    location: string;
+    location_name: string;
+    cluster: string;
+    online: boolean;
+    maintenance: boolean;
+    /** Why it cannot take the server (translated), or null. */
+    refusal: string | null;
+    storages: {
+        name: string;
+        shared: boolean;
+        use_for_servers: boolean;
+        free_mib: number;
+    }[];
+};
+
+/** What the "Move server" dialog offers (docs/adr/0037). */
+export type MoveOptions = {
+    /** Why the server cannot be moved now (translated), or null. */
+    refusal: string | null;
+    /** Moves to other clusters are turned on (Panel settings, docs/adr/0038). */
+    cross_cluster: boolean;
+    /** It has addresses the provider routes to its node. */
+    routed: boolean;
+    location: string;
+    cluster: string;
+    nodes: MoveNodeOption[];
+    placementGroups: (Option & { location: string; location_name: string })[];
+    ipv4Pools: (Option & { location: string; free: number })[];
+    moves: ServerMove[];
+};
+
+/** One address on the server page. */
+export type ServerAddress = {
+    address: string;
+    version: 4 | 6;
+    /** The primary address of its version (listed first). */
+    primary: boolean;
+    pool: { uuid: string; name: string };
+    ptr: string | null;
+    ptr_pending: boolean;
+};
+
+/** A pool addresses may be added from (same location, network model, bridge and VLAN; docs/adr/0028). */
+export type AddressPoolOption = Option & {
+    version: 4 | 6;
+    /** Free IPv4 addresses; null for IPv6 pools, which make new addresses on demand. */
+    free: number | null;
+    /** The first free IPv4 addresses, for choosing one. */
+    addresses: string[];
+};
+
 /** Choices for ReinstallDialog: OS templates of the server's cluster and the apps that can come with them. */
 export type ReinstallOptions = {
     osTemplates: Option[];
     apps: OrderedAppOption[];
 };
 
+/** A server over its traffic quota or a usage limit (docs/adr/0039). */
+export type UsageViolation = {
+    id: string;
+    kind: 'traffic' | 'cpu' | 'memory' | 'disk' | 'network';
+    /** English key. */
+    label: string;
+    /** Counted bytes (traffic), else the average over the window in `unit`. */
+    value: number;
+    threshold: number;
+    unit: 'bytes' | 'percent' | 'MB/s' | 'Mbps';
+    window_minutes: number | null;
+    period_start: string | null;
+    action: 'none' | 'stop' | 'suspend';
+    started_at: string | null;
+    acted_at: string | null;
+    resolved_at: string | null;
+};
+
+/** A server's traffic in the current period and its latest violations (docs/adr/0039). */
+export type ServerUsage = {
+    traffic: {
+        period_start: string;
+        period_end: string;
+        in_bytes: number;
+        out_bytes: number;
+        counted_bytes: number;
+        /** null: unlimited. */
+        quota_bytes: number | null;
+    };
+    violations: UsageViolation[];
+};
+
+/** The latest checks from inside a server (ServerVerifier, docs/adr/0032 §6). */
+export type ServerVerification = {
+    checked_at: string;
+    checks: {
+        /** addresses, gateway, dns, hostname or disk. */
+        key: string;
+        status: 'passed' | 'failed' | 'skipped';
+        params: Record<string, string>;
+        /** English key with :placeholders from params. */
+        detail: string | null;
+    }[];
+};
+
+/**
+ * Live figures of a server (LiveStats, docs/adr/0036). Times in ms since the
+ * epoch; network and disk in bytes per second, null without two samples.
+ */
+export type ServerStats = {
+    time: number;
+    status: string;
+    uptime: number | null;
+    cpu_percent: number | null;
+    cpus: number | null;
+    memory_bytes: number | null;
+    memory_total_bytes: number | null;
+    net_in: number | null;
+    net_out: number | null;
+    disk_read: number | null;
+    disk_write: number | null;
+};
+
+/** One minute of a server's last hour, or one live sample. */
+export type ServerStatsPoint = Pick<
+    ServerStats,
+    | 'time'
+    | 'cpu_percent'
+    | 'memory_bytes'
+    | 'net_in'
+    | 'net_out'
+    | 'disk_read'
+    | 'disk_write'
+>;
+
 /** What TaskList needs. */
 export type TaskProgress = {
     uuid: string;
     type: TaskType;
     status: TaskStatus;
-    steps: { key: string; status: string; message?: string | null }[];
+    steps: {
+        key: string;
+        status: string;
+        message?: string | null;
+        /** Missing on steps recorded before step times were kept. */
+        started_at?: string | null;
+        finished_at?: string | null;
+    }[];
+    /** Steps the task is expected to record, in order (TaskPlan); empty once it succeeded. */
+    planned_steps?: string[];
+    /** How long a running create or reinstall still takes, from earlier runs with its OS template. */
+    estimate?: { remaining_seconds: number; based_on: number } | null;
     error?: string | null;
     created_at: string | null;
     /** Stuck (queued, or running past its time limit): an administrator may end it. */
@@ -502,17 +755,18 @@ export type PlacementGroupOption = Option & {
 };
 
 /** A package offered on the create form; its values fill the resource fields. */
-export type PackageOption = Option & {
-    network_models: NetworkModel[];
-    placement_groups: string[];
-    cpu_cores: number;
-    memory_mib: number;
-    disk_gib: number;
-    ipv4_count: number;
-    ipv6_count: number;
-    port_speed_mbps: number | null;
-    traffic_gb: number | null;
-};
+export type PackageOption = Option &
+    ResourceLimitValues & {
+        network_models: NetworkModel[];
+        placement_groups: string[];
+        cpu_cores: number;
+        memory_mib: number;
+        disk_gib: number;
+        ipv4_count: number;
+        ipv6_count: number;
+        port_speed_mbps: number | null;
+        traffic_gb: number | null;
+    };
 
 /** A placement group (docs/adr/0020): nodes, and optionally storages, of one location. */
 export type PlacementGroup = {
@@ -544,4 +798,46 @@ export type NewServerResources = {
     ipv6_count: number;
     port_speed_mbps: number | '';
     traffic_gb: number | '';
+    cpu_limit: number | '';
+    cpu_units: number | '';
+    disk_mb_s: number | '';
+    disk_iops: number | '';
+};
+
+/** One inbound firewall rule (docs/adr/0035); null port, source or comment: none. */
+export type FirewallRuleValues = {
+    action: 'accept' | 'drop';
+    protocol: 'tcp' | 'udp' | 'icmp' | 'any';
+    port: string | null;
+    source: string | null;
+    comment: string | null;
+};
+
+/** A port an installed app opens while the server blocks by default. */
+export type AppFirewallRule = {
+    app: string;
+    protocol: 'tcp' | 'udp';
+    port: number;
+};
+
+/** A server's firewall on its page, with the rule sets that can be applied. */
+export type ServerFirewall = {
+    /** What happens to incoming traffic no rule matches. */
+    default_policy: 'accept' | 'drop';
+    rules: FirewallRuleValues[];
+    app_rules: AppFirewallRule[];
+    rulesets: Option[];
+};
+
+/** A firewall rule set (docs/adr/0035 §3). */
+export type FirewallRuleset = {
+    uuid: string;
+    name: string;
+    description: string | null;
+    default_policy: 'accept' | 'drop';
+    is_active: boolean;
+    rules: FirewallRuleValues[];
+    /** Whether its rules let SSH or RDP in. */
+    opens_remote_access: boolean;
+    packages_count: number;
 };

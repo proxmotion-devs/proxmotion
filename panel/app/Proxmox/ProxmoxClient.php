@@ -12,6 +12,7 @@ use App\Proxmox\Resources\AccessResource;
 use App\Proxmox\Resources\ClusterResource;
 use App\Proxmox\Resources\GuestAgentResource;
 use App\Proxmox\Resources\NodesResource;
+use App\Proxmox\Resources\PoolsResource;
 use App\Proxmox\Resources\QemuResource;
 use App\Proxmox\Resources\TasksResource;
 use GuzzleHttp\Handler\CurlHandler;
@@ -72,6 +73,11 @@ class ProxmoxClient
     public function access(): AccessResource
     {
         return new AccessResource($this);
+    }
+
+    public function pools(): PoolsResource
+    {
+        return new PoolsResource($this);
     }
 
     public function taskWaiter(): TaskWaiter

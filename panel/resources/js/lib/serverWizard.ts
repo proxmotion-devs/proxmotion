@@ -24,6 +24,10 @@ export const WIZARD_STEPS = [
             'ipv6_count',
             'port_speed_mbps',
             'traffic_gb',
+            'cpu_limit',
+            'cpu_units',
+            'disk_mb_s',
+            'disk_iops',
             'placement',
             'placement_group',
             'node',
@@ -208,4 +212,17 @@ export function groupFit(
                 0,
         ).length,
     };
+}
+
+/**
+ * Whether the chosen OS template is inactive: the server is then a test
+ * server without a billing system (docs/adr/0024 §8).
+ */
+export function makesTestServer(
+    osTemplates: { value: string; active: boolean }[],
+    chosen: string | null,
+): boolean {
+    return (
+        osTemplates.find((option) => option.value === chosen)?.active === false
+    );
 }

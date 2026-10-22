@@ -41,7 +41,8 @@ return [
             // The web server, queue workers and the scheduler write at the same time:
             // WAL lets readers and a writer work together, a writer waits up to 5 s
             // for the lock, and IMMEDIATE takes the write lock when a transaction
-            // starts (a DEFERRED one that later writes fails at once instead of waiting).
+            // starts (a DEFERRED one that later writes fails at once instead of waiting;
+            // on PHP 8.3 App\Support\Database\SqliteConnector applies the mode).
             'busy_timeout' => (int) env('DB_BUSY_TIMEOUT', 5000),
             'journal_mode' => env('DB_JOURNAL_MODE', 'wal'),
             'synchronous' => env('DB_SYNCHRONOUS', 'normal'),

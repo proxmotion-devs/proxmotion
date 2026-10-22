@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Controllers\Concerns;
 
 use App\Domain\Servers\ConsoleSessions;
+use App\Domain\Settings\PanelSettings;
 use App\Models\ApiToken;
 use App\Models\Server;
 use App\Models\User;
@@ -50,7 +51,7 @@ trait RendersConsole
             'server' => ['uuid' => $server->uuid, 'hostname' => $server->hostname],
             'console' => $console,
             'error' => $error,
-            'idleMinutes' => (int) config('proxmotion.console.idle_minutes'),
+            'idleMinutes' => (int) PanelSettings::get('console_idle_minutes'),
             'backUrl' => $backUrl,
         ]);
     }

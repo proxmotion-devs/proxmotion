@@ -31,12 +31,13 @@ use Illuminate\Support\Carbon;
  * @property int|null $dns_provider_id
  * @property string|null $reverse_zone e.g. 2.0.192.in-addr.arpa
  * @property bool $rdns_require_forward PTRs only for names that resolve to the address
+ * @property bool $isolate_guests servers with its addresses may not talk to each other directly (docs/adr/0034)
  * @property-read DnsProvider|null $dnsProvider
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  * @property-read Location $location
  */
-#[Fillable(['location_id', 'name', 'version', 'network_model', 'network', 'gateway', 'bridge', 'vlan_tag', 'nameservers', 'is_active', 'dns_provider_id', 'reverse_zone', 'rdns_require_forward'])]
+#[Fillable(['location_id', 'name', 'version', 'network_model', 'network', 'gateway', 'bridge', 'vlan_tag', 'nameservers', 'is_active', 'dns_provider_id', 'reverse_zone', 'rdns_require_forward', 'isolate_guests'])]
 class IpPool extends Model
 {
     /** @use HasFactory<IpPoolFactory> */
@@ -54,6 +55,7 @@ class IpPool extends Model
             'nameservers' => 'array',
             'is_active' => 'boolean',
             'rdns_require_forward' => 'boolean',
+            'isolate_guests' => 'boolean',
         ];
     }
 

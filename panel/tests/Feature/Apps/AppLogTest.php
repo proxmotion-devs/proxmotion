@@ -21,6 +21,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Testing\TestResponse;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\Concerns\BuildsInfrastructure;
+use Tests\Concerns\OffersApps;
 use Tests\Support\FakeProxmoxCluster;
 use Tests\TestCase;
 
@@ -31,7 +32,7 @@ use Tests\TestCase;
  */
 class AppLogTest extends TestCase
 {
-    use BuildsInfrastructure, RefreshDatabase;
+    use BuildsInfrastructure, OffersApps, RefreshDatabase;
 
     private FakeProxmoxCluster $proxmox;
 
@@ -48,6 +49,7 @@ class AppLogTest extends TestCase
         $this->server = app(ServerCreator::class)->create($this->order())->refresh();
         $this->admin = User::factory()->withTwoFactor()->create();
         app(RecipeSynchronizer::class)->sync();
+        $this->offerApps();
     }
 
     /**

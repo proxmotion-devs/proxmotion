@@ -9,13 +9,14 @@ client area. The module is a thin client of the Proxmotion billing API v1
 
 | WHMCS | Proxmotion |
 |---|---|
-| Create | Orders the server (package, location, OS, hostname, password, SSH key, configurable options). Installation runs in Proxmotion; the client area shows the progress. Running Create again for a service that has a server changes nothing. |
+| Create | Orders the server (package, location, OS, hostname, password, SSH key, configurable options). The hostname is the service's domain; without a valid one, a location with a hostname template in Proxmotion names the server (e.g. `ip-203-0-113-10.example.com`) and the service's domain follows, otherwise it is `vps<service id>`. Installation runs in Proxmotion; the client area shows the progress. Running Create again for a service that has a server changes nothing. |
 | Suspend / Unsuspend | Stops / starts the server (the WHMCS suspension reason is passed on) |
 | Terminate | Deletes the server and its disks; the addresses are released |
 | Change Password | Sets the service password as the root password (at least 12 characters) |
 | Change Package | Upgrades and downgrades: the new product's package and configurable options, with the same rules as ordering. CPU and memory take effect at the server's next restart (the client area says so) unless *Restart after upgrades* is on. The disk only grows. Additional IP addresses come from Proxmotion's pools; with fewer, the newest extra ones are released. |
-| Client area | Status, power state, IP addresses with reverse DNS, hostname change (the service domain follows), start / shut down / reboot / force stop, browser console, root password reset, reinstall |
-| Admin area | Server status and addresses on the service page, a link to the server in Proxmotion, power and password buttons |
+| Client area | Status, power state, IP addresses with reverse DNS, hostname change (the service domain follows), start / shut down / reboot / force stop, browser console, root password reset, reinstall, the month's traffic against the quota and why Proxmotion suspended the server |
+| Admin area | Server status (and why Proxmotion suspended it), addresses and the month's traffic on the service page, a link to the server in Proxmotion, power and password buttons |
+| Usage update | WHMCS's daily cron writes each service's traffic of the month and its quota into its usage statistics (see [Traffic](#traffic)) |
 
 The service password: when it has at least 12 characters, it becomes the root
 password. Otherwise Proxmotion generates one and the module stores it on the
@@ -113,6 +114,28 @@ to `lang/<WHMCS language name>.php` and translating it.
 The **console** opens in a new tab through a link that is valid for 60 seconds and
 works once; it opens only this server's console.
 
+### Traffic
+
+Proxmotion counts each server's traffic per month (from the *traffic reset day* of its
+*Panel settings*, incoming and outgoing together unless set otherwise; see ADR 0039 in the
+Proxmotion repository). The overview shows the month's traffic against the quota with a
+bar, what the server received and sent, and the day the count starts again. Units are
+decimal like the `traffic_gb` option: 1 GB is 10⁹ bytes.
+
+When Proxmotion suspended the server itself, the overview says why: over its traffic
+quota it is unsuspended automatically when the next month starts or when the quota is
+raised; over a usage limit (CPU, memory, disk or network) the customer is asked to contact
+support. A suspension by WHMCS is not explained again. Suspending such a service in WHMCS
+makes the suspension WHMCS's, so Proxmotion no longer lifts it.
+
+**Usage update:** `proxmotion_UsageUpdate` runs with WHMCS's daily cron when its usage
+statistics update is enabled in the automation settings, once per WHMCS server of this module. It reads every server of the billing system from
+`GET /servers` (all pages) and writes the counted traffic of the month to `bwusage` and the
+quota to `bwlimit` (MB, 1 MB = 10⁶ bytes; 0 = no limit) of the service whose id is the
+server's `external_id` and that belongs to that WHMCS server. Terminated servers, services of
+other WHMCS servers and disk usage are left alone. WHMCS can then show bandwidth usage and bill
+overages from these values. Not run in a real WHMCS yet.
+
 ### Apps
 
 Active servers show their installed apps and the apps that fit the server
@@ -142,6 +165,21 @@ uninstalled.
 The **reinstall** form can bring an app with the new system: it lists the apps that fit
 the server, that it may install and that need no setting without a default (they are
 installed with their defaults). Proxmotion checks the app again against the chosen OS.
+
+### Firewall
+
+Active servers show their **firewall** (Proxmotion docs/adr/0035): its inbound rules in
+order, which always apply, whether everything else is allowed or blocked, and the ports
+its apps open. The customer switches between allowing and blocking everything else
+(blocking asks to confirm), adds a rule (allow or block, TCP, UDP, ICMP or any, a port or range
+such as `1000-2000`, a source address or network, a comment), moves rules up and down,
+deletes them, and applies a **rule set** the administrators prepared in Proxmotion (in
+place of their rules or after them). Switched to blocking without a rule that allows
+anything, it lets SSH (Linux) or RDP (Windows) in. Every change reads the current rules from
+Proxmotion first and sends the whole list back with an `Idempotency-Key`; Proxmotion
+checks the rules and the module shows its message when one is wrong. Nothing is stored in
+WHMCS. Changes take a few seconds to reach the server; the console works even when the
+firewall locks the customer out.
 
 ### Paid apps
 

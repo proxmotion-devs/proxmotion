@@ -1,7 +1,7 @@
 format: 2
 slug: hestiacp
 name: HestiaCP
-version: 1.0.1
+version: 1.0.2
 category: control-panel
 description:
     en: The free Hestia Control Panel with nginx (optionally with Apache), PHP-FPM, MariaDB, mail, DNS and FTP. Needs a freshly installed server with a fully qualified hostname.
@@ -10,7 +10,7 @@ maintainers: [{ name: Proxmotion }]
 homepage: https://hestiacp.com/
 requires:
     platform: linux
-    os: [debian]
+    os: { families: [debian] }
     min_versions: { debian: '12', ubuntu: '22.04' }
     max_versions: { debian: '13', ubuntu: '26.04' }
 resources: { min_memory_mib: 1024, min_disk_mib: 10240, min_cores: 1 }
