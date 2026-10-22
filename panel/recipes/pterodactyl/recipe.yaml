@@ -1,7 +1,7 @@
 format: 2
 slug: pterodactyl
 name: Pterodactyl Panel
-version: 1.0.0
+version: 1.0.1
 category: control-panel
 description:
     en: The Pterodactyl 2.0 game server panel (open beta) with nginx, PHP-FPM, MariaDB and Redis. Game servers run on nodes with Wings, installed separately.

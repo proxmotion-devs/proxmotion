@@ -44,9 +44,11 @@ ptero_artisan() {
 }
 
 # ptero_php_version: the PHP version to use (the panel needs 8.3 or 8.4),
-# adding Ondřej Surý's repository when the distribution has neither.
+# adding Ondřej Surý's repository when the distribution has neither. The
+# repository serves Debian and Ubuntu alike; his ondrej/php PPA has no Ubuntu
+# 26.04 builds and is being merged into it.
 ptero_php_version() {
-    local version
+    local version keyring=/etc/apt/keyrings/sury-php.gpg
 
     for version in 8.3 8.4; do
         if apt-cache show --no-all-versions "php${version}-fpm" >/dev/null 2>&1; then
@@ -57,22 +59,20 @@ ptero_php_version() {
 
     # shellcheck source=/dev/null
     . /etc/os-release
-    if [ "$ID" = ubuntu ]; then
-        pm_apt_install software-properties-common gpg-agent >&2
-        LC_ALL=C.UTF-8 add-apt-repository -y ppa:ondrej/php >&2
+    # The PPA as recipe 1.0.0 added it: apt fails on it where it has no builds.
+    rm -f "/etc/apt/sources.list.d/ondrej-ubuntu-php-${VERSION_CODENAME}.list" \
+        "/etc/apt/sources.list.d/ondrej-ubuntu-php-${VERSION_CODENAME}.sources"
+
+    install -m 0755 -d /etc/apt/keyrings
+    curl -fsSL https://packages.sury.org/php/apt.gpg -o "$keyring.download"
+    if grep -q -- '-----BEGIN PGP' "$keyring.download"; then
+        gpg --dearmor --yes -o "$keyring" "$keyring.download"
+        rm -f "$keyring.download"
     else
-        local keyring=/etc/apt/keyrings/sury-php.gpg
-        install -m 0755 -d /etc/apt/keyrings
-        curl -fsSL https://packages.sury.org/php/apt.gpg -o "$keyring.download"
-        if grep -q -- '-----BEGIN PGP' "$keyring.download"; then
-            gpg --dearmor --yes -o "$keyring" "$keyring.download"
-            rm -f "$keyring.download"
-        else
-            mv "$keyring.download" "$keyring"
-        fi
-        chmod a+r "$keyring"
-        echo "deb [signed-by=${keyring}] https://packages.sury.org/php/ ${VERSION_CODENAME} main" >/etc/apt/sources.list.d/sury-php.list
+        mv "$keyring.download" "$keyring"
     fi
+    chmod a+r "$keyring"
+    echo "deb [signed-by=${keyring}] https://packages.sury.org/php/ ${VERSION_CODENAME} main" >/etc/apt/sources.list.d/sury-php.list
     pm_apt_update >&2
 
     apt-cache show --no-all-versions php8.3-fpm >/dev/null 2>&1 || pm_fail "PHP 8.3 is not available for this system."
