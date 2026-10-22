@@ -72,6 +72,7 @@ use App\Provisioning\TaskPlan;
 use App\Provisioning\TaskRunner;
 use App\Proxmox\Exceptions\ProxmoxException;
 use Illuminate\Container\Attributes\CurrentUser;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -301,7 +302,6 @@ class ServerController extends Controller
                     'can_fail' => $failer->canAbandon($task),
                 ];
             }),
-            'revealedPassword' => session('revealed_password'),
             // Outputs of one installed app, after Show details (AppController::outputs()).
             'revealedAppOutputs' => session('revealed_app_outputs'),
             // Asked from Proxmox after the page has loaded, so a slow cluster does not block it.
@@ -540,9 +540,13 @@ class ServerController extends Controller
         );
     }
 
-    public function revealPassword(Request $request, Server $server, #[CurrentUser] User $admin, ServerPasswords $passwords): RedirectResponse
+    /**
+     * Fetched by the page's Show button, so the password never becomes a page
+     * prop (kept in the browser's history state) and the page is not reloaded.
+     */
+    public function revealPassword(Request $request, Server $server, #[CurrentUser] User $admin, ServerPasswords $passwords): JsonResponse
     {
-        return back()->with('revealed_password', $passwords->reveal($server, $admin, $request->ip()));
+        return response()->json(['password' => $passwords->reveal($server, $admin, $request->ip())]);
     }
 
     public function reinstall(ReinstallRequest $request, Server $server, #[CurrentUser] User $admin, ServerReinstaller $reinstaller): RedirectResponse

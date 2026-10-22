@@ -1,5 +1,12 @@
 <script setup lang="ts">
-import { Head, Link, router, setLayoutProps, usePoll } from '@inertiajs/vue3';
+import {
+    Head,
+    Link,
+    router,
+    setLayoutProps,
+    useHttp,
+    usePoll,
+} from '@inertiajs/vue3';
 import { Eye, Monitor, Pause, Play, RotateCcw } from '@lucide/vue';
 import { trans } from 'laravel-vue-i18n';
 import { computed, ref, watch } from 'vue';
@@ -124,7 +131,6 @@ const props = withDefaults(
             created_at: string | null;
         };
         tasks: Task[];
-        revealedPassword: string | null;
         revealedAppOutputs: RevealedAppOutputs | null;
         reinstallOptions: ReinstallOptions;
         resourceOptions: ResourceOptions;
@@ -208,13 +214,36 @@ const powerAction = (action: PowerAction) =>
 const post = (action: ReturnType<typeof suspend>) =>
     router.visit(action, { preserveScroll: true });
 
-// Only the password changes, so the page does not ask Proxmox for the power
-// state and the guest agent again.
-const revealPassword = () =>
-    router.visit(password(props.server.uuid), {
-        preserveScroll: true,
-        only: ['revealedPassword'],
-    });
+// Fetched as JSON and kept only here: no page visit, and the password never
+// becomes a page prop that Inertia keeps in the browser's history state.
+const passwordRequest = useHttp();
+const revealedPassword = ref<string | null>(null);
+const passwordFailed = ref(false);
+
+const revealPassword = async () => {
+    passwordFailed.value = false;
+
+    try {
+        const response = (await passwordRequest.submit(
+            password(props.server.uuid),
+        )) as { password: string | null };
+        revealedPassword.value = response.password;
+    } catch {
+        passwordFailed.value = true;
+    }
+};
+
+// A password reset, reinstall or rebuild sets a new password: the one shown is
+// hidden again whenever such a task starts or finishes.
+const passwordTask = computed(() => {
+    const task = props.tasks.find((candidate) =>
+        ['reset_password', 'reinstall', 'create'].includes(candidate.type),
+    );
+
+    return task ? `${task.uuid}:${task.status}` : null;
+});
+
+watch(passwordTask, () => (revealedPassword.value = null));
 
 const modelLabel =
     NETWORK_MODELS.find((model) => model.value === props.server.network_model)
@@ -514,15 +543,27 @@ const resetAfterTrial = () => {
                             >
                                 {{ revealedPassword }}
                             </dd>
-                            <dd v-else-if="server.has_password">
+                            <dd
+                                v-else-if="server.has_password"
+                                class="flex flex-col items-start gap-1"
+                            >
                                 <Button
                                     variant="outline"
                                     size="sm"
+                                    :disabled="passwordRequest.processing"
+                                    data-test="reveal-password"
                                     @click="revealPassword"
                                 >
                                     <Eye class="h-4 w-4" />
                                     {{ $t('Show') }}
                                 </Button>
+                                <span
+                                    v-if="passwordFailed"
+                                    class="text-xs text-destructive"
+                                    >{{
+                                        $t('The password could not be shown.')
+                                    }}</span
+                                >
                             </dd>
                             <dd v-else>—</dd>
                         </div>

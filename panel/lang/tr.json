@@ -1692,6 +1692,7 @@
     "Reads /etc/os-release of a running server built from this template through its guest agent. Nothing is saved until you save the template.": "Bu şablondan kurulmuş çalışır durumdaki bir sunucunun /etc/os-release dosyasını guest agent üzerinden okur. Şablonu kaydedene kadar hiçbir şey kaydedilmez.",
     "Template": "Şablon",
     "The server could not be checked.": "Sunucu karşılaştırılamadı.",
+    "The password could not be shown.": "Parola gösterilemedi.",
     "Windows has no /etc/os-release.": "Windows'ta /etc/os-release yoktur.",
     "test server": "test sunucusu",
     "Create a server from this template": "Bu şablondan bir sunucu oluştur",
