@@ -15,6 +15,13 @@
             <div class="alert alert-warning">{$pmx.lang.reboot_required|escape}</div>
         {/if}
 
+        {if $server.suspension}
+            <div class="alert alert-danger">
+                {$server.suspension.message|escape}
+                {if $server.suspension.reason}<br><small>{$server.suspension.reason|escape}</small>{/if}
+            </div>
+        {/if}
+
         <div class="row">
             <div class="col-sm-6">
                 <table class="table table-condensed">
@@ -61,6 +68,21 @@
                         <th>{$pmx.lang.resources|escape}</th>
                         <td>{$server.cpu|escape} · {$server.memory|escape} · {$server.disk|escape}</td>
                     </tr>
+                    {if $server.traffic}
+                        <tr>
+                            <th>{$pmx.lang.traffic|escape}</th>
+                            <td>
+                                {$server.traffic.summary|escape}
+                                {if $server.traffic.quota}
+                                    <div class="progress" style="margin: 5px 0;">
+                                        <div class="progress-bar {if $server.traffic.over}progress-bar-danger{elseif $server.traffic.percent >= 80}progress-bar-warning{else}progress-bar-success{/if}" role="progressbar" aria-valuenow="{$server.traffic.percent}" aria-valuemin="0" aria-valuemax="100" style="width: {$server.traffic.percent}%;"></div>
+                                    </div>
+                                {/if}
+                                {if $server.traffic.over}<div class="text-danger">{$pmx.lang.traffic_over|escape}</div>{/if}
+                                <small class="text-muted">{$server.traffic.details|escape}</small>
+                            </td>
+                        </tr>
+                    {/if}
                 </table>
             </div>
 

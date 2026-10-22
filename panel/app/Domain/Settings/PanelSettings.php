@@ -34,6 +34,15 @@ final class PanelSettings
         'console_max_minutes' => 'console.max_minutes',
         'console_idle_minutes' => 'console.idle_minutes',
         'docs_url' => 'docs_url',
+        'traffic_reset_day' => 'usage.traffic_reset_day',
+        'traffic_counted' => 'usage.traffic_counted',
+        'traffic_action' => 'usage.traffic_action',
+        'usage_cpu_percent' => 'usage.cpu_percent',
+        'usage_memory_percent' => 'usage.memory_percent',
+        'usage_disk_mb_s' => 'usage.disk_mb_s',
+        'usage_network_mbps' => 'usage.network_mbps',
+        'usage_window_minutes' => 'usage.window_minutes',
+        'usage_action' => 'usage.action',
     ];
 
     private const string CACHE_KEY = 'panel-settings';

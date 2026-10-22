@@ -251,7 +251,13 @@ paths:
     post:
       tags: [Servers]
       summary: Suspend an active server
-      description: 'Scope: `servers:write`. Shuts the VM down and keeps it stopped.'
+      description: |
+        Scope: `servers:write`. Shuts the VM down and keeps it stopped.
+
+        A server Proxmotion suspended itself over its traffic quota or a usage limit
+        (`suspension_cause` set, docs/adr/0039) answers `200` with the server instead: no task runs,
+        and the suspension becomes the billing system's (`suspension_cause` null, `reason` stored when
+        given), so Proxmotion never unsuspends it by itself.
       operationId: suspendServer
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
@@ -263,6 +269,14 @@ paths:
               properties:
                 reason: { type: [string, 'null'], maxLength: 255, description: Shown to administrators }
       responses:
+        '200':
+          description: The server was already suspended by Proxmotion; the suspension is now the billing system's.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/Server' }
         '202': { $ref: '#/components/responses/TaskAccepted' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
@@ -1382,7 +1396,7 @@ components:
             traffic_bytes: { type: integer, minimum: 1 }
     Server:
       type: object
-      required: [id, external_id, external_client_id, hostname, status, suspension_reason, reboot_required, network_model, package, location, os_template, resources, addresses, root_password_available, created_at, provisioned_at, terminated_at]
+      required: [id, external_id, external_client_id, hostname, status, suspension_reason, suspension_cause, reboot_required, network_model, package, location, os_template, resources, traffic, addresses, root_password_available, created_at, provisioned_at, terminated_at]
       properties:
         id: { type: string, format: uuid }
         external_id: { type: [string, 'null'] }
@@ -1390,6 +1404,13 @@ components:
         hostname: { type: string }
         status: { $ref: '#/components/schemas/ServerStatus' }
         suspension_reason: { type: [string, 'null'] }
+        suspension_cause:
+          type: [string, 'null']
+          enum: [traffic, usage, null]
+          description: |
+            Set when Proxmotion suspended the server itself (docs/adr/0039): `traffic` over its traffic
+            quota (unsuspended by Proxmotion once a new period starts or the quota is raised), `usage` over
+            a usage limit (stays suspended). Null for suspensions by the billing system or an administrator.
         reboot_required: { type: boolean, description: 'Changes wait for a restart through Proxmotion (power start or reboot): new CPU or memory, a new Windows computer name' }
         power_state:
           type: [string, 'null']
@@ -1412,7 +1433,17 @@ components:
             memory_mib: { type: integer }
             disk_mib: { type: integer }
             port_speed_mbps: { type: [integer, 'null'] }
-            traffic_bytes: { type: [integer, 'null'] }
+            traffic_bytes: { type: [integer, 'null'], description: Monthly traffic quota; null is unlimited }
+        traffic:
+          type: object
+          description: Traffic of the current period (docs/adr/0039), counted every 5 minutes.
+          required: [period_start, period_end, in_bytes, out_bytes, counted_bytes]
+          properties:
+            period_start: { type: string, format: date-time }
+            period_end: { type: string, format: date-time, description: The next period starts here }
+            in_bytes: { type: integer, description: Received by the server }
+            out_bytes: { type: integer, description: Sent by the server }
+            counted_bytes: { type: integer, description: 'What counts against the quota: in + out, out or in, as set in the panel' }
         addresses:
           type: array
           items:
@@ -1642,6 +1673,22 @@ components:
         created_at: { type: [string, 'null'], format: date-time }
         started_at: { type: [string, 'null'], format: date-time }
         finished_at: { type: [string, 'null'], format: date-time }
+    UsageViolation:
+      type: object
+      description: A server over its traffic quota or a usage limit (docs/adr/0039).
+      required: [id, kind, value, threshold, unit, window_minutes, period_start, action, started_at, acted_at, resolved_at]
+      properties:
+        id: { type: string, format: uuid }
+        kind: { type: string, enum: [traffic, cpu, memory, disk, network] }
+        value: { type: number, description: 'Counted bytes (traffic), else the average over the window in `unit`' }
+        threshold: { type: number, description: 'The quota or limit in `unit`' }
+        unit: { type: string, enum: [bytes, percent, MB/s, Mbps] }
+        window_minutes: { type: [integer, 'null'] }
+        period_start: { type: [string, 'null'], format: date, description: The traffic period of a traffic violation }
+        action: { type: string, enum: [none, stop, suspend], description: What Proxmotion does about it, as set in the panel }
+        started_at: { type: [string, 'null'], format: date-time }
+        acted_at: { type: [string, 'null'], format: date-time }
+        resolved_at: { type: [string, 'null'], format: date-time }
     WebhookEvent:
       type: object
       description: |
@@ -1652,11 +1699,11 @@ components:
         id: { type: string, format: uuid }
         event:
           type: string
-          enum: [ping, server.provisioned, server.suspended, server.unsuspended, server.reinstalled, server.terminated, server.moved, server.failed, task.succeeded, task.failed, app.installed, app.failed, app.uninstalled, app.uninstall_failed, app.upgraded, app.upgrade_failed, app.action_succeeded, app.action_failed]
+          enum: [ping, server.provisioned, server.suspended, server.unsuspended, server.reinstalled, server.terminated, server.moved, server.failed, server.usage_exceeded, task.succeeded, task.failed, app.installed, app.failed, app.uninstalled, app.uninstall_failed, app.upgraded, app.upgrade_failed, app.action_succeeded, app.action_failed]
         created_at: { type: string, format: date-time }
         data:
           type: object
-          description: '`server` and `task` for server and task events, `server` and `installation` (without outputs) for app events, plus `run` (without outputs) for uninstall, upgrade and action events, `billing_system` for `ping`.'
+          description: '`server` and `task` for server and task events, `server` and `violation` for `server.usage_exceeded`, `server` and `installation` (without outputs) for app events, plus `run` (without outputs) for uninstall, upgrade and action events, `billing_system` for `ping`.'
           properties:
             server:
               type: object
@@ -1668,6 +1715,7 @@ components:
                 hostname: { type: string }
                 status: { $ref: '#/components/schemas/ServerStatus' }
             task: { $ref: '#/components/schemas/Task' }
+            violation: { $ref: '#/components/schemas/UsageViolation' }
             installation: { $ref: '#/components/schemas/AppInstallation' }
             run: { $ref: '#/components/schemas/AppRun' }
             billing_system:
@@ -1691,6 +1739,9 @@ webhooks:
           (docs/adr/0037). After a move to another location the server has new addresses: read
           them with `GET /servers/{id}`.
         - `server.failed`: creating, reinstalling or terminating failed; the server is in `error`.
+        - `server.usage_exceeded`: the server went over its traffic quota or a usage limit
+          (docs/adr/0039), whatever Proxmotion does about it; `data` has the server and the
+          `violation`. A suspension that follows also sends `server.suspended`.
         - `task.succeeded`, `task.failed`: any task, including power actions, password resets,
           resource, address and hostname changes. A server event and its task event are separate
           deliveries with different ids.

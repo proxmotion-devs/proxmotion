@@ -8,6 +8,7 @@ use App\Domain\Apps\AppNotEligible;
 use App\Domain\Servers\HostnameChanger;
 use App\Domain\Servers\ServerPower;
 use App\Domain\Servers\ServerReinstaller;
+use App\Domain\Usage\TrafficPeriods;
 use App\Enums\PowerAction;
 use App\Enums\ServerStatus;
 use App\Enums\TaskType;
@@ -42,6 +43,18 @@ class ServerController extends ApiController
     public function __construct(private readonly TaskRunner $tasks) {}
 
     /**
+     * What a server answer needs, with the traffic of the current period only.
+     *
+     * @return array<int|string, mixed>
+     */
+    private static function with(): array
+    {
+        $period = TrafficPeriods::start()->toDateString();
+
+        return [...self::WITH, 'trafficPeriods' => fn ($query) => $query->whereDate('period_start', $period)];
+    }
+
+    /**
      * Filter by external_id (the service id) or external_client_id.
      */
     public function index(Request $request): AnonymousResourceCollection
@@ -54,7 +67,7 @@ class ServerController extends ApiController
 
         $servers = Server::query()
             ->where('billing_system_id', $this->token($request)->billing_system_id)
-            ->with(self::WITH)
+            ->with(self::with())
             ->when($filters['external_id'] ?? null, fn ($query, $id) => $query->where('external_id', $id))
             ->when($filters['external_client_id'] ?? null, fn ($query, $id) => $query->where('external_client_id', $id))
             ->when($filters['status'] ?? null, fn ($query, $status) => $query->where('status', $status))
@@ -86,7 +99,7 @@ class ServerController extends ApiController
 
     public function show(Server $server, ServerPower $power): ServerResource
     {
-        $server->load(self::WITH);
+        $server->load(self::with());
 
         return ServerResource::make($server)->withPowerState($server->status === ServerStatus::Active ? $power->state($server) : null);
     }
@@ -94,6 +107,15 @@ class ServerController extends ApiController
     public function suspend(Request $request, Server $server): JsonResponse
     {
         $reason = $request->validate(['reason' => ['nullable', 'string', 'max:255']])['reason'] ?? null;
+
+        // Suspended by the panel over its traffic quota or a usage limit: the suspension becomes
+        // the billing system's, so the panel never unsuspends it by itself (docs/adr/0039 §8).
+        if ($server->status === ServerStatus::Suspended && $server->suspension_cause !== null) {
+            $server->forceFill(['suspension_cause' => null, 'suspension_reason' => $reason ?? $server->suspension_reason])->save();
+            AuditLog::record('server.suspended', $this->token($request), $server, ['hostname' => $server->hostname, 'taken_over' => true], $request->ip());
+
+            return ServerResource::make($server->load(self::with()))->response();
+        }
 
         return $this->startTask($request, $server, TaskType::Suspend, [ServerStatus::Active], 'server.suspended', function () use ($server, $reason) {
             // Shown in the admin panel; cleared again when the server is unsuspended.

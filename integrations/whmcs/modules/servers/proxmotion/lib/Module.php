@@ -164,7 +164,9 @@ class Module
     {
         $server = $this->requireServer();
 
-        if ($server['status'] === 'suspended') {
+        // A server Proxmotion suspended over its traffic quota or a usage limit is suspended again,
+        // so that the suspension becomes WHMCS's and Proxmotion never lifts it (docs/adr/0039 §8).
+        if ($server['status'] === 'suspended' && empty($server['suspension_cause'])) {
             return 'success';
         }
 
@@ -645,6 +647,50 @@ class Module
     }
 
     /**
+     * UsageUpdate (WHMCS's daily cron, once per WHMCS server): the counted
+     * traffic of the current period (docs/adr/0039) and the quota of every
+     * server of the billing system, written to its WHMCS service in MB.
+     * Disk usage is not known to Proxmotion and left alone.
+     */
+    public function usageUpdate(UsageStore $store): string
+    {
+        $serverId = isset($this->params['serverid']) ? (int) $this->params['serverid'] : 0;
+
+        if ($serverId <= 0) {
+            return 'The WHMCS server of the usage update is not known.';
+        }
+
+        foreach ($this->client->allServers() as $server) {
+            $serviceId = isset($server['external_id']) ? (string) $server['external_id'] : '';
+
+            // A terminated server of a service may sit next to its live one; other billing systems' ids are not numbers.
+            if (($server['status'] ?? null) === 'terminated' || preg_match('/^[1-9][0-9]{0,18}$/', $serviceId) !== 1 || !isset($server['traffic']) || !is_array($server['traffic'])) {
+                continue;
+            }
+
+            $quota = isset($server['resources']['traffic_bytes']) ? (int) $server['resources']['traffic_bytes'] : 0;
+
+            $store->updateBandwidth(
+                $serverId,
+                (int) $serviceId,
+                self::megabytes(isset($server['traffic']['counted_bytes']) ? (int) $server['traffic']['counted_bytes'] : 0),
+                $quota > 0 ? max(1, self::megabytes($quota)) : 0
+            );
+        }
+
+        return 'success';
+    }
+
+    /**
+     * Bytes as whole MB for WHMCS's usage statistics, decimal like
+     * Proxmotion's traffic (a 100 GB quota is 100000 MB).
+     */
+    private static function megabytes(int $bytes): int
+    {
+        return (int) round(max(0, $bytes) / 1000000);
+    }
+
+    /**
      * The client area overview: server details and actions.
      *
      * @return array<string, mixed>
@@ -729,11 +775,24 @@ class Module
             $addresses[] = htmlspecialchars($address['address'] . ($address['ptr'] !== null ? ' (' . $address['ptr'] . ')' : ''));
         }
 
-        return [
+        $fields = [
             'Proxmotion server' => '<a href="' . htmlspecialchars($url) . '" target="_blank" rel="noopener">' . htmlspecialchars((string) $server['hostname']) . '</a>',
             'Server status' => htmlspecialchars((string) $server['status'] . (isset($server['power_state']) ? ' (' . $server['power_state'] . ')' : '')),
             'IP addresses' => $addresses === [] ? '—' : implode('<br>', $addresses),
         ];
+
+        // Suspended by Proxmotion over its traffic quota or a usage limit (docs/adr/0039).
+        if (!empty($server['suspension_cause'])) {
+            $fields['Server status'] .= '<br>' . htmlspecialchars('Suspended by Proxmotion (' . $server['suspension_cause'] . ')' . (isset($server['suspension_reason']) && is_string($server['suspension_reason']) ? ': ' . $server['suspension_reason'] : ''));
+        }
+
+        $traffic = $this->presentTraffic($server, Lang::load('english'));
+
+        if ($traffic !== null) {
+            $fields['Traffic this period'] = htmlspecialchars($traffic['summary'] . ' — ' . $traffic['details']);
+        }
+
+        return $fields;
     }
 
     /**
@@ -940,7 +999,97 @@ class Module
             'memory' => $this->lang->get('memory', ['size' => self::size(isset($resources['memory_mib']) ? (int) $resources['memory_mib'] : 0)]),
             'disk' => $this->lang->get('disk', ['size' => self::size(isset($resources['disk_mib']) ? (int) $resources['disk_mib'] : 0)]),
             'addresses' => $this->addressesOf($server),
+            'traffic' => $this->presentTraffic($server, $this->lang),
+            'suspension' => $status === 'suspended' ? $this->presentSuspension($server) : null,
         ];
+    }
+
+    /**
+     * The traffic of the current period against the quota (docs/adr/0039), or
+     * null when Proxmotion does not say (a panel before traffic accounting).
+     *
+     * @param array<string, mixed> $server
+     * @return array{used: string, quota: string|null, percent: int|null, over: bool, summary: string, details: string, resets: string}|null
+     */
+    private function presentTraffic(array $server, Lang $lang): ?array
+    {
+        if (!isset($server['traffic']) || !is_array($server['traffic'])) {
+            return null;
+        }
+
+        $traffic = $server['traffic'];
+        $used = isset($traffic['counted_bytes']) ? max(0, (int) $traffic['counted_bytes']) : 0;
+        $quota = isset($server['resources']['traffic_bytes']) ? (int) $server['resources']['traffic_bytes'] : 0;
+        $percent = $quota > 0 ? (int) min(100, floor($used * 100.0 / $quota)) : null;
+        $resets = self::dateOf(isset($traffic['period_end']) ? (string) $traffic['period_end'] : '');
+        $replace = [
+            'used' => self::bytes($used),
+            'quota' => $quota > 0 ? self::bytes($quota) : '',
+            'percent' => $percent !== null ? $percent : 0,
+            'received' => self::bytes(isset($traffic['in_bytes']) ? (int) $traffic['in_bytes'] : 0),
+            'sent' => self::bytes(isset($traffic['out_bytes']) ? (int) $traffic['out_bytes'] : 0),
+            'date' => $resets,
+        ];
+
+        return [
+            'used' => $replace['used'],
+            'quota' => $quota > 0 ? $replace['quota'] : null,
+            'percent' => $percent,
+            'over' => $quota > 0 && $used >= $quota,
+            'summary' => $lang->get($quota > 0 ? 'traffic_of_quota' : 'traffic_no_limit', $replace),
+            'details' => $lang->get('traffic_details', $replace),
+            'resets' => $resets,
+        ];
+    }
+
+    /**
+     * Why Proxmotion suspended the server itself (docs/adr/0039), or null
+     * when the suspension is WHMCS's or an administrator's.
+     *
+     * @param array<string, mixed> $server
+     * @return array{cause: string, message: string, reason: string|null}|null
+     */
+    private function presentSuspension(array $server): ?array
+    {
+        $cause = isset($server['suspension_cause']) && is_string($server['suspension_cause']) ? $server['suspension_cause'] : '';
+
+        if ($cause !== 'traffic' && $cause !== 'usage') {
+            return null;
+        }
+
+        return [
+            'cause' => $cause,
+            'message' => $this->lang->get('suspended_' . $cause, [
+                'date' => self::dateOf(isset($server['traffic']['period_end']) ? (string) $server['traffic']['period_end'] : ''),
+            ]),
+            // Proxmotion's English explanation, e.g. "Traffic quota exceeded: 101 GB of 100 GB."
+            'reason' => isset($server['suspension_reason']) && is_string($server['suspension_reason']) ? $server['suspension_reason'] : null,
+        ];
+    }
+
+    /**
+     * The date of an ISO 8601 time as Proxmotion sent it (its own time zone).
+     */
+    private static function dateOf(string $time): string
+    {
+        return preg_match('/^\d{4}-\d{2}-\d{2}/', $time, $match) === 1 ? $match[0] : '';
+    }
+
+    /**
+     * Traffic in bytes as "512 MB", "4.2 GB" or "1.5 TB", in decimal units
+     * like Proxmotion shows traffic (1 GB = 10⁹ bytes, as the traffic_gb option).
+     */
+    public static function bytes(int $bytes): string
+    {
+        $bytes = max(0, $bytes);
+
+        if ($bytes < 1000000000) {
+            return (int) round($bytes / 1000000) . ' MB';
+        }
+
+        $value = $bytes >= 1000000000000 ? $bytes / 1000000000000 : $bytes / 1000000000;
+
+        return rtrim(rtrim(number_format($value, 1, '.', ''), '0'), '.') . ($bytes >= 1000000000000 ? ' TB' : ' GB');
     }
 
     /**

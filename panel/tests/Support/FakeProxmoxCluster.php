@@ -818,6 +818,8 @@ class FakeProxmoxCluster
                 'maxcpu' => (int) ($vm['config']['cores'] ?? 2),
                 'maxmem' => (int) ($vm['config']['memory'] ?? 2048) * 1024 ** 2,
                 'maxdisk' => ($this->unknownDiskSize[$vmid] ?? false) ? 0 : (preg_match('/size=(\d+)M/', (string) ($vm['config']['scsi0'] ?? ''), $size) === 1 ? (int) $size[1] * 1024 ** 2 : 20 * 1024 ** 3),
+                // What the VM is doing (cpu, mem, netin, uptime, …), as for status/current (docs/adr/0039).
+                ...array_diff_key($this->stats[$vmid] ?? [], ['status' => true]),
             ];
         }
 

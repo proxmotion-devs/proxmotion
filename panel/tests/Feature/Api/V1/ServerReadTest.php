@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Api\V1;
 
+use App\Domain\Usage\TrafficPeriods;
 use App\Enums\ServerStatus;
 use App\Models\Server;
 
@@ -21,6 +22,7 @@ class ServerReadTest extends ApiTestCase
                 'hostname' => 'web1.example.com',
                 'status' => 'active',
                 'suspension_reason' => null,
+                'suspension_cause' => null,
                 'reboot_required' => false,
                 'power_state' => 'running',
                 'network_model' => 'bridged',
@@ -33,6 +35,13 @@ class ServerReadTest extends ApiTestCase
                     'disk_mib' => 40960,
                     'port_speed_mbps' => 1000,
                     'traffic_bytes' => $server->traffic_bytes,
+                ],
+                'traffic' => [
+                    'period_start' => TrafficPeriods::start()->toIso8601String(),
+                    'period_end' => TrafficPeriods::end(TrafficPeriods::start())->toIso8601String(),
+                    'in_bytes' => 0,
+                    'out_bytes' => 0,
+                    'counted_bytes' => 0,
                 ],
                 'addresses' => [[
                     'address' => $address->address,

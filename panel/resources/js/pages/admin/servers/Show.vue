@@ -34,6 +34,7 @@ import ResetPasswordButton from '@/components/servers/ResetPasswordButton.vue';
 import ServerChecks from '@/components/servers/ServerChecks.vue';
 import ServerStatsCards from '@/components/servers/ServerStatsCards.vue';
 import TaskList from '@/components/servers/TaskList.vue';
+import UsageSection from '@/components/servers/UsageSection.vue';
 import { Button } from '@/components/ui/button';
 import { useDateTime } from '@/composables/useDateTime';
 import { formatMib, formatTraffic } from '@/lib/format';
@@ -63,6 +64,7 @@ import {
     test as testServer,
     trialReset,
     unsuspend,
+    usageExempt,
     verify,
 } from '@/routes/admin/servers';
 import { finish as finishMove } from '@/routes/admin/servers/moves';
@@ -83,6 +85,7 @@ import type {
     ResourceOptions,
     ServerFirewall,
     ServerAddress,
+    ServerUsage,
     RevealedAppOutputs,
     ServerStatus,
     Task,
@@ -113,6 +116,10 @@ const props = withDefaults(
             reboot_required: boolean;
             /** Drafts of apps may be tried on it (docs/adr/0018 §7). */
             is_test: boolean;
+            suspension_reason: string | null;
+            /** Set when the panel suspended it itself (docs/adr/0039). */
+            suspension_cause: 'traffic' | 'usage' | null;
+            usage_exempt: boolean;
             billing_system: string | null;
             external_id: string | null;
             external_client_id: string | null;
@@ -141,6 +148,8 @@ const props = withDefaults(
         /** Pools addresses may be added from (docs/adr/0028). */
         addressPools: AddressPoolOption[];
         drifts: Drift[];
+        /** docs/adr/0039 */
+        usage: ServerUsage;
         /** Deferred: undefined until loaded, null when unknown. */
         power?: string | null;
         /** Deferred: whether the guest agent answers; undefined until loaded, null when unknown. */
@@ -429,6 +438,31 @@ const resetAfterTrial = () => {
                     'Some changes take effect when the server is restarted (Start or Reboot here).',
                 )
             }}
+        </p>
+
+        <p
+            v-if="server.status === 'suspended'"
+            class="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm"
+            data-test="suspension"
+        >
+            <template v-if="server.suspension_cause === 'traffic'">
+                {{
+                    $t(
+                        'Suspended by the panel over its traffic quota. It is unsuspended when the next period starts or its quota is raised.',
+                    )
+                }}
+            </template>
+            <template v-else-if="server.suspension_cause === 'usage'">
+                {{
+                    $t(
+                        'Suspended by the panel over a usage limit. It stays suspended until you or the billing system unsuspend it.',
+                    )
+                }}
+            </template>
+            <template v-else>{{ $t('Suspended.') }}</template>
+            <span v-if="server.suspension_reason" class="block font-medium">{{
+                server.suspension_reason
+            }}</span>
         </p>
 
         <p
@@ -778,6 +812,13 @@ const resetAfterTrial = () => {
                     <li v-if="server.addresses.length === 0">—</li>
                 </ul>
             </section>
+
+            <UsageSection
+                v-if="['active', 'suspended'].includes(server.status)"
+                :usage="usage"
+                :exempt="server.usage_exempt"
+                :exempt-action="usageExempt(server.uuid)"
+            />
 
             <ServerChecks
                 v-if="active || server.verification"

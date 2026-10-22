@@ -10,6 +10,7 @@
 use Proxmotion\Whmcs\ApiException;
 use Proxmotion\Whmcs\Module;
 use Proxmotion\Whmcs\ServerOrder;
+use Proxmotion\Whmcs\WhmcsUsageStore;
 
 if (!defined('WHMCS')) {
     die('This file cannot be accessed directly');
@@ -451,6 +452,19 @@ function proxmotion_Console(array $params): string
 
     header('Location: ' . $url, true, 302);
     exit;
+}
+
+/**
+ * WHMCS's daily usage update, once per WHMCS server of this module: the
+ * month's traffic and quota of each service (bwusage/bwlimit in MB, docs/adr/0039).
+ *
+ * @param array<string, mixed> $params
+ */
+function proxmotion_UsageUpdate(array $params): string
+{
+    return proxmotion_run($params, function (Module $module) {
+        return $module->usageUpdate(new WhmcsUsageStore());
+    });
 }
 
 /**

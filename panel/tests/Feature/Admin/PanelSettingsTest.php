@@ -26,6 +26,15 @@ class PanelSettingsTest extends AdminTestCase
             'console_max_minutes' => 45,
             'console_idle_minutes' => 10,
             'docs_url' => 'https://docs.example.com/proxmotion',
+            'traffic_reset_day' => 15,
+            'traffic_counted' => 'out',
+            'traffic_action' => 'suspend',
+            'usage_cpu_percent' => 95,
+            'usage_memory_percent' => null,
+            'usage_disk_mb_s' => 200,
+            'usage_network_mbps' => 800,
+            'usage_window_minutes' => 120,
+            'usage_action' => 'stop',
             ...$overrides,
         ];
     }
@@ -57,6 +66,11 @@ class PanelSettingsTest extends AdminTestCase
         $this->assertSame(51200, PanelSettings::get('move_bwlimit_kib'));
         $this->assertSame('example.org', PanelSettings::get('verify_dns_name'));
         $this->assertSame(['198.51.100.0/24', '203.0.113.7'], PanelSettings::get('protected_networks'));
+        $this->assertSame(15, PanelSettings::get('traffic_reset_day'));
+        $this->assertSame('suspend', PanelSettings::get('traffic_action'));
+        $this->assertSame(95, PanelSettings::get('usage_cpu_percent'));
+        $this->assertNull(PanelSettings::get('usage_memory_percent'));
+        $this->assertSame('stop', PanelSettings::get('usage_action'));
         $this->assertSame([], PanelSettings::unsaved());
 
         // .env no longer decides once the page was saved.
@@ -98,7 +112,11 @@ class PanelSettingsTest extends AdminTestCase
             'verify_dns_name' => 'not a name',
             'protected_networks' => "198.51.100.0/24\nnope",
             'docs_url' => 'http://docs.example.com',
-        ]))->assertSessionHasErrors(['min_vmid', 'move_deadline_minutes', 'verify_dns_name', 'protected_networks', 'docs_url']);
+            'traffic_reset_day' => 31,
+            'traffic_action' => 'stop',
+            'usage_cpu_percent' => 150,
+            'usage_window_minutes' => 5,
+        ]))->assertSessionHasErrors(['min_vmid', 'move_deadline_minutes', 'verify_dns_name', 'protected_networks', 'docs_url', 'traffic_reset_day', 'traffic_action', 'usage_cpu_percent', 'usage_window_minutes']);
 
         $this->assertSame(array_keys(PanelSettings::KEYS), PanelSettings::unsaved());
     }

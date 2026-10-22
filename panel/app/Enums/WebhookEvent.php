@@ -24,6 +24,9 @@ enum WebhookEvent: string
     /** Creating, reinstalling or terminating failed; the server is in the error state. */
     case ServerFailed = 'server.failed';
 
+    /** The server went over its traffic quota or a usage limit (docs/adr/0039), whatever the panel does about it. */
+    case ServerUsageExceeded = 'server.usage_exceeded';
+
     /** Any task, including power actions, password resets and resource changes. */
     case TaskSucceeded = 'task.succeeded';
     case TaskFailed = 'task.failed';
@@ -86,6 +89,7 @@ enum WebhookEvent: string
             self::ServerTerminated => 'Server terminated',
             self::ServerMoved => 'Server moved',
             self::ServerFailed => 'Server failed (create, reinstall or terminate)',
+            self::ServerUsageExceeded => 'Server over its traffic quota or a usage limit',
             self::TaskSucceeded => 'Any task succeeded',
             self::TaskFailed => 'Any task failed',
             self::AppInstalled => 'App installed',

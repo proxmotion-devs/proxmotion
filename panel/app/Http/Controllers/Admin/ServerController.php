@@ -21,6 +21,7 @@ use App\Domain\Servers\ResourceOptions;
 use App\Domain\Servers\ServerPasswords;
 use App\Domain\Servers\ServerPower;
 use App\Domain\Servers\ServerReinstaller;
+use App\Domain\Usage\TrafficPeriods;
 use App\Enums\AppInstallationStatus;
 use App\Enums\AppRunKind;
 use App\Enums\AppRunStatus;
@@ -57,6 +58,7 @@ use App\Models\Server;
 use App\Models\ServerDrift;
 use App\Models\Storage;
 use App\Models\Task;
+use App\Models\UsageViolation;
 use App\Models\User;
 use App\Provisioning\AddressChanger;
 use App\Provisioning\Exceptions\ProvisioningException;
@@ -258,6 +260,10 @@ class ServerController extends Controller
                 'reboot_required' => $server->reboot_required,
                 // Drafts of apps may be tried on it (docs/adr/0018 §7).
                 'is_test' => $server->is_test,
+                // Why it is suspended, and whether the panel did it itself (docs/adr/0039).
+                'suspension_reason' => $server->suspension_reason,
+                'suspension_cause' => $server->suspension_cause,
+                'usage_exempt' => $server->usage_exempt,
                 'billing_system' => $server->billingSystem?->name,
                 'external_id' => $server->external_id,
                 'external_client_id' => $server->external_client_id,
@@ -328,6 +334,12 @@ class ServerController extends Controller
                     'addresses' => $pool->version === IpVersion::V4 ? $ips->freeIpv4Addresses($pool, self::CHOOSABLE_ADDRESSES) : [],
                 ])
                 ->values(),
+            // Traffic of the current period and the latest violations (docs/adr/0039).
+            'usage' => fn () => [
+                'traffic' => TrafficPeriods::usage($server),
+                'violations' => $server->usageViolations()->latest('id')->limit(10)->get()
+                    ->map(fn (UsageViolation $violation) => [...$violation->toPayload(), 'label' => $violation->kind->label()]),
+            ],
             'drifts' => $server->drifts()->visible()->with(['cluster:id,uuid,name', 'server:id,uuid,hostname,status'])->get()
                 ->map(fn (ServerDrift $drift) => DriftController::present($drift)),
             'agent' => Inertia::defer(fn () => $server->status === ServerStatus::Active ? $agent->reachable($server) : null),
@@ -454,6 +466,24 @@ class ServerController extends Controller
     public function verify(Server $server, #[CurrentUser] User $admin): RedirectResponse
     {
         return $this->startTask($server, TaskType::Verify, $admin, [ServerStatus::Active], 'Checking the server…');
+    }
+
+    /**
+     * Exempt the server from traffic quota and usage limit actions, or end
+     * that (docs/adr/0039). Violations are still recorded.
+     */
+    public function usageExempt(Request $request, Server $server, #[CurrentUser] User $admin): RedirectResponse
+    {
+        $exempt = (bool) $request->validate(['usage_exempt' => ['required', 'boolean']])['usage_exempt'];
+
+        if ($server->usage_exempt !== $exempt) {
+            $server->forceFill(['usage_exempt' => $exempt])->save();
+            AuditLog::record('server.usage_exempt_changed', $admin, $server, ['hostname' => $server->hostname, 'usage_exempt' => $exempt], $request->ip());
+        }
+
+        $this->toast('success', $exempt ? 'Exempt from usage limits.' : 'No longer exempt from usage limits.');
+
+        return back();
     }
 
     /**

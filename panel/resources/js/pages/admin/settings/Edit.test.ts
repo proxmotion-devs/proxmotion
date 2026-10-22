@@ -47,6 +47,15 @@ const settings = (overrides: Partial<PanelSettings> = {}): PanelSettings => ({
     console_max_minutes: 60,
     console_idle_minutes: 15,
     docs_url: null,
+    traffic_reset_day: 1,
+    traffic_counted: 'both',
+    traffic_action: 'none',
+    usage_cpu_percent: null,
+    usage_memory_percent: null,
+    usage_disk_mb_s: null,
+    usage_network_mbps: null,
+    usage_window_minutes: 60,
+    usage_action: 'none',
     ...overrides,
 });
 
@@ -85,6 +94,12 @@ describe('Panel settings page', () => {
             move_bwlimit_kib: null,
             verify_dns_name: 'example.com',
             docs_url: '',
+            traffic_reset_day: 1,
+            traffic_action: 'none',
+            usage_cpu_percent: null,
+            usage_network_mbps: null,
+            usage_window_minutes: 60,
+            usage_action: 'none',
         });
     });
 

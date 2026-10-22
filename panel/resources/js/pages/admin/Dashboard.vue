@@ -11,7 +11,10 @@ import {
 import type { Component } from 'vue';
 import { computed } from 'vue';
 import GuideBox from '@/components/admin/GuideBox.vue';
+import StatusBadge from '@/components/admin/StatusBadge.vue';
 import Heading from '@/components/Heading.vue';
+import { useDateTime } from '@/composables/useDateTime';
+import { formatUsageValue } from '@/lib/format';
 import { dashboard } from '@/routes/admin';
 import { index as clusters } from '@/routes/admin/clusters';
 import { index as drifts } from '@/routes/admin/drifts';
@@ -19,6 +22,8 @@ import { index as ipPools } from '@/routes/admin/ip-pools';
 import { index as locations } from '@/routes/admin/locations';
 import { index as osTemplates } from '@/routes/admin/os-templates';
 import { index as packages } from '@/routes/admin/packages';
+import { show as showServer } from '@/routes/admin/servers';
+import type { UsageViolation } from '@/types/admin';
 import type { RouteDefinition } from '@/wayfinder';
 
 defineOptions({
@@ -38,7 +43,14 @@ const props = defineProps<{
         packages: number;
         drifts: number;
     };
+    /** Servers over their traffic quota or a usage limit right now (docs/adr/0039). */
+    usageViolations: (UsageViolation & {
+        server: { uuid: string; hostname: string };
+    })[];
+    usageViolationCount: number;
 }>();
+
+const { formatDateTime } = useDateTime();
 
 type Card = {
     title: string;
@@ -154,5 +166,69 @@ const cards = computed<Card[]>(() => [
                 </div>
             </Link>
         </div>
+
+        <section
+            v-if="usageViolations.length > 0"
+            class="flex flex-col gap-3 rounded-xl border border-amber-300 p-4 dark:border-amber-800"
+            data-test="usage-violations"
+        >
+            <Heading
+                variant="small"
+                title="Over their limits"
+                description="Servers over their traffic quota or a usage limit right now. What happens to them is set on Panel settings."
+            />
+            <ul class="grid gap-2 text-sm">
+                <li
+                    v-for="violation in usageViolations"
+                    :key="violation.id"
+                    class="flex flex-wrap items-center justify-between gap-2"
+                >
+                    <Link
+                        :href="showServer(violation.server.uuid)"
+                        class="font-medium hover:underline"
+                        >{{ violation.server.hostname }}</Link
+                    >
+                    <span class="text-muted-foreground">
+                        {{ $t(violation.label) }}:
+                        {{ formatUsageValue(violation.unit, violation.value) }}
+                        /
+                        {{
+                            formatUsageValue(
+                                violation.unit,
+                                violation.threshold,
+                            )
+                        }}
+                        · {{ formatDateTime(violation.started_at) }}
+                    </span>
+                    <StatusBadge
+                        v-if="
+                            violation.acted_at && violation.action === 'suspend'
+                        "
+                        tone="warning"
+                        label="Suspended"
+                    />
+                    <StatusBadge
+                        v-else-if="
+                            violation.acted_at && violation.action === 'stop'
+                        "
+                        tone="warning"
+                        label="Stopped"
+                    />
+                    <StatusBadge v-else tone="neutral" label="Recorded only" />
+                </li>
+            </ul>
+            <p
+                v-if="usageViolationCount > usageViolations.length"
+                class="text-xs text-muted-foreground"
+            >
+                {{
+                    $t('And :count more.', {
+                        count: String(
+                            usageViolationCount - usageViolations.length,
+                        ),
+                    })
+                }}
+            </p>
+        </section>
     </div>
 </template>

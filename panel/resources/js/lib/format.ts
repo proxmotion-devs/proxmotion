@@ -88,3 +88,18 @@ export function formatDateTime(
         timeZone,
     }).format(new Date(iso));
 }
+
+/** A traffic quota or usage limit value in its unit (docs/adr/0039), e.g. "95%" or "12 GB". */
+export function formatUsageValue(
+    unit: 'bytes' | 'percent' | 'MB/s' | 'Mbps',
+    value: number,
+): string {
+    switch (unit) {
+        case 'bytes':
+            return formatTraffic(value);
+        case 'percent':
+            return `${value}%`;
+        default:
+            return `${value} ${unit}`;
+    }
+}

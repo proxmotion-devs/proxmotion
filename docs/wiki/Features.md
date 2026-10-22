@@ -357,7 +357,7 @@ Units are consistent everywhere: disk and memory in **MiB**, traffic in **bytes*
 
 The billing API can also send **resource overrides** on top of a package (e.g. WHMCS configurable options for extra RAM or IPs), or no package at all with full resources and a network model.
 
-> Traffic quotas are stored but **not enforced yet** (Phase 6).
+> Traffic quotas are counted and enforced since [ADR 0039](../adr/0039-usage-limits.md): see *Traffic quotas and usage limits* in section 9.
 
 ---
 
@@ -441,6 +441,8 @@ Destructive operations (terminate, reinstall, node/cluster removal) ask for extr
 Moves to other clusters need *Allow moves to other clusters and locations* on *Panel settings*, an *incoming move token* on the target cluster (*Servers from other clusters* on the cluster page: a separate token with `Sys.Incoming`, used for nothing else) and the hostname typed to confirm. Proxmox deletes the old VM once its copy succeeded. Servers with addresses of a routed pool need a tick that the provider routes them to the new node. If a step after the copy fails, *Finish the move* runs the rest again. The server keeps its history of moves; billing systems get `server.moved`. Tested with a faked Proxmox only.
 
 **Live usage** ([ADR 0036](../adr/0036-live-server-stats.md)): the *Overview* tab of an active or suspended server starts with cards for CPU, memory, network (in and out, against the port speed) and disk I/O, each with the last hour as a small line chart, plus the uptime. With Reverb running, `servers:stats` pushes new figures every 10 seconds to every open page of that server; without it the page asks every 10 seconds. Only servers whose page is open are asked for. Admin panel only; not tested against a real Proxmox or Reverb yet.
+
+**Traffic quotas and usage limits** ([ADR 0039](../adr/0039-usage-limits.md)): `usage:collect` reads `/cluster/resources` of every cluster every 5 minutes and adds each server's traffic since the previous run to its month (from the *traffic reset day* of *Panel settings* on; counted in + out, out or in). A server over its quota gets a violation and, when *When a server is over its quota* is *Suspend the server*, is suspended with the reason; the panel unsuspends it again when the next month starts or its quota is raised, and an administrator or billing system that unsuspends it earlier lets it run for the rest of the month. Optional **usage limits** (CPU and memory in per cent, disk I/O in MB/s, network in Mbps) apply to the average over a time window (15–1440 minutes): over one, the server is only recorded, stopped (the customer may start it again) or suspended (until someone unsuspends it). The server page shows the month's traffic against the quota, the latest violations and why the panel suspended it, with *Exempt from usage limits* (recorded, never acted on); the dashboard lists servers over their limits. Billing systems get `server.usage_exceeded`, the usual `server.suspended` / `server.unsuspended`, and the month's traffic and `suspension_cause` on every server; a billing system that suspends a server the panel suspended takes the suspension over. Everything is off until set on *Panel settings*. Tested with a faked Proxmox only.
 
 ### 9.5 Windows guests
 
@@ -604,7 +606,7 @@ Every change is audited with a version diff. A custom recipe can never override 
 | **Apps** | `POST`/`GET /servers/{id}/apps`, `GET /servers/{id}/apps/{installation}`, `POST …/retry`, `POST …/cancel`, `DELETE …` (uninstall), `POST …/upgrade`, `POST …/actions/{key}`, `GET …/runs`, `GET …/runs/{run}`, `POST …/runs/{run}/cancel` |
 | **Entitlements** | `POST`/`GET /servers/{id}/app-entitlements`, `DELETE /servers/{id}/app-entitlements/{app}` |
 | **Tasks** | `GET /tasks/{id}` |
-| **Usage** | `GET /servers/{id}/usage` **(planned, Phase 6)** |
+| **Usage** | The current month's traffic and `suspension_cause` on every server ([ADR 0039](../adr/0039-usage-limits.md)); `GET /servers/{id}/usage` with history **(planned, Phase 6)** |
 
 Tasks and audit log entries record the API token that started them.
 
@@ -645,9 +647,10 @@ Both modules are thin clients of the API: business logic stays in the panel, and
 - **Client area**: power, console link, reinstall (optionally with an app), password reset, hostname, rDNS, **apps** (install with an input form, status and progress, cancel, retry, outputs and file downloads, uninstall, upgrade, actions, recent runs, *Buy* for paid apps).
 - **Paid apps**: module setting *Paid app addons* maps WHMCS addons to apps; `hooks.php` grants on `AddonActivation` and revokes on `AddonCancelled` / `AddonTerminated`.
 - **Admin**: services tab fields and custom buttons.
+- **Traffic** ([ADR 0039](../adr/0039-usage-limits.md)): `UsageUpdate` writes each service's traffic of the month and its quota into WHMCS's usage statistics (`bwusage`, `bwlimit`) with the daily cron; the client area shows the traffic against the quota and why the panel suspended a server over its quota or a usage limit.
 - **Webhook receiver** (`webhook.php`): verifies signature and timestamp, drops repeats, sets a pending service *Active* on `server.provisioned`, keeps *Active* ⇄ *Suspended* in step, notifies administrators on terminations and failures. The signing secret goes into the WHMCS server's **Access Hash**.
 - Writes carry an `Idempotency-Key` and are retried once after a lost connection.
-- **Not done**: `UsageUpdate` and graphs (Phase 6). **Not run in a real WHMCS yet.**
+- **Not done**: graphs (Phase 6). **Not run in a real WHMCS yet.**
 
 ### 14.2 WISECP server module
 
@@ -657,6 +660,7 @@ Both modules are thin clients of the API: business logic stays in the panel, and
 - **Product Module tab**: package, location, OS template, network model, restart after upgrades, resource values. Order answers set OS, location, hostname, SSH key, root password, app and app inputs; add-on values `extra_*` add resources and `paid_app` grants paid apps.
 - **Functions**: create, suspend, unsuspend, cancel (terminate), upgrade, change password.
 - **Client area tools**: power, root password reset, reinstall, VNC console, hostname, reverse DNS, and an added **Apps** tool (install, cancel, retry, outputs, uninstall, upgrade, actions, *Reinstall with an app*).
+- **Traffic**: the service page's bandwidth gauge and resource row show the month's traffic against the quota ([ADR 0039](../adr/0039-usage-limits.md)).
 - **Webhook receiver** through a public route of WISECP's API.
 - Module listing, server form, Test Connection and the product Module tab were checked in a real WISECP 5 beta; everything else is **not run in a real WISECP yet**.
 
@@ -767,9 +771,9 @@ See `panel/.env.example` for the full list (database, Redis, mail, …).
 | 1 | Infrastructure management | Done |
 | 2 | Provisioning engine, placement, adoption | Done |
 | 3 | Server operations, console, reinstall, rDNS, drift | Done |
-| 4 | Billing API, WHMCS and WISECP modules, webhooks | Done except WHMCS `UsageUpdate` |
+| 4 | Billing API, WHMCS and WISECP modules, webhooks | Done |
 | 5 | App Marketplace: install, order-time apps, paid apps, uninstall/upgrade/actions, logs, editor, trials, import/export, 16 recipes | Mostly done; catalogs and signing (ADR 0017) open |
-| 6 | Usage and quotas: traffic collection, graphs, throttle/suspend, `UsageUpdate` | Resource changes, guest scripts, primary address and hostname changes done early; traffic not started |
+| 6 | Usage and quotas: traffic collection, graphs, throttle/suspend, `UsageUpdate` | Resource changes, guest scripts, primary address and hostname changes done early; traffic collection, quotas and usage limits with suspend/stop, WHMCS `UsageUpdate` and traffic in the billing modules done (ADR 0039); graphs and throttling not started |
 | 7 | Snapshots and backups, Proxmox Backup Server | Planned |
 | 8 | Virtualizor import, native installer, production images, branding | Planned |
 | 9 | NAT VPS, LXC, ISO mount, rescue mode, customer firewall, moving servers (pulled forward, see 9.4), reseller system, more billing modules | Planned |

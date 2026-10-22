@@ -40,6 +40,9 @@ class Proxmotion extends ServerModule
     /** Reference of the paid app rights this module grants for add-ons (ADR 0019). */
     private const ADDON_REFERENCE = 'wisecp-addon';
 
+    /** Traffic is shown in decimal GB, as Proxmotion shows it and sells it (extra_traffic_gb). */
+    private const GB = 1000000000;
+
     private ApiClient $api;
 
     /** @var array<string, mixed>|null|false false: not looked up yet */
@@ -285,7 +288,9 @@ class Proxmotion extends ServerModule
     {
         $server = $this->requireServer();
 
-        if ($server['status'] !== 'suspended') {
+        // A server Proxmotion suspended over its traffic quota or a usage limit is suspended again,
+        // so that the suspension becomes WISECP's and Proxmotion never lifts it (docs/adr/0039 §8).
+        if ($server['status'] !== 'suspended' || ! empty($server['suspension_cause'])) {
             $reason = trim((string) ($this->service['suspended_reason'] ?? ''));
             $this->api->suspend((string) $server['id'], $reason !== '' ? $reason : null, $this->idempotencyKey('suspend'));
         }
@@ -438,8 +443,12 @@ class Proxmotion extends ServerModule
         $status = (string) $server['status'];
         $power = is_string($server['power_state'] ?? null) ? $server['power_state'] : 'unknown';
         $shown = $status === 'active' ? $power : $status;
+        $traffic = self::trafficItem($server);
 
         return [
+            'gauges' => [
+                'bandwidth' => $traffic,
+            ],
             'server_info' => [
                 'hostname' => ['value' => (string) $server['hostname']],
                 'ip_address' => ['value' => $ipv4[0]['address'] ?? ($addresses[0]['address'] ?? ''), 'copyable' => true],
@@ -459,9 +468,33 @@ class Proxmotion extends ServerModule
                 'cpu_cores' => ['value' => $this->text('cpu_cores', ['count' => (int) ($resources['cpu_cores'] ?? 0)])],
                 'ram' => ['value' => self::size((int) ($resources['memory_mib'] ?? 0))],
                 'disk_space' => ['value' => self::size((int) ($resources['disk_mib'] ?? 0))],
+                'bandwidth' => $traffic,
                 'ipv4' => ['value' => (string) count($ipv4)],
                 'ipv6' => ['value' => (string) (count($addresses) - count($ipv4))],
             ],
+        ];
+    }
+
+    /**
+     * The counted traffic of the current month against the quota (docs/adr/0039)
+     * as WISECP's bandwidth gauge and resource row take it: GB, "unlimited"
+     * without a quota, nothing known from a panel before traffic accounting.
+     *
+     * @param array<string, mixed> $server
+     * @return array{used: float|null, total: float|string|null, unit: string}
+     */
+    private static function trafficItem(array $server): array
+    {
+        if (! is_array($server['traffic'] ?? null)) {
+            return ['used' => null, 'total' => null, 'unit' => 'GB'];
+        }
+
+        $quota = (int) ($server['resources']['traffic_bytes'] ?? 0);
+
+        return [
+            'used' => round(max(0, (int) ($server['traffic']['counted_bytes'] ?? 0)) / self::GB, 2),
+            'total' => $quota > 0 ? round($quota / self::GB, 2) : 'unlimited',
+            'unit' => 'GB',
         ];
     }
 

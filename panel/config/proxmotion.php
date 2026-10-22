@@ -124,4 +124,31 @@ return [
         'idle_minutes' => (int) env('CONSOLE_IDLE_MINUTES', 15),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Traffic quotas and usage limits (docs/adr/0039)
+    |--------------------------------------------------------------------------
+    |
+    | Traffic is counted per month from traffic_reset_day (1–28) on;
+    | traffic_counted is both (in + out), out or in. A server over its quota
+    | is suspended when traffic_action is suspend (none: only recorded).
+    |
+    | A usage limit (CPU and memory in per cent, disk in MB/s, network in
+    | Mbps; empty: off) is exceeded when the server's average over
+    | window_minutes reaches it; then action runs: none, stop or suspend.
+    |
+    */
+
+    'usage' => [
+        'traffic_reset_day' => (int) env('PROXMOTION_TRAFFIC_RESET_DAY', 1),
+        'traffic_counted' => (string) env('PROXMOTION_TRAFFIC_COUNTED', 'both'),
+        'traffic_action' => (string) env('PROXMOTION_TRAFFIC_OVERRUN_ACTION', 'none'),
+        'cpu_percent' => env('PROXMOTION_USAGE_CPU_PERCENT') !== null && env('PROXMOTION_USAGE_CPU_PERCENT') !== '' ? (int) env('PROXMOTION_USAGE_CPU_PERCENT') : null,
+        'memory_percent' => env('PROXMOTION_USAGE_MEMORY_PERCENT') !== null && env('PROXMOTION_USAGE_MEMORY_PERCENT') !== '' ? (int) env('PROXMOTION_USAGE_MEMORY_PERCENT') : null,
+        'disk_mb_s' => env('PROXMOTION_USAGE_DISK_MB_S') !== null && env('PROXMOTION_USAGE_DISK_MB_S') !== '' ? (int) env('PROXMOTION_USAGE_DISK_MB_S') : null,
+        'network_mbps' => env('PROXMOTION_USAGE_NETWORK_MBPS') !== null && env('PROXMOTION_USAGE_NETWORK_MBPS') !== '' ? (int) env('PROXMOTION_USAGE_NETWORK_MBPS') : null,
+        'window_minutes' => (int) env('PROXMOTION_USAGE_WINDOW_MINUTES', 60),
+        'action' => (string) env('PROXMOTION_USAGE_ACTION', 'none'),
+    ],
+
 ];

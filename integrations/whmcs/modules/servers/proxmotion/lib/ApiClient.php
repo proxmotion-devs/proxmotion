@@ -9,6 +9,9 @@ namespace Proxmotion\Whmcs;
  */
 class ApiClient
 {
+    /** GET /servers answers 50 servers per page: this is 50,000 servers. */
+    const MAX_PAGES = 1000;
+
     /** @var string e.g. https://panel.example.com/api/v1 */
     private $baseUrl;
 
@@ -71,6 +74,26 @@ class ApiClient
     public function servers(): array
     {
         return $this->listOf($this->request('GET', '/servers'));
+    }
+
+    /**
+     * Every server of the billing system, page by page (at most MAX_PAGES pages).
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function allServers(): array
+    {
+        $servers = [];
+        $page = 1;
+
+        do {
+            $response = $this->request('GET', '/servers?' . http_build_query(['page' => $page]));
+            $servers = array_merge($servers, $this->listOf($response));
+            $last = isset($response['meta']['last_page']) ? (int) $response['meta']['last_page'] : $page;
+            $page++;
+        } while ($page <= $last && $page <= self::MAX_PAGES);
+
+        return $servers;
     }
 
     /**

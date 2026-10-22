@@ -254,6 +254,15 @@ class ProvisioningTest extends ModuleTestCase
         $this->assertSame(['GET /servers?external_id=42'], $this->api->sent());
     }
 
+    public function test_a_server_suspended_by_proxmotion_is_suspended_again_by_whmcs()
+    {
+        $this->serviceHas($this->server(['status' => 'suspended', 'suspension_cause' => 'traffic']));
+        $this->api->on('POST /servers/' . self::SERVER_ID . '/suspend', 200, ['data' => $this->server(['status' => 'suspended'])]);
+
+        $this->assertSame('success', $this->module(['suspendreason' => 'Overdue on Invoice #12'])->suspend());
+        $this->assertSame(['reason' => 'Overdue on Invoice #12'], $this->api->last('POST /servers/' . self::SERVER_ID . '/suspend')['body']);
+    }
+
     public function test_terminate()
     {
         $this->serviceHas($this->server());

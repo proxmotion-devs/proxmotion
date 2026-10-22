@@ -38,6 +38,16 @@ class PanelSettingsRequest extends FormRequest
             'console_max_minutes' => ['required', 'integer', 'min:1', 'max:1440'],
             'console_idle_minutes' => ['required', 'integer', 'min:1', 'max:1440'],
             'docs_url' => ['nullable', 'string', 'max:255', 'url:https'],
+            // Traffic quotas and usage limits (docs/adr/0039); a limit left empty is off.
+            'traffic_reset_day' => ['required', 'integer', 'min:1', 'max:28'],
+            'traffic_counted' => ['required', 'string', 'in:both,out,in'],
+            'traffic_action' => ['required', 'string', 'in:none,suspend'],
+            'usage_cpu_percent' => ['nullable', 'integer', 'min:1', 'max:100'],
+            'usage_memory_percent' => ['nullable', 'integer', 'min:1', 'max:100'],
+            'usage_disk_mb_s' => ['nullable', 'integer', 'min:1', 'max:100000'],
+            'usage_network_mbps' => ['nullable', 'integer', 'min:1', 'max:1000000'],
+            'usage_window_minutes' => ['required', 'integer', 'min:15', 'max:1440'],
+            'usage_action' => ['required', 'string', 'in:none,stop,suspend'],
         ];
     }
 
@@ -64,6 +74,15 @@ class PanelSettingsRequest extends FormRequest
             'console_max_minutes' => (int) $data['console_max_minutes'],
             'console_idle_minutes' => (int) $data['console_idle_minutes'],
             'docs_url' => $optionalString('docs_url'),
+            'traffic_reset_day' => (int) $data['traffic_reset_day'],
+            'traffic_counted' => (string) $data['traffic_counted'],
+            'traffic_action' => (string) $data['traffic_action'],
+            'usage_cpu_percent' => $optionalInt('usage_cpu_percent'),
+            'usage_memory_percent' => $optionalInt('usage_memory_percent'),
+            'usage_disk_mb_s' => $optionalInt('usage_disk_mb_s'),
+            'usage_network_mbps' => $optionalInt('usage_network_mbps'),
+            'usage_window_minutes' => (int) $data['usage_window_minutes'],
+            'usage_action' => (string) $data['usage_action'],
         ];
     }
 }

@@ -128,7 +128,7 @@ final readonly class PowerPipeline
 
         $task->completeStep('start');
         $this->guestScripts->waitForAgentStep($task, $server, self::UNSUSPEND_AGENT_SECONDS);
-        $server->forceFill(['status' => ServerStatus::Active, 'suspension_reason' => null])->save();
+        $server->forceFill(['status' => ServerStatus::Active, 'suspension_reason' => null, 'suspension_cause' => null])->save();
         $this->clearRebootRequired($server, $qemu);
     }
 }

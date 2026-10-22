@@ -1,7 +1,10 @@
 <script setup lang="ts">
 import { Head, useForm } from '@inertiajs/vue3';
 import { Save } from '@lucide/vue';
+import { trans } from 'laravel-vue-i18n';
+import { computed } from 'vue';
 import FormField from '@/components/admin/FormField.vue';
+import NativeSelect from '@/components/admin/NativeSelect.vue';
 import StatusBadge from '@/components/admin/StatusBadge.vue';
 import Heading from '@/components/Heading.vue';
 import { Button } from '@/components/ui/button';
@@ -42,13 +45,47 @@ const form = useForm({
     console_max_minutes: props.settings.console_max_minutes,
     console_idle_minutes: props.settings.console_idle_minutes,
     docs_url: props.settings.docs_url ?? '',
+    traffic_reset_day: props.settings.traffic_reset_day,
+    traffic_counted: props.settings.traffic_counted,
+    traffic_action: props.settings.traffic_action,
+    usage_cpu_percent: (props.settings.usage_cpu_percent ??
+        '') as OptionalNumber,
+    usage_memory_percent: (props.settings.usage_memory_percent ??
+        '') as OptionalNumber,
+    usage_disk_mb_s: (props.settings.usage_disk_mb_s ?? '') as OptionalNumber,
+    usage_network_mbps: (props.settings.usage_network_mbps ??
+        '') as OptionalNumber,
+    usage_window_minutes: props.settings.usage_window_minutes,
+    usage_action: props.settings.usage_action,
 });
+
+// Traffic quotas and usage limits (docs/adr/0039).
+const countedOptions = computed(() => [
+    { value: 'both', label: trans('Incoming and outgoing') },
+    { value: 'out', label: trans('Outgoing only') },
+    { value: 'in', label: trans('Incoming only') },
+]);
+
+const trafficActionOptions = computed(() => [
+    { value: 'none', label: trans('Only record it') },
+    { value: 'suspend', label: trans('Suspend the server') },
+]);
+
+const usageActionOptions = computed(() => [
+    { value: 'none', label: trans('Only record it') },
+    { value: 'stop', label: trans('Stop the server') },
+    { value: 'suspend', label: trans('Suspend the server') },
+]);
 
 const submit = () =>
     form
         .transform((data) => ({
             ...data,
             move_bwlimit_kib: optionalNumber(data.move_bwlimit_kib),
+            usage_cpu_percent: optionalNumber(data.usage_cpu_percent),
+            usage_memory_percent: optionalNumber(data.usage_memory_percent),
+            usage_disk_mb_s: optionalNumber(data.usage_disk_mb_s),
+            usage_network_mbps: optionalNumber(data.usage_network_mbps),
         }))
         .submit(update(), { preserveScroll: true });
 
@@ -209,6 +246,145 @@ const sectionClass = 'flex flex-col gap-4 rounded-xl border p-4';
                     placeholder="198.51.100.0/24"
                 />
             </FormField>
+        </section>
+
+        <section :class="sectionClass" data-test="settings-usage">
+            <Heading
+                variant="small"
+                title="Traffic quotas"
+                description="Traffic is counted every 5 minutes. A server's quota comes from its package or its own resources; empty means unlimited."
+            />
+            <div class="grid gap-4 sm:grid-cols-3">
+                <FormField
+                    label="Traffic resets on day"
+                    for="traffic_reset_day"
+                    :error="form.errors.traffic_reset_day"
+                    hint="Of every month, at midnight in the panel's time zone (1–28)."
+                >
+                    <Input
+                        id="traffic_reset_day"
+                        v-model.number="form.traffic_reset_day"
+                        type="number"
+                        min="1"
+                        max="28"
+                    />
+                </FormField>
+                <FormField
+                    label="Traffic that counts"
+                    for="traffic_counted"
+                    :error="form.errors.traffic_counted"
+                >
+                    <NativeSelect
+                        id="traffic_counted"
+                        v-model="form.traffic_counted"
+                        :options="countedOptions"
+                    />
+                </FormField>
+                <FormField
+                    label="When a server is over its quota"
+                    for="traffic_action"
+                    :error="form.errors.traffic_action"
+                    hint="A server suspended over its quota is unsuspended when the next month starts or its quota is raised."
+                >
+                    <NativeSelect
+                        id="traffic_action"
+                        v-model="form.traffic_action"
+                        :options="trafficActionOptions"
+                    />
+                </FormField>
+            </div>
+        </section>
+
+        <section :class="sectionClass" data-test="settings-limits">
+            <Heading
+                variant="small"
+                title="Usage limits"
+                description="A server whose average over the time window reaches a limit is over it. Leave a limit empty to turn it off."
+            />
+            <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                <FormField
+                    label="CPU (%)"
+                    for="usage_cpu_percent"
+                    :error="form.errors.usage_cpu_percent"
+                    hint="Of the server's own vCPUs."
+                >
+                    <Input
+                        id="usage_cpu_percent"
+                        v-model.number="form.usage_cpu_percent"
+                        type="number"
+                        min="1"
+                        max="100"
+                    />
+                </FormField>
+                <FormField
+                    label="Memory (%)"
+                    for="usage_memory_percent"
+                    :error="form.errors.usage_memory_percent"
+                    hint="Without the balloon driver Proxmox reports what QEMU holds, which stays near the server's memory."
+                >
+                    <Input
+                        id="usage_memory_percent"
+                        v-model.number="form.usage_memory_percent"
+                        type="number"
+                        min="1"
+                        max="100"
+                    />
+                </FormField>
+                <FormField
+                    label="Disk I/O (MB/s)"
+                    for="usage_disk_mb_s"
+                    :error="form.errors.usage_disk_mb_s"
+                    hint="Read and write together."
+                >
+                    <Input
+                        id="usage_disk_mb_s"
+                        v-model.number="form.usage_disk_mb_s"
+                        type="number"
+                        min="1"
+                    />
+                </FormField>
+                <FormField
+                    label="Network (Mbps)"
+                    for="usage_network_mbps"
+                    :error="form.errors.usage_network_mbps"
+                    hint="Incoming and outgoing together."
+                >
+                    <Input
+                        id="usage_network_mbps"
+                        v-model.number="form.usage_network_mbps"
+                        type="number"
+                        min="1"
+                    />
+                </FormField>
+            </div>
+            <div class="grid gap-4 sm:grid-cols-2">
+                <FormField
+                    label="Time window (minutes)"
+                    for="usage_window_minutes"
+                    :error="form.errors.usage_window_minutes"
+                    hint="How long the average must stay at or above a limit."
+                >
+                    <Input
+                        id="usage_window_minutes"
+                        v-model.number="form.usage_window_minutes"
+                        type="number"
+                        min="15"
+                        max="1440"
+                    />
+                </FormField>
+                <FormField
+                    label="When a server is over a limit"
+                    for="usage_action"
+                    :error="form.errors.usage_action"
+                    hint="A stopped server may be started again by its customer. A suspended one stays suspended until you or the billing system unsuspend it."
+                >
+                    <NativeSelect
+                        id="usage_action"
+                        v-model="form.usage_action"
+                        :options="usageActionOptions"
+                    />
+                </FormField>
+            </div>
         </section>
 
         <section :class="sectionClass" data-test="settings-other">

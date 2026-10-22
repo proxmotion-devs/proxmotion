@@ -18,7 +18,7 @@ Design: [ADR 0014](../../docs/adr/0014-wisecp-module.md).
 | Cancel (terminate) | Deletes the server and its disks; the addresses are released |
 | Upgrade / downgrade | The new product's package and resources, with the same rules as ordering. CPU and memory take effect at the server's next restart unless *Restart after upgrades* is on. The disk only grows. |
 | Change password | Sets the root password (12 to 128 characters) |
-| Service page | Hostname, IP address, OS, location, status and resources; tools: start, shut down, restart, force stop, reset root password, reinstall OS, VNC console, hostname change, reverse DNS, apps |
+| Service page | Hostname, IP address, OS, location, status and resources, the month's traffic against the quota; tools: start, shut down, restart, force stop, reset root password, reinstall OS, VNC console, hostname change, reverse DNS, apps |
 
 The root password: the customer's order answer or the service's password when it has
 12 to 128 characters, otherwise Proxmotion generates one and the module stores it on the
@@ -110,6 +110,18 @@ reinstalling or terminating the server, and when it is not active.
 
 The **VNC console** opens Proxmotion's console in a new tab through a link that is
 valid for 60 seconds and works once; it opens only this server's console.
+
+### Traffic
+
+Proxmotion counts each server's traffic per month (ADR 0039 in the Proxmotion repository).
+The service page shows the counted traffic of the current month against the server's quota
+in WISECP's *Bandwidth* gauge and resource row, in decimal GB like the `extra_traffic_gb`
+add-on (1 GB = 10⁹ bytes); without a quota the total is `unlimited`, and a panel from before
+traffic accounting leaves both empty. The figures are read from `GET /servers/{id}` each
+time the page opens. Not done: WISECP's metrics collection (`metrics_usage`), traffic
+graphs, and a note on the page when Proxmotion suspended the server over its quota or a
+usage limit (WISECP shows the suspension itself). Whether WISECP's templates show the
+gauge and the `unlimited` total as expected is unverified.
 
 ### Apps
 

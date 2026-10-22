@@ -28,6 +28,15 @@ export type PanelSettings = {
     console_max_minutes: number;
     console_idle_minutes: number;
     docs_url: string | null;
+    traffic_reset_day: number;
+    traffic_counted: 'both' | 'out' | 'in';
+    traffic_action: 'none' | 'suspend';
+    usage_cpu_percent: number | null;
+    usage_memory_percent: number | null;
+    usage_disk_mb_s: number | null;
+    usage_network_mbps: number | null;
+    usage_window_minutes: number;
+    usage_action: 'none' | 'stop' | 'suspend';
 };
 
 export type Cluster = {
@@ -428,6 +437,38 @@ export type AddressPoolOption = Option & {
 export type ReinstallOptions = {
     osTemplates: Option[];
     apps: OrderedAppOption[];
+};
+
+/** A server over its traffic quota or a usage limit (docs/adr/0039). */
+export type UsageViolation = {
+    id: string;
+    kind: 'traffic' | 'cpu' | 'memory' | 'disk' | 'network';
+    /** English key. */
+    label: string;
+    /** Counted bytes (traffic), else the average over the window in `unit`. */
+    value: number;
+    threshold: number;
+    unit: 'bytes' | 'percent' | 'MB/s' | 'Mbps';
+    window_minutes: number | null;
+    period_start: string | null;
+    action: 'none' | 'stop' | 'suspend';
+    started_at: string | null;
+    acted_at: string | null;
+    resolved_at: string | null;
+};
+
+/** A server's traffic in the current period and its latest violations (docs/adr/0039). */
+export type ServerUsage = {
+    traffic: {
+        period_start: string;
+        period_end: string;
+        in_bytes: number;
+        out_bytes: number;
+        counted_bytes: number;
+        /** null: unlimited. */
+        quota_bytes: number | null;
+    };
+    violations: UsageViolation[];
 };
 
 /** The latest checks from inside a server (ServerVerifier, docs/adr/0032 §6). */

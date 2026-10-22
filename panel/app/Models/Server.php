@@ -7,6 +7,7 @@ namespace App\Models;
 use App\Enums\NetworkModel;
 use App\Enums\ServerOrigin;
 use App\Enums\ServerStatus;
+use App\Enums\SuspensionCause;
 use App\Enums\TaskStatus;
 use App\Models\Concerns\HasPublicUuid;
 use Database\Factories\ServerFactory;
@@ -57,6 +58,7 @@ use Illuminate\Support\Carbon;
  * @property bool $reboot_required changed CPU or memory waits for the VM's next restart
  * @property string|null $ssh_keys
  * @property string|null $suspension_reason
+ * @property SuspensionCause|null $suspension_cause set when the panel suspended the server itself (docs/adr/0039)
  * @property int|null $billing_system_id the billing system that owns the server; only its API tokens see it
  * @property string|null $external_id billing service id, unique within the billing system
  * @property string|null $external_client_id billing customer id
@@ -64,6 +66,8 @@ use Illuminate\Support\Carbon;
  * @property array{checked_at: string, checks: list<array{key: string, status: string, params: array<string, string>, detail: string|null}>}|null $verification the latest checks from inside the server (ServerVerifier)
  * @property Carbon|null $firewall_checked_at when FirewallChecker last compared its VM firewall (docs/adr/0033)
  * @property string $firewall_policy what happens to incoming traffic no firewall rule matches: accept or drop (docs/adr/0035)
+ * @property array{time: int, uptime: int|null, net_in: int|null, net_out: int|null, disk_read: int|null, disk_write: int|null}|null $usage_counters Proxmox's counters at the previous collection (UsageCollector)
+ * @property bool $usage_exempt usage violations are recorded but never acted on (docs/adr/0039)
  * @property Carbon|null $terminated_at
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
@@ -107,6 +111,9 @@ class Server extends Model
             'provisioned_at' => 'datetime',
             'verification' => 'array',
             'firewall_checked_at' => 'datetime',
+            'suspension_cause' => SuspensionCause::class,
+            'usage_counters' => 'array',
+            'usage_exempt' => 'boolean',
             'terminated_at' => 'datetime',
         ];
     }
@@ -226,6 +233,22 @@ class Server extends Model
     public function drifts(): HasMany
     {
         return $this->hasMany(ServerDrift::class);
+    }
+
+    /**
+     * @return HasMany<TrafficPeriod, $this>
+     */
+    public function trafficPeriods(): HasMany
+    {
+        return $this->hasMany(TrafficPeriod::class);
+    }
+
+    /**
+     * @return HasMany<UsageViolation, $this>
+     */
+    public function usageViolations(): HasMany
+    {
+        return $this->hasMany(UsageViolation::class);
     }
 
     /**

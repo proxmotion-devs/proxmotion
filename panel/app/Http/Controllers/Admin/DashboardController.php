@@ -13,6 +13,7 @@ use App\Models\Node;
 use App\Models\OsTemplate;
 use App\Models\Package;
 use App\Models\ServerDrift;
+use App\Models\UsageViolation;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -33,6 +34,18 @@ class DashboardController extends Controller
                 'packages' => Package::query()->where('is_active', true)->count(),
                 'drifts' => ServerDrift::query()->visible()->count(),
             ],
+            // Servers over their traffic quota or a usage limit right now (docs/adr/0039).
+            'usageViolations' => UsageViolation::query()->open()
+                ->with('server:id,uuid,hostname')
+                ->latest('id')
+                ->limit(10)
+                ->get()
+                ->map(fn (UsageViolation $violation) => [
+                    ...$violation->toPayload(),
+                    'label' => $violation->kind->label(),
+                    'server' => ['uuid' => $violation->server->uuid, 'hostname' => $violation->server->hostname],
+                ]),
+            'usageViolationCount' => UsageViolation::query()->open()->count(),
         ]);
     }
 }

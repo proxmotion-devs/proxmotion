@@ -19,6 +19,7 @@ use App\Models\AppRun;
 use App\Models\BillingSystem;
 use App\Models\Server;
 use App\Models\Task;
+use App\Models\UsageViolation;
 use App\Models\WebhookDelivery;
 use App\Models\WebhookEndpoint;
 use Illuminate\Support\Str;
@@ -87,7 +88,7 @@ final class Webhooks
 
         $event = $installation->status === AppInstallationStatus::Installed ? WebhookEvent::AppInstalled : WebhookEvent::AppFailed;
 
-        $this->appEvent($installation->server, $event, fn () => [
+        $this->serverEvent($installation->server, $event, fn () => [
             'server' => self::server($installation->server),
             'installation' => (new AppInstallationResource($installation))->resolve(),
         ]);
@@ -111,7 +112,7 @@ final class Webhooks
         };
         $installation = $run->installation;
 
-        $this->appEvent($installation->server, $event, fn () => [
+        $this->serverEvent($installation->server, $event, fn () => [
             'server' => self::server($installation->server),
             'installation' => (new AppInstallationResource($installation))->resolve(),
             'run' => (new AppRunResource($run))->resolve(),
@@ -119,9 +120,23 @@ final class Webhooks
     }
 
     /**
+     * Tell the billing system that one of its servers went over its traffic
+     * quota or a usage limit (docs/adr/0039), whatever the panel does about it.
+     */
+    public function usageExceeded(UsageViolation $violation): void
+    {
+        $server = $violation->server;
+
+        $this->serverEvent($server, WebhookEvent::ServerUsageExceeded, fn () => [
+            'server' => self::server($server),
+            'violation' => $violation->toPayload(),
+        ]);
+    }
+
+    /**
      * @param  callable(): array<string, mixed>  $data
      */
-    private function appEvent(Server $server, WebhookEvent $event, callable $data): void
+    private function serverEvent(Server $server, WebhookEvent $event, callable $data): void
     {
         if ($server->billing_system_id === null) {
             return;
