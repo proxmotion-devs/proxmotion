@@ -118,26 +118,48 @@ final readonly class ServerFirewalls
 
     /**
      * After a reinstall onto the other platform: a server dropping by default
-     * whose only rule is the untouched SSH or RDP rule gets the other one.
+     * loses its untouched SSH or RDP rule of the old platform, which becomes
+     * the new platform's one unless another rule already opens that port. The
+     * server's other rules stay where they are.
      *
      * @return string|null a note when its rules may no longer let anyone in (English key)
      */
     public static function followPlatform(Server $server): ?string
     {
-        if (! $server->blocksByDefault()) {
+        $platform = $server->osTemplate?->platform;
+
+        if (! $server->blocksByDefault() || $platform === null) {
             return null;
         }
 
-        $port = $server->osTemplate?->platform === OsPlatform::Windows ? 3389 : 22;
-        $rules = $server->firewallRules()->get();
+        $port = $platform === OsPlatform::Windows ? 3389 : 22;
+        $rules = array_values($server->firewallRules()->get()->map(fn (ServerFirewallRule $rule) => $rule->toRule())->all());
+        $stale = fn (FirewallRule $rule) => $rule->isDefault && ! $rule->opens($port);
+        $opened = collect($rules)->contains(fn (FirewallRule $rule) => ! $stale($rule) && $rule->opens($port));
+        $changed = false;
+        $result = [];
 
-        if ($rules->contains(fn (ServerFirewallRule $rule) => $rule->toRule()->opens($port))) {
-            return null;
+        foreach ($rules as $rule) {
+            if (! $stale($rule)) {
+                $result[] = $rule;
+
+                continue;
+            }
+
+            // The new platform's rule takes the place of the old one.
+            if (! $opened) {
+                $result = [...$result, ...FirewallRule::defaultsFor($platform)];
+                $opened = true;
+            }
+
+            $changed = true;
         }
 
-        if ($rules->count() === 1 && $rules->first()?->is_default === true) {
-            self::store($server, 'drop', FirewallRule::defaultsFor($server->osTemplate?->platform));
+        if ($changed) {
+            self::store($server, 'drop', $result);
+        }
 
+        if ($opened) {
             return null;
         }
 
@@ -198,6 +220,10 @@ final readonly class ServerFirewalls
      */
     private static function store(Server $server, string $policy, array $rules): void
     {
+        // The forms and billing modules send the whole list back: a default rule sent unchanged stays one.
+        $defaults = array_values($server->firewallRules()->where('is_default', true)->get()
+            ->map(fn (ServerFirewallRule $rule) => $rule->toRule()->toArray())->all());
+
         $server->forceFill(['firewall_policy' => $policy])->save();
         $server->firewallRules()->delete();
 
@@ -207,7 +233,7 @@ final readonly class ServerFirewalls
                 'server_id' => $server->id,
                 'position' => $position,
                 ...$rule->toArray(),
-                'is_default' => $rule->isDefault,
+                'is_default' => $rule->isDefault || in_array($rule->toArray(), $defaults, true),
             ])->save();
         }
     }
