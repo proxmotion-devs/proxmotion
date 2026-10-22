@@ -271,6 +271,43 @@ class ServerFirewallTest extends TestCase
         $this->assertSame([true, false], $server->firewallRules()->pluck('is_default')->all());
     }
 
+    public function test_the_default_rule_follows_the_platform_while_the_firewall_accepts_by_default()
+    {
+        $server = $this->create();
+        $this->turnOn($server);
+
+        // Allowing by default again keeps the rules, the default one included.
+        $this->actingAs($this->admin)->put(route('admin.servers.firewall', $server), [
+            'default_policy' => 'accept',
+            'rules' => app(ServerFirewalls::class)->describe($server)['rules'],
+        ])->assertSessionHasNoErrors();
+
+        $task = $this->reinstallOntoWindows($server);
+
+        $this->assertSame('accept', $server->refresh()->firewall_policy);
+        $this->assertSame(['3389'], $server->firewallRules()->pluck('port')->all());
+        $this->assertNull(collect($task->steps)->firstWhere('key', 'firewall')['message'] ?? null);
+
+        // Blocking again lets RDP in, not SSH.
+        $this->actingAs($this->admin)->put(route('admin.servers.firewall', $server), [
+            'default_policy' => 'drop',
+            'rules' => app(ServerFirewalls::class)->describe($server)['rules'],
+        ])->assertSessionHasNoErrors();
+
+        $this->assertContains('Proxmotion rule: RDP', $this->ruleComments($server));
+        $this->assertNotContains('Proxmotion rule: SSH', $this->ruleComments($server));
+    }
+
+    public function test_a_reinstall_leaves_no_note_while_the_firewall_accepts_by_default()
+    {
+        $server = $this->create();
+
+        $task = $this->reinstallOntoWindows($server);
+
+        $this->assertSame([], $server->firewallRules()->pluck('port')->all());
+        $this->assertNull(collect($task->steps)->firstWhere('key', 'firewall')['message'] ?? null);
+    }
+
     public function test_a_default_rule_someone_changed_stays()
     {
         $server = $this->create();

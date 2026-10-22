@@ -117,10 +117,11 @@ final readonly class ServerFirewalls
     }
 
     /**
-     * After a reinstall onto the other platform: a server dropping by default
-     * loses its untouched SSH or RDP rule of the old platform, which becomes
-     * the new platform's one unless another rule already opens that port. The
-     * server's other rules stay where they are.
+     * After a reinstall onto the other platform: the server loses its
+     * untouched SSH or RDP rule of the old platform, which becomes the new
+     * platform's one unless another rule already opens that port. The
+     * server's other rules stay where they are. Also while it accepts by
+     * default, so blocking later does not keep only the old platform's rule.
      *
      * @return string|null a note when its rules may no longer let anyone in (English key)
      */
@@ -128,7 +129,7 @@ final readonly class ServerFirewalls
     {
         $platform = $server->osTemplate?->platform;
 
-        if (! $server->blocksByDefault() || $platform === null) {
+        if ($platform === null) {
             return null;
         }
 
@@ -156,10 +157,11 @@ final readonly class ServerFirewalls
         }
 
         if ($changed) {
-            self::store($server, 'drop', $result);
+            self::store($server, $server->blocksByDefault() ? 'drop' : 'accept', $result);
         }
 
-        if ($opened) {
+        // Accepting by default, everything gets in anyway.
+        if ($opened || ! $server->blocksByDefault()) {
             return null;
         }
 
