@@ -22,6 +22,7 @@ use App\Http\Controllers\Admin\NodeController;
 use App\Http\Controllers\Admin\OperatingSystemController;
 use App\Http\Controllers\Admin\OsTemplateController;
 use App\Http\Controllers\Admin\PackageController;
+use App\Http\Controllers\Admin\PanelSettingsController;
 use App\Http\Controllers\Admin\PlacementGroupController;
 use App\Http\Controllers\Admin\ServerController;
 use App\Http\Controllers\Admin\ServerFirewallController;
@@ -42,6 +43,8 @@ use Illuminate\Support\Facades\Route;
 
 Route::get('/', DashboardController::class)->name('dashboard');
 Route::get('help', HelpController::class)->name('help');
+Route::get('settings', [PanelSettingsController::class, 'edit'])->name('settings.edit');
+Route::put('settings', [PanelSettingsController::class, 'update'])->name('settings.update');
 
 Route::get('drifts', [DriftController::class, 'index'])->name('drifts.index');
 Route::post('drifts/{drift}/accept', [DriftController::class, 'accept'])->name('drifts.accept');

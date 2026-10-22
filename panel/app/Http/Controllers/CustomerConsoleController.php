@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Controllers;
 
 use App\Domain\Servers\ConsoleLinks;
+use App\Domain\Settings\PanelSettings;
 use App\Enums\ApiScope;
 use App\Enums\ServerStatus;
 use App\Http\Controllers\Concerns\RendersConsole;
@@ -33,7 +34,7 @@ class CustomerConsoleController extends Controller
 
         $request->session()->put($this->grantKey($server), [
             'api_token_id' => $token->id,
-            'expires_at' => now()->addMinutes(max(1, (int) config('proxmotion.console.max_minutes')))->getTimestamp(),
+            'expires_at' => now()->addMinutes(max(1, (int) PanelSettings::get('console_max_minutes')))->getTimestamp(),
         ]);
 
         return to_route('console.show', $server);

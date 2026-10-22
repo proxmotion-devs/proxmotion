@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Provisioning\Stages;
 
+use App\Domain\Settings\PanelSettings;
 use App\Models\Task;
 use App\Proxmox\Data\Upid;
 use App\Proxmox\Exceptions\ProxmoxTaskFailed;
@@ -31,7 +32,7 @@ final readonly class StageRunner
     {
         $stages = $pipeline->stages();
         $started = Carbon::now();
-        $minutes = max(1, $pipeline instanceof HasOwnDeadline ? $pipeline->deadlineMinutes() : (int) config('proxmotion.provisioning.deadline_minutes'));
+        $minutes = max(1, $pipeline instanceof HasOwnDeadline ? $pipeline->deadlineMinutes() : (int) PanelSettings::get('provisioning_deadline_minutes'));
         $stage = $task->stage ?? $stages[0];
         $index = array_search($stage, $stages, true);
 

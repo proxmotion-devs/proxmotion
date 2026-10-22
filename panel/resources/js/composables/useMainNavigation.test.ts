@@ -21,6 +21,7 @@ describe('useMainNavigation', () => {
             '/admin/drifts',
             '/admin/users',
             '/admin/billing-systems',
+            '/admin/settings',
             '/admin/help',
         ]);
     });

@@ -257,7 +257,7 @@ class ServerMoveTest extends TestCase
     {
         $pveb1 = $this->otherCluster(incoming: false);
 
-        $this->assertRefused(new MoveTarget(node: $pveb1), 'Moving servers to another cluster is turned off (PROXMOTION_CROSS_CLUSTER_MOVES).');
+        $this->assertRefused(new MoveTarget(node: $pveb1), 'Moving servers to another cluster is turned off (Panel settings).');
 
         config(['proxmotion.moves.cross_cluster' => true]);
         $this->assertRefused(new MoveTarget(node: $pveb1), 'The target cluster has no incoming move token, so servers cannot be moved into it.');

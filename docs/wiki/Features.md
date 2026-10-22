@@ -102,7 +102,7 @@ The admin panel is for staff. **Every panel user is an administrator**; there ar
 | Page | What it does |
 |---|---|
 | **Dashboard** | Overview of the installation |
-| **Help** | Setup order with what is already done, the OS template guide (Linux / Windows / why not macOS, with every command), questions and answers; links to the full guides when `PROXMOTION_DOCS_URL` is set |
+| **Help** | Setup order with what is already done, the OS template guide (Linux / Windows / why not macOS, with every command), questions and answers; links to the full guides when a documentation address is set (*Panel settings*) |
 | **Locations** | Create and edit locations |
 | **Clusters** | Connect clusters and standalone nodes, test the connection, check permissions, sync now; edit node and storage settings |
 | **Placement groups** | Named node sets per location |
@@ -115,6 +115,7 @@ The admin panel is for staff. **Every panel user is an administrator**; there ar
 | **Drifts** | Differences between the panel and Proxmox |
 | **Billing systems** | Billing systems, API tokens, webhook endpoints and delivery log |
 | **Users** | Administrators |
+| **Panel settings** | Panel-wide settings: cross-cluster moves, deadlines, lowest VMID, DNS check name, protected networks, drift grace period, console limits, documentation address (ADR 0038); shows the `.env`-only security settings read-only |
 
 Pages that need explaining start with a **guide box**: a short how-to that administrators can hide (remembered per browser) with a link into *Help*.
 
@@ -194,7 +195,7 @@ Among those, the node with the **least memory used after placement** wins. Every
 
 ### 5.3 Atomic reservation
 
-VMID, IP addresses and node capacity are reserved **inside a database transaction and a per-location lock**, so two orders arriving at the same moment never receive the same VMID or IP. VMIDs come from Proxmox's `cluster/nextid` and are additionally locked panel-side; `PROXMOTION_MIN_VMID` sets the lowest VMID the panel uses.
+VMID, IP addresses and node capacity are reserved **inside a database transaction and a per-location lock**, so two orders arriving at the same moment never receive the same VMID or IP. VMIDs come from Proxmox's `cluster/nextid` and are additionally locked panel-side; *Panel settings* sets the lowest VMID the panel uses.
 
 ---
 
@@ -240,7 +241,7 @@ Every VPS gets the Proxmox firewall with **`ipfilter` and `macfilter`** enabled 
 ([ADR 0034](../adr/0034-guest-isolation.md)) Anti-spoofing stops a server from pretending to be another; isolation stops it from **talking** to others:
 
 - **Neighbours**: an IP pool's *Isolate servers from each other* (off by default, as at most providers; anti-spoofing already keeps servers from taking each other's addresses) keeps servers with its addresses from reaching each other at all, also through the gateway and also when they belong to one customer. The gateway stays reachable; servers in other pools are reached through the router as before. Turn it on only for a pool whose servers must not reach each other at all.
-- **Protected networks**: servers cannot open connections to the Proxmox nodes of their location (their bridge addresses, learned by the sync), to the location's *Protected networks* (location form, one address or CIDR per line, e.g. a management network) or to `PROXMOTION_PROTECTED_NETWORKS` (every location, e.g. the panel's address). This also means no DNS or NTP from a node that is the servers' gateway.
+- **Protected networks**: servers cannot open connections to the Proxmox nodes of their location (their bridge addresses, learned by the sync), to the location's *Protected networks* (location form, one address or CIDR per line, e.g. a management network) or to the protected networks on *Panel settings* (every location, e.g. the panel's address). This also means no DNS or NTP from a node that is the servers' gateway.
 - **How**: up to three IP sets (`pm-isolated`, `pm-gateways`, `pm-protected`) and five rules on top of each VM firewall, written with anti-spoofing; only the ones a server needs, so turning a pool's isolation off removes its neighbour rules and sets. Nothing is written to the datacenter firewall and the token needs no new privileges. Address changes keep the sets right.
 - **Existing servers** change only when an administrator presses *Enable anti-spoofing*: the firewall drift lists missing or reordered isolation rules and IP sets that differ (also after a pool's isolation or a location's protected networks change).
 
@@ -381,9 +382,9 @@ A new, reinstalled or unsuspended server becomes `active` once its guest agent a
 - A failed creation can also be **rebuilt from scratch** (ADR 0032 §7): the VM it left behind is deleted (only one Proxmotion created for that server) and the server is created again with the same VMID, IP addresses and MAC address. The hostname must be typed to confirm; audited as `server.rebuilt`.
 - A stuck task (queued, or running without progress for longer than a queue job may run, or past its deadline) can be ended with **Mark as failed**.
 - Long Proxmox operations return a UPID; the task waiter follows it until it finishes and handles failures and timeouts explicitly.
-- **Creating and reinstalling run in stages** (ADR 0032): while they wait for a clone, the guest agent, Windows setup or cloud-init, the queue worker is free and the task picks up again a few seconds later. Such a task must finish within 120 minutes (`PROXMOTION_PROVISIONING_DEADLINE_MINUTES`).
+- **Creating and reinstalling run in stages** (ADR 0032): while they wait for a clone, the guest agent, Windows setup or cloud-init, the queue worker is free and the task picks up again a few seconds later. Such a task must finish within 120 minutes by default (*Panel settings*).
 - The server page lists **every step a task will go through**, including those that depend on the server (hostname script, Windows restart, additional addresses, the template's script, an ordered app), shows **how long each finished step took**, and for a running create or reinstall **roughly how long is left**, from earlier runs with the same OS template (after three of them).
-- After every create and reinstall the server is **checked from inside** (ADR 0032 §6): its IP addresses are on its network interface, its gateways answer, DNS resolves (`PROXMOTION_VERIFY_DNS_NAME`), its hostname is right and its root file system has the disk's size. The result is a checklist on the server page with **Check again**; a failed check only warns.
+- After every create and reinstall the server is **checked from inside** (ADR 0032 §6): its IP addresses are on its network interface, its gateways answer, DNS resolves (the name on *Panel settings*), its hostname is right and its root file system has the disk's size. The result is a checklist on the server page with **Check again**; a failed check only warns.
 
 ### 9.3 Creating a server
 
@@ -437,7 +438,7 @@ Destructive operations (terminate, reinstall, node/cluster removal) ask for extr
 | Another cluster of its location | Proxmox `remote_migrate` (experimental in Proxmox), live while it runs; the VM firewall is written again on the target | kept | kept when free there |
 | A cluster of another location | shut down, copied, started there | new ones from that location; the old primary's PTR moves to the new one | kept when free there |
 
-Moves to other clusters need `PROXMOTION_CROSS_CLUSTER_MOVES=true`, an *incoming move token* on the target cluster (*Servers from other clusters* on the cluster page: a separate token with `Sys.Incoming`, used for nothing else) and the hostname typed to confirm. Proxmox deletes the old VM once its copy succeeded. Servers with addresses of a routed pool need a tick that the provider routes them to the new node. If a step after the copy fails, *Finish the move* runs the rest again. The server keeps its history of moves; billing systems get `server.moved`. Tested with a faked Proxmox only.
+Moves to other clusters need *Allow moves to other clusters and locations* on *Panel settings*, an *incoming move token* on the target cluster (*Servers from other clusters* on the cluster page: a separate token with `Sys.Incoming`, used for nothing else) and the hostname typed to confirm. Proxmox deletes the old VM once its copy succeeded. Servers with addresses of a routed pool need a tick that the provider routes them to the new node. If a step after the copy fails, *Finish the move* runs the rest again. The server keeps its history of moves; billing systems get `server.moved`. Tested with a faked Proxmox only.
 
 **Live usage** ([ADR 0036](../adr/0036-live-server-stats.md)): the *Overview* tab of an active or suspended server starts with cards for CPU, memory, network (in and out, against the port speed) and disk I/O, each with the last hour as a small line chart, plus the uptime. With Reverb running, `servers:stats` pushes new figures every 10 seconds to every open page of that server; without it the page asks every 10 seconds. Only servers whose page is open are asked for. Admin panel only; not tested against a real Proxmox or Reverb yet.
 
@@ -673,7 +674,7 @@ Blesta, HostBill, Paymenter and FOSSBilling modules **(planned, Phase 9)**.
 
 ### 15.2 Drift reports
 
-([ADR 0005](../adr/0005-drift-reporting.md)) The panel database is the source of truth. After each sync the panel compares it with Proxmox and lists differences under *Admin → Drifts*: a VM deleted, resized, stopped (after a grace period, `PROXMOTION_DRIFT_STOPPED_GRACE_MINUTES`), moved, or an unknown VM in the pool. Administrators can **accept** the Proxmox state, **mark the server as error**, **apply the expected power state**, or **dismiss**. Drift is **never repaired automatically** and nothing is deleted. A drift closes by itself once fixed.
+([ADR 0005](../adr/0005-drift-reporting.md)) The panel database is the source of truth. After each sync the panel compares it with Proxmox and lists differences under *Admin → Drifts*: a VM deleted, resized, stopped (after a grace period set on *Panel settings*), moved, or an unknown VM in the pool. Administrators can **accept** the Proxmox state, **mark the server as error**, **apply the expected power state**, or **dismiss**. Drift is **never repaired automatically** and nothing is deleted. A drift closes by itself once fixed.
 
 ### 15.3 Virtualizor import
 
@@ -724,19 +725,31 @@ All features are covered by automated tests with faked HTTP (an in-memory Proxmo
 
 The **scheduler** and a **queue worker** must run; `composer dev` starts both locally.
 
-### 18.2 Settings (`.env`)
+### 18.2 Settings
+
+**Panel settings** (*Admin → Panel settings*, [ADR 0038](../adr/0038-panel-settings.md)) take effect at once, also for queue workers, and changes are written to the audit log. Until the page is saved, each value comes from its `.env` variable, which is then only a default:
+
+| Setting | `.env` default | Meaning |
+|---|---|---|
+| Allow moves to other clusters and locations | `PROXMOTION_CROSS_CLUSTER_MOVES` | Through Proxmox's experimental remote migration (default off) |
+| Time limit / bandwidth limit of a move | `PROXMOTION_MOVE_DEADLINE_MINUTES`, `PROXMOTION_MOVE_BWLIMIT_KIB` | How long a move may take (default 720 minutes) and its bandwidth limit in KiB/s (empty: Proxmox's own) |
+| Lowest VMID of new servers | `PROXMOTION_MIN_VMID` | 0: Proxmox's next free ID |
+| Time limit of a creation or reinstall | `PROXMOTION_PROVISIONING_DEADLINE_MINUTES` | Default 120 minutes |
+| DNS name checked from inside | `PROXMOTION_VERIFY_DNS_NAME` | Default `example.com`; empty: no DNS check |
+| Protected networks | `PROXMOTION_PROTECTED_NETWORKS` | Networks servers of every location cannot reach |
+| Report stopped servers after | `PROXMOTION_DRIFT_STOPPED_GRACE_MINUTES` | How long a VM may be unexpectedly stopped before it is reported as drift (default 60) |
+| Console session limits | `CONSOLE_MAX_MINUTES`, `CONSOLE_IDLE_MINUTES` | Default 60 and 15 minutes |
+| Documentation address | `PROXMOTION_DOCS_URL` | Base URL of the published guides; *Help* links to them when set |
+
+**Only in `.env`** (they protect the panel or depend on the installation):
 
 | Variable | Meaning |
 |---|---|
 | `PROXMOTION_REQUIRE_ADMIN_2FA` | Enforce TOTP for administrators (default `true`; turn off for local development only) |
-| `PROXMOTION_DOCS_URL` | Base URL of the published guides; *Help* links to them when set |
-| `PROXMOTION_MIN_VMID` | Lowest VMID the panel assigns |
-| `PROXMOTION_DRIFT_STOPPED_GRACE_MINUTES` | How long a VM may be unexpectedly stopped before it is reported as drift (default 60) |
-| `PROXMOTION_CROSS_CLUSTER_MOVES` | Allow moving servers to other clusters and locations, through Proxmox's experimental remote migration (default `false`) |
-| `PROXMOTION_MOVE_DEADLINE_MINUTES`, `PROXMOTION_MOVE_BWLIMIT_KIB` | How long a move may take (default 720) and its bandwidth limit in KiB/s (empty: Proxmox's own) |
+| `CONSOLE_PROXY_SECRET`, `CONSOLE_WEBSOCKET_URL` | Shared secret and public address of the console proxy |
 | `BROADCAST_CONNECTION`, `REVERB_*`, `VITE_REVERB_*` | `reverb` and its settings push live server figures; `log` makes the server page poll instead |
 
-See `panel/.env.example` for the full list (database, Redis, mail, console proxy secret, …).
+See `panel/.env.example` for the full list (database, Redis, mail, …).
 
 ### 18.3 Deployment
 

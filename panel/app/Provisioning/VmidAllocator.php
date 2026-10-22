@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Provisioning;
 
+use App\Domain\Settings\PanelSettings;
 use App\Models\Cluster;
 use App\Models\Server;
 use App\Models\ServerMove;
@@ -30,7 +31,7 @@ final readonly class VmidAllocator
     public function firstFree(Cluster $cluster, ?int $preferred = null): int
     {
         $proxmox = $this->clients->forCluster($cluster)->cluster();
-        $minimum = (int) config('proxmotion.provisioning.min_vmid');
+        $minimum = (int) PanelSettings::get('min_vmid');
         $held = ServerMove::heldVmids($cluster);
         $isFree = fn (int $vmid): bool => ! in_array($vmid, $held, true)
             && ! Server::query()->where('cluster_id', $cluster->id)->where('vmid', $vmid)->exists()

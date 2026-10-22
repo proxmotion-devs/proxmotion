@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Provisioning\Network;
 
 use App\Domain\Networking\ProtectedAddresses;
+use App\Domain\Settings\PanelSettings;
 use App\Models\IpPool;
 use App\Models\Location;
 use App\Models\Server;
@@ -58,7 +59,7 @@ final readonly class GuestIsolation
     private function protectedNetworks(int $locationId): array
     {
         /** @var list<string> $configured */
-        $configured = config('proxmotion.protected_networks', []);
+        $configured = PanelSettings::get('protected_networks') ?? [];
 
         $entries = [
             ...$this->protected->nodeAddresses($locationId),

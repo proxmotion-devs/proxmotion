@@ -15,6 +15,21 @@ export type Location = LocationOption & {
     ip_pools_count: number;
 };
 
+/** Panel settings (docs/adr/0038); saved ones override .env. */
+export type PanelSettings = {
+    cross_cluster_moves: boolean;
+    move_deadline_minutes: number;
+    move_bwlimit_kib: number | null;
+    min_vmid: number;
+    provisioning_deadline_minutes: number;
+    verify_dns_name: string | null;
+    protected_networks: string[];
+    drift_stopped_grace_minutes: number;
+    console_max_minutes: number;
+    console_idle_minutes: number;
+    docs_url: string | null;
+};
+
 export type Cluster = {
     uuid: string;
     name: string;
@@ -377,7 +392,7 @@ export type MoveNodeOption = Option & {
 export type MoveOptions = {
     /** Why the server cannot be moved now (translated), or null. */
     refusal: string | null;
-    /** Moves to other clusters are turned on (PROXMOTION_CROSS_CLUSTER_MOVES). */
+    /** Moves to other clusters are turned on (Panel settings, docs/adr/0038). */
     cross_cluster: boolean;
     /** It has addresses the provider routes to its node. */
     routed: boolean;

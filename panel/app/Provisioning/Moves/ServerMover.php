@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Provisioning\Moves;
 
+use App\Domain\Settings\PanelSettings;
 use App\Enums\AppInstallationStatus;
 use App\Enums\AppRunStatus;
 use App\Enums\IpVersion;
@@ -56,11 +57,11 @@ final readonly class ServerMover
     ) {}
 
     /**
-     * Whether moves to other clusters are turned on (PROXMOTION_CROSS_CLUSTER_MOVES).
+     * Whether moves to other clusters are turned on (Panel settings, docs/adr/0038).
      */
     public static function crossClusterEnabled(): bool
     {
-        return (bool) config('proxmotion.moves.cross_cluster');
+        return (bool) PanelSettings::get('cross_cluster_moves');
     }
 
     /**
@@ -73,7 +74,7 @@ final readonly class ServerMover
         }
 
         if (! self::crossClusterEnabled()) {
-            return 'Moving servers to another cluster is turned off (PROXMOTION_CROSS_CLUSTER_MOVES).';
+            return 'Moving servers to another cluster is turned off (Panel settings).';
         }
 
         if (! $cluster->receivesMoves()) {

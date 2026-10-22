@@ -7,6 +7,7 @@ namespace App\Provisioning\Pipelines;
 use App\Domain\Infrastructure\FirewallChecker;
 use App\Domain\Servers\GuestScripts;
 use App\Domain\Servers\ServerVerifier;
+use App\Domain\Settings\PanelSettings;
 use App\Enums\GuestScriptEvent;
 use App\Enums\ServerMoveKind;
 use App\Enums\ServerMoveStatus;
@@ -65,7 +66,7 @@ final readonly class MoveServerPipeline implements HasOwnDeadline, StagedPipelin
 
     public function deadlineMinutes(): int
     {
-        return (int) config('proxmotion.moves.deadline_minutes');
+        return (int) PanelSettings::get('move_deadline_minutes');
     }
 
     public function runStage(Task $task, string $stage): ?int
@@ -190,7 +191,7 @@ final readonly class MoveServerPipeline implements HasOwnDeadline, StagedPipelin
     {
         $qemu = $this->source($move)->qemu($move->sourceNode->name);
         $online = $move->was_running === true && $move->kind !== ServerMoveKind::Location;
-        $bwlimit = config('proxmotion.moves.bwlimit_kib');
+        $bwlimit = PanelSettings::get('move_bwlimit_kib');
         $bwlimit = is_int($bwlimit) ? $bwlimit : null;
         $storage = $move->targetStorage ?? throw new RuntimeException('The target storage of the move is missing.');
 

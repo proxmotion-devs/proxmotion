@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use App\Domain\Settings\PanelSettings;
 use App\Enums\DriftType;
 use App\Models\Concerns\HasPublicUuid;
 use Illuminate\Database\Eloquent\Builder;
@@ -64,7 +65,7 @@ class ServerDrift extends Model
      */
     public function scopeVisible(Builder $query): void
     {
-        $cutoff = now()->subMinutes((int) config('proxmotion.drift.stopped_grace_minutes'));
+        $cutoff = now()->subMinutes((int) PanelSettings::get('drift_stopped_grace_minutes'));
 
         $query->whereNull('resolved_at')
             ->whereNull('dismissed_at')

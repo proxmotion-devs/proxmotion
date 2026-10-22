@@ -189,7 +189,7 @@ const errors = computed(
         >
             {{
                 $t(
-                    'Moves to other clusters and locations are turned off (PROXMOTION_CROSS_CLUSTER_MOVES).',
+                    'Moves to other clusters and locations are turned off. Administrators can allow them under Panel settings.',
                 )
             }}
         </p>

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Domain\Servers;
 
+use App\Domain\Settings\PanelSettings;
 use App\Enums\IpVersion;
 use App\Enums\OsPlatform;
 use App\Models\IpAddress;
@@ -205,7 +206,7 @@ final readonly class ServerVerifier
      */
     private function guestChecks(GuestAgentResource $agent, Server $server, array $gateways): array
     {
-        $dns = (string) config('proxmotion.provisioning.verify_dns_name');
+        $dns = (string) PanelSettings::get('verify_dns_name');
         $dns = preg_match('/^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/i', $dns) === 1 ? strtolower($dns) : '';
         $windows = $this->guestScripts->platform($server) === OsPlatform::Windows;
 

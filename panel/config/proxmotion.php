@@ -1,5 +1,12 @@
 <?php
 
+/*
+| Everything here except require_admin_two_factor, console.proxy_secret,
+| console.websocket_url and console.ticket_seconds is only a default: once
+| the Panel settings page is saved, its values are used
+| (App\Domain\Settings\PanelSettings, docs/adr/0038).
+*/
+
 return [
 
     /*
