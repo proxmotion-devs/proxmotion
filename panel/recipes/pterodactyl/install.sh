@@ -45,6 +45,7 @@ if [ -e "$PTERO_DIR" ] && ! ptero_installed; then
 fi
 
 pm_step 5 "Installing PHP, MariaDB, Redis and nginx"
+ptero_remove_stale_ppa
 pm_apt_update
 pm_apt_install ca-certificates curl gnupg tar unzip cron
 php_version=$(ptero_php_version)

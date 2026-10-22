@@ -43,6 +43,21 @@ ptero_artisan() {
     (cd "$PTERO_DIR" && runuser -u www-data -- php artisan --no-interaction "$@")
 }
 
+# ptero_remove_stale_ppa: removes the ondrej/php PPA as recipe 1.0.0 added it
+# where the PPA has no builds (Ubuntu 26.04), since every apt-get update fails
+# on it. Called before the first update; the PPA is kept where it works.
+ptero_remove_stale_ppa() {
+    local file
+
+    # shellcheck source=/dev/null
+    . /etc/os-release
+    for file in "/etc/apt/sources.list.d/ondrej-ubuntu-php-${VERSION_CODENAME}".{list,sources}; do
+        if [ -f "$file" ] && ! curl -fsSL -o /dev/null "https://ppa.launchpadcontent.net/ondrej/php/ubuntu/dists/${VERSION_CODENAME}/Release"; then
+            rm -f "$file"
+        fi
+    done
+}
+
 # ptero_php_version: the PHP version to use (the panel needs 8.3 or 8.4),
 # adding Ondřej Surý's repository when the distribution has neither. The
 # repository serves Debian and Ubuntu alike; his ondrej/php PPA has no Ubuntu
@@ -59,10 +74,6 @@ ptero_php_version() {
 
     # shellcheck source=/dev/null
     . /etc/os-release
-    # The PPA as recipe 1.0.0 added it: apt fails on it where it has no builds.
-    rm -f "/etc/apt/sources.list.d/ondrej-ubuntu-php-${VERSION_CODENAME}.list" \
-        "/etc/apt/sources.list.d/ondrej-ubuntu-php-${VERSION_CODENAME}.sources"
-
     install -m 0755 -d /etc/apt/keyrings
     curl -fsSL https://packages.sury.org/php/apt.gpg -o "$keyring.download"
     if grep -q -- '-----BEGIN PGP' "$keyring.download"; then
