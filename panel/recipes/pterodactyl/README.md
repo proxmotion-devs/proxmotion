@@ -10,8 +10,8 @@ Outputs: the panel address, the administrator's username and password, and a not
 
 - **Packages:** PHP-FPM with the extensions the guide lists, MariaDB, Redis and nginx from
   the distribution. When the distribution has neither PHP 8.3 nor 8.4 (Debian 12, Ubuntu
-  26.04), PHP 8.3 comes from Ondřej Surý's repository (`packages.sury.org` on Debian, the
-  `ondrej/php` PPA on Ubuntu). Ubuntu 22.04 is not offered: its MariaDB 10.6 is older than
+  26.04), PHP 8.3 comes from Ondřej Surý's repository `packages.sury.org` (his `ondrej/php`
+  PPA has no Ubuntu 26.04 builds). Ubuntu 22.04 is not offered: its MariaDB 10.6 is older than
   the 10.11 the panel needs.
 - **Download:** the release's `panel.tar.gz` from GitHub, checked against the SHA-256 in
   `lib.sh`; Composer 2 from getcomposer.org, checked against its published SHA-256. The

@@ -43,10 +43,27 @@ ptero_artisan() {
     (cd "$PTERO_DIR" && runuser -u www-data -- php artisan --no-interaction "$@")
 }
 
+# ptero_remove_stale_ppa: removes the ondrej/php PPA as recipe 1.0.0 added it
+# where the PPA has no builds (Ubuntu 26.04), since every apt-get update fails
+# on it. Called before the first update; the PPA is kept where it works.
+ptero_remove_stale_ppa() {
+    local file
+
+    # shellcheck source=/dev/null
+    . /etc/os-release
+    for file in "/etc/apt/sources.list.d/ondrej-ubuntu-php-${VERSION_CODENAME}".{list,sources}; do
+        if [ -f "$file" ] && ! curl -fsSL -o /dev/null "https://ppa.launchpadcontent.net/ondrej/php/ubuntu/dists/${VERSION_CODENAME}/Release"; then
+            rm -f "$file"
+        fi
+    done
+}
+
 # ptero_php_version: the PHP version to use (the panel needs 8.3 or 8.4),
-# adding Ondřej Surý's repository when the distribution has neither.
+# adding Ondřej Surý's repository when the distribution has neither. The
+# repository serves Debian and Ubuntu alike; his ondrej/php PPA has no Ubuntu
+# 26.04 builds and is being merged into it.
 ptero_php_version() {
-    local version
+    local version keyring=/etc/apt/keyrings/sury-php.gpg
 
     for version in 8.3 8.4; do
         if apt-cache show --no-all-versions "php${version}-fpm" >/dev/null 2>&1; then
@@ -57,22 +74,16 @@ ptero_php_version() {
 
     # shellcheck source=/dev/null
     . /etc/os-release
-    if [ "$ID" = ubuntu ]; then
-        pm_apt_install software-properties-common gpg-agent >&2
-        LC_ALL=C.UTF-8 add-apt-repository -y ppa:ondrej/php >&2
+    install -m 0755 -d /etc/apt/keyrings
+    curl -fsSL https://packages.sury.org/php/apt.gpg -o "$keyring.download"
+    if grep -q -- '-----BEGIN PGP' "$keyring.download"; then
+        gpg --dearmor --yes -o "$keyring" "$keyring.download"
+        rm -f "$keyring.download"
     else
-        local keyring=/etc/apt/keyrings/sury-php.gpg
-        install -m 0755 -d /etc/apt/keyrings
-        curl -fsSL https://packages.sury.org/php/apt.gpg -o "$keyring.download"
-        if grep -q -- '-----BEGIN PGP' "$keyring.download"; then
-            gpg --dearmor --yes -o "$keyring" "$keyring.download"
-            rm -f "$keyring.download"
-        else
-            mv "$keyring.download" "$keyring"
-        fi
-        chmod a+r "$keyring"
-        echo "deb [signed-by=${keyring}] https://packages.sury.org/php/ ${VERSION_CODENAME} main" >/etc/apt/sources.list.d/sury-php.list
+        mv "$keyring.download" "$keyring"
     fi
+    chmod a+r "$keyring"
+    echo "deb [signed-by=${keyring}] https://packages.sury.org/php/ ${VERSION_CODENAME} main" >/etc/apt/sources.list.d/sury-php.list
     pm_apt_update >&2
 
     apt-cache show --no-all-versions php8.3-fpm >/dev/null 2>&1 || pm_fail "PHP 8.3 is not available for this system."
@@ -101,7 +112,7 @@ ptero_user_exists() {
 # values reach PHP through the environment, never through the code.
 ptero_set_password() {
     # shellcheck disable=SC2016
-    (cd "$PTERO_DIR" && PTERO_USERNAME=$1 PTERO_PASSWORD=$2 runuser -u www-data -- php artisan --no-interaction tinker --execute '
+    (cd "$PTERO_DIR" && PTERO_USERNAME=$1 PTERO_PASSWORD=$2 runuser -u www-data -- env HOME=/var/www php artisan --no-interaction tinker --execute '
         $user = \Pterodactyl\Models\User::query()->where("username", getenv("PTERO_USERNAME"))->firstOrFail();
         $user->password = getenv("PTERO_PASSWORD");
         $user->save();
