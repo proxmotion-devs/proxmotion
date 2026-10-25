@@ -73,7 +73,7 @@ services:
       - console-proxy
 
   mariadb:
-    image: mariadb:12.2
+    image: mariadb:13.0
     environment:
       MARIADB_DATABASE: proxmotion
       MARIADB_USER: proxmotion
