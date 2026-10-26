@@ -105,7 +105,8 @@ final readonly class AppEligibility
         $problem = $this->common($app, $recipe, $mode)
             ?? $this->platform($recipe, $osTemplate)
             ?? ($osTemplate === null ? null : $this->os($app, $osTemplate))
-            ?? ($package === null ? null : $this->resources($recipe, $package->cpu_cores, $package->memory_mib, $package->disk_mib));
+            ?? ($package === null ? null : $this->resources($recipe, $package->cpu_cores, $package->memory_mib, $package->disk_mib))
+            ?? ($package === null || $osTemplate === null || $package->allowsOsTemplate($osTemplate) ? null : new AppNotEligible('The package does not allow this OS template.'));
 
         if ($problem !== null || $package === null) {
             return $problem;

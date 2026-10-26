@@ -22,6 +22,7 @@ import { hostnameExample } from '@/lib/hostnames';
 import {
     firstStepWithError,
     makesTestServer,
+    templatesFor,
     WIZARD_STEPS,
 } from '@/lib/serverWizard';
 import { create, index, store } from '@/routes/admin/servers';
@@ -142,6 +143,22 @@ const chosenPackage = computed(() =>
     custom.value
         ? undefined
         : props.packages.find((pkg) => pkg.value === form.package),
+);
+
+// The templates the chosen package's servers may use (docs/adr/0040).
+const allowedOsTemplates = computed(() =>
+    templatesFor(props.osTemplates, chosenPackage.value),
+);
+
+// Choosing a package that does not allow the selected template moves to one it does.
+watch(
+    allowedOsTemplates,
+    (templates) => {
+        if (!templates.some((option) => option.value === form.os_template)) {
+            form.os_template = templates[0]?.value ?? null;
+        }
+    },
+    { immediate: true },
 );
 
 // Packages limit the network models; without one any model goes (NAT comes later).
@@ -470,7 +487,7 @@ const submit = () => {
                     <NativeSelect
                         id="os_template"
                         v-model="form.os_template"
-                        :options="osTemplates"
+                        :options="allowedOsTemplates"
                     />
                 </FormField>
                 <OrderedAppFields

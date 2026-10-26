@@ -723,7 +723,8 @@ class Module
                 }
 
                 $vars['server'] = $this->present($server);
-                $vars['osTemplates'] = $server['status'] === 'active' ? $this->client->osTemplates() : [];
+                // Only the templates this server's package allows (docs/adr/0040).
+                $vars['osTemplates'] = $server['status'] === 'active' ? $this->client->osTemplates((string) $server['id']) : [];
 
                 if ($server['status'] === 'active') {
                     foreach ($this->client->installations((string) $server['id']) as $installation) {

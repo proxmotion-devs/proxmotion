@@ -62,6 +62,11 @@ final readonly class ServerCreator
             throw new ProvisioningException(self::INACTIVE_TEMPLATE);
         }
 
+        // A package may name the OS templates its servers use; a custom server (no package) may use any (docs/adr/0040).
+        if ($order->package !== null && ! $order->package->allowsOsTemplate($order->osTemplate)) {
+            throw ProvisioningException::templateNotAllowed();
+        }
+
         if ($order->hostname === null && ($order->location->hostname_template ?? '') === '') {
             throw new ProvisioningException('Enter a hostname: the location :location has no hostname template.', ['location' => $order->location->name]);
         }

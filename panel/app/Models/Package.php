@@ -43,6 +43,7 @@ use Illuminate\Support\Collection;
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  * @property-read \Illuminate\Database\Eloquent\Collection<int, PlacementGroup> $placementGroups
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, OsTemplate> $osTemplates
  */
 #[Fillable([
     'name', 'cpu_cores', 'memory_mib', 'disk_mib', 'traffic_bytes', 'port_speed_mbps', 'cpu_limit', 'cpu_units', 'disk_mb_s', 'disk_iops', 'firewall_ruleset_id',
@@ -88,6 +89,27 @@ class Package extends Model
     public function placementGroups(): BelongsToMany
     {
         return $this->belongsToMany(PlacementGroup::class);
+    }
+
+    /**
+     * The OS templates the package's servers may be created or reinstalled
+     * with; none means any (docs/adr/0040).
+     *
+     * @return BelongsToMany<OsTemplate, $this>
+     */
+    public function osTemplates(): BelongsToMany
+    {
+        return $this->belongsToMany(OsTemplate::class);
+    }
+
+    /** Whether the package's servers may use the template: always when it names none. */
+    public function allowsOsTemplate(OsTemplate $template): bool
+    {
+        if (! $this->relationLoaded('osTemplates')) {
+            return ! $this->osTemplates()->exists() || $this->osTemplates()->whereKey($template->id)->exists();
+        }
+
+        return $this->osTemplates->isEmpty() || $this->osTemplates->contains('id', $template->id);
     }
 
     /**

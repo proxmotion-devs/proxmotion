@@ -44,6 +44,9 @@ class PackageRequest extends FormRequest
             // Empty: any node; otherwise the groups of the ordered location (docs/adr/0020).
             'placement_group_ids' => ['array'],
             'placement_group_ids.*' => ['integer', 'distinct', Rule::exists('placement_groups', 'id')],
+            // Empty: any OS template (docs/adr/0040).
+            'os_template_ids' => ['array'],
+            'os_template_ids.*' => ['integer', 'distinct', Rule::exists('os_templates', 'id')],
         ];
     }
 
@@ -56,11 +59,19 @@ class PackageRequest extends FormRequest
     }
 
     /**
+     * @return list<int>
+     */
+    public function osTemplateIds(): array
+    {
+        return array_values(array_map('intval', $this->array('os_template_ids')));
+    }
+
+    /**
      * @return array<string, mixed>
      */
     public function packageData(): array
     {
-        $data = $this->safe()->except(['disk_gib', 'traffic_gb', 'placement_group_ids', 'firewall_ruleset']);
+        $data = $this->safe()->except(['disk_gib', 'traffic_gb', 'placement_group_ids', 'os_template_ids', 'firewall_ruleset']);
         $data['firewall_ruleset_id'] = $this->filled('firewall_ruleset') ? FirewallRuleset::query()->where('uuid', $this->string('firewall_ruleset'))->value('id') : null;
         $data['disk_mib'] = $this->integer('disk_gib') * 1024;
         $data['traffic_bytes'] = $this->filled('traffic_gb') ? $this->integer('traffic_gb') * 1000 ** 3 : null;

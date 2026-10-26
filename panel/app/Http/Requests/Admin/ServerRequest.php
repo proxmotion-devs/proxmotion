@@ -108,6 +108,13 @@ class ServerRequest extends FormRequest
                 $validator->errors()->add('ipv4_count', __('A server needs at least one IP address.'));
             }
 
+            // docs/adr/0040: a package may name the OS templates its servers use.
+            $template = $package === null ? null : OsTemplate::query()->where('uuid', $this->string('os_template'))->first();
+
+            if ($template !== null && ! $package->allowsOsTemplate($template)) {
+                $validator->errors()->add('os_template', __('This package may not use the chosen OS template.'));
+            }
+
             // docs/adr/0024 §8: customers never get a server of a template not offered to them.
             if ($this->billingSystem() !== null && OsTemplate::query()->where('uuid', $this->string('os_template'))->where('is_active', false)->exists()) {
                 $validator->errors()->add('os_template', __(ServerCreator::INACTIVE_TEMPLATE));

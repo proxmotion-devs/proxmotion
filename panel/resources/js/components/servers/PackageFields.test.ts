@@ -12,6 +12,7 @@ const pkg = (overrides: Partial<PackageOption> = {}): PackageOption => ({
     label: 'Small',
     network_models: ['bridged'],
     placement_groups: [],
+    os_templates: [],
     cpu_cores: 2,
     memory_mib: 4096,
     disk_gib: 40,

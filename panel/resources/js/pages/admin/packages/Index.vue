@@ -28,10 +28,13 @@ defineOptions({
 });
 
 type Choice = { id: number; name: string; location: string };
+type TemplateChoice = { id: number; name: string; active: boolean };
 
 const props = defineProps<{
     packages: Package[];
     placementGroups: Choice[];
+    /** Inactive templates are listed too: a package may name one to try it (docs/adr/0040). */
+    osTemplates: TemplateChoice[];
     /** docs/adr/0035 §3 */
     firewallRulesets: Option[];
 }>();
@@ -57,7 +60,7 @@ const byLocation = (choices: Choice[]) => {
 
 const groupsByLocation = computed(() => byLocation(props.placementGroups));
 
-const names = (choices: Choice[], ids: number[]) =>
+const names = (choices: { id: number; name: string }[], ids: number[]) =>
     choices
         .filter((choice) => ids.includes(choice.id))
         .map((choice) => choice.name)
@@ -72,6 +75,10 @@ const toggled = (
 
 const toggleGroup = (id: number, value: boolean | 'indeterminate') => {
     form.placement_group_ids = toggled(form.placement_group_ids, id, value);
+};
+
+const toggleTemplate = (id: number, value: boolean | 'indeterminate') => {
+    form.os_template_ids = toggled(form.os_template_ids, id, value);
 };
 
 const dialogOpen = ref(false);
@@ -96,6 +103,7 @@ const form = useForm({
     is_active: true,
     sort_order: 0,
     placement_group_ids: [] as number[],
+    os_template_ids: [] as number[],
     firewall_ruleset: '' as string | null,
 });
 
@@ -126,6 +134,7 @@ const openForm = (pkg: Package | null) => {
                   is_active: pkg.is_active,
                   sort_order: pkg.sort_order,
                   placement_group_ids: [...pkg.placement_group_ids],
+                  os_template_ids: [...pkg.os_template_ids],
                   firewall_ruleset: pkg.firewall_ruleset ?? '',
               }
             : {
@@ -147,6 +156,7 @@ const openForm = (pkg: Package | null) => {
                   is_active: true,
                   sort_order: 0,
                   placement_group_ids: [],
+                  os_template_ids: [],
                   firewall_ruleset: '',
               },
     );
@@ -252,6 +262,9 @@ const modelLabel = (value: string) =>
                         <th class="px-4 py-3 font-medium">
                             {{ $t('Placement groups') }}
                         </th>
+                        <th class="px-4 py-3 font-medium">
+                            {{ $t('OS templates') }}
+                        </th>
                         <th class="px-4 py-3" />
                     </tr>
                 </thead>
@@ -313,6 +326,16 @@ const modelLabel = (value: string) =>
                                           pkg.placement_group_ids,
                                       )
                                     : $t('Any node')
+                            }}
+                        </td>
+                        <td
+                            class="px-4 py-3 text-xs"
+                            data-test="package-os-templates"
+                        >
+                            {{
+                                pkg.os_template_ids.length
+                                    ? names(osTemplates, pkg.os_template_ids)
+                                    : $t('Any template')
                             }}
                         </td>
                         <td class="px-4 py-3">
@@ -521,6 +544,45 @@ const modelLabel = (value: string) =>
                 class="text-sm text-red-600 dark:text-red-500"
             >
                 {{ networkModelErrors }}
+            </p>
+        </div>
+        <div class="grid gap-2" data-test="package-os-templates-field">
+            <Label>{{ $t('OS templates') }}</Label>
+            <p class="text-xs text-muted-foreground">
+                {{
+                    $t(
+                        'Servers of this package may use only the OS templates you tick. Tick none to allow any template.',
+                    )
+                }}
+            </p>
+            <div class="flex flex-wrap gap-x-4 gap-y-1 rounded-lg border p-3">
+                <Label
+                    v-for="template in osTemplates"
+                    :key="template.id"
+                    class="flex items-center gap-2 font-normal"
+                >
+                    <Checkbox
+                        :model-value="
+                            form.os_template_ids.includes(template.id)
+                        "
+                        @update:model-value="
+                            (value) => toggleTemplate(template.id, value)
+                        "
+                    />
+                    {{ template.name }}
+                    <span
+                        v-if="!template.active"
+                        class="text-xs text-muted-foreground"
+                    >
+                        ({{ $t('inactive') }})
+                    </span>
+                </Label>
+            </div>
+            <p
+                v-if="form.errors.os_template_ids"
+                class="text-sm text-red-600 dark:text-red-500"
+            >
+                {{ form.errors.os_template_ids }}
             </p>
         </div>
         <div class="grid gap-2" data-test="package-placement-groups-field">

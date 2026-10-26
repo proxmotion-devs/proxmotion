@@ -30,6 +30,8 @@ class PackageResource extends JsonResource
             'port_speed_mbps' => $this->port_speed_mbps,
             'traffic_bytes' => $this->traffic_bytes,
             'network_models' => $this->network_models->map(fn (NetworkModel $model) => $model->value)->values(),
+            // The OS templates its servers may use; empty for any (docs/adr/0040).
+            'os_templates' => $this->osTemplates->pluck('uuid')->values(),
         ];
     }
 }

@@ -78,8 +78,11 @@ paths:
     get:
       tags: [Catalog]
       summary: Active OS templates
-      description: 'Scope: `catalog:read`.'
+      description: 'Scope: `catalog:read`. With `package`, only the templates that package''s servers may use; with `server`, the ones that server may be reinstalled with (its package, its cluster and, for a server of a billing system, active ones only). Both are optional and exclusive (docs/adr/0040).'
       operationId: listOsTemplates
+      parameters:
+        - { name: package, in: query, required: false, schema: { type: string, format: uuid }, description: 'An active package. Cannot be combined with `server`.' }
+        - { name: server, in: query, required: false, schema: { type: string, format: uuid }, description: 'One of the billing system''s servers. Cannot be combined with `package`.' }
       responses:
         '200':
           description: OS templates
@@ -351,7 +354,7 @@ paths:
               type: object
               required: [os_template]
               properties:
-                os_template: { type: string, format: uuid, description: An OS template available on the server's cluster }
+                os_template: { type: string, format: uuid, description: 'An OS template available on the server''s cluster, which its package allows (docs/adr/0040)' }
                 ssh_keys: { $ref: '#/components/schemas/SshKeys' }
                 app: { $ref: '#/components/schemas/OrderedApp' }
                 app_inputs: { $ref: '#/components/schemas/OrderedAppInputs' }
@@ -1299,6 +1302,7 @@ components:
         port_speed_mbps: { type: [integer, 'null'] }
         traffic_bytes: { type: [integer, 'null'] }
         network_models: { type: array, items: { $ref: '#/components/schemas/NetworkModel' } }
+        os_templates: { type: array, items: { type: string, format: uuid }, description: 'The OS templates its servers may use (`GET /os-templates`); empty: any (docs/adr/0040).' }
     FirewallRule:
       type: object
       required: [action, protocol]

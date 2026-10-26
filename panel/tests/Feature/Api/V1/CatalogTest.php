@@ -25,6 +25,7 @@ class CatalogTest extends ApiTestCase
                 'port_speed_mbps' => 1000,
                 'traffic_bytes' => $this->package->traffic_bytes,
                 'network_models' => ['bridged', 'routed'],
+                'os_templates' => [],
             ]]]);
     }
 

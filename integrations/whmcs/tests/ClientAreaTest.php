@@ -16,7 +16,7 @@ class ClientAreaTest extends ModuleTestCase
     {
         $this->serviceHas($this->server($overrides));
         $this->api->on('GET /servers/' . self::SERVER_ID, 200, ['data' => $this->server($overrides)]);
-        $this->api->on('GET /os-templates', 200, ['data' => [['id' => 'os-uuid', 'name' => 'Ubuntu 24.04', 'family' => 'ubuntu', 'version' => '24.04']]]);
+        $this->api->on('GET /os-templates?server=9b2f2c1e-0000-4000-8000-000000000001', 200, ['data' => [['id' => 'os-uuid', 'name' => 'Ubuntu 24.04', 'family' => 'ubuntu', 'version' => '24.04']]]);
         $this->api->on('GET /servers/' . self::SERVER_ID . '/apps', 200, ['data' => []]);
         $this->api->on('GET /apps?server=' . self::SERVER_ID, 200, ['data' => [self::wireguard()]]);
         $this->api->on('GET /apps?mode=order&server=' . self::SERVER_ID, 200, ['data' => [self::wireguard()]]);
@@ -86,7 +86,7 @@ class ClientAreaTest extends ModuleTestCase
         $this->freshApi();
         $this->serviceHas($this->server());
         $this->api->on('GET /servers/' . self::SERVER_ID, 200, ['data' => $this->server()]);
-        $this->api->on('GET /os-templates', 200, ['data' => []]);
+        $this->api->on('GET /os-templates?server=9b2f2c1e-0000-4000-8000-000000000001', 200, ['data' => []]);
         $this->api->on('GET /servers/' . self::SERVER_ID . '/apps', 200, ['data' => [self::installation()]]);
         $this->api->on('GET /servers/' . self::SERVER_ID . '/apps/installation-uuid/runs', 200, ['data' => [self::appRun(), self::appRun(['id' => 'uninstall-uuid', 'kind' => 'uninstall', 'action' => null, 'status' => 'failed', 'error' => 'systemctl failed', 'outputs' => []])]]);
         $this->api->on('GET /apps?server=' . self::SERVER_ID, 200, ['data' => []]);
@@ -125,7 +125,7 @@ class ClientAreaTest extends ModuleTestCase
         $upgrade = ['version' => '1.4.0', 'inputs' => [['key' => 'dns', 'type' => 'domain', 'label' => ['en' => 'DNS server', 'tr' => 'DNS sunucusu'], 'required' => true, 'default' => null, 'options' => null, 'min' => null, 'max' => null, 'max_length' => null]]];
         $this->serviceHas($this->server());
         $this->api->on('GET /servers/' . self::SERVER_ID, 200, ['data' => $this->server()]);
-        $this->api->on('GET /os-templates', 200, ['data' => []]);
+        $this->api->on('GET /os-templates?server=9b2f2c1e-0000-4000-8000-000000000001', 200, ['data' => []]);
         $this->api->on('GET /servers/' . self::SERVER_ID . '/apps', 200, ['data' => [self::installation(['upgrade' => $upgrade]), self::installation(['id' => 'failed-uuid', 'status' => 'upgrade_failed', 'error' => 'apt failed', 'upgrade' => null])]]);
         $this->api->on('GET /servers/' . self::SERVER_ID . '/apps/installation-uuid/runs', 200, ['data' => [self::appRun(['kind' => 'upgrade', 'action' => null, 'target_version' => '1.4.0', 'outputs' => []])]]);
         $this->api->on('GET /servers/' . self::SERVER_ID . '/apps/failed-uuid/runs', 200, ['data' => []]);
@@ -166,7 +166,7 @@ class ClientAreaTest extends ModuleTestCase
         $this->freshApi();
         $this->serviceHas($this->server());
         $this->api->on('GET /servers/' . self::SERVER_ID, 200, ['data' => $this->server()]);
-        $this->api->on('GET /os-templates', 200, ['data' => []]);
+        $this->api->on('GET /os-templates?server=9b2f2c1e-0000-4000-8000-000000000001', 200, ['data' => []]);
         $this->api->on('GET /servers/' . self::SERVER_ID . '/apps', 200, ['data' => [self::installation()]]);
         $this->api->on('GET /servers/' . self::SERVER_ID . '/apps/installation-uuid/runs', 200, ['data' => []]);
         $this->api->on('GET /apps?server=' . self::SERVER_ID, 200, ['data' => [self::wireguard()]]);
@@ -385,7 +385,7 @@ class ClientAreaTest extends ModuleTestCase
         $this->freshApi();
         $this->serviceHas($this->server());
         $this->api->on('GET /servers/' . self::SERVER_ID, 200, ['data' => $this->server()]);
-        $this->api->on('GET /os-templates', 200, ['data' => [['id' => 'os-uuid', 'name' => 'Ubuntu 24.04']]]);
+        $this->api->on('GET /os-templates?server=9b2f2c1e-0000-4000-8000-000000000001', 200, ['data' => [['id' => 'os-uuid', 'name' => 'Ubuntu 24.04']]]);
         $this->api->on('GET /servers/' . self::SERVER_ID . '/apps', 200, ['data' => []]);
         $this->api->on('GET /apps?server=' . self::SERVER_ID, 200, ['data' => []]);
         $required = ['key' => 'domain', 'type' => 'domain', 'label' => null, 'required' => true, 'default' => null];
@@ -406,7 +406,7 @@ class ClientAreaTest extends ModuleTestCase
         $this->freshApi();
         $this->serviceHas($this->server());
         $this->api->on('GET /servers/' . self::SERVER_ID, 200, ['data' => $this->server()]);
-        $this->api->on('GET /os-templates', 200, ['data' => []]);
+        $this->api->on('GET /os-templates?server=9b2f2c1e-0000-4000-8000-000000000001', 200, ['data' => []]);
         $this->api->on('GET /servers/' . self::SERVER_ID . '/apps', 200, ['data' => []]);
         $this->api->on('GET /apps?server=' . self::SERVER_ID, 200, ['data' => [
             ['id' => 'cpanel', 'name' => 'cPanel', 'inputs' => [], 'billing' => 'paid', 'license' => 'external', 'entitled' => false],

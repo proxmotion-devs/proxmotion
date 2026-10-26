@@ -96,6 +96,13 @@ class CreateServerRequest extends FormRequest
             if ($spec->ipv4Count + $spec->ipv6Count === 0) {
                 $validator->errors()->add('resources.ipv4_count', __('A server needs at least one IP address.'));
             }
+
+            // docs/adr/0040: a package may name the OS templates its servers use.
+            $template = $package === null ? null : OsTemplate::query()->where('uuid', $this->string('os_template'))->first();
+
+            if ($template !== null && ! $package->allowsOsTemplate($template)) {
+                $validator->errors()->add('os_template', __('This package may not use the chosen OS template.'));
+            }
         }];
     }
 

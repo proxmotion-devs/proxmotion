@@ -131,7 +131,7 @@ final class ClientAreaTest extends ModuleTestCase
     {
         $this->serviceHas($this->server());
         $this->api->on('GET ' . self::SERVER, 200, ['data' => $this->server()]);
-        $this->api->on('GET /os-templates', 200, ['data' => [['id' => 'os-uuid', 'name' => 'Ubuntu 24.04', 'family' => 'ubuntu'], ['id' => 'debian-uuid', 'name' => 'Debian 13', 'family' => 'debian']]]);
+        $this->api->on('GET /os-templates?server=9b2f2c1e-0000-4000-8000-000000000001', 200, ['data' => [['id' => 'os-uuid', 'name' => 'Ubuntu 24.04', 'family' => 'ubuntu'], ['id' => 'debian-uuid', 'name' => 'Debian 13', 'family' => 'debian']]]);
         $this->api->on('POST ' . self::SERVER . '/reinstall', 202, $this->task('reinstall'));
 
         $data = $this->module()->tool_data('reinstall-os', 'index');

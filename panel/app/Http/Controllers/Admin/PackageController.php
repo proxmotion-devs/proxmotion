@@ -7,6 +7,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\PackageRequest;
 use App\Models\FirewallRuleset;
+use App\Models\OsTemplate;
 use App\Models\Package;
 use App\Models\PlacementGroup;
 use App\Provisioning\ResourceLimits;
@@ -21,7 +22,7 @@ class PackageController extends Controller
     {
         return Inertia::render('admin/packages/Index', [
             'packages' => Package::query()
-                ->with(['placementGroups:id', 'firewallRuleset:id,uuid'])
+                ->with(['placementGroups:id', 'osTemplates:id', 'firewallRuleset:id,uuid'])
                 ->orderBy('sort_order')
                 ->orderBy('name')
                 ->get()
@@ -42,8 +43,11 @@ class PackageController extends Controller
                     'is_active' => $package->is_active,
                     'sort_order' => $package->sort_order,
                     'placement_group_ids' => $package->placementGroups->pluck('id'),
+                    'os_template_ids' => $package->osTemplates->pluck('id'),
                     'firewall_ruleset' => $package->firewallRuleset?->uuid,
                 ]),
+            'osTemplates' => OsTemplate::query()->orderByDesc('is_active')->orderBy('sort_order')->orderBy('name')->get(['id', 'name', 'is_active'])
+                ->map(fn (OsTemplate $template) => ['id' => $template->id, 'name' => $template->name, 'active' => $template->is_active]),
             'firewallRulesets' => FirewallRuleset::query()->orderBy('name')->get(['uuid', 'name', 'is_active'])
                 ->map(fn (FirewallRuleset $ruleset) => ['value' => $ruleset->uuid, 'label' => $ruleset->is_active ? $ruleset->name : $ruleset->name.' ('.__('inactive').')']),
             'placementGroups' => PlacementGroup::query()->with('location:id,name')->orderBy('name')->get(['id', 'name', 'location_id'])
@@ -56,6 +60,7 @@ class PackageController extends Controller
         DB::transaction(function () use ($request) {
             $package = Package::create($request->packageData());
             $package->placementGroups()->sync($request->placementGroupIds());
+            $package->osTemplates()->sync($request->osTemplateIds());
         });
 
         $this->toast('success', 'Package created.');
@@ -68,6 +73,7 @@ class PackageController extends Controller
         DB::transaction(function () use ($request, $package) {
             $package->update($request->packageData());
             $package->placementGroups()->sync($request->placementGroupIds());
+            $package->osTemplates()->sync($request->osTemplateIds());
         });
 
         $this->toast('success', 'Package updated.');

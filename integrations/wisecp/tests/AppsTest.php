@@ -61,7 +61,7 @@ final class AppsTest extends ModuleTestCase
      */
     private function reinstallRoutes(array $apps = []): void
     {
-        $this->api->on('GET /os-templates', 200, ['data' => [['id' => 'os-uuid', 'name' => 'Ubuntu 24.04', 'family' => 'ubuntu']]]);
+        $this->api->on('GET /os-templates?server=9b2f2c1e-0000-4000-8000-000000000001', 200, ['data' => [['id' => 'os-uuid', 'name' => 'Ubuntu 24.04', 'family' => 'ubuntu']]]);
         $this->api->on('GET /apps?mode=order&server=' . self::SERVER_ID, 200, ['data' => $apps]);
     }
 
@@ -85,7 +85,7 @@ final class AppsTest extends ModuleTestCase
     public function test_a_reinstall_with_an_app_needs_the_confirmation(): void
     {
         $this->serviceHas($this->server());
-        $this->api->on('GET /os-templates', 200, ['data' => [['id' => 'os-uuid', 'name' => 'Ubuntu 24.04']]]);
+        $this->api->on('GET /os-templates?server=9b2f2c1e-0000-4000-8000-000000000001', 200, ['data' => [['id' => 'os-uuid', 'name' => 'Ubuntu 24.04']]]);
         $this->api->on('POST ' . self::SERVER . '/reinstall', 202, $this->task('reinstall'));
 
         try {

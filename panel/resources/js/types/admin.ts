@@ -230,6 +230,8 @@ export type Package = ResourceLimitValues & {
     sort_order: number;
     /** Empty: any node; otherwise the groups of the ordered location (docs/adr/0020). */
     placement_group_ids: number[];
+    /** Empty: any OS template; otherwise the ones its servers may use (docs/adr/0040). */
+    os_template_ids: number[];
     /** New servers start with these rules and its default policy (docs/adr/0035 §3). */
     firewall_ruleset: string | null;
 };
@@ -759,6 +761,8 @@ export type PackageOption = Option &
     ResourceLimitValues & {
         network_models: NetworkModel[];
         placement_groups: string[];
+        /** The OS templates its servers may use; empty for any (docs/adr/0040). */
+        os_templates: string[];
         cpu_cores: number;
         memory_mib: number;
         disk_gib: number;

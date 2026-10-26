@@ -45,9 +45,16 @@ final readonly class ServerReinstaller
      */
     public function eligibleTemplates(Server $server): Collection
     {
-        return OsTemplate::query()
+        $query = OsTemplate::query()
             ->when($server->billing_system_id !== null, fn ($query) => $query->where('is_active', true))
-            ->whereHas('proxmoxTemplates', fn ($query) => $query->where('cluster_id', $server->cluster_id))
+            ->whereHas('proxmoxTemplates', fn ($query) => $query->where('cluster_id', $server->cluster_id));
+
+        // The server's package may name the templates it uses; none means any (docs/adr/0040).
+        if ($server->package !== null) {
+            $query->allowedBy($server->package);
+        }
+
+        return $query
             ->orderByDesc('is_active')
             ->orderBy('sort_order')
             ->orderBy('name')
@@ -72,6 +79,10 @@ final readonly class ServerReinstaller
 
         if (! $osTemplate->is_active && $server->billing_system_id !== null) {
             throw new ProvisioningException(ServerCreator::INACTIVE_TEMPLATE);
+        }
+
+        if ($server->package !== null && ! $server->package->allowsOsTemplate($osTemplate)) {
+            throw ProvisioningException::templateNotAllowed();
         }
 
         return DB::transaction(function () use ($server, $osTemplate, $sshKeys, $actor, $ipAddress, $app, $appValues) {

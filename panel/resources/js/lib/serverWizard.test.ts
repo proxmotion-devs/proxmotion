@@ -7,9 +7,32 @@ import {
     makesTestServer,
     nodeProblems,
     nodeStorages,
+    templatesFor,
     WIZARD_STEPS,
 } from '@/lib/serverWizard';
 import type { PlacementGroupOption, PlacementNode } from '@/types/admin';
+
+describe('templatesFor', () => {
+    const templates = [
+        { value: 'ubuntu', label: 'Ubuntu', active: true },
+        { value: 'debian', label: 'Debian', active: true },
+    ];
+
+    it('lists the templates a package names', () => {
+        expect(
+            templatesFor(templates, { os_templates: ['debian'] }).map(
+                (option) => option.value,
+            ),
+        ).toEqual(['debian']);
+    });
+
+    it('lists every template when the package names none or there is no package', () => {
+        expect(templatesFor(templates, { os_templates: [] })).toEqual(
+            templates,
+        );
+        expect(templatesFor(templates, undefined)).toEqual(templates);
+    });
+});
 
 const storage = (name: string, freeMib: number, useForServers = true) => ({
     name,

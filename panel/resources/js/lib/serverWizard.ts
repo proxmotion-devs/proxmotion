@@ -226,3 +226,21 @@ export function makesTestServer(
         osTemplates.find((option) => option.value === chosen)?.active === false
     );
 }
+
+/**
+ * The OS templates a server of the chosen package may use: the ones the
+ * package names, or all of them when it names none or there is no package
+ * (a custom server) (docs/adr/0040).
+ */
+export function templatesFor<T extends { value: string }>(
+    osTemplates: T[],
+    pkg: { os_templates: string[] } | undefined,
+): T[] {
+    if (pkg === undefined || pkg.os_templates.length === 0) {
+        return osTemplates;
+    }
+
+    return osTemplates.filter((option) =>
+        pkg.os_templates.includes(option.value),
+    );
+}

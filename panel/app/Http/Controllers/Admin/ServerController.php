@@ -137,7 +137,7 @@ class ServerController extends Controller
             'locations' => Location::query()->orderBy('name')->get(['uuid', 'name', 'code', 'hostname_template'])
                 // With a template, the hostname may stay empty (docs/adr/0031).
                 ->map(fn (Location $location) => ['value' => $location->uuid, 'label' => $location->name, 'code' => $location->code, 'hostname_template' => $location->hostname_template]),
-            'packages' => Package::query()->where('is_active', true)->with('placementGroups:id,uuid')->orderBy('sort_order')->orderBy('name')->get()
+            'packages' => Package::query()->where('is_active', true)->with(['placementGroups:id,uuid', 'osTemplates:id,uuid'])->orderBy('sort_order')->orderBy('name')->get()
                 ->map(fn (Package $package) => [
                     'value' => $package->uuid,
                     'label' => $package->name,
@@ -146,6 +146,8 @@ class ServerController extends Controller
                     ...ResourceOptions::packageValues($package),
                     // The placement groups its servers may be placed on; empty for any.
                     'placement_groups' => $package->placementGroups->pluck('uuid')->values(),
+                    // The OS templates its servers may use; empty for any (docs/adr/0040).
+                    'os_templates' => $package->osTemplates->pluck('uuid')->values(),
                 ]),
             // Active IPv4 pools with their free addresses, for choosing the addresses by hand.
             'ipv4Pools' => fn () => IpPool::query()

@@ -197,6 +197,15 @@ class OsTemplateController extends Controller
 
     public function destroy(OsTemplate $osTemplate): RedirectResponse
     {
+        // Packages would silently allow every template (docs/adr/0040).
+        $packages = $osTemplate->packages()->count();
+
+        if ($packages > 0) {
+            $this->toast('error', ':count packages use this OS template. Remove it from them first.', ['count' => (string) $packages]);
+
+            return back();
+        }
+
         $osTemplate->delete();
 
         $this->toast('success', 'OS template deleted.');

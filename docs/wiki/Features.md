@@ -351,7 +351,8 @@ A **package** (plan) defines:
 - number of IPv4 and IPv6 addresses,
 - backup quota,
 - allowed **network models**,
-- optional **placement groups**.
+- optional **placement groups**,
+- optional **OS templates** ([ADR 0040](../adr/0040-package-os-templates.md)): the templates its servers may be created or reinstalled with; none means any. A server keeps its template when its package changes; the new package applies on the next create or reinstall.
 
 Units are consistent everywhere: disk and memory in **MiB**, traffic in **bytes**, port speed in **Mbps**.
 
@@ -598,7 +599,7 @@ Every change is audited with a version diff. A custom recipe can never override 
 
 | Area | Endpoints |
 |---|---|
-| **Catalog** | `GET /packages`, `/locations`, `/os-templates`, `GET /apps?os_template=&package=&server=&mode=` |
+| **Catalog** | `GET /packages`, `/locations`, `/os-templates` (`?package=` or `?server=` for the templates a package or server may use, ADR 0040), `GET /apps?os_template=&package=&server=&mode=` |
 | **Servers** | `POST /servers`, `GET /servers?external_id=&external_client_id=&status=`, `GET /servers/{id}`, `DELETE /servers/{id}` |
 | **Lifecycle** | `POST /servers/{id}/suspend`, `/unsuspend`, `/power`, `/reinstall`, `/package` |
 | **Identity & network** | `POST /servers/{id}/hostname`, `/primary-address`, `/rdns` |
