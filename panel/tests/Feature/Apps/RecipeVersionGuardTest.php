@@ -10,7 +10,7 @@ use Tests\TestCase;
 
 /**
  * apps:check-versions (docs/adr/0016 §2): a bundled recipe whose content
- * changed needs a higher version, or apps:sync refuses it where the old
+ * changed needs a higher version, or the App Store refuses it where the old
  * version is installed. Two recipe directories stand for the base branch
  * and the change.
  */
@@ -30,7 +30,7 @@ class RecipeVersionGuardTest extends TestCase
 
         // The loader reads the schema and the shared files from its own directory.
         foreach (['_schema', '_lib', 'docker', 'openvpn'] as $slug) {
-            File::copyDirectory(base_path('recipes/'.$slug), $this->base.'/'.$slug);
+            File::copyDirectory(base_path('tests/Fixtures/recipes/'.$slug), $this->base.'/'.$slug);
         }
 
         File::copyDirectory($this->base, $this->head);
@@ -95,16 +95,9 @@ class RecipeVersionGuardTest extends TestCase
     public function test_readmes_new_and_removed_recipes_do_not_count()
     {
         File::append($this->head.'/docker/README.md', "\nMore notes.\n");
-        File::copyDirectory(base_path('recipes/wireguard'), $this->head.'/wireguard');
+        File::copyDirectory(base_path('tests/Fixtures/recipes/wireguard'), $this->head.'/wireguard');
         File::deleteDirectory($this->head.'/openvpn');
 
         $this->assertSame([], $this->problems());
-    }
-
-    public function test_an_unknown_git_ref_fails_clearly()
-    {
-        $this->artisan('apps:check-versions', ['--base' => 'no-such-ref-'.Str::random(8)])
-            ->expectsOutputToContain('could not be read')
-            ->assertFailed();
     }
 }

@@ -8,7 +8,6 @@ use App\Domain\Apps\AppNotEligible;
 use App\Domain\Apps\AppRunner;
 use App\Domain\Apps\AppUpgrades;
 use App\Domain\Apps\InstallationPoller;
-use App\Domain\Apps\RecipeSynchronizer;
 use App\Domain\Apps\RunPoller;
 use App\Enums\AppInstallationStatus;
 use App\Enums\AppRunKind;
@@ -51,7 +50,7 @@ class AppUpgradeTest extends TestCase
         $this->proxmox = (new FakeProxmoxCluster)->addTemplate(9000)->install();
         $this->server = app(ServerCreator::class)->create($this->order())->refresh();
         $this->admin = User::factory()->create();
-        app(RecipeSynchronizer::class)->sync();
+        $this->syncRecipes();
         $this->offerApps();
     }
 
@@ -257,7 +256,7 @@ class AppUpgradeTest extends TestCase
 
         $this->upgrade($installation);
 
-        $this->assertTrue($target->inUse(), 'apps:sync must not replace its content.');
+        $this->assertTrue($target->inUse(), 'A download must not replace its content.');
         $this->assertFalse(AppRecipe::query()->where('slug', 'openvpn')->firstOrFail()->latestVersion?->inUse());
     }
 }

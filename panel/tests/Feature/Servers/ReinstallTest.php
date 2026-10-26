@@ -2,7 +2,6 @@
 
 namespace Tests\Feature\Servers;
 
-use App\Domain\Apps\RecipeSynchronizer;
 use App\Domain\Settings\PanelSettings;
 use App\Enums\AppInstallationStatus;
 use App\Enums\AppInstallMode;
@@ -260,7 +259,7 @@ class ReinstallTest extends TestCase
 
     public function test_an_app_can_come_with_the_new_system()
     {
-        app(RecipeSynchronizer::class)->sync();
+        $this->syncRecipes();
         $this->offerApps();
 
         $this->actingAs($this->admin)
@@ -278,7 +277,7 @@ class ReinstallTest extends TestCase
 
     public function test_an_app_that_does_not_fit_refuses_the_reinstall()
     {
-        app(RecipeSynchronizer::class)->sync();
+        $this->syncRecipes();
         $this->offerApps();
         AppRecipe::query()->where('slug', 'docker')->update(['is_active' => false]);
 

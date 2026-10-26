@@ -1,5 +1,6 @@
 <?php
 
+use App\Jobs\RefreshAppCatalog;
 use App\Models\AppLog;
 use App\Models\GuestScriptLog;
 use App\Models\IdempotencyKey;
@@ -27,6 +28,9 @@ Schedule::command('model:prune', ['--model' => [UsageViolation::class]])->daily(
 
 // Follow app installers running inside servers (docs/adr/0015).
 Schedule::command('apps:poll')->everyMinute()->withoutOverlapping();
+
+// Read the App Store's recipe repository again (docs/adr/0041); the Refresh button does it at once.
+Schedule::job(new RefreshAppCatalog)->everySixHours()->withoutOverlapping();
 
 // Live figures of the servers administrators are watching; returns at once when nobody is (docs/adr/0036).
 // The lock expires after a minute: a crashed run must not stop them for a day (the default).

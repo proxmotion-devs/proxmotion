@@ -26,7 +26,7 @@ use Illuminate\Support\Carbon;
  * @property string|null $signature minisign signature (docs/adr/0017)
  * @property string|null $signed_by key id of the signature
  * @property AppRecipeVersionStatus $status
- * @property string $origin upstream (panel/recipes) or local (admin editor)
+ * @property string $origin upstream (the App Store) or local (admin editor)
  * @property int|null $trial_of_id the draft a trial version was frozen from (docs/adr/0018 §7)
  * @property int|null $reviewed_by
  * @property Carbon|null $reviewed_at
@@ -36,7 +36,7 @@ use Illuminate\Support\Carbon;
  */
 class AppRecipeVersion extends Model
 {
-    /** Shipped in panel/recipes and stored by apps:sync. */
+    /** Downloaded from the App Store. */
     public const ORIGIN_UPSTREAM = 'upstream';
 
     /** Written in the admin editor: custom apps, and bundled apps edited in place (docs/adr/0018 §2). */

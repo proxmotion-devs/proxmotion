@@ -13,7 +13,7 @@ use Symfony\Component\Yaml\Exception\ParseException;
 use Symfony\Component\Yaml\Yaml;
 
 /**
- * Reads and validates the recipes in panel/recipes (docs/adr/0015, 0016):
+ * Reads and validates recipe directories, such as the App Store's checkouts (docs/adr/0015, 0016, 0041):
  * each directory not starting with "_" holds recipe.yaml and the scripts it
  * names (format 1: install.sh and actions; format 2: lifecycle and actions).
  */
@@ -78,7 +78,8 @@ final class RecipeLoader
         $path = $this->directory().'/'.$slug;
         $yaml = $path.'/recipe.yaml';
 
-        if (! is_file($yaml)) {
+        // A link could point outside the recipe: recipes come from checkouts of repositories (docs/adr/0041).
+        if (is_link($path) || is_link($yaml) || ! is_file($yaml)) {
             throw new RecipeInvalid($slug, ['recipe.yaml is missing.']);
         }
 
@@ -93,7 +94,7 @@ final class RecipeLoader
         }
 
         /** @var array<string, mixed> $data */
-        return $this->check($slug, $data, fn (string $script): ?string => is_file($path.'/'.$script) ? (string) file_get_contents($path.'/'.$script) : null);
+        return $this->check($slug, $data, fn (string $script): ?string => $this->readScript($path, $script));
     }
 
     /**
@@ -164,7 +165,7 @@ final class RecipeLoader
     }
 
     /**
-     * The shared helper and runner scripts of a platform (recipes/_lib).
+     * The shared helper and runner scripts of a platform (panel/recipes/_lib).
      *
      * @return array<string, string>
      */
@@ -173,7 +174,7 @@ final class RecipeLoader
         $files = [];
 
         foreach (AppGuest::LIBRARY_FILES[$platform] ?? [] as $name) {
-            $files[$name] = (string) file_get_contents($this->directory().'/_lib/'.$name);
+            $files[$name] = (string) file_get_contents($this->runtime().'/_lib/'.$name);
         }
 
         return $files;
@@ -184,7 +185,7 @@ final class RecipeLoader
      */
     public function stopScript(OsPlatform $platform): string
     {
-        return (string) file_get_contents($this->directory().'/_lib/'.AppGuest::STOP_FILES[$platform->value]);
+        return (string) file_get_contents($this->runtime().'/_lib/'.AppGuest::STOP_FILES[$platform->value]);
     }
 
     /**
@@ -209,7 +210,7 @@ final class RecipeLoader
 
         $result = $validator->validate(
             json_decode((string) json_encode($data, JSON_THROW_ON_ERROR)),
-            (string) file_get_contents($this->directory().'/_schema/'.$schema),
+            (string) file_get_contents($this->runtime().'/_schema/'.$schema),
         );
 
         $error = $result->error();
@@ -311,5 +312,34 @@ final class RecipeLoader
         }
 
         return $errors;
+    }
+
+    /**
+     * The content of a script of the recipe in $directory, or null when it is missing or is not a plain file inside it.
+     */
+    private function readScript(string $directory, string $script): ?string
+    {
+        $file = $directory.'/'.$script;
+
+        if (str_contains($script, '..') || is_link($file) || ! is_file($file)) {
+            return null;
+        }
+
+        $root = realpath($directory);
+        $real = realpath($file);
+
+        if ($root === false || $real === false || ! str_starts_with($real, $root.DIRECTORY_SEPARATOR)) {
+            return null;
+        }
+
+        return (string) file_get_contents($file);
+    }
+
+    /**
+     * The panel's own recipes directory: its shared helpers and JSON Schemas (docs/adr/0041).
+     */
+    private function runtime(): string
+    {
+        return base_path('recipes');
     }
 }

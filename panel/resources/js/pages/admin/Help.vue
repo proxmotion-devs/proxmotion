@@ -302,7 +302,7 @@ const topics = [
                 <p>
                     {{
                         $t(
-                            'Bundled apps come with the panel. After an update, run php artisan apps:sync to store their new versions. Deactivate the ones you do not want to offer. You can edit a bundled app in place; Back to bundled version undoes your changes.',
+                            'Apps come from the App Store, the official recipe repository. Download one there; an update shows its changes and is taken only when you choose it. Deactivate the ones you do not want to offer. You can edit a downloaded app in place; Back to bundled version undoes your changes.',
                         )
                     }}
                 </p>

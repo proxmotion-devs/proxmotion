@@ -171,4 +171,21 @@ return [
         'suffix' => (string) env('PROXMOTION_PASSWORD_SUFFIX', '') === '' ? null : (string) env('PROXMOTION_PASSWORD_SUFFIX'),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | App Store (docs/adr/0041)
+    |--------------------------------------------------------------------------
+    |
+    | Where the app recipes come from: the official repository, read at a ref.
+    | A local directory (PROXMOTION_RECIPES_PATH, relative to panel/ or absolute)
+    | is read instead of the repository, for recipe authors and tests.
+    |
+    */
+
+    'recipes' => [
+        'repository' => (string) env('PROXMOTION_RECIPES_REPOSITORY', 'https://github.com/proxmotion-devs/proxmotion-recipes.git'),
+        'ref' => (string) env('PROXMOTION_RECIPES_REF', 'main'),
+        'path' => env('PROXMOTION_RECIPES_PATH') ?: null,
+    ],
+
 ];

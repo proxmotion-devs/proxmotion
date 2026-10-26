@@ -2,7 +2,6 @@
 
 namespace Tests\Feature\Api\V1;
 
-use App\Domain\Apps\RecipeSynchronizer;
 use App\Models\AppRecipe;
 use App\Models\Server;
 use Tests\Concerns\OffersApps;
@@ -21,7 +20,7 @@ class OrderedAppApiTest extends ApiTestCase
     {
         parent::setUp();
 
-        app(RecipeSynchronizer::class)->sync();
+        $this->syncRecipes();
 
         $this->offerApps();
     }

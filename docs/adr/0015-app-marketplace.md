@@ -2,6 +2,7 @@
 
 - **Status:** Accepted
 - **Date:** 2026-10-17
+- **Revised 2026-10-26 (ADR 0041):** the recipes live in `proxmotion-recipes` and are downloaded in the App Store; where this ADR says `panel/recipes` or `apps:sync`, read the App Store and the recipe repository (`panel/recipes` keeps only `_lib` and `_schema`).
 
 ## Context
 

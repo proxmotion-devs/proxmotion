@@ -22,13 +22,13 @@ final class AppGuest
     /** Forward slashes: the Windows file API and PowerShell accept them; cmd.exe gets backslashes. */
     public const string WINDOWS_ROOT = 'C:/ProgramData/Proxmotion/apps';
 
-    /** Shared files the panel writes next to every recipe (recipes/_lib). */
+    /** Shared files the panel writes next to every recipe (panel/recipes/_lib). */
     public const array LIBRARY_FILES = [
         'linux' => ['proxmotion.sh', 'run.sh'],
         'windows' => ['proxmotion.ps1', 'run.ps1', 'start.ps1', 'read-log.ps1'],
     ];
 
-    /** The script that stops runners (recipes/_lib, docs/adr/0030), written only when something is stopped. */
+    /** The script that stops runners (panel/recipes/_lib, docs/adr/0030), written only when something is stopped. */
     public const array STOP_FILES = ['linux' => 'stop.sh', 'windows' => 'stop.ps1'];
 
     /** Full control for SYSTEM and Administrators only, by SID (names are localized). */

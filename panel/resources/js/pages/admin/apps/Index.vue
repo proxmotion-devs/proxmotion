@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3';
-import { FileUp, Pencil, Plus } from '@lucide/vue';
+import { FileUp, Pencil, Plus, Store } from '@lucide/vue';
 import { trans } from 'laravel-vue-i18n';
 import { computed, ref, watch } from 'vue';
 import FormDialog from '@/components/admin/FormDialog.vue';
@@ -19,6 +19,7 @@ import {
     type OsFilter,
     type PlatformFilter,
 } from '@/lib/appFilters';
+import { index as storeIndex } from '@/routes/admin/apps/catalog';
 import {
     edit,
     importMethod as importRoute,
@@ -29,7 +30,7 @@ import {
 import type { AppText } from '@/types/admin';
 
 /**
- * Apps: bundled recipes synced from panel/recipes with `php artisan apps:sync`
+ * Apps: recipes downloaded from the App Store (docs/adr/0041)
  * (docs/adr/0015) and custom apps written in the editor (docs/adr/0018).
  * Inactive apps are neither listed nor installable.
  */
@@ -200,9 +201,15 @@ const submitCreate = () =>
         <div class="flex flex-wrap items-start justify-between gap-4">
             <Heading
                 title="Apps"
-                description="Apps customers can install on their servers through the billing system. Bundled apps come with the panel (php artisan apps:sync) and can be edited here; panel updates keep your changes. You can also write your own."
+                description="Apps customers can install on their servers through the billing system. Download them from the App Store; edit a downloaded app here (updates keep your changes), or write your own."
             />
             <div class="flex flex-wrap gap-2">
+                <Button variant="outline" as-child data-test="app-store">
+                    <Link :href="storeIndex()">
+                        <Store class="h-4 w-4" />
+                        {{ $t('App Store') }}
+                    </Link>
+                </Button>
                 <Button
                     variant="outline"
                     data-test="import-app"
@@ -230,7 +237,7 @@ const submitCreate = () =>
                 <li>
                     {{
                         $t(
-                            'Bundled apps are ready to use. Deactivate the ones you do not want to offer.',
+                            'Download apps from the App Store, or write your own. Deactivate the ones you do not want to offer.',
                         )
                     }}
                 </li>
@@ -401,7 +408,7 @@ const submitCreate = () =>
                         >
                             {{
                                 $t(
-                                    'No apps yet. Run php artisan apps:sync to add the bundled recipes.',
+                                    'No apps yet. Download some from the App Store.',
                                 )
                             }}
                         </td>

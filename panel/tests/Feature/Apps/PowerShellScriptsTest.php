@@ -8,7 +8,7 @@ use Symfony\Component\Process\Process;
 use Tests\TestCase;
 
 /**
- * The bundled PowerShell files (recipes/_lib and the Windows recipes,
+ * The bundled PowerShell files (panel/recipes/_lib and the Windows recipes,
  * docs/adr/0029) parse, and recipe scripts stop on errors. Parsing needs
  * PowerShell (pwsh on Linux runners, Windows PowerShell locally); without it
  * that part is skipped.

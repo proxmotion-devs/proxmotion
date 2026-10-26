@@ -2,7 +2,6 @@
 
 namespace Tests\Feature\Admin;
 
-use App\Domain\Apps\RecipeSynchronizer;
 use App\Domain\Networking\GenerateIpAddresses;
 use App\Domain\Settings\PanelSettings;
 use App\Enums\AppEntitlementSource;
@@ -509,7 +508,7 @@ class ServerManagementTest extends AdminTestCase
 
     public function test_the_create_form_offers_the_apps_each_template_fits()
     {
-        app(RecipeSynchronizer::class)->sync();
+        $this->syncRecipes();
         $this->offerApps();
         $windows = OsTemplate::factory()->windows()->create();
 
@@ -523,7 +522,7 @@ class ServerManagementTest extends AdminTestCase
 
     public function test_a_server_can_be_created_with_an_app()
     {
-        app(RecipeSynchronizer::class)->sync();
+        $this->syncRecipes();
         $this->offerApps();
 
         $this->post(route('admin.servers.store'), $this->payload(['app' => 'openvpn', 'app_inputs' => ['port' => 1195]]))
@@ -538,7 +537,7 @@ class ServerManagementTest extends AdminTestCase
 
     public function test_apps_that_do_not_fit_and_invalid_app_inputs_are_shown_on_the_form()
     {
-        app(RecipeSynchronizer::class)->sync();
+        $this->syncRecipes();
         $this->offerApps();
         AppRecipe::query()->where('slug', 'docker')->update(['is_active' => false]);
 
@@ -551,7 +550,7 @@ class ServerManagementTest extends AdminTestCase
 
     public function test_admins_can_grant_and_revoke_paid_apps()
     {
-        app(RecipeSynchronizer::class)->sync();
+        $this->syncRecipes();
         $this->offerApps();
         $openvpn = AppRecipe::query()->with('latestVersion')->where('slug', 'openvpn')->firstOrFail();
         $version = $openvpn->latestVersion;

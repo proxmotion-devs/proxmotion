@@ -2,10 +2,12 @@
 
 namespace Tests\Feature\Apps;
 
+use App\Domain\Apps\Catalog\AppCatalog;
+use App\Domain\Apps\Catalog\CatalogRefused;
 use App\Domain\Apps\RecipeInvalid;
 use App\Domain\Apps\RecipeLoader;
-use App\Domain\Apps\RecipeSynchronizer;
 use App\Enums\AppRecipeVersionStatus;
+use App\Models\AppCatalogEntry;
 use App\Models\AppInstallation;
 use App\Models\AppRecipe;
 use App\Models\AppRecipeVersion;
@@ -14,7 +16,7 @@ use Illuminate\Support\Facades\File;
 use Tests\TestCase;
 
 /**
- * Recipe validation (apps:validate), syncing with stored versions (apps:sync)
+ * Recipe validation (apps:validate), storing downloads as versions
  * and the skeleton (apps:make), docs/adr/0015 and 0016.
  */
 class RecipeLoaderTest extends TestCase
@@ -31,7 +33,9 @@ class RecipeLoaderTest extends TestCase
         $this->directory = sys_get_temp_dir().'/proxmotion-recipes-'.uniqid();
         File::copyDirectory(base_path('recipes/_schema'), $this->directory.'/_schema');
         File::copyDirectory(base_path('recipes/_lib'), $this->directory.'/_lib');
-        File::copyDirectory(base_path('recipes/openvpn'), $this->directory.'/openvpn');
+        File::copyDirectory(base_path('tests/Fixtures/recipes/openvpn'), $this->directory.'/openvpn');
+
+        config(['proxmotion.recipes.path' => $this->directory]);
     }
 
     protected function tearDown(): void
@@ -68,20 +72,20 @@ class RecipeLoaderTest extends TestCase
         $this->fail('The recipe was accepted.');
     }
 
-    public function test_the_bundled_recipes_are_valid()
+    public function test_the_fixture_recipes_are_valid()
     {
-        $recipes = (new RecipeLoader)->all();
+        $recipes = (new RecipeLoader(base_path('tests/Fixtures/recipes')))->all();
 
-        $this->assertSame(['aapanel', 'chocolatey', 'coolify', 'cpanel', 'cyberpanel', 'docker', 'fastpanel', 'hestiacp', 'iis', 'lamp', 'lemp', 'nodejs', 'openvpn', 'plesk', 'portainer', 'pterodactyl', 'sqlserver-express', 'whmcs', 'wireguard', 'wordpress'], array_keys($recipes));
+        $this->assertSame(['docker', 'openvpn', 'sqlserver-express', 'wireguard'], array_keys($recipes));
         $this->assertSame(['install.ps1', 'uninstall.ps1', 'actions/reset-password.ps1', 'lib.ps1'], array_keys($recipes['sqlserver-express']['files']));
         $this->assertSame(['install.sh', 'uninstall.sh', 'upgrade.sh', 'actions/add-client.sh', 'actions/revoke-client.sh', 'actions/list-clients.sh', 'lib.sh'], array_keys($recipes['wireguard']['files']));
-        $this->artisan('apps:validate')->assertSuccessful();
+        $this->artisan('apps:validate', ['--path' => $this->directory])->assertSuccessful();
     }
 
     public function test_inputs_labelled_optional_are_not_required()
     {
         // Without a default an input is required unless the recipe says required: false.
-        foreach ((new RecipeLoader)->all() as $slug => ['recipe' => $recipe]) {
+        foreach ((new RecipeLoader(base_path('tests/Fixtures/recipes')))->all() as $slug => ['recipe' => $recipe]) {
             $inputs = $recipe->inputs;
 
             foreach ($recipe->actions as $action) {
@@ -134,53 +138,52 @@ class RecipeLoaderTest extends TestCase
     public function test_apps_validate_reports_invalid_recipes()
     {
         $this->editRecipe('version: 1.3.1', 'version: one');
-        $this->app->instance(RecipeLoader::class, $this->loader());
 
-        $this->artisan('apps:validate')->assertFailed();
+        $this->artisan('apps:validate', ['--path' => $this->directory])->assertFailed();
     }
 
-    public function test_sync_adds_updates_and_deactivates_recipes_but_keeps_an_admins_choice()
+    public function test_sync_adds_updates_and_keeps_an_admins_deactivation()
     {
-        $this->app->instance(RecipeLoader::class, $this->loader());
-        $sync = fn () => app(RecipeSynchronizer::class)->sync();
-
-        $this->assertSame(['created' => ['openvpn'], 'updated' => [], 'held' => [], 'deactivated' => [], 'skipped' => []], $sync());
+        $this->assertSame(['created' => ['openvpn'], 'updated' => [], 'held' => [], 'skipped' => []], $this->syncRecipes());
         $recipe = AppRecipe::query()->where('slug', 'openvpn')->sole();
         $this->assertTrue($recipe->is_active);
         $this->assertSame((string) file_get_contents($this->directory.'/openvpn/install.sh'), $recipe->current()->files['install.sh']);
-        $this->assertSame(AppRecipeVersionStatus::Published, $recipe->current()->status, 'Bundled recipes ship with the panel.');
+        $this->assertSame(AppRecipeVersionStatus::Published, $recipe->current()->status, 'A downloaded recipe is approved.');
         $this->assertSame(2, $recipe->current()->format);
 
-        $this->assertSame(['created' => [], 'updated' => [], 'held' => [], 'deactivated' => [], 'skipped' => []], $sync(), 'Nothing changed.');
+        $this->assertSame(['created' => [], 'updated' => [], 'held' => [], 'skipped' => []], $this->syncRecipes(), 'Nothing changed.');
 
         $recipe->forceFill(['is_active' => false])->save();
         $this->editRecipe('version: 1.3.1', 'version: 1.4.0');
-        $this->assertSame(['created' => [], 'updated' => ['openvpn'], 'held' => [], 'deactivated' => [], 'skipped' => []], $sync());
+        $this->assertSame(['created' => [], 'updated' => ['openvpn'], 'held' => [], 'skipped' => []], $this->syncRecipes());
         $recipe->refresh();
         $this->assertSame('1.4.0', $recipe->current()->version);
         $this->assertSame(['1.3.1', '1.4.0'], $recipe->versions()->orderBy('id')->pluck('version')->all(), 'Earlier versions are kept.');
         $this->assertFalse($recipe->is_active, 'The administrator deactivated it.');
 
+        // A recipe that left the source is no longer offered: the refresh deactivates its app.
         $recipe->forceFill(['is_active' => true])->save();
         File::deleteDirectory($this->directory.'/openvpn');
-        $this->assertSame(['created' => [], 'updated' => [], 'held' => [], 'deactivated' => ['openvpn'], 'skipped' => []], $sync());
+        $this->syncRecipes();
         $this->assertFalse($recipe->refresh()->is_active);
     }
 
     public function test_a_version_in_use_cannot_change_without_a_new_number()
     {
-        $this->app->instance(RecipeLoader::class, $this->loader());
-        app(RecipeSynchronizer::class)->sync();
+        $this->syncRecipes();
         $recipe = AppRecipe::query()->where('slug', 'openvpn')->sole();
         AppInstallation::factory()->for($recipe, 'recipe')->create();
 
         file_put_contents($this->directory.'/openvpn/install.sh', "#!/bin/bash\necho changed\n");
 
+        $this->assertSame(['openvpn'], $this->syncRecipes()['skipped']);
+        $entry = AppCatalogEntry::query()->where('slug', 'openvpn')->sole();
+
         try {
-            app(RecipeSynchronizer::class)->sync();
+            app(AppCatalog::class)->download($entry, null, null);
             $this->fail('The changed version was accepted.');
-        } catch (RecipeInvalid $e) {
-            $this->assertSame(['Version 1.3.1 changed but is used by installations: raise the version.'], $e->errors);
+        } catch (CatalogRefused $e) {
+            $this->assertSame('This version is used by installations; raise the version number to change it.', $e->getMessage());
         }
 
         $this->assertStringNotContainsString('changed', $recipe->current()->refresh()->files['install.sh']);
@@ -188,12 +191,11 @@ class RecipeLoaderTest extends TestCase
 
     public function test_an_unused_version_is_replaced_in_place()
     {
-        $this->app->instance(RecipeLoader::class, $this->loader());
-        app(RecipeSynchronizer::class)->sync();
+        $this->syncRecipes();
 
         file_put_contents($this->directory.'/openvpn/install.sh', "#!/bin/bash\necho changed\n");
 
-        $this->assertSame(['created' => [], 'updated' => ['openvpn'], 'held' => [], 'deactivated' => [], 'skipped' => []], app(RecipeSynchronizer::class)->sync());
+        $this->assertSame(['created' => [], 'updated' => ['openvpn'], 'held' => [], 'skipped' => []], $this->syncRecipes());
         $this->assertSame(1, AppRecipeVersion::query()->count());
         $this->assertStringContainsString('changed', AppRecipeVersion::query()->sole()->files['install.sh']);
     }
@@ -276,37 +278,34 @@ class RecipeLoaderTest extends TestCase
 
     public function test_apps_make_writes_a_valid_skeleton()
     {
-        $this->app->instance(RecipeLoader::class, $this->loader());
 
-        $this->artisan('apps:make', ['slug' => 'uptime-kuma', '--name' => 'Uptime Kuma'])->assertSuccessful();
+        $this->artisan('apps:make', ['--path' => $this->directory, 'slug' => 'uptime-kuma', '--name' => 'Uptime Kuma'])->assertSuccessful();
 
         ['recipe' => $recipe, 'files' => $files] = $this->loader()->load('uptime-kuma');
         $this->assertSame('Uptime Kuma', $recipe->name);
         $this->assertSame(['install.sh', 'uninstall.sh'], array_keys($files));
         $this->assertFileExists($this->directory.'/uptime-kuma/README.md');
 
-        $this->artisan('apps:make', ['slug' => 'uptime-kuma'])->assertFailed();
-        $this->artisan('apps:make', ['slug' => 'Bad_Slug'])->assertFailed();
+        $this->artisan('apps:make', ['--path' => $this->directory, 'slug' => 'uptime-kuma'])->assertFailed();
+        $this->artisan('apps:make', ['--path' => $this->directory, 'slug' => 'Bad_Slug'])->assertFailed();
     }
 
     public function test_apps_make_writes_a_valid_windows_skeleton()
     {
-        $this->app->instance(RecipeLoader::class, $this->loader());
 
-        $this->artisan('apps:make', ['slug' => 'file-server', '--platform' => 'windows'])->assertSuccessful();
+        $this->artisan('apps:make', ['--path' => $this->directory, 'slug' => 'file-server', '--platform' => 'windows'])->assertSuccessful();
 
         ['recipe' => $recipe, 'files' => $files] = $this->loader()->load('file-server');
         $this->assertSame('windows', $recipe->platform);
         $this->assertSame(['install.ps1', 'uninstall.ps1'], array_keys($files));
         $this->assertStringContainsString('proxmotion.ps1', $files['install.ps1']);
 
-        $this->artisan('apps:make', ['slug' => 'other-app', '--platform' => 'macos'])->assertFailed();
+        $this->artisan('apps:make', ['--path' => $this->directory, 'slug' => 'other-app', '--platform' => 'macos'])->assertFailed();
     }
 
     public function test_windows_recipes_use_powershell_scripts_only()
     {
-        $this->app->instance(RecipeLoader::class, $this->loader());
-        $this->artisan('apps:make', ['slug' => 'file-server', '--platform' => 'windows']);
+        $this->artisan('apps:make', ['--path' => $this->directory, 'slug' => 'file-server', '--platform' => 'windows']);
         $yaml = $this->directory.'/file-server/recipe.yaml';
         file_put_contents($yaml, str_replace('script: uninstall.ps1', 'script: uninstall.sh', (string) file_get_contents($yaml)));
         touch($this->directory.'/file-server/uninstall.sh');
@@ -319,12 +318,13 @@ class RecipeLoaderTest extends TestCase
         }
     }
 
-    public function test_an_invalid_recipe_stops_the_sync_before_anything_is_written()
+    public function test_an_invalid_recipe_is_listed_with_its_errors_and_is_not_downloaded()
     {
         $this->editRecipe('timeout_minutes: 15', 'timeout_minutes: 0');
-        $this->app->instance(RecipeLoader::class, $this->loader());
 
-        $this->artisan('apps:sync')->assertFailed();
+        $this->assertSame([], $this->syncRecipes()['created']);
+        $this->assertNotEmpty(AppCatalogEntry::query()->where('slug', 'openvpn')->sole()->errors);
         $this->assertSame(0, AppRecipe::query()->count());
+        $this->artisan('apps:validate', ['--path' => $this->directory])->assertFailed();
     }
 }

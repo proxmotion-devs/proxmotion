@@ -4,7 +4,6 @@ namespace Tests\Feature\Admin;
 
 use App\Domain\Apps\AppEligibility;
 use App\Domain\Apps\RecipeLoader;
-use App\Domain\Apps\RecipeSynchronizer;
 use App\Enums\AppRecipeVersionStatus;
 use App\Models\AppInstallation;
 use App\Models\AppRecipe;
@@ -25,7 +24,7 @@ class RecipeEditorTest extends AdminTestCase
     {
         parent::setUp();
 
-        app(RecipeSynchronizer::class)->sync();
+        $this->syncRecipes();
     }
 
     private function app(string $slug): AppRecipe
@@ -75,7 +74,7 @@ class RecipeEditorTest extends AdminTestCase
 
         $this->post(route('admin.apps.store'), ['slug' => 'mine', 'name' => 'Mine', 'platform' => 'macos'])->assertSessionHasErrors('platform');
 
-        $this->assertSame(20, AppRecipe::query()->count());
+        $this->assertSame(4, AppRecipe::query()->count());
     }
 
     public function test_a_new_windows_app_starts_from_the_powershell_skeleton()
@@ -204,12 +203,12 @@ class RecipeEditorTest extends AdminTestCase
         $this->post(route('admin.apps.store'), ['slug' => 'uptime-kuma', 'name' => 'Uptime Kuma']);
 
         $this->get(route('admin.apps.index'))->assertInertia(fn ($page) => $page
-            ->has('apps', 21)
-            ->where('apps.15.slug', 'uptime-kuma')
-            ->where('apps.15.source', 'custom')
-            ->where('apps.15.published', false)
-            ->where('apps.15.draft_version', '1.0.0')
-            ->where('apps.15.version', null));
+            ->has('apps', 5)
+            ->where('apps.3.slug', 'uptime-kuma')
+            ->where('apps.3.source', 'custom')
+            ->where('apps.3.published', false)
+            ->where('apps.3.draft_version', '1.0.0')
+            ->where('apps.3.version', null));
     }
 
     public function test_the_editor_opens_bundled_apps_for_editing_and_custom_drafts_with_their_errors()
@@ -295,8 +294,8 @@ class RecipeEditorTest extends AdminTestCase
         $this->assertSame(1024, $wireguard->recipe()->minMemoryMib);
 
         // A panel update ships wireguard 1.3.2: it is kept, not offered.
-        $this->app->instance(RecipeLoader::class, $this->recipesWithWireguard('1.3.2'));
-        $this->assertSame(['wireguard'], app(RecipeSynchronizer::class)->sync()['held']);
+        config(['proxmotion.recipes.path' => $this->recipesWithWireguard('1.3.2')->directory()]);
+        $this->assertSame(['wireguard'], $this->syncRecipes()['held']);
         $wireguard->refresh();
         $this->assertSame('1.3.1-local.1', $wireguard->current()->version);
         $this->assertSame(AppRecipeVersionStatus::Archived, $wireguard->versions()->where('version', '1.3.2')->sole()->status);
@@ -321,12 +320,12 @@ class RecipeEditorTest extends AdminTestCase
     }
 
     /**
-     * A copy of panel/recipes in which wireguard has another version.
+     * A copy of the fixture recipes in which wireguard has another version.
      */
     private function recipesWithWireguard(string $version): RecipeLoader
     {
         $directory = sys_get_temp_dir().'/proxmotion-recipes-'.uniqid();
-        File::copyDirectory(base_path('recipes'), $directory);
+        File::copyDirectory(base_path('tests/Fixtures/recipes'), $directory);
         $yaml = $directory.'/wireguard/recipe.yaml';
         file_put_contents($yaml, (string) preg_replace('/^version: .*$/m', 'version: '.$version, (string) file_get_contents($yaml)));
         $this->beforeApplicationDestroyed(fn () => File::deleteDirectory($directory));
@@ -343,7 +342,7 @@ class RecipeEditorTest extends AdminTestCase
         $bundled->delete();
         $custom = AppRecipe::query()->forceCreate(['slug' => 'docker', 'source' => AppRecipe::SOURCE_CUSTOM, 'name' => 'My own Docker', 'category' => 'container', 'is_active' => true]);
 
-        $this->assertSame(['docker'], app(RecipeSynchronizer::class)->sync()['skipped']);
+        $this->assertSame(['docker'], $this->syncRecipes()['skipped']);
         $this->assertSame(AppRecipe::SOURCE_CUSTOM, $custom->refresh()->source);
         $this->assertSame(0, $custom->versions()->count());
     }

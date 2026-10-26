@@ -24,7 +24,7 @@ use LogicException;
  *
  * @property int $id
  * @property string $slug
- * @property string $source bundled (panel/recipes; editable in place) or custom (admin editor, docs/adr/0018); catalogs: docs/adr/0017
+ * @property string $source bundled (the App Store; editable in place) or custom (admin editor, docs/adr/0018); catalogs: docs/adr/0017
  * @property int|null $latest_version_id the published version
  * @property int|null $copied_from_version_id the version a custom app was copied from
  * @property string $name of the latest version
@@ -101,7 +101,7 @@ class AppRecipe extends Model
 
     /**
      * A bundled app whose published version an administrator edited
-     * (docs/adr/0018 §2): apps:sync no longer replaces it.
+     * (docs/adr/0018 §2): a download no longer replaces it.
      */
     public function isModified(): bool
     {
@@ -109,7 +109,7 @@ class AppRecipe extends Model
     }
 
     /**
-     * The newest version shipped in panel/recipes (bundled apps), whatever its status.
+     * The newest version downloaded from the App Store (bundled apps), whatever its status.
      */
     public function latestUpstream(): ?AppRecipeVersion
     {

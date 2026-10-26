@@ -100,14 +100,14 @@ class InputValidatorTest extends TestCase
         }
     }
 
-    public function test_optional_inputs_of_bundled_recipes_may_stay_empty()
+    public function test_optional_inputs_may_stay_empty()
     {
         // As the install form sends them: untouched fields are empty.
-        $recipe = (new RecipeLoader)->load('wordpress')['recipe'];
+        $recipe = (new RecipeLoader(base_path('tests/Fixtures/recipes')))->load('sqlserver-express')['recipe'];
 
-        $values = (new InputValidator)->validateInputs($recipe->inputs, ['admin_email' => 'admin@example.com', 'domain' => '']);
+        $values = (new InputValidator)->validateInputs($recipe->inputs, ['admin_password' => '', 'port' => '2000']);
 
-        $this->assertArrayNotHasKey('domain', $values);
-        $this->assertSame('admin@example.com', $values['admin_email']);
+        $this->assertArrayNotHasKey('admin_password', $values);
+        $this->assertSame('2000', (string) $values['port']);
     }
 }

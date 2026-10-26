@@ -8,7 +8,6 @@ use App\Domain\Apps\AppInstaller;
 use App\Domain\Apps\AppNotEligible;
 use App\Domain\Apps\AppSystems;
 use App\Domain\Apps\InstallationPoller;
-use App\Domain\Apps\RecipeSynchronizer;
 use App\Enums\AppInstallationStatus;
 use App\Enums\TaskStatus;
 use App\Enums\TaskType;
@@ -53,7 +52,7 @@ class AppInstallTest extends TestCase
         $this->proxmox = (new FakeProxmoxCluster)->addTemplate(9000)->install();
         $this->server = app(ServerCreator::class)->create($this->order())->refresh();
         $this->admin = User::factory()->create();
-        app(RecipeSynchronizer::class)->sync();
+        $this->syncRecipes();
         $this->offerApps();
     }
 
@@ -97,7 +96,7 @@ class AppInstallTest extends TestCase
         $this->assertSame(TaskStatus::Succeeded, $installation->task?->status);
         $this->assertSame(TaskType::InstallApp, $installation->task->type);
 
-        $this->assertSame(file_get_contents(base_path('recipes/wireguard/install.sh')), $files[$directory.'/install.sh']);
+        $this->assertSame(file_get_contents(base_path('tests/Fixtures/recipes/wireguard/install.sh')), $files[$directory.'/install.sh']);
         $this->assertSame(file_get_contents(base_path('recipes/_lib/run.sh')), $files[$directory.'/run.sh']);
         $this->assertSame(file_get_contents(base_path('recipes/_lib/proxmotion.sh')), $files[$directory.'/proxmotion.sh']);
         $this->assertSame(['port' => 51900], json_decode($files[$directory.'/inputs.json'], true));

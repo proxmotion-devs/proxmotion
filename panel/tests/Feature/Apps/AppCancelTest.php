@@ -8,7 +8,6 @@ use App\Domain\Apps\AppInstallConflict;
 use App\Domain\Apps\AppInstaller;
 use App\Domain\Apps\AppRunner;
 use App\Domain\Apps\InstallationPoller;
-use App\Domain\Apps\RecipeSynchronizer;
 use App\Domain\Apps\RunPoller;
 use App\Enums\AppInstallationStatus;
 use App\Enums\AppRunStatus;
@@ -46,7 +45,7 @@ class AppCancelTest extends TestCase
         $this->proxmox = (new FakeProxmoxCluster)->addTemplate(9000)->install();
         $this->server = app(ServerCreator::class)->create($this->order())->refresh();
         $this->admin = User::factory()->withTwoFactor()->create();
-        app(RecipeSynchronizer::class)->sync();
+        $this->syncRecipes();
         $this->offerApps();
     }
 

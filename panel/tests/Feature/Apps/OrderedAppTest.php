@@ -4,7 +4,6 @@ namespace Tests\Feature\Apps;
 
 use App\Domain\Apps\AppNotEligible;
 use App\Domain\Apps\InstallationPoller;
-use App\Domain\Apps\RecipeSynchronizer;
 use App\Domain\Servers\ServerReinstaller;
 use App\Enums\AppInstallationStatus;
 use App\Enums\AppInstallMode;
@@ -45,7 +44,7 @@ class OrderedAppTest extends TestCase
         $this->buildInfrastructure();
         $this->proxmox = (new FakeProxmoxCluster)->addTemplate(9000)->install();
         $this->admin = User::factory()->create();
-        app(RecipeSynchronizer::class)->sync();
+        $this->syncRecipes();
         $this->offerApps();
     }
 

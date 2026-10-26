@@ -15,7 +15,7 @@ use ZipArchive;
 
 /**
  * A recipe as a zip of its format 2 directory (docs/adr/0018 §5): the same
- * layout as panel/recipes/<slug> (recipe.yaml and its scripts), inside a
+ * layout as a recipe directory named <slug> (recipe.yaml and its scripts), inside a
  * folder named after the slug. Imports are read entry by entry in memory,
  * never extracted to disk, and refused when anything looks off: paths
  * outside the recipe, links, unknown files, too many or too large files.

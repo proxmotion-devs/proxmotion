@@ -545,7 +545,7 @@ Uninstalls, upgrades and actions run as **runs** with their own status; the API 
 
 ### 11.6 Recipe format
 
-Each app is a directory under `panel/recipes/<slug>/` with `recipe.yaml`, `install.sh`, optional `uninstall.sh`, `upgrade.sh`, `actions/*.sh` and a `README.md`. **Format 2** declares:
+Each app is a directory `<slug>/` in the recipes repository [`proxmotion-recipes`](https://github.com/proxmotion-devs/proxmotion-recipes) with
 
 - identity, category, localized description, maintainers, homepage,
 - `requires`: platform, OS families and distributions, `min_versions` / `max_versions` per distribution,
@@ -721,9 +721,9 @@ All features are covered by automated tests with faked HTTP (an in-memory Proxmo
 |---|---|
 | `php artisan infra:sync` | Sync clusters (scheduled every 5 minutes) |
 | `php artisan apps:poll` | Follow running app installs, uninstalls, upgrades and actions; copy logs (every minute) |
-| `php artisan apps:sync` | Store bundled recipes in the database as new versions (after an update) |
+| *Apps → App Store* | Download recipes from `proxmotion-recipes` into the panel; an update shows its changes before it is taken (ADR 0041) |
 | `php artisan apps:validate` | Validate every recipe against the JSON Schema |
-| `php artisan apps:check-versions` | Require a higher version for changed bundled recipes (CI) |
+| `php artisan apps:check-versions --base-path=<dir> --path=<dir>` | Require a higher version for changed recipes (CI of `proxmotion-recipes`) |
 | `php artisan apps:make <slug>` | Create a format 2 recipe skeleton |
 | `php artisan servers:stats` | Send live figures of the servers whose page is open (every 10 seconds; only with `BROADCAST_CONNECTION=reverb`) |
 | `php artisan reverb:start` | WebSocket server for live figures |

@@ -3,7 +3,6 @@
 namespace Tests\Feature\Admin;
 
 use App\Domain\Apps\AppTrials;
-use App\Domain\Apps\RecipeSynchronizer;
 use App\Enums\AppRecipeVersionStatus;
 use App\Models\AppRecipe;
 use App\Models\AuditLog;
@@ -26,7 +25,7 @@ class RecipeArchiveTest extends AdminTestCase
     {
         parent::setUp();
 
-        app(RecipeSynchronizer::class)->sync();
+        $this->syncRecipes();
     }
 
     protected function tearDown(): void
@@ -118,7 +117,7 @@ class RecipeArchiveTest extends AdminTestCase
             ->assertDownload('wireguard-1.3.1.zip');
         $entries = $this->entries($response);
 
-        $this->assertSame(file_get_contents(base_path('recipes/wireguard/install.sh')), $entries['wireguard/install.sh']);
+        $this->assertSame(file_get_contents(base_path('tests/Fixtures/recipes/wireguard/install.sh')), $entries['wireguard/install.sh']);
         $this->assertSame($wireguard->current()->definition, Yaml::parse($entries['wireguard/recipe.yaml']));
         $this->assertSame(['app' => 'wireguard', 'version' => '1.3.1', 'draft' => false], AuditLog::query()->where('action', 'app.exported')->sole()->properties);
     }

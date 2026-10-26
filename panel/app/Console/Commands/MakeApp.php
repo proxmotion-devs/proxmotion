@@ -4,17 +4,17 @@ declare(strict_types=1);
 
 namespace App\Console\Commands;
 
-use App\Domain\Apps\RecipeLoader;
+use App\Domain\Apps\Catalog\RecipeSource;
 use App\Domain\Apps\RecipeSkeleton;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
 
-#[Signature('apps:make {slug : lower-case letters, digits and dashes, e.g. uptime-kuma} {--name= : display name} {--platform=linux : linux or windows (docs/adr/0029)}')]
-#[Description('Create a format 2 app recipe skeleton in panel/recipes (docs/adr/0016)')]
+#[Signature('apps:make {slug : lower-case letters, digits and dashes, e.g. uptime-kuma} {--name= : display name} {--platform=linux : linux or windows (docs/adr/0029)} {--path= : the recipes directory to create it in (default PROXMOTION_RECIPES_PATH)}')]
+#[Description('Create a format 2 app recipe skeleton in a recipes directory (docs/adr/0016, 0041)')]
 class MakeApp extends Command
 {
-    public function handle(RecipeLoader $loader): int
+    public function handle(): int
     {
         $slug = $this->argument('slug');
         $slug = is_string($slug) ? $slug : '';
@@ -33,7 +33,16 @@ class MakeApp extends Command
             return self::FAILURE;
         }
 
-        $directory = $loader->directory().'/'.$slug;
+        $root = $this->option('path') ?? config('proxmotion.recipes.path');
+
+        if (! is_string($root) || $root === '') {
+            $this->components->error('Give the recipes directory with --path, or set PROXMOTION_RECIPES_PATH.');
+
+            return self::FAILURE;
+        }
+
+        $root = RecipeSource::directory($root);
+        $directory = $root.'/'.$slug;
 
         if (file_exists($directory)) {
             $this->components->error("{$directory} already exists.");
@@ -53,9 +62,9 @@ class MakeApp extends Command
         $this->components->info("Created {$directory}.");
         $this->components->bulletList(array_values(array_filter([
             'Edit recipe.yaml (requirements, inputs, outputs) and the scripts.',
-            'php artisan apps:validate',
-            $platform === 'linux' ? 'shellcheck recipes/'.$slug.'/*.sh' : null,
-            'php artisan apps:sync',
+            'php artisan apps:validate --path='.$root,
+            $platform === 'linux' ? 'shellcheck '.$directory.'/*.sh' : null,
+            'Commit it to the recipes repository; an administrator downloads it in the App Store.',
         ])));
 
         return self::SUCCESS;

@@ -1,0 +1,87 @@
+format: 2
+slug: openvpn
+name: OpenVPN
+version: 1.3.1
+category: vpn
+description:
+    en: An OpenVPN server with its own certificate authority and one client profile; all client traffic goes through the server.
+    tr: Kendi sertifika otoritesi ve tek istemci profiliyle OpenVPN sunucusu; istemcinin tüm trafiği sunucu üzerinden geçer.
+maintainers: [{ name: Proxmotion }]
+requires:
+    platform: linux
+    os: { families: [debian] }
+    min_versions: { ubuntu: '22.04', debian: '12' }
+resources: { min_memory_mib: 512, min_disk_mib: 5120, min_cores: 1 }
+network_models: [bridged, routed, nat]
+install_modes: [order, post]
+billing: free
+license: none
+inputs:
+    - key: port
+      type: port
+      default: 1194
+      label: { en: Port, tr: Port }
+    - key: protocol
+      type: enum
+      options: [udp, tcp]
+      default: udp
+      label: { en: Protocol, tr: Protokol }
+    - key: admin_password
+      type: password
+      required: false
+      label: { en: Admin password, tr: Yönetici parolası }
+outputs:
+    - key: client_config
+      type: file
+      filename: client.ovpn
+      secret: true
+      label: { en: Client profile, tr: İstemci profili }
+    - key: endpoint
+      type: text
+      label: { en: Server endpoint, tr: Sunucu adresi }
+    - key: admin_password
+      type: text
+      secret: true
+      label: { en: Admin password, tr: Yönetici parolası }
+firewall:
+    - { port: '{{ inputs.port }}', proto: '{{ inputs.protocol }}' }
+includes: [lib.sh]
+lifecycle:
+    install: { script: install.sh, timeout_minutes: 15 }
+    uninstall: { script: uninstall.sh, timeout_minutes: 5 }
+    upgrade: { script: upgrade.sh, timeout_minutes: 10, from: '>=1.1.0 <1.3.0' }
+actions:
+    - key: add_client
+      label: { en: Add a client, tr: İstemci ekle }
+      script: actions/add-client.sh
+      inputs:
+          - key: name
+            type: slug
+            required: true
+            max_length: 32
+            label: { en: Client name, tr: İstemci adı }
+      outputs:
+          - key: client_profile
+            type: file
+            filename: client.ovpn
+            secret: true
+            label: { en: Client profile, tr: İstemci profili }
+      timeout_minutes: 3
+    - key: revoke_client
+      label: { en: Revoke a client, tr: İstemciyi iptal et }
+      script: actions/revoke-client.sh
+      inputs:
+          - key: name
+            type: slug
+            required: true
+            max_length: 32
+            label: { en: Client name, tr: İstemci adı }
+      timeout_minutes: 3
+    - key: list_clients
+      label: { en: List clients, tr: İstemcileri listele }
+      script: actions/list-clients.sh
+      outputs:
+          - key: clients
+            type: text
+            label: { en: Clients, tr: İstemciler }
+      timeout_minutes: 1

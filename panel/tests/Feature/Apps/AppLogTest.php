@@ -7,7 +7,6 @@ use App\Domain\Apps\AppLogs;
 use App\Domain\Apps\AppRunner;
 use App\Domain\Apps\InstallationPoller;
 use App\Domain\Apps\LiveAppPolls;
-use App\Domain\Apps\RecipeSynchronizer;
 use App\Domain\Apps\RunPoller;
 use App\Http\Middleware\HandleInertiaRequests;
 use App\Models\AppInstallation;
@@ -48,7 +47,7 @@ class AppLogTest extends TestCase
         $this->proxmox = (new FakeProxmoxCluster)->addTemplate(9000)->install();
         $this->server = app(ServerCreator::class)->create($this->order())->refresh();
         $this->admin = User::factory()->withTwoFactor()->create();
-        app(RecipeSynchronizer::class)->sync();
+        $this->syncRecipes();
         $this->offerApps();
     }
 
@@ -134,7 +133,7 @@ class AppLogTest extends TestCase
 
     public function test_secret_inputs_and_outputs_are_masked()
     {
-        $installation = $this->install('whmcs', ['download_url' => 'https://downloads.example.com/whmcs.zip', 'license_key' => 'Owned-1234-abcd', 'accept_eula' => true]);
+        $installation = $this->install('openvpn', ['admin_password' => 'Owned-1234-abcd']);
         $this->reports($installation, ['status' => 'installing', 'progress' => 20, 'step' => 'Installing']);
         $this->printed($installation, "Using licence Owned-1234-abcd\nAdmin password: Gen3rated-Pass\n");
         $live = $this->logOf($this->poll($installation));
@@ -142,7 +141,7 @@ class AppLogTest extends TestCase
         $this->assertSame('Using licence '.AppLogs::MASK."\nAdmin password: Gen3rated-Pass\n", $live->content, 'Outputs are not known yet.');
 
         $this->reports($installation, ['status' => 'installed', 'progress' => 100, 'step' => 'Installed']);
-        $this->guestFile($installation->guestDirectory().'/outputs.json', json_encode(['username' => 'whmcsadmin', 'password' => 'Gen3rated-Pass'], JSON_THROW_ON_ERROR));
+        $this->guestFile($installation->guestDirectory().'/outputs.json', json_encode(['username' => 'whmcsadmin', 'admin_password' => 'Gen3rated-Pass'], JSON_THROW_ON_ERROR));
         $log = $this->logOf($this->poll($installation));
 
         $this->assertSame('Using licence '.AppLogs::MASK."\nAdmin password: ".AppLogs::MASK."\n", $log->content);

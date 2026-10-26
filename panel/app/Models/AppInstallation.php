@@ -143,7 +143,7 @@ class AppInstallation extends Model
 
     /**
      * How long the runner may wait for cloud-init and the package locks after
-     * the first boot (pm_wait_for_boot in recipes/_lib, docs/adr/0016 §5).
+     * the first boot (pm_wait_for_boot in panel/recipes/_lib, docs/adr/0016 §5).
      */
     public const int BOOT_WAIT_MINUTES = 10;
 
