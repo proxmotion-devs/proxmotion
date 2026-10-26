@@ -22,6 +22,7 @@ import { hostnameExample } from '@/lib/hostnames';
 import {
     firstStepWithError,
     makesTestServer,
+    packageAllowing,
     templatesFor,
     WIZARD_STEPS,
 } from '@/lib/serverWizard';
@@ -62,13 +63,18 @@ const props = defineProps<{
     nodes: PlacementNode[];
 }>();
 
+// A preselected template (?os_template=) must survive: start with a package that allows it, else a custom server (docs/adr/0040).
+const startPackage = props.selectedOsTemplate
+    ? packageAllowing(props.packages, props.selectedOsTemplate)
+    : props.packages[0]?.value;
+
 const form = useForm({
     // "package": its resources, placed automatically; "custom": entered and placed by hand.
-    resource_mode: (props.packages.length > 0 ? 'package' : 'custom') as
+    resource_mode: (startPackage !== undefined ? 'package' : 'custom') as
         | 'package'
         | 'custom',
     location: props.locations[0]?.value ?? null,
-    package: props.packages[0]?.value ?? '',
+    package: startPackage ?? '',
     placement: 'group' as 'group' | 'node' | null,
     placement_group: null as string | null,
     node: null as string | null,

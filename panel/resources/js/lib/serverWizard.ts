@@ -244,3 +244,18 @@ export function templatesFor<T extends { value: string }>(
         pkg.os_templates.includes(option.value),
     );
 }
+
+/**
+ * The first package that may use the OS template: one that names it or names
+ * none (docs/adr/0040). Undefined when no package allows it.
+ */
+export function packageAllowing(
+    packages: { value: string; os_templates: string[] }[],
+    template: string,
+): string | undefined {
+    return packages.find(
+        (pkg) =>
+            pkg.os_templates.length === 0 ||
+            pkg.os_templates.includes(template),
+    )?.value;
+}
