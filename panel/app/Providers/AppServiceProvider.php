@@ -7,6 +7,7 @@ use App\Support\Broadcasting\ReverbFallback;
 use App\Support\Database\SqliteConnector;
 use Carbon\CarbonImmutable;
 use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Foundation\Console\ServeCommand;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
@@ -21,6 +22,11 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
+        // `php artisan serve` hands its PHP server only the variables listed here. Without TEMP and TMP,
+        // PHP on Windows uses C:\Windows as its temporary directory, where Symfony Process cannot
+        // write a command's output, so the App Store's refresh could not run git (docs/adr/0041).
+        ServeCommand::$passthroughVariables = array_values(array_unique([...ServeCommand::$passthroughVariables, 'TEMP', 'TMP', 'TMPDIR']));
+
         // IMMEDIATE SQLite transactions on PHP 8.3 too (config/database.php).
         $this->app->bind('db.connector.sqlite', SqliteConnector::class);
     }
