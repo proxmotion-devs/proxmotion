@@ -13,13 +13,26 @@ use Symfony\Component\Yaml\Exception\ParseException;
 use Symfony\Component\Yaml\Yaml;
 
 /**
- * Reads and validates recipe directories, such as the App Store's checkouts (docs/adr/0015, 0016, 0041):
+ * Reads and validates recipe directories, such as a recipes repository (docs/adr/0015, 0016, 0042):
  * each directory not starting with "_" holds recipe.yaml and the scripts it
  * names (format 1: install.sh and actions; format 2: lifecycle and actions).
  */
 final class RecipeLoader
 {
+    /** The folder of a recipes repository that holds its built .proxapp packages (docs/adr/0042), not a recipe. */
+    public const PACKAGES = 'packages';
+
     public function __construct(private readonly ?string $directory = null) {}
+
+    /**
+     * A recipes directory as given on the command line: a relative path is relative to panel/.
+     */
+    public static function resolve(string $path): string
+    {
+        $absolute = $path[0] === '/' || preg_match('~^[A-Za-z]:~', $path) === 1;
+
+        return $absolute ? $path : base_path($path);
+    }
 
     public function directory(): string
     {
@@ -56,7 +69,7 @@ final class RecipeLoader
         foreach (glob($this->directory().'/*', GLOB_ONLYDIR) ?: [] as $path) {
             $slug = basename($path);
 
-            if (! str_starts_with($slug, '_')) {
+            if (! str_starts_with($slug, '_') && $slug !== self::PACKAGES) {
                 $slugs[] = $slug;
             }
         }
@@ -78,7 +91,7 @@ final class RecipeLoader
         $path = $this->directory().'/'.$slug;
         $yaml = $path.'/recipe.yaml';
 
-        // A link could point outside the recipe: recipes come from checkouts of repositories (docs/adr/0041).
+        // A link could point outside the recipe: a recipes directory may come from anywhere (docs/adr/0042).
         if (is_link($path) || is_link($yaml) || ! is_file($yaml)) {
             throw new RecipeInvalid($slug, ['recipe.yaml is missing.']);
         }
@@ -336,7 +349,7 @@ final class RecipeLoader
     }
 
     /**
-     * The panel's own recipes directory: its shared helpers and JSON Schemas (docs/adr/0041).
+     * The panel's own recipes directory: its shared helpers and JSON Schemas (docs/adr/0042).
      */
     private function runtime(): string
     {

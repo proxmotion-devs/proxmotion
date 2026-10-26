@@ -256,7 +256,7 @@ class AppUpgradeTest extends TestCase
 
         $this->upgrade($installation);
 
-        $this->assertTrue($target->inUse(), 'A download must not replace its content.');
+        $this->assertTrue($target->inUse(), 'A package must not replace its content.');
         $this->assertFalse(AppRecipe::query()->where('slug', 'openvpn')->firstOrFail()->latestVersion?->inUse());
     }
 }

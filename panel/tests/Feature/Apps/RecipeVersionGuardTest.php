@@ -10,7 +10,7 @@ use Tests\TestCase;
 
 /**
  * apps:check-versions (docs/adr/0016 §2): a bundled recipe whose content
- * changed needs a higher version, or the App Store refuses it where the old
+ * changed needs a higher version, or installing its package refuses it where the old
  * version is installed. Two recipe directories stand for the base branch
  * and the change.
  */

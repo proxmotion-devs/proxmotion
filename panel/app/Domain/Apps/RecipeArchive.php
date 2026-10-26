@@ -189,8 +189,9 @@ final readonly class RecipeArchive
             throw self::refused('The file :path is not UTF-8 text.', ['path' => $path]);
         }
 
-        // Scripts written on Windows; bash needs LF.
-        return str_replace("\r\n", "\n", $content);
+        // Scripts written on Windows; bash needs LF. PowerShell scripts keep theirs, as in a recipes
+        // repository (*.ps1 eol=crlf), so a package holds the same version as its recipe (docs/adr/0042).
+        return str_ends_with($path, '.ps1') ? $content : str_replace("\r\n", "\n", $content);
     }
 
     /**

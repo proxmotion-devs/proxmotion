@@ -294,7 +294,7 @@ class RecipeEditorTest extends AdminTestCase
         $this->assertSame(1024, $wireguard->recipe()->minMemoryMib);
 
         // A panel update ships wireguard 1.3.2: it is kept, not offered.
-        config(['proxmotion.recipes.path' => $this->recipesWithWireguard('1.3.2')->directory()]);
+        $this->recipesDirectory = $this->recipesWithWireguard('1.3.2')->directory();
         $this->assertSame(['wireguard'], $this->syncRecipes()['held']);
         $wireguard->refresh();
         $this->assertSame('1.3.1-local.1', $wireguard->current()->version);

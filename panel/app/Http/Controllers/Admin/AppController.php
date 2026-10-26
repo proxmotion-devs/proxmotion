@@ -49,6 +49,8 @@ class AppController extends Controller
             'apps' => AppRecipe::query()
                 ->with(['latestVersion', 'osVersions:id', 'versions' => fn ($query) => $query->where('status', AppRecipeVersionStatus::Draft)])
                 ->withCount(['installations as installed_count' => fn ($query) => $query->where('status', AppInstallationStatus::Installed)->where('is_trial', false)])
+                // AppRecipe::inUse(): an app with such installations cannot be removed.
+                ->withExists(['installations as in_use' => fn ($query) => $query->where(fn ($query) => $query->where('is_trial', false)->orWhere('status', '!=', AppInstallationStatus::Removed))])
                 ->orderBy('name')
                 ->get()
                 ->map(function (AppRecipe $app) use ($versions) {
@@ -78,6 +80,7 @@ class AppController extends Controller
                         'billing' => $recipe->billing,
                         'is_active' => $app->is_active,
                         'installed_count' => (int) $app->getAttribute('installed_count'),
+                        'in_use' => (bool) $app->getAttribute('in_use'),
                     ];
                 })
                 ->filter()

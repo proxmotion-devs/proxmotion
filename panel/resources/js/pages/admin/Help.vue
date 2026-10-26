@@ -302,7 +302,7 @@ const topics = [
                 <p>
                     {{
                         $t(
-                            'Apps come from the App Store, the official recipe repository. Download one there; an update shows its changes and is taken only when you choose it. Deactivate the ones you do not want to offer. You can edit a downloaded app in place; Back to bundled version undoes your changes.',
+                            'Apps come as .proxapp packages; the recipes repository keeps one for each app in its packages folder. Install package shows what a package changes before anything is installed. Deactivate the ones you do not want to offer. You can edit an installed app in place; Back to bundled version undoes your changes.',
                         )
                     }}
                 </p>

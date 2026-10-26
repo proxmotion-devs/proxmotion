@@ -5,8 +5,8 @@ use App\Http\Controllers\Admin\ApiTokenController;
 use App\Http\Controllers\Admin\AppController;
 use App\Http\Controllers\Admin\AppEntitlementController;
 use App\Http\Controllers\Admin\AppLogController;
+use App\Http\Controllers\Admin\AppPackageController;
 use App\Http\Controllers\Admin\AppRecipeController;
-use App\Http\Controllers\Admin\AppStoreController;
 use App\Http\Controllers\Admin\BillingSystemController;
 use App\Http\Controllers\Admin\ClusterController;
 use App\Http\Controllers\Admin\DashboardController;
@@ -103,11 +103,11 @@ Route::resource('firewall-rulesets', FirewallRulesetController::class)->only(['i
     ->parameters(['firewall-rulesets' => 'firewallRuleset']);
 
 Route::get('apps', [AppController::class, 'index'])->name('apps.index');
-Route::get('apps/store', [AppStoreController::class, 'index'])->name('apps.catalog.index');
-Route::post('apps/store/refresh', [AppStoreController::class, 'refresh'])->middleware('throttle:10,1')->name('apps.catalog.refresh');
-Route::post('apps/store/{appCatalogEntry}/download', [AppStoreController::class, 'download'])->middleware('throttle:20,1')->name('apps.catalog.download');
-Route::get('apps/store/{appCatalogEntry}/diff', [AppStoreController::class, 'diff'])->name('apps.catalog.diff');
-Route::delete('apps/{appRecipe}/store', [AppStoreController::class, 'remove'])->middleware('throttle:20,1')->name('apps.catalog.remove');
+// App packages (docs/adr/0042): upload a .proxapp, look at what it changes, install it.
+Route::post('apps/packages', [AppPackageController::class, 'store'])->middleware('throttle:20,1')->name('apps.packages.store');
+Route::get('apps/packages/{package}', [AppPackageController::class, 'show'])->whereUuid('package')->name('apps.packages.show');
+Route::post('apps/packages/{package}', [AppPackageController::class, 'install'])->whereUuid('package')->middleware('throttle:20,1')->name('apps.packages.install');
+Route::delete('apps/{appRecipe}/package', [AppPackageController::class, 'remove'])->middleware('throttle:20,1')->name('apps.packages.remove');
 Route::patch('apps/{appRecipe}', [AppController::class, 'update'])->name('apps.update');
 Route::put('apps/{appRecipe}/systems', [AppController::class, 'systems'])->name('apps.systems');
 // Recipe editor (docs/adr/0018).

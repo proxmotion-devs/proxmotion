@@ -7,9 +7,9 @@ namespace App\Domain\Apps;
 /**
  * Finds bundled recipes whose content changed without a higher version
  * (docs/adr/0016 §2). Installations keep the version they were installed
- * with, so the App Store refuses to replace a version in use; CI compares a pull
+ * with, so installing a package refuses to replace a version in use; CI compares a pull
  * request's recipes with its base branch to catch this before release. The
- * content is what a download stores: recipe.yaml and the files it uses (a
+ * content is what a package stores: recipe.yaml and the files it uses (a
  * README is not part of a version).
  */
 final class RecipeVersionGuard

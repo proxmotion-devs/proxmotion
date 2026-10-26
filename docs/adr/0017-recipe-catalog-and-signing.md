@@ -1,6 +1,6 @@
 # 17. Recipe catalog, sources and signing
 
-- **Status:** Accepted (phase 2 is built in an interim form by ADR 0041: the official recipes live in their own repository and are downloaded in the App Store)
+- **Status:** Accepted (the recipes moved to their own repository, ADR 0041; apps are installed from `.proxapp` packages instead of a catalog, ADR 0042; sources and signing are not built)
 - **Date:** 2026-10-17
 - **Builds on:** ADR 0015 (App Marketplace), ADR 0016 (recipe format v2 and stored versions).
 

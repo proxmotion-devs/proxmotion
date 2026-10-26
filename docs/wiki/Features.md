@@ -721,9 +721,10 @@ All features are covered by automated tests with faked HTTP (an in-memory Proxmo
 |---|---|
 | `php artisan infra:sync` | Sync clusters (scheduled every 5 minutes) |
 | `php artisan apps:poll` | Follow running app installs, uninstalls, upgrades and actions; copy logs (every minute) |
-| *Apps → App Store* | Download recipes from `proxmotion-recipes` into the panel; an update shows its changes before it is taken (ADR 0041) |
+| *Apps → Install package* | Install an app from its `.proxapp` package (`proxmotion-recipes/packages`); an update shows its changes first (ADR 0042) |
 | `php artisan apps:validate` | Validate every recipe against the JSON Schema |
 | `php artisan apps:check-versions --base-path=<dir> --path=<dir>` | Require a higher version for changed recipes (CI of `proxmotion-recipes`) |
+| `php artisan apps:pack --path=<dir> [--check]` | Build or check the `.proxapp` packages of a recipes directory (ADR 0042) |
 | `php artisan apps:make <slug>` | Create a format 2 recipe skeleton |
 | `php artisan servers:stats` | Send live figures of the servers whose page is open (every 10 seconds; only with `BROADCAST_CONNECTION=reverb`) |
 | `php artisan reverb:start` | WebSocket server for live figures |

@@ -4,15 +4,14 @@ declare(strict_types=1);
 
 namespace App\Console\Commands;
 
-use App\Domain\Apps\Catalog\RecipeSource;
 use App\Domain\Apps\RecipeInvalid;
 use App\Domain\Apps\RecipeLoader;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
 
-#[Signature('apps:validate {--path= : The recipes directory to check (default PROXMOTION_RECIPES_PATH)}')]
-#[Description('Validate the app recipes of a recipes directory against the recipe schema (docs/adr/0015, 0041)')]
+#[Signature('apps:validate {--path= : The recipes directory to check}')]
+#[Description('Validate the app recipes of a recipes directory against the recipe schema (docs/adr/0015, 0042)')]
 class ValidateApps extends Command
 {
     public function handle(): int
@@ -48,18 +47,18 @@ class ValidateApps extends Command
     }
 
     /**
-     * The recipes directory from --path, else PROXMOTION_RECIPES_PATH; null (with a message) when neither is set.
+     * The recipes directory from --path; null (with a message) when it is missing.
      */
     private function recipesPath(): ?string
     {
-        $path = $this->option('path') ?? config('proxmotion.recipes.path');
+        $path = $this->option('path');
 
         if (! is_string($path) || $path === '') {
-            $this->components->error('Give the recipes directory with --path, or set PROXMOTION_RECIPES_PATH.');
+            $this->components->error('Give the recipes directory with --path.');
 
             return null;
         }
 
-        return RecipeSource::directory($path);
+        return RecipeLoader::resolve($path);
     }
 }

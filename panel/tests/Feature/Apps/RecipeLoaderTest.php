@@ -2,12 +2,11 @@
 
 namespace Tests\Feature\Apps;
 
-use App\Domain\Apps\Catalog\AppCatalog;
-use App\Domain\Apps\Catalog\CatalogRefused;
+use App\Domain\Apps\AppPackages;
+use App\Domain\Apps\PackageRefused;
 use App\Domain\Apps\RecipeInvalid;
 use App\Domain\Apps\RecipeLoader;
 use App\Enums\AppRecipeVersionStatus;
-use App\Models\AppCatalogEntry;
 use App\Models\AppInstallation;
 use App\Models\AppRecipe;
 use App\Models\AppRecipeVersion;
@@ -16,7 +15,7 @@ use Illuminate\Support\Facades\File;
 use Tests\TestCase;
 
 /**
- * Recipe validation (apps:validate), storing downloads as versions
+ * Recipe validation (apps:validate), storing packages as versions
  * and the skeleton (apps:make), docs/adr/0015 and 0016.
  */
 class RecipeLoaderTest extends TestCase
@@ -35,7 +34,7 @@ class RecipeLoaderTest extends TestCase
         File::copyDirectory(base_path('recipes/_lib'), $this->directory.'/_lib');
         File::copyDirectory(base_path('tests/Fixtures/recipes/openvpn'), $this->directory.'/openvpn');
 
-        config(['proxmotion.recipes.path' => $this->directory]);
+        $this->recipesDirectory = $this->directory;
     }
 
     protected function tearDown(): void
@@ -160,12 +159,6 @@ class RecipeLoaderTest extends TestCase
         $this->assertSame('1.4.0', $recipe->current()->version);
         $this->assertSame(['1.3.1', '1.4.0'], $recipe->versions()->orderBy('id')->pluck('version')->all(), 'Earlier versions are kept.');
         $this->assertFalse($recipe->is_active, 'The administrator deactivated it.');
-
-        // A recipe that left the source is no longer offered: the refresh deactivates its app.
-        $recipe->forceFill(['is_active' => true])->save();
-        File::deleteDirectory($this->directory.'/openvpn');
-        $this->syncRecipes();
-        $this->assertFalse($recipe->refresh()->is_active);
     }
 
     public function test_a_version_in_use_cannot_change_without_a_new_number()
@@ -177,12 +170,12 @@ class RecipeLoaderTest extends TestCase
         file_put_contents($this->directory.'/openvpn/install.sh', "#!/bin/bash\necho changed\n");
 
         $this->assertSame(['openvpn'], $this->syncRecipes()['skipped']);
-        $entry = AppCatalogEntry::query()->where('slug', 'openvpn')->sole();
+        ['recipe' => $changed, 'files' => $files] = $this->loader()->load('openvpn');
 
         try {
-            app(AppCatalog::class)->download($entry, null, null);
+            app(AppPackages::class)->install(['slug' => 'openvpn', 'definition' => $changed->definition, 'files' => $files], null, null);
             $this->fail('The changed version was accepted.');
-        } catch (CatalogRefused $e) {
+        } catch (PackageRefused $e) {
             $this->assertSame('This version is used by installations; raise the version number to change it.', $e->getMessage());
         }
 
@@ -318,12 +311,13 @@ class RecipeLoaderTest extends TestCase
         }
     }
 
-    public function test_an_invalid_recipe_is_listed_with_its_errors_and_is_not_downloaded()
+    public function test_an_invalid_recipe_is_not_installed()
     {
         $this->editRecipe('timeout_minutes: 15', 'timeout_minutes: 0');
 
-        $this->assertSame([], $this->syncRecipes()['created']);
-        $this->assertNotEmpty(AppCatalogEntry::query()->where('slug', 'openvpn')->sole()->errors);
+        $result = $this->syncRecipes();
+        $this->assertSame([], $result['created']);
+        $this->assertSame(['openvpn'], $result['skipped']);
         $this->assertSame(0, AppRecipe::query()->count());
         $this->artisan('apps:validate', ['--path' => $this->directory])->assertFailed();
     }

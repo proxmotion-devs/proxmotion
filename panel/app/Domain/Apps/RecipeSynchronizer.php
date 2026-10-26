@@ -4,14 +4,13 @@ declare(strict_types=1);
 
 namespace App\Domain\Apps;
 
-use App\Domain\Apps\Catalog\CatalogRefused;
 use App\Enums\AppRecipeVersionStatus;
 use App\Models\AppRecipe;
 use App\Models\AppRecipeVersion;
 
 /**
  * Stores a downloaded recipe as an app's upstream version (docs/adr/0015,
- * 0016 section 2, 0041). Each new version is kept next to the earlier ones and
+ * 0016 section 2, 0042). Each new version is kept next to the earlier ones and
  * published; installations keep the version they were installed with. An app
  * an administrator edited in place keeps its edits: the new version is stored
  * but not offered.
@@ -22,7 +21,7 @@ final class RecipeSynchronizer
      * @param  array<string, string>  $files  the scripts and includes the recipe uses
      * @return ?string created, updated or held (edited in place), or null when that version is stored already
      *
-     * @throws CatalogRefused when a custom app has the slug, or a version in use changed
+     * @throws PackageRefused when a custom app has the slug, or a version in use changed
      */
     public function store(string $slug, Recipe $recipe, array $files): ?string
     {
@@ -31,7 +30,7 @@ final class RecipeSynchronizer
 
         // An administrator's custom app took the slug first (docs/adr/0018, section 2): it is never replaced.
         if ($app !== null && $app->isCustom()) {
-            throw new CatalogRefused('A custom app has this slug.');
+            throw new PackageRefused('A custom app has this slug.');
         }
 
         $created = $app === null;
@@ -45,7 +44,7 @@ final class RecipeSynchronizer
         }
 
         if ($version !== null && $version->inUse()) {
-            throw new CatalogRefused('This version is used by installations; raise the version number to change it.');
+            throw new PackageRefused('This version is used by installations; raise the version number to change it.');
         }
 
         if (! $modified) {

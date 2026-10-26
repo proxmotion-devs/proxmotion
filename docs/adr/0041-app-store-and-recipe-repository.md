@@ -1,6 +1,6 @@
 # 41. App Store and the recipe repository
 
-- **Status:** Accepted (built 2026-10-26; the admin-added sources, review of other sources and signing are not built yet)
+- **Status:** Superseded in part by ADR 0042 (2026-10-27): the App Store and its git sources were removed; the recipe repository (decision 1), the loader's checks (6) and the repository's CI (7) stay.
 - **Date:** 2026-10-26
 - **Builds on:** ADR 0015 (App Marketplace), ADR 0016 (recipe format v2 and stored versions), ADR 0017 (recipe catalog, sources and signing: this ADR builds its phase 2 in an interim form), ADR 0018 (admin recipe editor).
 

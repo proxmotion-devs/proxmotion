@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3';
-import { FileUp, Pencil, Plus, Store } from '@lucide/vue';
+import { FileUp, Package, Pencil, Plus } from '@lucide/vue';
 import { trans } from 'laravel-vue-i18n';
 import { computed, ref, watch } from 'vue';
+import ConfirmDelete from '@/components/admin/ConfirmDelete.vue';
 import FormDialog from '@/components/admin/FormDialog.vue';
 import AppSystemsDialog from '@/components/admin/AppSystemsDialog.vue';
 import type { AppOsVersion } from '@/components/admin/AppSystemsPicker.vue';
@@ -19,7 +20,6 @@ import {
     type OsFilter,
     type PlatformFilter,
 } from '@/lib/appFilters';
-import { index as storeIndex } from '@/routes/admin/apps/catalog';
 import {
     edit,
     importMethod as importRoute,
@@ -27,10 +27,14 @@ import {
     store,
     update,
 } from '@/routes/admin/apps';
+import {
+    remove as removePackage,
+    store as storePackage,
+} from '@/routes/admin/apps/packages';
 import type { AppText } from '@/types/admin';
 
 /**
- * Apps: recipes downloaded from the App Store (docs/adr/0041)
+ * Apps: installed from .proxapp packages (docs/adr/0042)
  * (docs/adr/0015) and custom apps written in the editor (docs/adr/0018).
  * Inactive apps are neither listed nor installable.
  */
@@ -58,6 +62,8 @@ const props = defineProps<{
         billing: 'free' | 'paid';
         is_active: boolean;
         installed_count: number;
+        /** Installations use it: it can be deactivated, not removed. */
+        in_use: boolean;
     }[];
 }>();
 
@@ -184,6 +190,26 @@ const submitImport = () =>
         onSuccess: () => (importOpen.value = false),
     });
 
+// Install an app from a .proxapp package (docs/adr/0042); the next page shows what it changes.
+const packageOpen = ref(false);
+const packageForm = useForm<{ package: File | null }>({ package: null });
+
+const openPackage = () => {
+    packageForm.reset();
+    packageForm.clearErrors();
+    packageOpen.value = true;
+};
+
+const pickPackage = (event: Event) => {
+    packageForm.package =
+        (event.target as HTMLInputElement).files?.item(0) ?? null;
+};
+
+const submitPackage = () =>
+    packageForm.submit(storePackage(), {
+        onSuccess: () => (packageOpen.value = false),
+    });
+
 const submitCreate = () =>
     createForm.submit(store(), {
         onSuccess: () => {
@@ -201,14 +227,16 @@ const submitCreate = () =>
         <div class="flex flex-wrap items-start justify-between gap-4">
             <Heading
                 title="Apps"
-                description="Apps customers can install on their servers through the billing system. Download them from the App Store; edit a downloaded app here (updates keep your changes), or write your own."
+                description="Apps customers can install on their servers through the billing system. Install them from .proxapp packages; edit an installed app here (later packages keep your changes), or write your own."
             />
             <div class="flex flex-wrap gap-2">
-                <Button variant="outline" as-child data-test="app-store">
-                    <Link :href="storeIndex()">
-                        <Store class="h-4 w-4" />
-                        {{ $t('App Store') }}
-                    </Link>
+                <Button
+                    variant="outline"
+                    data-test="install-package"
+                    @click="openPackage"
+                >
+                    <Package class="h-4 w-4" />
+                    {{ $t('Install package') }}
                 </Button>
                 <Button
                     variant="outline"
@@ -237,7 +265,7 @@ const submitCreate = () =>
                 <li>
                     {{
                         $t(
-                            'Download apps from the App Store, or write your own. Deactivate the ones you do not want to offer.',
+                            'Install apps from .proxapp packages (the recipes repository has one for each app), or write your own. Deactivate the ones you do not want to offer.',
                         )
                     }}
                 </li>
@@ -399,6 +427,12 @@ const submitCreate = () =>
                                         : $t('Activate')
                                 }}
                             </Button>
+                            <ConfirmDelete
+                                v-if="app.source === 'bundled' && !app.in_use"
+                                :action="removePackage(app.slug)"
+                                :name="app.name"
+                                description="The app and its versions are removed from the panel. Install its package again to bring it back."
+                            />
                         </td>
                     </tr>
                     <tr v-if="apps.length === 0">
@@ -408,7 +442,7 @@ const submitCreate = () =>
                         >
                             {{
                                 $t(
-                                    'No apps yet. Download some from the App Store.',
+                                    'No apps yet. Install them from .proxapp packages.',
                                 )
                             }}
                         </td>
@@ -470,7 +504,7 @@ const submitCreate = () =>
     <FormDialog
         v-model:open="importOpen"
         title="Import an app"
-        description="A zip of a recipe directory (recipe.yaml and its scripts), as exported from a panel. It becomes a new custom app as a draft."
+        description="A .proxapp package or a zip of a recipe directory, as exported from a panel. It becomes a new custom app as a draft that you can change."
         submit-label="Import"
         :processing="importForm.processing"
         @submit="submitImport"
@@ -483,7 +517,7 @@ const submitCreate = () =>
             <input
                 id="import_archive"
                 type="file"
-                accept=".zip,application/zip"
+                accept=".proxapp,.zip,application/zip"
                 class="text-sm"
                 data-test="import-archive"
                 @change="pickArchive"
@@ -508,6 +542,30 @@ const submitCreate = () =>
             :error="importForm.errors.name"
         >
             <Input id="import_name" v-model="importForm.name" />
+        </FormField>
+    </FormDialog>
+
+    <FormDialog
+        v-model:open="packageOpen"
+        title="Install package"
+        description="A .proxapp package of an app. The next page shows what it changes before anything is installed."
+        submit-label="Continue"
+        :processing="packageForm.processing"
+        @submit="submitPackage"
+    >
+        <FormField
+            label="Package"
+            for="package_file"
+            :error="packageForm.errors.package"
+        >
+            <input
+                id="package_file"
+                type="file"
+                accept=".proxapp"
+                class="text-sm"
+                data-test="package-file"
+                @change="pickPackage"
+            />
         </FormField>
     </FormDialog>
 </template>
