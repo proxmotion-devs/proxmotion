@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Requests\Api\V1;
 
+use App\Domain\Servers\PasswordGenerator;
 use App\Enums\NetworkModel;
 use App\Models\ApiToken;
 use App\Models\AppRecipe;
@@ -19,7 +20,6 @@ use App\Rules\SshPublicKeys;
 use App\Support\Ssh\PublicKey;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
-use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator;
 
@@ -114,7 +114,7 @@ class CreateServerRequest extends FormRequest
             osTemplate: OsTemplate::query()->where('uuid', $this->string('os_template'))->firstOrFail(),
             networkModel: $this->networkModel(),
             hostname: $this->filled('hostname') ? $this->string('hostname')->lower()->toString() : null,
-            rootPassword: $this->filled('root_password') ? $this->string('root_password')->toString() : Str::password(20, symbols: false),
+            rootPassword: $this->filled('root_password') ? $this->string('root_password')->toString() : app(PasswordGenerator::class)->generate(),
             package: $this->package(),
             sshKeys: PublicKey::implode($this->sshKeys()),
             externalId: $this->string('external_id')->trim()->toString(),

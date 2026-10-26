@@ -22,3 +22,9 @@ Every panel-wide setting so far was an `.env` variable read through `config/prox
 - Two sources remain for the same values, but there is a clear order: the page, then `.env`, then the default in `config/proxmotion.php`. `.env.example` and `config/proxmotion.php` say which variables are only defaults.
 - `config:cache` no longer freezes these values. The settings table must exist before the panel can read them, which the normal `migrate` step of installs and upgrades ensures.
 - Branding settings (Phase 8) can be added to the same table and page.
+
+## Addendum: generated root passwords (2026-10-26)
+
+The root passwords the panel makes up itself (a new server ordered without one, a reinstall, a reset without a chosen password) follow a format set on the page. Four settings join the table: `password_length` (the random part, 12–64, default 20), `password_characters` (`lower`: letters and digits; `mixed`: also capitals, the default; `symbols`: also `!@#%+=.-_`), `password_prefix` and `password_suffix` (up to 32 characters each, from the same safe set). Their `.env` variables are `PROXMOTION_PASSWORD_LENGTH`, `PROXMOTION_PASSWORD_CHARACTERS`, `PROXMOTION_PASSWORD_PREFIX` and `PROXMOTION_PASSWORD_SUFFIX`; the defaults keep the previous behaviour.
+
+The page refuses a format with fewer than three kinds of characters (lowercase, uppercase, digits, symbols), because Windows' default password policy refuses the others. Symbols exclude characters a shell or a console keyboard handles badly (`$ ` \ ' " ; & | < > ~ ^ *` and spaces). Passwords chosen by an administrator or a billing system are not affected.

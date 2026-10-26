@@ -43,6 +43,10 @@ final class PanelSettings
         'usage_network_mbps' => 'usage.network_mbps',
         'usage_window_minutes' => 'usage.window_minutes',
         'usage_action' => 'usage.action',
+        'password_length' => 'passwords.length',
+        'password_characters' => 'passwords.characters',
+        'password_prefix' => 'passwords.prefix',
+        'password_suffix' => 'passwords.suffix',
     ];
 
     private const string CACHE_KEY = 'panel-settings';

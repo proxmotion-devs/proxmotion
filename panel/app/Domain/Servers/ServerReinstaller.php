@@ -20,7 +20,6 @@ use App\Provisioning\TaskRunner;
 use App\Support\Ssh\PublicKey;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use SensitiveParameter;
 
@@ -33,6 +32,7 @@ final readonly class ServerReinstaller
     public function __construct(
         private TaskRunner $tasks,
         private AppInstaller $apps,
+        private PasswordGenerator $passwords,
     ) {}
 
     /**
@@ -88,7 +88,7 @@ final readonly class ServerReinstaller
         return DB::transaction(function () use ($server, $osTemplate, $sshKeys, $actor, $ipAddress, $app, $appValues) {
             $server->forceFill([
                 'os_template_id' => $osTemplate->id,
-                'root_password' => Str::password(20, symbols: false),
+                'root_password' => $this->passwords->generate(),
                 'root_password_unrevealed' => true,
                 'ssh_keys' => PublicKey::implode($sshKeys),
                 // The new VM is named after the hostname, which cloud-init then sets (docs/adr/0031 §2a).

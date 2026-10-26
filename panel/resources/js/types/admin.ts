@@ -37,6 +37,10 @@ export type PanelSettings = {
     usage_network_mbps: number | null;
     usage_window_minutes: number;
     usage_action: 'none' | 'stop' | 'suspend';
+    password_length: number;
+    password_characters: 'lower' | 'mixed' | 'symbols';
+    password_prefix: string | null;
+    password_suffix: string | null;
 };
 
 export type Cluster = {

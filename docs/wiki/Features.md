@@ -115,7 +115,7 @@ The admin panel is for staff. **Every panel user is an administrator**; there ar
 | **Drifts** | Differences between the panel and Proxmox |
 | **Billing systems** | Billing systems, API tokens, webhook endpoints and delivery log |
 | **Users** | Administrators |
-| **Panel settings** | Panel-wide settings: cross-cluster moves, deadlines, lowest VMID, DNS check name, protected networks, drift grace period, console limits, documentation address (ADR 0038); shows the `.env`-only security settings read-only |
+| **Panel settings** | Panel-wide settings: cross-cluster moves, deadlines, lowest VMID, DNS check name, protected networks, drift grace period, console limits, documentation address, format of generated root passwords (ADR 0038); shows the `.env`-only security settings read-only |
 
 Pages that need explaining start with a **guide box**: a short how-to that administrators can hide (remembered per browser) with a link into *Help*.
 
@@ -745,6 +745,7 @@ The **scheduler** and a **queue worker** must run; `composer dev` starts both lo
 | Report stopped servers after | `PROXMOTION_DRIFT_STOPPED_GRACE_MINUTES` | How long a VM may be unexpectedly stopped before it is reported as drift (default 60) |
 | Console session limits | `CONSOLE_MAX_MINUTES`, `CONSOLE_IDLE_MINUTES` | Default 60 and 15 minutes |
 | Documentation address | `PROXMOTION_DOCS_URL` | Base URL of the published guides; *Help* links to them when set |
+| Generated root passwords | `PROXMOTION_PASSWORD_LENGTH`, `PROXMOTION_PASSWORD_CHARACTERS`, `PROXMOTION_PASSWORD_PREFIX`, `PROXMOTION_PASSWORD_SUFFIX` | Format of the root passwords the panel makes up for new servers, reinstalls and resets: a random part of 20 mixed characters by default, with an optional prefix and suffix; at least three kinds of characters, as Windows requires |
 
 **Only in `.env`** (they protect the panel or depend on the installation):
 

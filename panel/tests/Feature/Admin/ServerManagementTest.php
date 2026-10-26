@@ -4,6 +4,7 @@ namespace Tests\Feature\Admin;
 
 use App\Domain\Apps\RecipeSynchronizer;
 use App\Domain\Networking\GenerateIpAddresses;
+use App\Domain\Settings\PanelSettings;
 use App\Enums\AppEntitlementSource;
 use App\Enums\AppInstallationStatus;
 use App\Enums\AppInstallMode;
@@ -82,6 +83,15 @@ class ServerManagementTest extends AdminTestCase
             'placement_group' => $this->group->uuid,
             ...$overrides,
         ]);
+    }
+
+    public function test_a_generated_password_follows_the_saved_format()
+    {
+        PanelSettings::save(['password_length' => 12, 'password_characters' => 'lower', 'password_prefix' => 'ACME-', 'password_suffix' => null]);
+
+        $this->post(route('admin.servers.store'), $this->payload())->assertSessionHasNoErrors();
+
+        $this->assertMatchesRegularExpression('/^ACME-[a-z0-9]{12}$/', (string) Server::query()->sole()->root_password);
     }
 
     public function test_an_admin_can_create_a_server()

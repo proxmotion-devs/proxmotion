@@ -4,11 +4,14 @@ declare(strict_types=1);
 
 namespace App\Http\Requests\Admin;
 
+use App\Domain\Servers\PasswordGenerator;
 use App\Rules\Hostname;
 use App\Rules\NetworkList;
 use Closure;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
+use Illuminate\Validation\Validator;
 
 /**
  * The Panel settings page (docs/adr/0038). Every setting is sent; empty
@@ -48,7 +51,32 @@ class PanelSettingsRequest extends FormRequest
             'usage_network_mbps' => ['nullable', 'integer', 'min:1', 'max:1000000'],
             'usage_window_minutes' => ['required', 'integer', 'min:15', 'max:1440'],
             'usage_action' => ['required', 'string', 'in:none,stop,suspend'],
+            // Generated root passwords (docs/adr/0038). Affixes use only characters that survive copying and typing.
+            'password_length' => ['required', 'integer', 'min:12', 'max:64'],
+            'password_characters' => ['required', 'string', 'in:lower,mixed,symbols'],
+            'password_prefix' => ['nullable', 'string', 'max:32', Rule::regex('/^[A-Za-z0-9!@#%+=.,:_-]+$/')],
+            'password_suffix' => ['nullable', 'string', 'max:32', Rule::regex('/^[A-Za-z0-9!@#%+=.,:_-]+$/')],
         ];
+    }
+
+    /**
+     * Windows refuses a password with fewer than three kinds of characters
+     * (lowercase, uppercase, digits, symbols), so a format with fewer is refused
+     * here too. The random part is checked by the generator's own alphabet.
+     */
+    public function withValidator(Validator $validator): void
+    {
+        $validator->after(function (Validator $validator): void {
+            if ($validator->errors()->hasAny(['password_characters', 'password_prefix', 'password_suffix'])) {
+                return;
+            }
+
+            $data = $validator->getData();
+
+            if (PasswordGenerator::kinds((string) $data['password_characters'], (string) ($data['password_prefix'] ?? ''), (string) ($data['password_suffix'] ?? '')) < 3) {
+                $validator->errors()->add('password_characters', __('Windows requires at least three kinds of characters (lowercase, uppercase, digits, symbols). Choose more characters, or add a symbol or capital letter to the prefix or suffix.'));
+            }
+        });
     }
 
     /**
@@ -83,6 +111,10 @@ class PanelSettingsRequest extends FormRequest
             'usage_network_mbps' => $optionalInt('usage_network_mbps'),
             'usage_window_minutes' => (int) $data['usage_window_minutes'],
             'usage_action' => (string) $data['usage_action'],
+            'password_length' => (int) $data['password_length'],
+            'password_characters' => (string) $data['password_characters'],
+            'password_prefix' => $optionalString('password_prefix'),
+            'password_suffix' => $optionalString('password_suffix'),
         ];
     }
 }

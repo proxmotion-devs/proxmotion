@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Servers;
 
+use App\Domain\Settings\PanelSettings;
 use App\Enums\ServerStatus;
 use App\Enums\TaskStatus;
 use App\Models\AuditLog;
@@ -86,6 +87,15 @@ class PasswordTest extends TestCase
         foreach (AuditLog::all() as $log) {
             $this->assertStringNotContainsString($password, (string) json_encode($log->properties));
         }
+    }
+
+    public function test_a_generated_reset_password_follows_the_saved_format()
+    {
+        PanelSettings::save(['password_length' => 16, 'password_characters' => 'lower', 'password_prefix' => null, 'password_suffix' => '.example!']);
+
+        $this->reset()->assertRedirect(route('admin.servers.show', $this->server));
+
+        $this->assertMatchesRegularExpression('/^[a-z0-9]{16}\.example!$/', (string) $this->server->refresh()->root_password);
     }
 
     public function test_admins_can_look_at_the_password_without_using_up_the_billing_systems_fetch()

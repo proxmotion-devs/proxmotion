@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Requests\Admin;
 
+use App\Domain\Servers\PasswordGenerator;
 use App\Enums\NetworkModel;
 use App\Models\AppRecipe;
 use App\Models\BillingSystem;
@@ -23,7 +24,6 @@ use App\Rules\SshPublicKeys;
 use App\Support\Ssh\PublicKey;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
-use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator;
 
@@ -131,7 +131,7 @@ class ServerRequest extends FormRequest
             osTemplate: OsTemplate::query()->where('uuid', $this->string('os_template'))->firstOrFail(),
             networkModel: NetworkModel::from($this->string('network_model')->toString()),
             hostname: $this->filled('hostname') ? $this->string('hostname')->lower()->toString() : null,
-            rootPassword: $this->filled('root_password') ? $this->string('root_password')->toString() : Str::password(20, symbols: false),
+            rootPassword: $this->filled('root_password') ? $this->string('root_password')->toString() : app(PasswordGenerator::class)->generate(),
             sshKeys: PublicKey::implode(PublicKey::parseMany($this->string('ssh_keys')->toString())),
             externalId: $this->filled('external_id') ? $this->string('external_id')->trim()->toString() : null,
             externalClientId: $this->filled('external_client_id') ? $this->string('external_client_id')->trim()->toString() : null,

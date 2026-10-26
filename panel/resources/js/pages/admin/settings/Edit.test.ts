@@ -56,6 +56,10 @@ const settings = (overrides: Partial<PanelSettings> = {}): PanelSettings => ({
     usage_network_mbps: null,
     usage_window_minutes: 60,
     usage_action: 'none',
+    password_length: 20,
+    password_characters: 'mixed',
+    password_prefix: null,
+    password_suffix: null,
     ...overrides,
 });
 

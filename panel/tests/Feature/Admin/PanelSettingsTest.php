@@ -35,6 +35,10 @@ class PanelSettingsTest extends AdminTestCase
             'usage_network_mbps' => 800,
             'usage_window_minutes' => 120,
             'usage_action' => 'stop',
+            'password_length' => 16,
+            'password_characters' => 'lower',
+            'password_prefix' => null,
+            'password_suffix' => '.example!',
             ...$overrides,
         ];
     }
@@ -71,6 +75,9 @@ class PanelSettingsTest extends AdminTestCase
         $this->assertSame(95, PanelSettings::get('usage_cpu_percent'));
         $this->assertNull(PanelSettings::get('usage_memory_percent'));
         $this->assertSame('stop', PanelSettings::get('usage_action'));
+        $this->assertSame(16, PanelSettings::get('password_length'));
+        $this->assertSame('lower', PanelSettings::get('password_characters'));
+        $this->assertSame('.example!', PanelSettings::get('password_suffix'));
         $this->assertSame([], PanelSettings::unsaved());
 
         // .env no longer decides once the page was saved.
@@ -117,6 +124,29 @@ class PanelSettingsTest extends AdminTestCase
             'usage_cpu_percent' => 150,
             'usage_window_minutes' => 5,
         ]))->assertSessionHasErrors(['min_vmid', 'move_deadline_minutes', 'verify_dns_name', 'protected_networks', 'docs_url', 'traffic_reset_day', 'traffic_action', 'usage_cpu_percent', 'usage_window_minutes']);
+
+        $this->assertSame(array_keys(PanelSettings::KEYS), PanelSettings::unsaved());
+    }
+
+    public function test_a_generated_password_format_needs_three_kinds_of_characters()
+    {
+        // Letters and digits only: Windows would refuse such passwords.
+        $this->put(route('admin.settings.update'), $this->valid(['password_suffix' => null]))
+            ->assertSessionHasErrors(['password_characters']);
+
+        // A symbol in the suffix makes three kinds.
+        $this->put(route('admin.settings.update'), $this->valid(['password_suffix' => '.example!']))
+            ->assertSessionHasNoErrors();
+    }
+
+    public function test_it_refuses_invalid_password_formats()
+    {
+        $this->put(route('admin.settings.update'), $this->valid([
+            'password_length' => 8,
+            'password_characters' => 'digits',
+            'password_prefix' => 'a b',
+            'password_suffix' => str_repeat('x', 33),
+        ]))->assertSessionHasErrors(['password_length', 'password_characters', 'password_prefix', 'password_suffix']);
 
         $this->assertSame(array_keys(PanelSettings::KEYS), PanelSettings::unsaved());
     }

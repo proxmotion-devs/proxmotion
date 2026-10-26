@@ -151,4 +151,24 @@ return [
         'action' => (string) env('PROXMOTION_USAGE_ACTION', 'none'),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Generated root passwords
+    |--------------------------------------------------------------------------
+    |
+    | Used when the panel makes up a root password: a new server ordered
+    | without one, a reinstall, a reset without a chosen password. length is
+    | the random part (12–64); characters is lower (letters and digits),
+    | mixed (also capitals) or symbols (also !@#%+=.-_). prefix and suffix
+    | surround the random part.
+    |
+    */
+
+    'passwords' => [
+        'length' => (int) env('PROXMOTION_PASSWORD_LENGTH', 20),
+        'characters' => (string) env('PROXMOTION_PASSWORD_CHARACTERS', 'mixed'),
+        'prefix' => (string) env('PROXMOTION_PASSWORD_PREFIX', '') === '' ? null : (string) env('PROXMOTION_PASSWORD_PREFIX'),
+        'suffix' => (string) env('PROXMOTION_PASSWORD_SUFFIX', '') === '' ? null : (string) env('PROXMOTION_PASSWORD_SUFFIX'),
+    ],
+
 ];

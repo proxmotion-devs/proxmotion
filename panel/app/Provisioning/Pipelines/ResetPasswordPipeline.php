@@ -5,11 +5,11 @@ declare(strict_types=1);
 namespace App\Provisioning\Pipelines;
 
 use App\Domain\Servers\GuestScripts;
+use App\Domain\Servers\PasswordGenerator;
 use App\Enums\GuestScriptEvent;
 use App\Models\Task;
 use App\Proxmox\Exceptions\GuestAgentException;
 use App\Proxmox\ProxmoxClientFactory;
-use Illuminate\Support\Str;
 
 /**
  * Sets a new root (Windows: Administrator) password inside the running VM
@@ -25,6 +25,7 @@ final readonly class ResetPasswordPipeline
     public function __construct(
         private ProxmoxClientFactory $clients,
         private GuestScripts $scripts,
+        private PasswordGenerator $passwords,
     ) {}
 
     public function run(Task $task): void
@@ -39,7 +40,7 @@ final readonly class ResetPasswordPipeline
                 throw GuestAgentException::notReachable($server->vmid);
             }
 
-            $password = $chosen ?? Str::password(20, symbols: false);
+            $password = $chosen ?? $this->passwords->generate();
 
             // The template's own script gets the password on standard input and
             // throws when it fails (ADR 0010); otherwise the agent sets it.

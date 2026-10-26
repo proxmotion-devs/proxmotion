@@ -12,6 +12,8 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { optionalNumber } from '@/lib/forms';
 import type { OptionalNumber } from '@/lib/forms';
+import { passwordExample } from '@/lib/passwordExample';
+import type { PasswordCharacters } from '@/lib/passwordExample';
 import { edit, update } from '@/routes/admin/settings';
 import type { PanelSettings } from '@/types/admin';
 
@@ -57,6 +59,10 @@ const form = useForm({
         '') as OptionalNumber,
     usage_window_minutes: props.settings.usage_window_minutes,
     usage_action: props.settings.usage_action,
+    password_length: props.settings.password_length,
+    password_characters: props.settings.password_characters,
+    password_prefix: props.settings.password_prefix ?? '',
+    password_suffix: props.settings.password_suffix ?? '',
 });
 
 // Traffic quotas and usage limits (docs/adr/0039).
@@ -88,6 +94,22 @@ const submit = () =>
             usage_network_mbps: optionalNumber(data.usage_network_mbps),
         }))
         .submit(update(), { preserveScroll: true });
+
+// Generated root passwords (docs/adr/0038): the format and an example of it.
+const passwordCharacterOptions = computed(() => [
+    { value: 'lower', label: trans('Lowercase letters and digits') },
+    { value: 'mixed', label: trans('Upper and lowercase letters and digits') },
+    { value: 'symbols', label: trans('Letters, digits and symbols') },
+]);
+
+const passwordExampleText = computed(() =>
+    passwordExample(
+        Number(form.password_length),
+        form.password_characters as PasswordCharacters,
+        form.password_prefix,
+        form.password_suffix,
+    ),
+);
 
 const sectionClass = 'flex flex-col gap-4 rounded-xl border p-4';
 </script>
@@ -224,6 +246,76 @@ const sectionClass = 'flex flex-col gap-4 rounded-xl border p-4';
                     />
                 </FormField>
             </div>
+        </section>
+
+        <section :class="sectionClass" data-test="settings-passwords">
+            <Heading
+                variant="small"
+                title="Generated passwords"
+                description="Used when the panel makes up a root password: a new server ordered without one, a reinstall, a reset without a chosen password. A password you or a billing system chose is kept as it is."
+            />
+            <div class="grid gap-4 sm:grid-cols-2">
+                <FormField
+                    label="Random part length"
+                    for="password_length"
+                    :error="form.errors.password_length"
+                    hint="12 to 64 characters."
+                >
+                    <Input
+                        id="password_length"
+                        v-model.number="form.password_length"
+                        type="number"
+                        min="12"
+                        max="64"
+                    />
+                </FormField>
+                <FormField
+                    label="Characters"
+                    for="password_characters"
+                    :error="form.errors.password_characters"
+                    hint="Windows needs three kinds of characters in a password. With letters and digits only, add a symbol or a capital letter to the prefix or suffix."
+                >
+                    <NativeSelect
+                        id="password_characters"
+                        v-model="form.password_characters"
+                        :options="passwordCharacterOptions"
+                    />
+                </FormField>
+                <FormField
+                    label="Prefix"
+                    for="password_prefix"
+                    :error="form.errors.password_prefix"
+                    hint="Letters, digits and ! @ # % + = . , : _ - only. Up to 32."
+                >
+                    <Input
+                        id="password_prefix"
+                        v-model="form.password_prefix"
+                        class="font-mono"
+                        autocomplete="off"
+                    />
+                </FormField>
+                <FormField
+                    label="Suffix"
+                    for="password_suffix"
+                    :error="form.errors.password_suffix"
+                    hint="The same characters as the prefix. Up to 32."
+                >
+                    <Input
+                        id="password_suffix"
+                        v-model="form.password_suffix"
+                        class="font-mono"
+                        autocomplete="off"
+                    />
+                </FormField>
+            </div>
+            <p class="text-sm text-muted-foreground">
+                {{ $t('Example') }}:
+                <span
+                    class="font-mono text-foreground"
+                    data-test="password-example"
+                    >{{ passwordExampleText ?? '—' }}</span
+                >
+            </p>
         </section>
 
         <section :class="sectionClass" data-test="settings-isolation">
