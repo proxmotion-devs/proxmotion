@@ -7,6 +7,7 @@ use App\Domain\Apps\Catalog\RecipeFetchFailed;
 use App\Domain\Apps\Catalog\RecipeSource;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Process;
+use RuntimeException;
 use Tests\TestCase;
 
 /**
@@ -70,6 +71,16 @@ class RecipeFetcherTest extends TestCase
         $this->expectExceptionMessage('The recipe repository ref is not valid.');
 
         app(RecipeFetcher::class)->fetch(new RecipeSource('official', self::REPOSITORY, '--upload-pack=x'));
+    }
+
+    public function test_git_that_cannot_be_started_is_reported_as_a_failed_fetch()
+    {
+        Process::fake(fn () => throw new RuntimeException('A temporary file could not be opened.'));
+
+        $this->expectException(RecipeFetchFailed::class);
+        $this->expectExceptionMessage('git could not be run: A temporary file could not be opened.');
+
+        app(RecipeFetcher::class)->fetch(new RecipeSource('official', self::REPOSITORY, 'main'));
     }
 
     public function test_a_failing_git_step_says_what_git_reported()
