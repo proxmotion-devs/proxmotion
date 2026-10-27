@@ -53,8 +53,7 @@ final readonly class QemuResource
         try {
             $data = $this->client->get($this->path($vmid, 'config'));
         } catch (ProxmoxRequestFailed $e) {
-            // Proxmox answers 500 "Configuration file ... does not exist" for unknown VMs.
-            if ($e->status === 500 && str_contains($e->getMessage(), 'does not exist')) {
+            if (self::isMissingVm($e)) {
                 return null;
             }
 
@@ -63,6 +62,15 @@ final readonly class QemuResource
 
         /** @var array<string, mixed> */
         return is_array($data) ? $data : [];
+    }
+
+    /**
+     * Whether a failed request means the VM does not exist on the node it was asked on.
+     */
+    public static function isMissingVm(ProxmoxRequestFailed $e): bool
+    {
+        // Proxmox answers 500 "Configuration file ... does not exist" for unknown VMs.
+        return $e->status === 500 && str_contains($e->getMessage(), 'does not exist');
     }
 
     /**

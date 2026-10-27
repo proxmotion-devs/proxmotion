@@ -150,9 +150,9 @@ const props = withDefaults(
         drifts: Drift[];
         /** docs/adr/0039 */
         usage: ServerUsage;
-        /** Deferred: undefined until loaded, null when unknown. */
+        /** Deferred: undefined until loaded, null when unknown, "missing" when Proxmox has no such VM. */
         power?: string | null;
-        /** Deferred: whether the guest agent answers; undefined until loaded, null when unknown. */
+        /** Deferred: whether the guest agent answers; undefined until loaded, null when unknown or not asked (VM not running). */
         agent?: boolean | null;
         apps: AppInstallation[];
         appOptions: AppOption[];
@@ -216,6 +216,20 @@ const busy = computed(
 );
 
 watch(busy, (value) => (value ? start() : stop()), { immediate: true });
+
+// Otherwise follow Proxmox more slowly, so a VM stopped, started or deleted
+// there shows up without a reload. Drifts too: the sync may have recorded one.
+const { start: startWatching, stop: stopWatching } = usePoll(
+    15000,
+    { only: ['power', 'agent', 'drifts'] },
+    { autoStart: false },
+);
+
+watch(
+    () => props.server.status === 'active' && !busy.value,
+    (value) => (value ? startWatching() : stopWatching()),
+    { immediate: true },
+);
 
 const powerAction = (action: PowerAction) =>
     powerRoute({ server: props.server.uuid, action });
@@ -327,6 +341,19 @@ const runningTasks = computed(() =>
 );
 
 const active = computed(() => props.server.status === 'active');
+const vmMissing = computed(() => active.value && props.power === 'missing');
+const vmStopped = computed(
+    () =>
+        active.value &&
+        props.power !== undefined &&
+        props.power !== null &&
+        props.power !== 'running' &&
+        props.power !== 'missing',
+);
+// Password reset and apps need the agent; a VM not running cannot have one.
+const agentDown = computed(
+    () => vmMissing.value || vmStopped.value || props.agent === false,
+);
 // A firewall drift says it was changed in Proxmox; an adopted VM not compared yet may never have had it (docs/adr/0033).
 const firewallDrift = computed(() =>
     props.drifts.some((drift) => drift.type === 'firewall_mismatch'),
@@ -402,7 +429,7 @@ const resetAfterTrial = () => {
                     :busy="busy"
                     :action="powerAction"
                 />
-                <Button v-if="active" size="sm" as-child>
+                <Button v-if="active && !vmMissing" size="sm" as-child>
                     <a
                         :href="openConsole(server.uuid).url"
                         target="_blank"
@@ -466,7 +493,32 @@ const resetAfterTrial = () => {
         </p>
 
         <p
-            v-if="active && agent === false"
+            v-if="vmMissing"
+            class="rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm"
+            data-test="vm-missing"
+        >
+            {{
+                $t(
+                    'Proxmox has no VM :vmid on node :node: it was deleted or moved outside the panel. The next sync records it under drift, where you can mark the server as failed.',
+                    { vmid: String(server.vmid), node: server.node },
+                )
+            }}
+        </p>
+
+        <p
+            v-else-if="vmStopped"
+            class="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm"
+            data-test="vm-stopped"
+        >
+            {{
+                $t(
+                    'The server is not running in Proxmox. Start it to reset its password or install apps.',
+                )
+            }}
+        </p>
+
+        <p
+            v-else-if="active && agent === false"
             class="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm"
             data-test="agent-unreachable"
         >
@@ -513,7 +565,10 @@ const resetAfterTrial = () => {
 
             <!-- Live figures from Proxmox while its VM exists (docs/adr/0036). -->
             <ServerStatsCards
-                v-if="['active', 'suspended'].includes(server.status)"
+                v-if="
+                    ['active', 'suspended'].includes(server.status) &&
+                    !vmMissing
+                "
                 :server-uuid="server.uuid"
                 :port-speed-mbps="server.port_speed_mbps"
             />
@@ -606,7 +661,10 @@ const resetAfterTrial = () => {
                                 {{ $t('Guest agent') }}
                             </dt>
                             <dd class="font-medium">
-                                <template v-if="agent === undefined">{{
+                                <template v-if="vmMissing || vmStopped">{{
+                                    $t('Server not running')
+                                }}</template>
+                                <template v-else-if="agent === undefined">{{
                                     $t('Checking…')
                                 }}</template>
                                 <template v-else-if="agent === true">{{
@@ -622,7 +680,7 @@ const resetAfterTrial = () => {
                     <div v-if="active" class="mt-auto flex flex-wrap gap-2">
                         <ResetPasswordButton
                             :action="resetPassword(server.uuid)"
-                            :disabled="busy || agent === false"
+                            :disabled="busy || agentDown"
                         />
                         <HostnameDialog
                             :action="changeHostname(server.uuid)"
@@ -889,7 +947,7 @@ const resetAfterTrial = () => {
                 :options="appOptions"
                 :unavailable="unavailableApps"
                 :action="installApp(server.uuid)"
-                :disabled="!active || agent === false"
+                :disabled="!active || agentDown"
                 :revealed="revealedAppOutputs"
             />
 

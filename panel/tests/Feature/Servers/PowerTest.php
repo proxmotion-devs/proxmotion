@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Servers;
 
+use App\Domain\Servers\ServerPower;
 use App\Enums\ServerStatus;
 use App\Enums\TaskStatus;
 use App\Enums\TaskType;
@@ -137,5 +138,43 @@ class PowerTest extends TestCase
                 ->loadDeferredProps(fn (Assert $reload) => $reload
                     ->where('power', 'running')
                     ->where('agent', false)));
+    }
+
+    public function test_the_guest_agent_of_a_vm_stopped_in_proxmox_is_not_asked()
+    {
+        $this->proxmox->vms[100]['status'] = 'stopped';
+
+        $this->actingAs($this->admin)
+            ->get(route('admin.servers.show', $this->server))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->loadDeferredProps(fn (Assert $reload) => $reload
+                    ->where('power', 'stopped')
+                    ->where('agent', null)));
+
+        $this->assertNotContains('POST /nodes/pve1/qemu/100/agent/ping', $this->proxmox->writePaths());
+    }
+
+    public function test_the_page_says_when_proxmox_has_no_vm_for_the_server()
+    {
+        unset($this->proxmox->vms[100]);
+
+        $this->actingAs($this->admin)
+            ->get(route('admin.servers.show', $this->server))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->loadDeferredProps(fn (Assert $reload) => $reload
+                    ->where('power', 'missing')
+                    ->where('agent', null)));
+
+        $this->assertNotContains('POST /nodes/pve1/qemu/100/agent/ping', $this->proxmox->writePaths());
+        $this->assertSame(ServerStatus::Active, $this->server->refresh()->status, 'Drift is only reported, never acted on (ADR 0005).');
+    }
+
+    public function test_the_api_reports_an_unknown_power_state_for_a_missing_vm()
+    {
+        unset($this->proxmox->vms[100]);
+
+        $this->assertNull(app(ServerPower::class)->state($this->server));
     }
 }
