@@ -682,7 +682,7 @@ const saveSettings = () => {
                     v-model="settings.name"
                     required
                     maxlength="64"
-                    placeholder="Monitoring agent"
+                    :placeholder="$t('Monitoring agent')"
                 />
             </FormField>
             <fieldset class="grid gap-2">
