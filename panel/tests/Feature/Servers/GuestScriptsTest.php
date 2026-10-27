@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Servers;
 
+use App\Domain\Servers\ServerReinstaller;
 use App\Enums\GuestScriptEvent;
 use App\Enums\TaskStatus;
 use App\Enums\TaskType;
@@ -223,9 +224,28 @@ class GuestScriptsTest extends TestCase
         $this->assertSame("#!/bin/sh\napt-get install -y htop\n", $files['/usr/local/sbin/proxmotion-provisioned']);
         $inputs = json_decode($files['/etc/proxmotion/provisioned.json'], true);
         $this->assertSame('web2.example.com', $inputs['hostname']);
+        $this->assertSame('create', $inputs['reason']);
+        $this->assertStringContainsString("reason=create\n", $files['/etc/proxmotion/provisioned.vars']);
         $this->assertCount(1, $inputs['addresses'], 'All addresses, the primary one included.');
         $this->assertNotNull($step = $this->step($server->tasks()->sole(), 'guest_provisioned'), 'The script step did not run.');
         $this->assertNull($step['message']);
+    }
+
+    public function test_the_post_install_script_is_told_about_a_reinstall_and_a_trial_run()
+    {
+        $this->override(GuestScriptEvent::Provisioned, "#!/bin/sh\necho hi\n");
+        $reason = fn () => json_decode($this->proxmox->guestFiles[$this->server->vmid]['/etc/proxmotion/provisioned.json'], true)['reason'];
+
+        $task = app(ServerReinstaller::class)->request($this->server, $this->osTemplate, [], $this->admin, null)->refresh();
+
+        $this->assertSame(TaskStatus::Succeeded, $task->status, (string) $task->error);
+        $this->assertSame('reinstall', $reason());
+
+        $this->actingAs($this->admin)
+            ->post(route('admin.os-templates.scripts.run', [$this->osTemplate, 'provisioned']), ['server' => $this->server->uuid])
+            ->assertSessionHasNoErrors();
+
+        $this->assertSame('trial', $reason());
     }
 
     public function test_a_password_script_gets_the_password_on_standard_input()
@@ -284,6 +304,9 @@ class GuestScriptsTest extends TestCase
                 ->where('scripts.0.event', 'provisioned')
                 ->where('scripts.0.content', 'echo hi')
                 ->where('scripts.0.default', null)
+                ->where('scripts.0.inputs', ['server', 'hostname', 'mac', 'reason', 'addresses'])
+                ->where('scripts.0.timeout_seconds', 300)
+                ->where('scripts.3.timeout_seconds', 60)
                 ->where('scripts.1.default', file_get_contents(resource_path('guest/linux/addresses.sh')))
                 ->where('scripts.2.inputs', ['server', 'hostname', 'mac', 'disk_mib'])
                 ->where('scripts.3.can_be_tried', false)

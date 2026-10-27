@@ -7,6 +7,7 @@ import {
     usePoll,
 } from '@inertiajs/vue3';
 import { Play, RotateCcw, Save, Trash2, Upload } from '@lucide/vue';
+import { trans } from 'laravel-vue-i18n';
 import { computed, reactive, ref, watch } from 'vue';
 import GuestScriptRuns from '@/components/admin/GuestScriptRuns.vue';
 import NativeSelect from '@/components/admin/NativeSelect.vue';
@@ -57,7 +58,7 @@ const eventTitles: Record<GuestScriptEvent, string> = {
 };
 const eventDescriptions: Record<GuestScriptEvent, string> = {
     provisioned:
-        'Runs once after the server was created or reinstalled, when the guest agent answers. There is no default script.',
+        'Runs once after the server was created or reinstalled, after its additional addresses and before the checks from inside; the server becomes active only afterwards. The reason input says create, reinstall or trial. There is no default script.',
     addresses_changed:
         'Configures the additional IP addresses after creation, reinstall and every resource change; also removes released ones.',
     disk_resized:
@@ -67,6 +68,71 @@ const eventDescriptions: Record<GuestScriptEvent, string> = {
     password_reset:
         'Replaces the guest agent setting the password. The new password arrives on standard input; if the script fails, the reset fails and no new password is shown.',
 };
+
+// When the scripts run (CreateServerPipeline::BUILD_STAGES, docs/adr/0010).
+// Nothing runs before the first boot: the template is cloned, not installed.
+type Stage = { title: string; detail: string; event?: GuestScriptEvent };
+
+const installStages: Stage[] = [
+    {
+        title: 'Clone and first boot',
+        detail: 'No script: cloud-init (Cloudbase-Init on Windows) sets the user, password, SSH keys, network and hostname.',
+    },
+    {
+        title: 'Guest agent',
+        detail: 'Waits for the guest agent, then for cloud-init (Linux) or Windows setup to finish.',
+    },
+    {
+        title: 'Additional IP addresses',
+        detail: 'Only when the server has additional addresses.',
+        event: 'addresses_changed',
+    },
+    {
+        title: 'After installation',
+        detail: 'Only when this template has a script.',
+        event: 'provisioned',
+    },
+    {
+        title: 'Checks from inside',
+        detail: 'Addresses, gateways, DNS, hostname and disk; a failed check only warns.',
+    },
+    {
+        title: 'Server active',
+        detail: 'An app chosen with the order or the reinstall starts now.',
+    },
+];
+const laterStages: Stage[] = [
+    {
+        title: 'Additional IP addresses',
+        detail: 'After address edits, resource changes and moves to another location.',
+        event: 'addresses_changed',
+    },
+    {
+        title: 'Disk grown',
+        detail: 'After an upgrade enlarged the disk.',
+        event: 'disk_resized',
+    },
+    {
+        title: 'Hostname changed',
+        detail: 'When the server is renamed.',
+        event: 'hostname_changed',
+    },
+    {
+        title: 'Password reset',
+        detail: 'When the root or Administrator password is reset.',
+        event: 'password_reset',
+    },
+];
+
+const stageGroups = [
+    { title: 'Create and reinstall', stages: installStages, numbered: true },
+    { title: 'Later changes', stages: laterStages, numbered: false },
+];
+
+const timeLimit = (seconds: number) =>
+    seconds % 60 === 0 && seconds > 60
+        ? trans(':count minutes', { count: String(seconds / 60) })
+        : trans(':count seconds', { count: String(seconds) });
 
 // The editor shows the draft when there is one, otherwise what runs now.
 const shown = (slot: GuestScriptSlot) =>
@@ -208,10 +274,67 @@ const bytes = (text: string) => new TextEncoder().encode(text).length;
             }}</span>
         </p>
 
+        <section class="grid gap-4 rounded-xl border p-4">
+            <div class="grid gap-1">
+                <h2 class="font-medium">{{ $t('When the scripts run') }}</h2>
+                <p class="max-w-3xl text-sm text-muted-foreground">
+                    {{
+                        $t(
+                            'The template is cloned, not installed: nothing runs before the first boot. Settings every server needs from its first boot belong in the template itself.',
+                        )
+                    }}
+                </p>
+            </div>
+            <div class="grid gap-6 lg:grid-cols-2">
+                <div
+                    v-for="group in stageGroups"
+                    :key="group.title"
+                    class="grid content-start gap-2"
+                >
+                    <h3 class="text-sm font-medium">
+                        {{ $t(group.title) }}
+                    </h3>
+                    <ol class="grid gap-2">
+                        <li
+                            v-for="(stage, index) in group.stages"
+                            :key="stage.title"
+                            class="flex gap-3 text-sm"
+                        >
+                            <span
+                                class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border text-xs"
+                                :class="
+                                    stage.event
+                                        ? 'border-primary bg-primary text-primary-foreground'
+                                        : 'text-muted-foreground'
+                                "
+                                aria-hidden="true"
+                                >{{ group.numbered ? index + 1 : '•' }}</span
+                            >
+                            <span class="grid gap-0.5">
+                                <a
+                                    v-if="stage.event"
+                                    :href="`#script-${stage.event}`"
+                                    class="font-medium underline-offset-4 hover:underline"
+                                    >{{ $t(stage.title) }}</a
+                                >
+                                <span v-else class="font-medium">{{
+                                    $t(stage.title)
+                                }}</span>
+                                <span class="text-muted-foreground">{{
+                                    $t(stage.detail)
+                                }}</span>
+                            </span>
+                        </li>
+                    </ol>
+                </div>
+            </div>
+        </section>
+
         <section
             v-for="slot in scripts"
+            :id="`script-${slot.event}`"
             :key="slot.event"
-            class="flex flex-col gap-3 rounded-xl border p-4"
+            class="flex scroll-mt-4 flex-col gap-3 rounded-xl border p-4"
         >
             <div class="flex flex-wrap items-start justify-between gap-3">
                 <div class="grid gap-1">
@@ -242,6 +365,22 @@ const bytes = (text: string) => new TextEncoder().encode(text).length;
                         <code class="font-mono">{{
                             slot.inputs.join(', ')
                         }}</code>
+                        · {{ $t('Time limit') }}:
+                        {{ timeLimit(slot.timeout_seconds) }}
+                    </p>
+                    <p
+                        v-if="slot.event === 'provisioned'"
+                        class="max-w-3xl text-sm text-muted-foreground"
+                    >
+                        {{
+                            template.platform === 'windows'
+                                ? $t(
+                                      'The task waits for the script. Start longer work (large installs, updates) in the background, for example as a scheduled task, and let the script return.',
+                                  )
+                                : $t(
+                                      'The task waits for the script. Start longer work (large installs, updates) in the background, for example with systemd-run --collect, and let the script return.',
+                                  )
+                        }}
                     </p>
                 </div>
             </div>

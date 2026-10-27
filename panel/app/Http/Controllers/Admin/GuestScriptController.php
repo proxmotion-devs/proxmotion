@@ -58,6 +58,7 @@ class GuestScriptController extends Controller
                 'inputs' => ['server', 'hostname', 'mac', ...$event->inputKeys()],
                 'can_be_tried' => $event->canBeTried(),
                 'critical' => $event->isCritical(),
+                'timeout_seconds' => $event->timeoutSeconds(),
             ], GuestScriptEvent::cases()),
             'logs' => fn () => $this->logs($osTemplate),
             'servers' => $osTemplate->servers()

@@ -6,6 +6,7 @@ namespace App\Domain\Servers;
 
 use App\Enums\GuestScriptEvent;
 use App\Enums\OsPlatform;
+use App\Enums\TaskType;
 use App\Models\GuestScript;
 use App\Models\GuestScriptLog;
 use App\Models\OsTemplate;
@@ -465,7 +466,7 @@ final readonly class GuestScripts
     public function inputs(Server $server, OsPlatform $platform, GuestScriptEvent $event, array $config = [], ?Task $task = null): array
     {
         return match ($event) {
-            GuestScriptEvent::Provisioned => ['addresses' => $this->addresses->all($server)],
+            GuestScriptEvent::Provisioned => ['reason' => self::provisionedReason($task), 'addresses' => $this->addresses->all($server)],
             // The primary may differ from the one cloud-init configured (docs/adr/0011).
             GuestScriptEvent::AddressesChanged => ['addresses' => $this->addresses->additional($server)]
                 + $this->addresses->primaries($server)
@@ -473,6 +474,20 @@ final readonly class GuestScripts
             GuestScriptEvent::DiskResized => ['disk_mib' => $server->disk_mib],
             GuestScriptEvent::PasswordReset => ['username' => $platform->administrator()],
             GuestScriptEvent::HostnameChanged => ['previous_hostname' => is_string($task?->input['previous_hostname'] ?? null) ? $task->input['previous_hostname'] : null],
+        };
+    }
+
+    /**
+     * Why the post-install script runs: "create" (also a rebuild from
+     * scratch), "reinstall", or "trial" for an administrator's trial run, so
+     * one script can skip work that must happen only once per server.
+     */
+    private static function provisionedReason(?Task $task): string
+    {
+        return match ($task?->type) {
+            TaskType::Reinstall => 'reinstall',
+            TaskType::GuestScript => 'trial',
+            default => 'create',
         };
     }
 
@@ -491,7 +506,7 @@ final readonly class GuestScripts
         $agent->writeFile($vmid, $config.'.vars', self::vars($inputs));
         $agent->writeFile($vmid, $path, $script);
 
-        return $agent->run($vmid, $trace ? ['sh', '-x', $path] : ['sh', $path], $input, timeoutSeconds: $event->isCritical() ? 60 : 300);
+        return $agent->run($vmid, $trace ? ['sh', '-x', $path] : ['sh', $path], $input, timeoutSeconds: $event->timeoutSeconds());
     }
 
     /**
@@ -506,7 +521,7 @@ final readonly class GuestScripts
         $agent->writeFile($vmid, self::WINDOWS_DIR.'\\'.$event->name().'.json', self::json($inputs));
         $agent->writeFile($vmid, $path, $script);
 
-        return $agent->run($vmid, ['powershell.exe', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', $path], $input, timeoutSeconds: $event->isCritical() ? 60 : 300);
+        return $agent->run($vmid, ['powershell.exe', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', $path], $input, timeoutSeconds: $event->timeoutSeconds());
     }
 
     private function startLog(Task $task, Server $server, GuestScriptEvent $event, string $script, string $source, bool $trace): GuestScriptLog

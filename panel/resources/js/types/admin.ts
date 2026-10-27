@@ -181,6 +181,8 @@ export type GuestScriptSlot = {
     inputs: string[];
     can_be_tried: boolean;
     critical: boolean;
+    /** How long one run may take; the task waits for it. */
+    timeout_seconds: number;
 };
 
 /** One run of a guest script, as the Scripts page lists it. */
