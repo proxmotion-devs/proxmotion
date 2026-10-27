@@ -231,13 +231,15 @@ watch(busy, (value) => (value ? start() : stop()), { immediate: true });
 
 // Otherwise follow Proxmox and the server more slowly, so a VM stopped,
 // started, deleted or moved there, a task a billing system started and a drift
-// the sync recorded show up without a reload. A guest agent that did not
-// answer is asked again only every fourth time, and nothing is asked while the
-// page is hidden.
+// the sync recorded show up without a reload. The guest agent (one more request
+// to Proxmox) is asked only every fourth time, or once the power state changed,
+// and nothing is asked while the page is hidden.
 const WATCH_INTERVAL = 15000;
-const AGENT_RETRY_EVERY = 4;
+const AGENT_EVERY = 4;
 let watchTimer: ReturnType<typeof setInterval> | null = null;
 let watchTicks = 0;
+/** The power state when the agent was last asked: a VM just started gets its agent checked at once. */
+let agentAskedAt: string | null | undefined = undefined;
 
 const watchTick = () => {
     if (document.visibilityState === 'hidden') {
@@ -246,7 +248,11 @@ const watchTick = () => {
 
     watchTicks++;
     const askAgent =
-        props.agent !== false || watchTicks % AGENT_RETRY_EVERY === 0;
+        watchTicks % AGENT_EVERY === 0 || props.power !== agentAskedAt;
+
+    if (askAgent) {
+        agentAskedAt = props.power;
+    }
 
     router.reload({
         only: [
