@@ -14,15 +14,25 @@ use Inertia\Response;
 
 /**
  * Panel settings (docs/adr/0038): what used to need an .env change and a
- * restart. Security and deployment settings stay in .env and are only shown.
+ * restart, one page per category of PanelSettings::CATEGORIES. Security and
+ * deployment settings stay in .env and are only shown.
  */
 class PanelSettingsController extends Controller
 {
-    public function edit(): Response
+    public function index(): RedirectResponse
     {
+        return to_route('admin.settings.edit', array_key_first(PanelSettings::CATEGORIES));
+    }
+
+    public function edit(string $category): Response
+    {
+        $fields = PanelSettings::CATEGORIES[$category];
+
         return Inertia::render('admin/settings/Edit', [
+            'category' => $category,
+            'fields' => $fields,
             'settings' => PanelSettings::all(),
-            'unsaved' => PanelSettings::unsaved(),
+            'unsaved' => array_values(array_intersect($fields, PanelSettings::unsaved())),
             'environment' => [
                 'require_admin_two_factor' => (bool) config('proxmotion.require_admin_two_factor'),
                 'console_proxy' => filled(config('proxmotion.console.proxy_secret')),
@@ -30,7 +40,7 @@ class PanelSettingsController extends Controller
         ]);
     }
 
-    public function update(PanelSettingsRequest $request): RedirectResponse
+    public function update(PanelSettingsRequest $request, string $category): RedirectResponse
     {
         $changes = PanelSettings::save($request->settings());
 

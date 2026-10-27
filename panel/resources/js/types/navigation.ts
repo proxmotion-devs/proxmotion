@@ -11,4 +11,6 @@ export type NavItem = {
     href: NonNullable<InertiaLinkProps['href']>;
     icon?: LucideIcon;
     isActive?: boolean;
+    /** Sub-pages, shown under the item when it is opened in the menu. */
+    items?: NavItem[];
 };

@@ -449,7 +449,7 @@ A task is not "done" until `composer ci:check` passes and shellcheck passes (CI 
 - There are no roles: every panel user is an administrator (ADR 0007). Admin routes live in the `admin.` route group (`auth`, `verified`, `2fa`). Customers exist only in the billing system; servers carry `external_id` / `external_client_id`.
 - Avoid N+1 queries (`with()`); paginate all large lists.
 - No company-specific values (IP ranges, hostnames, provider names, branding) in code, seeds or defaults — use config or admin settings.
-- A new panel-wide setting administrators may change while running the panel goes on *Panel settings* (ADR 0038): its default in `config/proxmotion.php` (with an `.env` variable), its key in `PanelSettings::KEYS`, validation in `PanelSettingsRequest`, a field in `pages/admin/settings/Edit.vue`; read it with `PanelSettings::get()`, never `config()`. Security and deployment values (2FA, secrets shared with other services, addresses of the installation) stay `.env`-only.
+- A new panel-wide setting administrators may change while running the panel goes on *Panel settings* (ADR 0038): its default in `config/proxmotion.php` (with an `.env` variable), its key in `PanelSettings::KEYS` and in one page of `PanelSettings::CATEGORIES` (each page is listed under *Panel settings* in the menu, `lib/settingsCategories.ts`), validation in `PanelSettingsRequest`, a field in that page's section of `pages/admin/settings/Edit.vue`; read it with `PanelSettings::get()`, never `config()`. Security and deployment values (2FA, secrets shared with other services, addresses of the installation) stay `.env`-only.
 - New source files carry no per-file licence header; the root `LICENSE` (AGPL-3.0) applies.
 
 ---

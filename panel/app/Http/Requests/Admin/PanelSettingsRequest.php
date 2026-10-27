@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Requests\Admin;
 
 use App\Domain\Servers\PasswordGenerator;
+use App\Domain\Settings\PanelSettings;
 use App\Rules\Hostname;
 use App\Rules\NetworkList;
 use Closure;
@@ -14,8 +15,9 @@ use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator;
 
 /**
- * The Panel settings page (docs/adr/0038). Every setting is sent; empty
- * optional fields arrive as null.
+ * One page of Panel settings (docs/adr/0038): every setting of its category
+ * (PanelSettings::CATEGORIES) is sent and saved; empty optional fields arrive
+ * as null.
  */
 class PanelSettingsRequest extends FormRequest
 {
@@ -24,7 +26,7 @@ class PanelSettingsRequest extends FormRequest
      */
     public function rules(): array
     {
-        return [
+        return array_intersect_key([
             'cross_cluster_moves' => ['required', 'boolean'],
             'move_deadline_minutes' => ['required', 'integer', 'min:30', 'max:10080'],
             'move_bwlimit_kib' => ['nullable', 'integer', 'min:1', 'max:100000000'],
@@ -56,7 +58,17 @@ class PanelSettingsRequest extends FormRequest
             'password_characters' => ['required', 'string', 'in:lower,mixed,symbols'],
             'password_prefix' => ['nullable', 'string', 'max:32', Rule::regex('/^[A-Za-z0-9!@#%+=.,:_-]+$/')],
             'password_suffix' => ['nullable', 'string', 'max:32', Rule::regex('/^[A-Za-z0-9!@#%+=.,:_-]+$/')],
-        ];
+        ], array_flip($this->fields()));
+    }
+
+    /**
+     * The settings of the page's category.
+     *
+     * @return list<string>
+     */
+    private function fields(): array
+    {
+        return PanelSettings::CATEGORIES[(string) $this->route('category')] ?? [];
     }
 
     /**
@@ -67,7 +79,7 @@ class PanelSettingsRequest extends FormRequest
     public function withValidator(Validator $validator): void
     {
         $validator->after(function (Validator $validator): void {
-            if ($validator->errors()->hasAny(['password_characters', 'password_prefix', 'password_suffix'])) {
+            if (! in_array('password_characters', $this->fields(), true) || $validator->errors()->hasAny(['password_characters', 'password_prefix', 'password_suffix'])) {
                 return;
             }
 
@@ -90,31 +102,34 @@ class PanelSettingsRequest extends FormRequest
         $optionalInt = fn (string $key): ?int => isset($data[$key]) ? (int) $data[$key] : null;
         $optionalString = fn (string $key): ?string => isset($data[$key]) && trim((string) $data[$key]) !== '' ? trim((string) $data[$key]) : null;
 
-        return [
-            'cross_cluster_moves' => (bool) $data['cross_cluster_moves'],
-            'move_deadline_minutes' => (int) $data['move_deadline_minutes'],
-            'move_bwlimit_kib' => $optionalInt('move_bwlimit_kib'),
-            'min_vmid' => (int) $data['min_vmid'],
-            'provisioning_deadline_minutes' => (int) $data['provisioning_deadline_minutes'],
-            'verify_dns_name' => ($name = $optionalString('verify_dns_name')) === null ? null : strtolower($name),
-            'protected_networks' => NetworkList::canonical($optionalString('protected_networks')),
-            'drift_stopped_grace_minutes' => (int) $data['drift_stopped_grace_minutes'],
-            'console_max_minutes' => (int) $data['console_max_minutes'],
-            'console_idle_minutes' => (int) $data['console_idle_minutes'],
-            'docs_url' => $optionalString('docs_url'),
-            'traffic_reset_day' => (int) $data['traffic_reset_day'],
-            'traffic_counted' => (string) $data['traffic_counted'],
-            'traffic_action' => (string) $data['traffic_action'],
-            'usage_cpu_percent' => $optionalInt('usage_cpu_percent'),
-            'usage_memory_percent' => $optionalInt('usage_memory_percent'),
-            'usage_disk_mb_s' => $optionalInt('usage_disk_mb_s'),
-            'usage_network_mbps' => $optionalInt('usage_network_mbps'),
-            'usage_window_minutes' => (int) $data['usage_window_minutes'],
-            'usage_action' => (string) $data['usage_action'],
-            'password_length' => (int) $data['password_length'],
-            'password_characters' => (string) $data['password_characters'],
-            'password_prefix' => $optionalString('password_prefix'),
-            'password_suffix' => $optionalString('password_suffix'),
+        $values = [
+            'cross_cluster_moves' => fn () => (bool) $data['cross_cluster_moves'],
+            'move_deadline_minutes' => fn () => (int) $data['move_deadline_minutes'],
+            'move_bwlimit_kib' => fn () => $optionalInt('move_bwlimit_kib'),
+            'min_vmid' => fn () => (int) $data['min_vmid'],
+            'provisioning_deadline_minutes' => fn () => (int) $data['provisioning_deadline_minutes'],
+            'verify_dns_name' => fn () => ($name = $optionalString('verify_dns_name')) === null ? null : strtolower($name),
+            'protected_networks' => fn () => NetworkList::canonical($optionalString('protected_networks')),
+            'drift_stopped_grace_minutes' => fn () => (int) $data['drift_stopped_grace_minutes'],
+            'console_max_minutes' => fn () => (int) $data['console_max_minutes'],
+            'console_idle_minutes' => fn () => (int) $data['console_idle_minutes'],
+            'docs_url' => fn () => $optionalString('docs_url'),
+            'traffic_reset_day' => fn () => (int) $data['traffic_reset_day'],
+            'traffic_counted' => fn () => (string) $data['traffic_counted'],
+            'traffic_action' => fn () => (string) $data['traffic_action'],
+            'usage_cpu_percent' => fn () => $optionalInt('usage_cpu_percent'),
+            'usage_memory_percent' => fn () => $optionalInt('usage_memory_percent'),
+            'usage_disk_mb_s' => fn () => $optionalInt('usage_disk_mb_s'),
+            'usage_network_mbps' => fn () => $optionalInt('usage_network_mbps'),
+            'usage_window_minutes' => fn () => (int) $data['usage_window_minutes'],
+            'usage_action' => fn () => (string) $data['usage_action'],
+            'password_length' => fn () => (int) $data['password_length'],
+            'password_characters' => fn () => (string) $data['password_characters'],
+            'password_prefix' => fn () => $optionalString('password_prefix'),
+            'password_suffix' => fn () => $optionalString('password_suffix'),
         ];
+
+        // Only the page's category: the other settings keep their values.
+        return array_map(fn (Closure $value): mixed => $value(), array_intersect_key($values, array_flip($this->fields())));
     }
 }

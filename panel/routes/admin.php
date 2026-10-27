@@ -1,5 +1,6 @@
 <?php
 
+use App\Domain\Settings\PanelSettings;
 use App\Http\Controllers\Admin\AdoptionController;
 use App\Http\Controllers\Admin\ApiTokenController;
 use App\Http\Controllers\Admin\AppController;
@@ -45,8 +46,11 @@ use Illuminate\Support\Facades\Route;
 
 Route::get('/', DashboardController::class)->name('dashboard');
 Route::get('help', HelpController::class)->name('help');
-Route::get('settings', [PanelSettingsController::class, 'edit'])->name('settings.edit');
-Route::put('settings', [PanelSettingsController::class, 'update'])->name('settings.update');
+Route::get('settings', [PanelSettingsController::class, 'index'])->name('settings.index');
+Route::get('settings/{category}', [PanelSettingsController::class, 'edit'])->name('settings.edit')
+    ->whereIn('category', array_keys(PanelSettings::CATEGORIES));
+Route::put('settings/{category}', [PanelSettingsController::class, 'update'])->name('settings.update')
+    ->whereIn('category', array_keys(array_filter(PanelSettings::CATEGORIES)));
 
 Route::get('drifts', [DriftController::class, 'index'])->name('drifts.index');
 Route::post('drifts/{drift}/accept', [DriftController::class, 'accept'])->name('drifts.accept');

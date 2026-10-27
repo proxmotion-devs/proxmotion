@@ -31,7 +31,11 @@ import { index as osTemplates } from '@/routes/admin/os-templates';
 import { index as packages } from '@/routes/admin/packages';
 import { index as placementGroups } from '@/routes/admin/placement-groups';
 import { index as servers } from '@/routes/admin/servers';
-import { edit as panelSettings } from '@/routes/admin/settings';
+import { SETTINGS_CATEGORIES } from '@/lib/settingsCategories';
+import {
+    edit as panelSettingsPage,
+    index as panelSettings,
+} from '@/routes/admin/settings';
 import { index as users } from '@/routes/admin/users';
 import type { NavItem } from '@/types';
 
@@ -63,7 +67,15 @@ export function useMainNavigation(): ComputedRef<NavItem[]> {
         { title: 'Drift report', href: drifts(), icon: TriangleAlert },
         { title: 'Administrators', href: users(), icon: Users },
         { title: 'Billing systems', href: billingSystems(), icon: KeyRound },
-        { title: 'Panel settings', href: panelSettings(), icon: Settings },
+        {
+            title: 'Panel settings',
+            href: panelSettings(),
+            icon: Settings,
+            items: SETTINGS_CATEGORIES.map((category) => ({
+                title: category.title,
+                href: panelSettingsPage(category.key),
+            })),
+        },
         { title: 'Help', href: help(), icon: LifeBuoy },
     ]);
 }

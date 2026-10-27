@@ -1,11 +1,13 @@
 import { mount } from '@vue/test-utils';
 import { beforeEach, describe, expect, it, vi } from 'vite-plus/test';
+import type { SettingsCategoryKey } from '@/lib/settingsCategories';
 import Edit from '@/pages/admin/settings/Edit.vue';
 import type { PanelSettings } from '@/types/admin';
 
-const { submit, transformed } = vi.hoisted(() => ({
+const { submit, transformed, layoutProps } = vi.hoisted(() => ({
     submit: vi.fn(),
     transformed: { value: null as Record<string, unknown> | null },
+    layoutProps: vi.fn(),
 }));
 
 vi.mock('@inertiajs/vue3', async () => {
@@ -13,6 +15,7 @@ vi.mock('@inertiajs/vue3', async () => {
 
     return {
         Head: { template: '<div />' },
+        setLayoutProps: layoutProps,
         useForm: (data: Record<string, unknown>) => {
             const form = reactive({
                 ...data,
@@ -63,9 +66,15 @@ const settings = (overrides: Partial<PanelSettings> = {}): PanelSettings => ({
     ...overrides,
 });
 
-const mountPage = (unsaved: string[] = []) =>
+const mountPage = (
+    category: SettingsCategoryKey,
+    fields: string[],
+    unsaved: string[] = [],
+) =>
     mount(Edit, {
         props: {
+            category,
+            fields,
             settings: settings(),
             unsaved,
             environment: {
@@ -79,27 +88,51 @@ const mountPage = (unsaved: string[] = []) =>
 describe('Panel settings page', () => {
     beforeEach(() => {
         submit.mockReset();
+        layoutProps.mockReset();
         transformed.value = null;
     });
 
-    it('sends every setting, an empty bandwidth limit as null', async () => {
-        const wrapper = mountPage();
+    it('shows only its category and sends only its settings', async () => {
+        const wrapper = mountPage('network', ['protected_networks']);
 
         expect(
             (wrapper.find('#protected_networks').element as HTMLTextAreaElement)
                 .value,
         ).toBe('198.51.100.0/24\n203.0.113.7');
+        expect(wrapper.find('#min_vmid').exists()).toBe(false);
+        expect(wrapper.find('#usage_cpu_percent').exists()).toBe(false);
 
         await wrapper.find('form').trigger('submit');
 
         expect(submit).toHaveBeenCalledOnce();
+        expect(submit.mock.calls[0][0]).toMatchObject({
+            url: '/admin/settings/network',
+            method: 'put',
+        });
+        expect(transformed.value).toEqual({
+            protected_networks: '198.51.100.0/24\n203.0.113.7',
+        });
+    });
+
+    it('sends empty limits as null', async () => {
+        const fields = [
+            'traffic_reset_day',
+            'traffic_counted',
+            'traffic_action',
+            'usage_cpu_percent',
+            'usage_memory_percent',
+            'usage_disk_mb_s',
+            'usage_network_mbps',
+            'usage_window_minutes',
+            'usage_action',
+        ];
+        const wrapper = mountPage('usage', fields);
+
+        await wrapper.find('form').trigger('submit');
+
+        expect(Object.keys(transformed.value ?? {})).toEqual(fields);
         expect(transformed.value).toMatchObject({
-            cross_cluster_moves: false,
-            move_bwlimit_kib: null,
-            verify_dns_name: 'example.com',
-            docs_url: '',
             traffic_reset_day: 1,
-            traffic_action: 'none',
             usage_cpu_percent: null,
             usage_network_mbps: null,
             usage_window_minutes: 60,
@@ -107,14 +140,36 @@ describe('Panel settings page', () => {
         });
     });
 
+    it('is titled after its category in the breadcrumbs', () => {
+        mountPage('usage', ['traffic_reset_day']);
+
+        expect(layoutProps).toHaveBeenCalledWith({
+            breadcrumbs: [
+                expect.objectContaining({ title: 'Panel settings' }),
+                expect.objectContaining({ title: 'Usage and quotas' }),
+            ],
+        });
+    });
+
+    it('has nothing to save on the .env page', () => {
+        const wrapper = mountPage('environment', []);
+
+        expect(
+            wrapper.find('[data-test="settings-environment"]').exists(),
+        ).toBe(true);
+        expect(wrapper.find('button[type="submit"]').exists()).toBe(false);
+    });
+
     it('says when values still come from .env', () => {
         expect(
-            mountPage(['min_vmid'])
+            mountPage('servers', ['min_vmid'], ['min_vmid'])
                 .find('[data-test="settings-unsaved"]')
                 .exists(),
         ).toBe(true);
         expect(
-            mountPage().find('[data-test="settings-unsaved"]').exists(),
+            mountPage('servers', ['min_vmid'])
+                .find('[data-test="settings-unsaved"]')
+                .exists(),
         ).toBe(false);
     });
 });
