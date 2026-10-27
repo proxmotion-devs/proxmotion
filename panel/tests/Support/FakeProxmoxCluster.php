@@ -63,6 +63,12 @@ class FakeProxmoxCluster
      */
     public array $guestInterfaces = [];
 
+    /**
+     * @var array<int, list<array<string, mixed>>> per VMID: what get-fsinfo answers; by default an ext4
+     *                                             root file system of 10 GiB with 2 GiB used
+     */
+    public array $guestFileSystems = [];
+
     /** @var array<int, string> per VMID: what the ServerVerifier script prints; by default every check passes */
     public array $verifyOutput = [];
 
@@ -442,6 +448,10 @@ class FakeProxmoxCluster
                 ], fn ($value) => $value !== ''));
             case 'network-get-interfaces':
                 return $this->ok(['result' => $this->guestInterfaces[$vmid] ?? $this->defaultInterfaces($vmid)]);
+            case 'get-fsinfo':
+                return $this->ok(['result' => $this->guestFileSystems[$vmid] ?? [
+                    ['name' => 'sda1', 'mountpoint' => '/', 'type' => 'ext4', 'used-bytes' => 2 * 1024 ** 3, 'total-bytes' => 10 * 1024 ** 3, 'disk' => []],
+                ]]);
             case 'set-user-password':
                 $this->guestPasswords[$vmid][(string) $data['username']] = (string) $data['password'];
 

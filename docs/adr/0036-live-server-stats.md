@@ -48,10 +48,19 @@ When Echo is not configured (no `VITE_REVERB_APP_KEY`) or its connection is not 
 - `.env.example` gets the `REVERB_*` and `VITE_REVERB_*` settings. Without them the panel falls back to polling (§5).
 - The channels are registered on the broadcaster when the panel boots, so `BROADCAST_CONNECTION=reverb` without `REVERB_APP_ID`, `REVERB_APP_KEY` or `REVERB_APP_SECRET` made every request and artisan command fail — the queue worker and scheduler too. `ReverbFallback` switches to the `log` broadcaster at boot instead; `servers:stats` names the missing settings on every run and in the log once an hour. Live figures are a convenience; provisioning must not stop for them.
 
+### 7. Disk space (2026-10-27)
+
+The disk I/O card shows rates only; how full the disk is cannot come from Proxmox, which reports `disk: 0` for QEMU VMs. The server page also shows a *Disk space* card under the four others, filled from the guest agent's `get-fsinfo` (`GuestAgentResource::fileSystems()`, `DiskSpace`):
+
+- Only for a VM whose live status is `running`, and only in the answer to the page's own request (`GET /admin/servers/{server}/stats`, every 10 or 30 seconds), never in the samples `servers:stats` pushes: the figure changes slowly, and an agent that does not answer can hold a request for seconds.
+- Each server's answer is cached for 60 seconds, a failure too, so open pages ask its agent at most once a minute.
+- The sizes are the agent's `used-bytes` and `total-bytes` (like `df`: the blocks reserved for root left out). Entries without sizes, read-only images and optical media (`squashfs`, `iso9660`, `udf`, `CDFS`) and Windows volumes without a drive letter are skipped; a device mounted several times (bind mounts, btrfs subvolumes) is listed once by its shortest mount point. The root file system (`/`, `C:\`) comes first, then the others by mount point, at most 10.
+- Admin panel only: the billing API and modules do not get it.
+
 ## Consequences
 
 - Administrators see a server's load live; one request per watched server every 10 seconds serves every open page.
 - Laravel Reverb 1.x requires `guzzlehttp/psr7` 2.x, so the panel moved from Guzzle 8 back to Guzzle 7 (Laravel 13 accepts both).
 - The panel has one more long-running process (Reverb) and a WebSocket location in nginx; Reverb can later carry task progress and app logs, which still poll.
 - The scheduler runs a command every 10 seconds; it returns at once when nobody is watching.
-- Not verified on a real Proxmox or a running Reverb yet: the fields and their units in `status/current` and `rrddata` on PVE 8.x and 9.x with a pool-limited token, whether `status/current` is read live (and its `cpu` right on the first request a Proxmox worker answers), the counters after a reboot from inside the guest (QEMU keeps running), Reverb behind nginx with `wss://`, and the broadcasting auth request with the session cookie, CSRF and 2FA.
+- Not verified on a real Proxmox or a running Reverb yet: the fields and their units in `status/current` and `rrddata` on PVE 8.x and 9.x with a pool-limited token, whether `status/current` is read live (and its `cpu` right on the first request a Proxmox worker answers), the counters after a reboot from inside the guest (QEMU keeps running), Reverb behind nginx with `wss://`, and the broadcasting auth request with the session cookie, CSRF and 2FA. For §7: `agent/get-fsinfo` with a pool-limited token (`VM.GuestAgent.Audit` on 9.x, `VM.Monitor` on 8.x), its `used-bytes` / `total-bytes` on Linux and Windows guests (older agents report none), how long a request to an agent that does not answer takes.

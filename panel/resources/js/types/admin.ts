@@ -508,6 +508,20 @@ export type ServerStats = {
     disk_write: number | null;
 };
 
+/** How full a running server's file systems are, from its guest agent. */
+export type ServerDiskUsage = {
+    time: number;
+    /** False when the guest agent did not answer. */
+    available: boolean;
+    /** The root file system (/ or C:) first. */
+    file_systems: {
+        mountpoint: string;
+        type: string;
+        used_bytes: number;
+        total_bytes: number;
+    }[];
+};
+
 /** One minute of a server's last hour, or one live sample. */
 export type ServerStatsPoint = Pick<
     ServerStats,

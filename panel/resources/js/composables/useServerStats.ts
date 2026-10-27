@@ -1,7 +1,11 @@
 import { onMounted, onUnmounted, ref } from 'vue';
 import { echo, onConnection } from '@/lib/echo';
 import { stats as statsRoute } from '@/routes/admin/servers';
-import type { ServerStats, ServerStatsPoint } from '@/types/admin';
+import type {
+    ServerDiskUsage,
+    ServerStats,
+    ServerStatsPoint,
+} from '@/types/admin';
 
 /** How often the page asks while the socket is connected: only to stay watched. */
 export const WATCH_MS = 30_000;
@@ -10,14 +14,20 @@ export const POLL_MS = 10_000;
 /** The sparklines show the last hour. */
 export const HISTORY_MS = 60 * 60 * 1000;
 
-type Answer = { stats: ServerStats | null; history: ServerStatsPoint[] };
+type Answer = {
+    stats: ServerStats | null;
+    disk?: ServerDiskUsage | null;
+    history: ServerStatsPoint[];
+};
 
 /**
  * Live figures of one server: the last hour once, then each sample pushed on
- * the server's channel, or asked for every 10 seconds without a socket.
+ * the server's channel, or asked for every 10 seconds without a socket. Disk
+ * space comes only with the answers to those requests (it is never pushed).
  */
 export function useServerStats(serverUuid: string) {
     const stats = ref<ServerStats | null>(null);
+    const disk = ref<ServerDiskUsage | null>(null);
     const history = ref<ServerStatsPoint[]>([]);
     /** Whether the socket is connected (figures are pushed). */
     const live = ref(false);
@@ -77,6 +87,8 @@ export function useServerStats(serverUuid: string) {
                 add(answer.stats);
             }
 
+            disk.value = answer.disk ?? null;
+
             failed.value = false;
         } catch {
             failed.value = true;
@@ -120,5 +132,5 @@ export function useServerStats(serverUuid: string) {
         echo()?.leave(channel);
     });
 
-    return { stats, history, live, loaded, failed };
+    return { stats, disk, history, live, loaded, failed };
 }

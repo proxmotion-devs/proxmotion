@@ -198,6 +198,74 @@ describe('ServerStatsCards', () => {
         );
     });
 
+    it('shows the disk space of a running server, the root file system first', async () => {
+        fetchMock.mockResolvedValueOnce({
+            ok: true,
+            json: async () => ({
+                stats: sample(),
+                disk: {
+                    time: 1_790_000_000_000,
+                    available: true,
+                    file_systems: [
+                        {
+                            mountpoint: '/',
+                            type: 'ext4',
+                            used_bytes: 9 * 1024 ** 3,
+                            total_bytes: 10 * 1024 ** 3,
+                        },
+                        {
+                            mountpoint: '/boot',
+                            type: 'ext4',
+                            used_bytes: 100 * 1024 ** 2,
+                            total_bytes: 1024 ** 3,
+                        },
+                    ],
+                },
+                history: [],
+            }),
+        });
+        const wrapper = mountCards();
+        await flushPromises();
+
+        const rows = wrapper.findAll('[data-test="disk-space-file-system"]');
+        expect(rows).toHaveLength(2);
+        expect(rows[0].text()).toContain('/');
+        expect(rows[0].text()).toContain('9 GiB');
+        expect(
+            rows[0].get('[role="progressbar"]').attributes('aria-valuenow'),
+        ).toBe('90');
+        expect(rows[0].find('.bg-destructive').exists()).toBe(true);
+        expect(rows[1].text()).toContain('/boot');
+        expect(rows[1].find('.bg-primary').exists()).toBe(true);
+    });
+
+    it('says when the guest agent did not answer for the disk space', async () => {
+        fetchMock.mockResolvedValueOnce({
+            ok: true,
+            json: async () => ({
+                stats: sample(),
+                disk: { time: 1, available: false, file_systems: [] },
+                history: [],
+            }),
+        });
+        const wrapper = mountCards();
+        await flushPromises();
+
+        expect(
+            wrapper.find('[data-test="disk-space-unavailable"]').exists(),
+        ).toBe(true);
+    });
+
+    it('shows no disk space while the server is not running', async () => {
+        answer(sample({ status: 'stopped' }));
+        const wrapper = mountCards();
+        await flushPromises();
+
+        expect(wrapper.find('[data-test="stats-disk-space"]').exists()).toBe(
+            false,
+        );
+    });
+
     it('marks figures as old when the panel stops answering', async () => {
         answer(sample());
         const wrapper = mountCards();

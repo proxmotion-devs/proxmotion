@@ -2072,5 +2072,9 @@
     "On another node": "Başka bir node'da",
     "Move not finished": "Taşıma tamamlanmadı",
     "The server is not running in Proxmox. Start it to reset its password or install apps.": "Sunucu Proxmox'ta çalışmıyor. Parolasını sıfırlamak veya uygulama kurmak için başlatın.",
-    "Server not running": "Sunucu çalışmıyor"
+    "Server not running": "Sunucu çalışmıyor",
+    "Disk space": "Disk alanı",
+    "From the guest agent, checked every minute": "Guest agent'tan, dakikada bir kontrol edilir",
+    "The guest agent did not answer, so the disk space is unknown.": "Guest agent yanıt vermedi; disk alanı bilinmiyor.",
+    "The guest agent reported no file systems.": "Guest agent hiçbir dosya sistemi bildirmedi."
 }

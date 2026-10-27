@@ -6,6 +6,7 @@ namespace App\Proxmox\Resources;
 
 use App\Proxmox\Data\GuestExecStatus;
 use App\Proxmox\Data\GuestFile;
+use App\Proxmox\Data\GuestFileSystem;
 use App\Proxmox\Data\GuestNetworkInterface;
 use App\Proxmox\Exceptions\GuestAgentException;
 use App\Proxmox\Exceptions\ProxmoxRequestFailed;
@@ -172,6 +173,23 @@ final readonly class GuestAgentResource
         return array_values(array_map(
             fn (array $interface) => GuestNetworkInterface::fromApi($interface),
             array_filter($interfaces, is_array(...)),
+        ));
+    }
+
+    /**
+     * The guest's mounted file systems with their sizes, as the agent reports
+     * them (guest-get-fsinfo).
+     *
+     * @return list<GuestFileSystem>
+     */
+    public function fileSystems(int $vmid): array
+    {
+        $data = $this->get($vmid, 'get-fsinfo', []);
+        $fileSystems = is_array($data) && is_array($data['result'] ?? null) ? $data['result'] : [];
+
+        return array_values(array_map(
+            fn (array $fileSystem) => GuestFileSystem::fromApi($fileSystem),
+            array_filter($fileSystems, is_array(...)),
         ));
     }
 
