@@ -71,6 +71,16 @@ class WindowsSetupPendingTest extends TestCase
         $this->assertSame('Cloudbase-Init has not run for this server yet', $this->pending([...$specialize, 'done' => 'sethostnameplugin', 'later' => '']), 'Registry names ignore case.');
     }
 
+    public function test_a_restart_cloudbase_init_asked_for_since_the_last_boot_is_waited_for()
+    {
+        // A local script exiting 1003 records LocalScriptsPlugin as 2 and has Cloudbase-Init restart Windows.
+        $finished = ['service' => 'Stopped', 'plugins' => 'SetUserPasswordPlugin,LocalScriptsPlugin', 'done' => 'SetUserPasswordPlugin', 'later' => 'LocalScriptsPlugin'];
+
+        $this->assertSame('Cloudbase-Init has asked for a restart', $this->pending([...$finished, 'restart' => '1']));
+        $this->assertNull($this->pending([...$finished, 'restart' => '0']));
+        $this->assertNull($this->pending($finished), 'An older script prints no restart line.');
+    }
+
     public function test_a_running_service_a_pending_computer_name_and_an_unfinished_setup_are_waited_for()
     {
         $finished = ['service' => 'Stopped', 'plugins' => 'UserDataPlugin', 'done' => 'UserDataPlugin'];

@@ -51,8 +51,11 @@ final readonly class GuestScripts
     /**
      * Prints key=value lines: image= (Windows' image state), name= and
      * active_name= (the computer name after the next restart and the one in
-     * use), and with a cloudbase-init service service= (its state), plugins=
-     * and unattend= (the plugins its
+     * use), and with a cloudbase-init service service= (its state), restart=
+     * (1 when Cloudbase-Init asked for a restart since the last boot: an event
+     * 1074 of its process in the System log; others are left out, as the
+     * "power off" of Fast Startup on Windows 10/11, after which the boot time
+     * stays the same), plugins= and unattend= (the plugins its
      * configuration file and cloudbase-init-unattend.conf beside it list),
      * done= and later= (the plugins it recorded as done, or to run at the next
      * boot, for the instance ID on the config drive). A fixed command: nothing
@@ -72,6 +75,9 @@ final readonly class GuestScripts
         $service = Get-Service -Name cloudbase-init
         if ($service) {
             Write-Output ('service=' + $service.Status)
+            $boot = (Get-CimInstance -ClassName Win32_OperatingSystem).LastBootUpTime
+            $restart = if ($boot) { Get-WinEvent -FilterHashtable @{ LogName = 'System'; Id = 1074; StartTime = $boot } | Where-Object { [string]$_.Properties[0].Value -match 'cloudbase' } | Select-Object -First 1 } else { $null }
+            Write-Output ('restart=' + [int][bool]$restart)
             $conf = Join-Path $env:ProgramFiles 'Cloudbase Solutions\Cloudbase-Init\conf\cloudbase-init.conf'
             if ((Get-CimInstance -ClassName Win32_Service -Filter 'Name=''cloudbase-init''').PathName -match '--config-file\s+\W?([a-z]:\\.+?\.conf)') { $conf = $Matches[1] }
             $pluginsOf = { param($path) $line = Get-Content -Path $path | Where-Object { $_ -match '^\s*plugins\s*=' } | Select-Object -First 1; if ($line) { (($line -split '=', 2)[1] -split ',' | ForEach-Object { ($_.Trim() -split '\.')[-1] } | Where-Object { $_ }) -join ',' } }
@@ -569,14 +575,17 @@ final readonly class GuestScripts
      * WINDOWS_SETUP_COMMAND, or null once it is ready: Windows setup reports
      * IMAGE_STATE_COMPLETE (no image state: a template that was never
      * generalized), no new computer name waits for a restart, and, when
-     * Cloudbase-Init is installed, its service has stopped and has recorded
-     * every plugin of its configuration for this server's instance ID. A
-     * stopped service alone proves nothing: it looks the same before it has
-     * started and while the restart it asked for is still to come.
+     * Cloudbase-Init is installed, its service has stopped, has not asked for
+     * a restart since the last boot, and has recorded every plugin of its
+     * configuration for this server's instance ID. A stopped service alone
+     * proves nothing: it looks the same before it has started and while the
+     * restart it asked for is still to come.
      *
      * A recorded plugin has run during this boot whatever its state: plugins
      * that run at every boot (ExtendVolumesPlugin, LocalScriptsPlugin,
-     * MTUPlugin) always record 2, never 1. One
+     * MTUPlugin) always record 2, never 1. A plugin that records 2 to run
+     * again after a restart (a local script exiting 1003) also has
+     * Cloudbase-Init restart Windows, which the restart check waits for. One
      * that failed records nothing (Cloudbase-Init logs the error and goes on),
      * so it is still waited for. Without a plugins line the service runs its
      * default plugins: then any plugin it recorded besides those of the
@@ -614,6 +623,10 @@ final readonly class GuestScripts
 
         if ($service !== 'Stopped') {
             return "the cloudbase-init service is {$service}";
+        }
+
+        if (($values['restart'] ?? '') === '1') {
+            return 'Cloudbase-Init has asked for a restart';
         }
 
         $recorded = array_map(strtolower(...), [...$list('done'), ...$list('later')]);

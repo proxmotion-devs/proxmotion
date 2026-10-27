@@ -144,6 +144,19 @@ class WindowsSetupWaitTest extends TestCase
         $this->assertNull($this->waitStep($server->tasks()->sole())['message']);
     }
 
+    public function test_a_restart_cloudbase_init_asked_for_is_waited_for()
+    {
+        // The service has stopped and recorded every plugin, but a local script asked for a restart (exit 1003).
+        $this->answers = [self::checkOutput()."restart=1\r\n", self::checkOutput()];
+        Sleep::fake();
+
+        $server = app(ServerCreator::class)->create($this->order())->refresh();
+
+        $this->assertSame(2, $this->checks);
+        $this->assertSame(ServerStatus::Active, $server->status);
+        $this->assertNull($this->waitStep($server->tasks()->sole())['message']);
+    }
+
     public function test_a_finished_windows_setup_without_cloudbase_init_counts_as_finished()
     {
         $this->answers = [self::checkOutput(service: null)];

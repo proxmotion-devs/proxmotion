@@ -693,7 +693,9 @@ agent* step goes on, checking through the agent every few seconds, until
   `IMAGE_STATE_COMPLETE` (on Way B it already is; a template without the value counts as complete),
 - no new computer name waits for a restart (`ComputerName` and `ActiveComputerName` under
   `HKLM\SYSTEM\CurrentControlSet\Control\ComputerName` are the same),
-- the `cloudbase-init` service is no longer running (`Stopped`, or not installed), and
+- the `cloudbase-init` service is no longer running (`Stopped`, or not installed),
+- Cloudbase-Init has not asked for a restart since the last boot (an event 1074 of its process in
+  the System log, as when a local script exits with 1003), and
 - Cloudbase-Init has recorded every plugin of the service's configuration (the `plugins` line of the
   `cloudbase-init.conf` its service runs with) under
   `HKLM\SOFTWARE\Cloudbase Solutions\Cloudbase-Init\<instance ID>\Plugins`, where the instance ID is

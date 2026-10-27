@@ -698,7 +698,9 @@ olana kadar sürer:
 - hiçbir yeni bilgisayar adı yeniden başlatma beklemez
   (`HKLM\SYSTEM\CurrentControlSet\Control\ComputerName` altındaki `ComputerName` ile
   `ActiveComputerName` aynıdır),
-- `cloudbase-init` servisi artık çalışmıyordur (`Stopped` ya da kurulu değil) ve
+- `cloudbase-init` servisi artık çalışmıyordur (`Stopped` ya da kurulu değil),
+- Cloudbase-Init son açılıştan beri yeniden başlatma istememiştir (System log'unda kendi işleminin
+  bir 1074 olayı; örneğin yerel bir script 1003 koduyla çıktığında) ve
 - Cloudbase-Init, servisin yapılandırmasındaki her plugin'i (servisin çalıştığı
   `cloudbase-init.conf`'un `plugins` satırı) `HKLM\SOFTWARE\Cloudbase Solutions\Cloudbase-Init\<instance kimliği>\Plugins`
   altında kaydetmiştir; instance kimliği config drive'daki `openstack\latest\meta_data.json`'un
