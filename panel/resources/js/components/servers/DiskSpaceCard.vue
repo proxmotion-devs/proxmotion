@@ -52,7 +52,10 @@ const textClass = {
 </script>
 
 <template>
-    <div class="flex flex-col gap-3" data-test="stats-disk-space">
+    <div
+        class="flex flex-col gap-4 rounded-xl border p-4"
+        data-test="stats-disk-space"
+    >
         <div
             class="flex flex-wrap items-center justify-between gap-x-4 gap-y-1"
         >

@@ -241,8 +241,11 @@ describe('ServerStatsCards', () => {
 
         const rows = wrapper.findAll('[data-test="disk-space-file-system"]');
         expect(rows).toHaveLength(2);
-        // Each file system in a card of its own.
+        // Each file system in a card of its own, inside the section's border.
         expect(rows.every((row) => row.classes('border'))).toBe(true);
+        expect(
+            wrapper.get('[data-test="stats-disk-space"]').classes('border'),
+        ).toBe(true);
         expect(rows[0].text()).toContain('/');
         expect(rows[0].text()).toContain('9 GiB');
         expect(
