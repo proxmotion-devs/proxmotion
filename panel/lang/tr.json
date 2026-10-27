@@ -2070,6 +2070,7 @@
     "Server not running": "Sunucu çalışmıyor",
     "Disk space": "Disk alanı",
     "From the guest agent, checked every minute": "Guest agent'tan, dakikada bir kontrol edilir",
+    "Asking the guest agent for the disk space…": "Disk alanı guest agent'tan soruluyor…",
     "The guest agent did not answer, so the disk space is unknown.": "Guest agent yanıt vermedi; disk alanı bilinmiyor.",
     "The guest agent reported no file systems.": "Guest agent hiçbir dosya sistemi bildirmedi.",
     "This guide explains what a template must provide and why, and how to check each point yourself, so it also works for a distribution or version it does not name. Everything happens in the Proxmox web interface, the VM console and the node shell.": "Bu rehber bir şablonun neyi sağlaması gerektiğini ve nedenini, her noktayı kendiniz nasıl kontrol edeceğinizi anlatır; böylece adını anmadığı bir dağıtım veya sürüm için de işe yarar. Her şey Proxmox web arayüzünde, VM konsolunda ve node kabuğunda yapılır.",

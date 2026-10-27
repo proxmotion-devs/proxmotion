@@ -5,9 +5,10 @@ import type { ServerDiskUsage } from '@/types/admin';
 /**
  * How full a running server's file systems are, from its guest agent
  * (docs/adr/0036 §7): the root one first, then the others it has mounted.
+ * Null while the panel has not asked the guest agent yet.
  */
 defineProps<{
-    disk: ServerDiskUsage;
+    disk: ServerDiskUsage | null;
 }>();
 
 const share = (used: number, total: number) => percentage(used, total) ?? 0;
@@ -35,7 +36,14 @@ const barClass = (percent: number) =>
         </div>
 
         <p
-            v-if="!disk.available"
+            v-if="!disk"
+            class="text-sm text-muted-foreground"
+            data-test="disk-space-loading"
+        >
+            {{ $t('Asking the guest agent for the disk space…') }}
+        </p>
+        <p
+            v-else-if="!disk.available"
             class="text-sm text-muted-foreground"
             data-test="disk-space-unavailable"
         >

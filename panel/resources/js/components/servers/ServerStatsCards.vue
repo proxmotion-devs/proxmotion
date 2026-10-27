@@ -310,7 +310,7 @@ const portShare = computed(() => {
         </div>
 
         <DiskSpaceCard
-            v-if="disk && stats && running"
+            v-if="stats && running"
             :disk="disk"
             :class="{ 'opacity-60': stale }"
         />
