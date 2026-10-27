@@ -304,6 +304,50 @@ class CustomScriptsTest extends TestCase
                 ->where('logs.provisioned', []));
     }
 
+    public function test_the_scripts_page_lists_the_latest_runs_of_every_script_in_a_fixed_number_of_queries()
+    {
+        $scripts = [$this->custom('First'), $this->custom('Second'), $this->custom('Third')];
+
+        foreach ($scripts as $script) {
+            foreach (range(1, 10) as $run) {
+                $log = new GuestScriptLog;
+                $log->forceFill([
+                    'server_id' => $this->server->id,
+                    'os_template_id' => $this->osTemplate->id,
+                    'custom_script_id' => $script->id,
+                    'script_name' => $script->name,
+                    'script' => "echo hi\n",
+                    'inputs' => [],
+                    'source' => GuestScriptLog::SOURCE_PUBLISHED,
+                    'trace' => false,
+                    'status' => 'succeeded',
+                    'exit_code' => $run,
+                ])->save();
+            }
+        }
+
+        $queries = 0;
+        DB::listen(function () use (&$queries) {
+            $queries++;
+        });
+
+        $this->actingAs($this->admin)
+            ->get(route('admin.os-templates.scripts', $this->osTemplate))
+            ->assertInertia(function (Assert $page) use ($scripts) {
+                foreach ($scripts as $script) {
+                    // At most 8 per script, the newest first.
+                    $page->has("customLogs.{$script->uuid}", 8)->where("customLogs.{$script->uuid}.0.exit_code", 10);
+                }
+            });
+        $withThree = $queries;
+
+        $this->custom('Fourth');
+        $queries = 0;
+        $this->actingAs($this->admin)->get(route('admin.os-templates.scripts', $this->osTemplate))->assertOk();
+
+        $this->assertSame($withThree, $queries, 'One more script asks no more queries.');
+    }
+
     public function test_scripts_are_added_as_drafts_and_their_triggers_are_validated()
     {
         $this->actingAs($this->admin)

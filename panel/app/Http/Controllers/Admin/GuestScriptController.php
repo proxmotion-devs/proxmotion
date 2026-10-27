@@ -22,6 +22,7 @@ use App\Models\User;
 use App\Provisioning\Exceptions\ProvisioningException;
 use App\Provisioning\TaskRunner;
 use Illuminate\Container\Attributes\CurrentUser;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -270,20 +271,15 @@ class GuestScriptController extends Controller
      */
     private function customLogs(OsTemplate $osTemplate): array
     {
-        $logs = [];
-
-        foreach ($osTemplate->customScripts()->get() as $script) {
-            $logs[$script->uuid] = array_values(GuestScriptLog::query()
-                ->where('custom_script_id', $script->id)
+        // One query for all scripts: the limit applies per script (Laravel limits eager loads per parent).
+        return $osTemplate->customScripts()
+            ->with(['logs' => fn (HasMany $logs) => $logs
                 ->with(['server:id,uuid,hostname', 'task:id,status,type,input'])
                 ->latest('id')
-                ->limit(self::LOGS_PER_EVENT)
-                ->get()
-                ->map(self::summary(...))
-                ->all());
-        }
-
-        return $logs;
+                ->limit(self::LOGS_PER_EVENT)])
+            ->get()
+            ->mapWithKeys(fn (CustomScript $script) => [$script->uuid => array_values($script->logs->map(self::summary(...))->all())])
+            ->all();
     }
 
     /**

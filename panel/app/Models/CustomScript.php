@@ -6,8 +6,10 @@ namespace App\Models;
 
 use App\Enums\GuestScriptEvent;
 use App\Models\Concerns\HasPublicUuid;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Carbon;
 
 /**
@@ -29,6 +31,7 @@ use Illuminate\Support\Carbon;
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  * @property-read OsTemplate $osTemplate
+ * @property-read Collection<int, GuestScriptLog> $logs
  */
 class CustomScript extends Model
 {
@@ -71,5 +74,15 @@ class CustomScript extends Model
     public function osTemplate(): BelongsTo
     {
         return $this->belongsTo(OsTemplate::class);
+    }
+
+    /**
+     * Its runs in the guest script log.
+     *
+     * @return HasMany<GuestScriptLog, $this>
+     */
+    public function logs(): HasMany
+    {
+        return $this->hasMany(GuestScriptLog::class);
     }
 }
