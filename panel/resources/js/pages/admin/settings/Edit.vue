@@ -160,20 +160,7 @@ const sectionClass = 'flex flex-col gap-4 rounded-xl border p-4';
     <Head :title="current.title" />
 
     <form class="flex flex-col gap-6 p-4" @submit.prevent="submit">
-        <div class="flex flex-wrap items-start justify-between gap-4">
-            <Heading
-                :title="current.title"
-                :description="current.description"
-            />
-            <Button
-                v-if="fields.length > 0"
-                type="submit"
-                :disabled="form.processing"
-            >
-                <Save class="h-4 w-4" />
-                {{ $t('Save settings') }}
-            </Button>
-        </div>
+        <Heading :title="current.title" :description="current.description" />
 
         <p
             v-if="unsaved.length > 0"

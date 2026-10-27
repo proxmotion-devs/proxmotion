@@ -112,6 +112,7 @@ describe('Panel settings page', () => {
 
         await wrapper.find('form').trigger('submit');
 
+        expect(wrapper.findAll('button[type="submit"]')).toHaveLength(1);
         expect(submit).toHaveBeenCalledOnce();
         expect(submit.mock.calls[0][0]).toMatchObject({
             url: '/admin/settings/network',
