@@ -3,8 +3,9 @@ import { onBeforeUnmount, onMounted, ref } from 'vue';
 
 /**
  * Building an OS template by hand, one tab per operating system. It explains
- * what a template must provide and why, so it works for any distribution,
- * and how to check each point. Follows docs/guides/iso-templates.md and
+ * what a template must provide and why, so it works for any distribution
+ * and for every Windows version from Server 2016 to Windows 11, and how to
+ * check each point. Follows docs/guides/iso-templates.md and
  * docs/guides/windows-templates.md; keep them in step. Links such as
  * #template-guide-windows open a tab, #template-guide-windows-nosysprep
  * also picks the way of making Windows clones unique.
@@ -102,6 +103,58 @@ const familyRows: { label: string; values: string[] }[] = [
     },
 ];
 
+// What differs between Windows versions; the steps refer to these rows.
+// Values are shown through $t, so words among them are translated.
+const windowsColumns = [
+    'Server 2016',
+    'Server 2019',
+    'Server 2022',
+    'Server 2025',
+    'Windows 10',
+    'Windows 11',
+];
+
+const windowsRows: { label: string; values: string[] }[] = [
+    {
+        label: 'Proxmox OS type',
+        values: [
+            '10/2016/2019',
+            '10/2016/2019',
+            '11/2022/2025',
+            '11/2022/2025',
+            '10/2016/2019',
+            '11/2022/2025',
+        ],
+    },
+    {
+        label: 'VirtIO driver folder',
+        values: ['2k16', '2k19', '2k22', '2k25', 'w10', 'w11'],
+    },
+    {
+        label: 'Smallest template disk',
+        values: ['32 GiB', '32 GiB', '32 GiB', '32 GiB', '32 GiB', '64 GiB'],
+    },
+    {
+        label: 'TPM 2.0 and Secure Boot',
+        values: ['No', 'No', 'No', 'No', 'No', 'Required'],
+    },
+    {
+        label: 'Built-in Administrator',
+        values: [
+            'Enabled',
+            'Enabled',
+            'Enabled',
+            'Enabled',
+            'Disabled',
+            'Disabled',
+        ],
+    },
+    {
+        label: 'Without Sysprep',
+        values: ['Yes', 'Yes', 'Yes', 'No', 'Yes', 'No'],
+    },
+];
+
 // Commands and files, shown as examples of each step.
 const commands = {
     cloudDump: `qm cloudinit dump <vmid> user      # password, SSH keys, hostname
@@ -158,15 +211,60 @@ apt clean 2>/dev/null; dnf clean all 2>/dev/null; zypper clean -a 2>/dev/null
 fstrim -av
 history -c && rm -f /root/.bash_history
 poweroff`,
-    windowsPrepare: `# Remote Desktop (off by default on Windows Server) and its firewall rules
+    windowsPrepare: `# Remote Desktop (off by default) and its firewall rules
 Set-ItemProperty 'HKLM:\\System\\CurrentControlSet\\Control\\Terminal Server' -Name fDenyTSConnections -Value 0
 Enable-NetFirewallRule -Group '@FirewallAPI.dll,-28752'
 # Answer ping (IPv4 and IPv6)
 Enable-NetFirewallRule -Name FPS-ICMP4-ERQ-In, FPS-ICMP6-ERQ-In
-# No Server Manager at logon, no hibernation file, high-performance power plan
-Get-ScheduledTask -TaskName ServerManager | Disable-ScheduledTask
+# No hibernation file and no Fast Startup, high-performance power plan
 powercfg /hibernate off
-powercfg /setactive SCHEME_MIN`,
+powercfg /setactive SCHEME_MIN
+# Servers: no Server Manager at logon (no such task on Windows 10/11)
+Get-ScheduledTask -TaskName ServerManager -ErrorAction SilentlyContinue | Disable-ScheduledTask`,
+    windowsClient: `# Device encryption off (Sysprep refuses it, clones would share the key)
+manage-bde -status C:
+manage-bde -off C:      # only if the volume is encrypted; wait until it is decrypted
+# No promoted Store apps per user (Enterprise and Education honour it)
+New-Item 'HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\CloudContent' -Force | Out-Null
+Set-ItemProperty 'HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\CloudContent' -Name DisableWindowsConsumerFeatures -Value 1`,
+    adminCheck: `Get-LocalUser | Where-Object { $_.SID -like '*-500' } | Format-Table Name, Enabled
+# a localized name (Administrateur, Administrador…) must become Administrator
+Get-LocalUser | Where-Object { $_.SID -like '*-500' } | Rename-LocalUser -NewName Administrator`,
+    enableAdmin: `# C:\\Program Files\\Cloudbase Solutions\\Cloudbase-Init\\LocalScripts\\enable-administrator.ps1
+# Proxmotion: the panel logs customers in as the built-in Administrator
+Get-LocalUser | Where-Object { $_.SID -like '*-500' } | Enable-LocalUser`,
+    clientOobeXml: `<settings pass="oobeSystem">
+  <component name="Microsoft-Windows-International-Core" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+    <InputLocale>en-US</InputLocale>
+    <SystemLocale>en-US</SystemLocale>
+    <UILanguage>en-US</UILanguage>
+    <UserLocale>en-US</UserLocale>
+  </component>
+  <component name="Microsoft-Windows-Shell-Setup" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+    <OOBE>
+      <HideEULAPage>true</HideEULAPage>
+      <HideOEMRegistrationScreen>true</HideOEMRegistrationScreen>
+      <HideOnlineAccountScreens>true</HideOnlineAccountScreens>
+      <HideWirelessSetupInOOBE>true</HideWirelessSetupInOOBE>
+      <HideLocalAccountScreen>true</HideLocalAccountScreen>
+      <ProtectYourPC>3</ProtectYourPC>
+    </OOBE>
+    <UserAccounts>
+      <AdministratorPassword>
+        <Value>a-long-random-value-replaced-at-first-boot</Value>
+        <PlainText>true</PlainText>
+      </AdministratorPassword>
+    </UserAccounts>
+  </component>
+</settings>`,
+    clientAppx: `$provisioned = (Get-AppxProvisionedPackage -Online).PackageName
+Get-AppxPackage -AllUsers |
+    Where-Object { -not $_.NonRemovable -and $provisioned -notcontains $_.PackageFullName } |
+    ForEach-Object { Remove-AppxPackage -Package $_.PackageFullName -AllUsers -ErrorAction SilentlyContinue }`,
+    win10Account: `Get-LocalUser | Where-Object { $_.SID -like '*-500' } | Enable-LocalUser
+net user Administrator *          # a temporary password
+# sign out, sign in as Administrator, then:
+Remove-LocalUser -Name setup`,
     windowsAgentCheck: `qm guest cmd <vmid> ping
 qm guest exec <vmid> -- powershell -NoProfile -Command '$PSVersionTable.PSVersion'`,
     unattend: `[DEFAULT]
@@ -787,6 +885,14 @@ const cloudbaseUrl = 'https://cloudbase.it/cloudbase-init/';
 
             <!-- Windows -->
             <template v-else-if="active === 'windows'">
+                <p>
+                    {{
+                        $t(
+                            'For Windows Server 2016, 2019, 2022 and 2025 and for Windows 10 and 11. The steps are the same for every version; where a version differs, the step says so.',
+                        )
+                    }}
+                </p>
+
                 <section>
                     <h4>
                         {{ $t('How a Windows server is born from a template') }}
@@ -801,7 +907,51 @@ const cloudbaseUrl = 'https://cloudbase.it/cloudbase-init/';
                     <p>
                         {{
                             $t(
-                                'The panel waits until the guest agent answers, Windows setup reports IMAGE_STATE_COMPLETE and the cloudbase-init service has stopped; then the server is Active and its scripts run.',
+                                'The panel waits until the guest agent answers, Windows setup reports IMAGE_STATE_COMPLETE and the cloudbase-init service has stopped; then the server is Active and its scripts run. Customers log in with Remote Desktop as Administrator, the account whose password the panel sets.',
+                            )
+                        }}
+                    </p>
+                </section>
+
+                <section>
+                    <h4>{{ $t('Windows versions') }}</h4>
+                    <p>
+                        {{
+                            $t(
+                                'What differs between versions; the steps below refer to these rows. Windows 11 also needs 4 GiB of memory and 2 cores, Server 2025 and Windows 11 a CPU type with x86-64-v2 (the default, never kvm64). Windows Home has no Remote Desktop host and cannot be used.',
+                            )
+                        }}
+                    </p>
+                    <div class="overflow-x-auto">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th></th>
+                                    <th
+                                        v-for="column in windowsColumns"
+                                        :key="column"
+                                    >
+                                        {{ column }}
+                                    </th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr v-for="row in windowsRows" :key="row.label">
+                                    <th>{{ $t(row.label) }}</th>
+                                    <td
+                                        v-for="(value, index) in row.values"
+                                        :key="index"
+                                    >
+                                        {{ $t(value) }}
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <p>
+                        {{
+                            $t(
+                                "Windows 10 and 11 are desktop systems: Microsoft's licence terms do not allow renting them through SPLA, and multi-tenant hosting needs Microsoft's QMTH program. Check your licensing before you sell them. Windows 10 support ended in October 2025.",
                             )
                         }}
                     </p>
@@ -831,7 +981,7 @@ const cloudbaseUrl = 'https://cloudbase.it/cloudbase-init/';
                         <li>
                             {{
                                 $t(
-                                    'Without Sysprep: not supported by Microsoft and every server shares the machine SID. Since the September 2025 updates, Windows Server 2025 refuses NTLM and Kerberos between machines with the same SID, and KMS sees all clones as one client. The Remote Desktop certificate and the Windows Update ID can be removed by hand. Not measured yet.',
+                                    'Without Sysprep: not supported by Microsoft, every server shares the machine SID, and KMS sees all clones as one client. Since the September 2025 updates, Windows Server 2025 and Windows 11 refuse NTLM and Kerberos between machines with the same SID, so this way is only for Server 2016 to 2022 and Windows 10. Not measured yet.',
                                 )
                             }}
                         </li>
@@ -839,7 +989,7 @@ const cloudbaseUrl = 'https://cloudbase.it/cloudbase-init/';
                     <p>
                         {{
                             $t(
-                                'Choose With Sysprep for anything you sell broadly and always for Windows Server 2025. Without Sysprep only for 2019 and 2022, when first-boot time matters more than support. The panel works the same with both.',
+                                'Choose With Sysprep for anything you sell broadly and always for Windows Server 2025 and Windows 11. The panel works the same with both.',
                             )
                         }}
                     </p>
@@ -871,7 +1021,7 @@ const cloudbaseUrl = 'https://cloudbase.it/cloudbase-init/';
                         <li>
                             {{
                                 $t(
-                                    'The Windows Server ISO from Microsoft (evaluation or volume licensing): upload it under the node, the storage, ISO Images, Upload.',
+                                    'The Windows ISO of your version (volume licensing, evaluation or Media Creation Tool media): upload it under the node, the storage, ISO Images, Upload. For Windows 11, Enterprise or Education makes step 3 easier.',
                                 )
                             }}
                         </li>
@@ -892,21 +1042,21 @@ const cloudbaseUrl = 'https://cloudbase.it/cloudbase-init/';
                         <li>
                             {{
                                 $t(
-                                    'OS: type Microsoft Windows with the matching version. This decides the config drive format and that the password reaches Cloudbase-Init. Tick Add additional drive for VirtIO drivers and choose virtio-win.iso.',
+                                    'OS: type Microsoft Windows with the version from the table. This decides the config drive format and that the password reaches Cloudbase-Init. Tick Add additional drive for VirtIO drivers and choose virtio-win.iso.',
                                 )
                             }}
                         </li>
                         <li>
                             {{
                                 $t(
-                                    'System: machine q35, BIOS OVMF (UEFI), Add EFI Disk with pre-enrolled keys, SCSI controller VirtIO SCSI single, and tick QEMU Agent. No TPM is needed for Windows Server.',
+                                    'System: machine q35, BIOS OVMF (UEFI), Add EFI Disk with pre-enrolled keys (Secure Boot on), SCSI controller VirtIO SCSI single, and tick QEMU Agent. Windows 11 also needs Add TPM, version v2.0; every clone then shares that virtual TPM, which is harmless for a VPS.',
                                 )
                             }}
                         </li>
                         <li>
                             {{
                                 $t(
-                                    'Disks: bus SCSI, 40 GiB (Windows Server needs at least 32; the panel grows the disk per package), Discard and SSD emulation on.',
+                                    'Disks: bus SCSI, the smallest size from the table, Discard and SSD emulation on. The panel grows the disk but never shrinks it, so this is the smallest disk a package for the template can have.',
                                 )
                             }}
                         </li>
@@ -933,14 +1083,28 @@ const cloudbaseUrl = 'https://cloudbase.it/cloudbase-init/';
                         <li>
                             {{
                                 $t(
-                                    'No disk is listed because Windows has no VirtIO SCSI driver: click Load driver, browse the VirtIO CD to vioscsi, your Windows version, amd64. Then install Windows to the disk; it puts C: last, which lets C: grow later.',
+                                    'No disk is listed because Windows has no VirtIO SCSI driver: click Load driver and browse the VirtIO CD to vioscsi, the folder from the table, amd64. Then install Windows to the disk; it puts C: last, which lets C: grow later.',
                                 )
                             }}
                         </li>
                         <li>
                             {{
                                 $t(
-                                    'Set a temporary Administrator password and log in.',
+                                    'Windows Server: set a temporary Administrator password and log in.',
+                                )
+                            }}
+                        </li>
+                        <li v-if="windowsWay === 'sysprep'">
+                            {{
+                                $t(
+                                    'Windows 10 and 11: at the first OOBE screen press Ctrl+Shift+F3. Windows restarts into audit mode as the built-in Administrator, without any account and without asking for a Microsoft account. Close the System Preparation Tool window and do every following step in audit mode; each restart returns to it until Sysprep ends it.',
+                                )
+                            }}
+                        </li>
+                        <li v-else>
+                            {{
+                                $t(
+                                    'Windows 10: finish OOBE with a temporary local (offline) account named setup; it is removed in step 8.',
                                 )
                             }}
                         </li>
@@ -967,7 +1131,7 @@ const cloudbaseUrl = 'https://cloudbase.it/cloudbase-init/';
                         <li>
                             {{
                                 $t(
-                                    'In PowerShell as Administrator, turn on Remote Desktop (off by default on Windows Server) and ping, and turn off what only slows a server down:',
+                                    'In PowerShell as Administrator, turn on Remote Desktop and ping, and turn off hibernation, which also turns off Fast Startup on Windows 10 and 11 (otherwise a shutdown is really a hibernation):',
                                 )
                             }}
                         </li>
@@ -976,7 +1140,15 @@ const cloudbaseUrl = 'https://cloudbase.it/cloudbase-init/';
                     <p>
                         {{
                             $t(
-                                'Check the agent from the node shell; the panel scripts need Windows PowerShell 5.1:',
+                                'Windows 10 and 11 only: device encryption must be off, because Sysprep refuses an encrypted drive, clones would share its key and the panel could not grow C:. Also stop Windows installing promoted Store apps for each user:',
+                            )
+                        }}
+                    </p>
+                    <pre>{{ commands.windowsClient }}</pre>
+                    <p>
+                        {{
+                            $t(
+                                'Check the agent from the node shell; the panel scripts need Windows PowerShell 5.1, which every version has:',
                             )
                         }}
                     </p>
@@ -984,11 +1156,31 @@ const cloudbaseUrl = 'https://cloudbase.it/cloudbase-init/';
                 </section>
 
                 <section>
-                    <h4>{{ $t('5. Install Cloudbase-Init') }}</h4>
+                    <h4>{{ $t('5. The Administrator account') }}</h4>
                     <p>
                         {{
                             $t(
-                                'Download and install Cloudbase-Init. In its installer use the user name Administrator and tick Run Cloudbase-Init service as LocalSystem.',
+                                'The panel, its password reset and Cloudbase-Init use the built-in account whose SID ends in -500, under the name Administrator. Some display languages name it differently (Administrateur, Administrador): rename it, or install from English media.',
+                            )
+                        }}
+                    </p>
+                    <pre>{{ commands.adminCheck }}</pre>
+                    <p>
+                        {{
+                            $t(
+                                'Windows Server enables it; Windows 10 and 11 disable it, and Sysprep disables it again when it ends audit mode. So every template enables it on the first boot of each clone with a local script of Cloudbase-Init, saved once Cloudbase-Init is installed (step 6). It is harmless on servers:',
+                            )
+                        }}
+                    </p>
+                    <pre>{{ commands.enableAdmin }}</pre>
+                </section>
+
+                <section>
+                    <h4>{{ $t('6. Install Cloudbase-Init') }}</h4>
+                    <p>
+                        {{
+                            $t(
+                                'Download and install Cloudbase-Init. In its installer use the user name Administrator and tick Run Cloudbase-Init service as LocalSystem. Then add the local script of step 5.',
                             )
                         }}
                         <code class="break-all">{{ cloudbaseUrl }}</code>
@@ -1006,7 +1198,7 @@ const cloudbaseUrl = 'https://cloudbase.it/cloudbase-init/';
                 <template v-if="windowsWay === 'sysprep'">
                     <section data-test="template-way-panel-sysprep">
                         <h4>
-                            {{ $t('6. Configure Cloudbase-Init for Sysprep') }}
+                            {{ $t('7. Configure Cloudbase-Init for Sysprep') }}
                         </h4>
                         <p>
                             {{
@@ -1031,6 +1223,15 @@ const cloudbaseUrl = 'https://cloudbase.it/cloudbase-init/';
                         <p>
                             {{
                                 $t(
+                                    'Windows 10 and 11: their OOBE asks for region, keyboard, an account and privacy settings, and nobody answers on a VPS. Replace the oobeSystem pass with the one below: the locale values skip region and keyboard (use yours, e.g. tr-TR), and AdministratorPassword lets OOBE skip account creation; Cloudbase-Init replaces it at the first boot, so use a long random value.',
+                                )
+                            }}
+                        </p>
+                        <h5>Unattend.xml (oobeSystem, Windows 10 and 11)</h5>
+                        <pre>{{ commands.clientOobeXml }}</pre>
+                        <p>
+                            {{
+                                $t(
                                     'Optional: the generalize pass below keeps the installed drivers, so the first boot does not detect every device again. Microsoft allows it only on identical hardware: use it only while every server keeps the virtual hardware of the template (disk bus, network model, machine type).',
                                 )
                             }}
@@ -1040,15 +1241,23 @@ const cloudbaseUrl = 'https://cloudbase.it/cloudbase-init/';
                     </section>
 
                     <section>
-                        <h4>{{ $t('7. Shrink and generalize') }}</h4>
+                        <h4>{{ $t('8. Shrink and generalize') }}</h4>
                         <p>
                             {{
                                 $t(
-                                    'Sysprep refuses to generalize when a Store app was updated for one user only; Edge updates itself, so remove its per-user package (Edge stays installed). C:\\Windows\\System32\\Sysprep\\Panther\\setuperr.log names any other package.',
+                                    'Sysprep refuses to generalize when a Store app was updated for one user only. On Server 2022 and 2025 that is Edge (Edge stays installed):',
                                 )
                             }}
                         </p>
                         <pre>{{ commands.edge }}</pre>
+                        <p>
+                            {{
+                                $t(
+                                    'On Windows 10 and 11 many apps update themselves: remove every package that is installed but not provisioned (frameworks other apps need refuse to go, which is fine). C:\\Windows\\System32\\Sysprep\\Panther\\setuperr.log names any package that still stops Sysprep.',
+                                )
+                            }}
+                        </p>
+                        <pre>{{ commands.clientAppx }}</pre>
                         <p>
                             {{
                                 $t(
@@ -1073,7 +1282,7 @@ const cloudbaseUrl = 'https://cloudbase.it/cloudbase-init/';
                         <h4>
                             {{
                                 $t(
-                                    '6. Configure Cloudbase-Init without Sysprep',
+                                    '7. Configure Cloudbase-Init without Sysprep',
                                 )
                             }}
                         </h4>
@@ -1099,10 +1308,18 @@ const cloudbaseUrl = 'https://cloudbase.it/cloudbase-init/';
                         <h4>
                             {{
                                 $t(
-                                    '7. Remove what must differ, shrink, shut down',
+                                    '8. Remove what must differ, shrink, shut down',
                                 )
                             }}
                         </h4>
+                        <p>
+                            {{
+                                $t(
+                                    'Windows 10: the template must not keep the temporary account. Enable the built-in Administrator, give it a password, sign in as Administrator and remove the other account:',
+                                )
+                            }}
+                        </p>
+                        <pre>{{ commands.win10Account }}</pre>
                         <p>
                             {{
                                 $t(
@@ -1123,7 +1340,7 @@ const cloudbaseUrl = 'https://cloudbase.it/cloudbase-init/';
                 </template>
 
                 <section>
-                    <h4>{{ $t('8. Turn the VM into a template') }}</h4>
+                    <h4>{{ $t('9. Turn the VM into a template') }}</h4>
                     <ol>
                         <li>
                             {{ $t('Hardware: remove both CD/DVD drives.') }}
@@ -1147,7 +1364,7 @@ const cloudbaseUrl = 'https://cloudbase.it/cloudbase-init/';
                 </section>
 
                 <section>
-                    <h4>{{ $t('9. Add it to the panel and test it') }}</h4>
+                    <h4>{{ $t('10. Add it to the panel and test it') }}</h4>
                     <ol>
                         <li>
                             {{
@@ -1180,6 +1397,13 @@ const cloudbaseUrl = 'https://cloudbase.it/cloudbase-init/';
                         <li>
                             {{
                                 $t(
+                                    'Give its packages at least the template disk size (Windows 11: also 4 GiB of memory and 2 cores), and tick the version only for apps that run on it: the bundled Windows apps were written for Windows Server.',
+                                )
+                            }}
+                        </li>
+                        <li>
+                            {{
+                                $t(
                                     'Create two test servers: each should become Active about when the console shows the logon screen and accept a Remote Desktop login as Administrator with the password the panel shows, not the template password. Check the IP address, the computer name and that C: has the package size.',
                                 )
                             }}
@@ -1205,7 +1429,7 @@ const cloudbaseUrl = 'https://cloudbase.it/cloudbase-init/';
                         <p>
                             {{
                                 $t(
-                                    'Make a full clone of the template, start it, install the updates until none is pending, run the commands of step 7 and generalize it again with this command; then convert it to a template with a new name.',
+                                    'Make a full clone of the template, start it, install the updates until none is pending, run the commands of step 8 and generalize it again with this command; then convert it to a template with a new name.',
                                 )
                             }}
                         </p>
@@ -1214,7 +1438,7 @@ const cloudbaseUrl = 'https://cloudbase.it/cloudbase-init/';
                     <p v-else>
                         {{
                             $t(
-                                'Make a full clone of the template, set a temporary password in its Cloud-Init tab and start it. Install the updates until none is pending, run step 7 again and convert it to a template with a new name.',
+                                'Make a full clone of the template, set a temporary password in its Cloud-Init tab and start it. Install the updates until none is pending, run step 8 again (without the Windows 10 account part) and convert it to a template with a new name.',
                             )
                         }}
                     </p>

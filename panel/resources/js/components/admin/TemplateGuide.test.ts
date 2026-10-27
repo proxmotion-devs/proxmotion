@@ -28,6 +28,10 @@ describe('TemplateGuide', () => {
             .trigger('click');
 
         expect(wrapper.text()).toContain('cloudbase-init-unattend.conf');
+        // Every version from Server 2016 to Windows 11, with its driver folder
+        expect(wrapper.text()).toContain('Server 2016');
+        expect(wrapper.text()).toContain('Windows 11');
+        expect(wrapper.text()).toContain('2k25');
         expect(wrapper.text()).not.toContain('cloud-init clean --logs --seed');
     });
 
@@ -51,6 +55,7 @@ describe('TemplateGuide', () => {
             wrapper.find('[data-test="template-way-panel-nosysprep"]').exists(),
         ).toBe(true);
         expect(wrapper.text()).toContain('SusClientId');
+        expect(wrapper.text()).toContain('Remove-LocalUser -Name setup');
         expect(wrapper.text()).not.toContain('sysprep.exe /generalize');
     });
 
