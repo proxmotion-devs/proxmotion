@@ -241,14 +241,19 @@ describe('ServerStatsCards', () => {
 
         const rows = wrapper.findAll('[data-test="disk-space-file-system"]');
         expect(rows).toHaveLength(2);
+        // Each file system in a card of its own.
+        expect(rows.every((row) => row.classes('border'))).toBe(true);
         expect(rows[0].text()).toContain('/');
         expect(rows[0].text()).toContain('9 GiB');
         expect(
             rows[0].get('[role="progressbar"]').attributes('aria-valuenow'),
         ).toBe('90');
         expect(rows[0].find('.bg-destructive').exists()).toBe(true);
+        expect(rows[0].get('.text-destructive').text()).toBe('90 %');
         expect(rows[1].text()).toContain('/boot');
+        expect(rows[1].text()).toContain('10 %');
         expect(rows[1].find('.bg-primary').exists()).toBe(true);
+        expect(rows[1].find('.text-destructive').exists()).toBe(false);
     });
 
     it('says when the guest agent did not answer for the disk space', async () => {

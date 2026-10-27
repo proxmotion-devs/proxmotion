@@ -1850,6 +1850,7 @@
     "Proxmox gave no figures for this server.": "Proxmox bu sunucu için değer döndürmedi.",
     "of :count vCPUs": ":count vCPU üzerinden",
     "of :total (:percent %)": ":total üzerinden (%:percent)",
+    "of :total": "/ :total",
     "In": "Gelen",
     "Out": "Giden",
     "In: :percent % of the :speed Mbps port": "Gelen: :speed Mbps port hızının %:percent kadarı",
