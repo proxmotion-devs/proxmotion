@@ -59,5 +59,8 @@ final readonly class ResetPasswordPipeline
         // The billing system already knows a password it chose; a random one it may fetch once.
         $server->forceFill(['root_password' => $password, 'root_password_unrevealed' => $chosen === null])->save();
         $task->completeStep('set_password');
+
+        // The template's custom scripts for this event, without the password (docs/adr/0043).
+        $this->scripts->runCustom($task, $server, GuestScriptEvent::PasswordReset);
     }
 }

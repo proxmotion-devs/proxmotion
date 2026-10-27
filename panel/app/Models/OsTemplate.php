@@ -121,6 +121,16 @@ class OsTemplate extends Model
     }
 
     /**
+     * Administrators' own scripts, run by hand or at events (docs/adr/0043).
+     *
+     * @return HasMany<CustomScript, $this>
+     */
+    public function customScripts(): HasMany
+    {
+        return $this->hasMany(CustomScript::class)->orderBy('position')->orderBy('id');
+    }
+
+    /**
      * The packages that name this template among the ones they allow (docs/adr/0040).
      *
      * @return BelongsToMany<Package, $this>

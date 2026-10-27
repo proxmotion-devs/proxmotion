@@ -24,7 +24,9 @@ use Illuminate\Support\Carbon;
  * @property int $server_id
  * @property int|null $os_template_id
  * @property int|null $task_id
- * @property GuestScriptEvent $event
+ * @property int|null $custom_script_id a custom script's run (docs/adr/0043); null once it is deleted
+ * @property string|null $script_name the custom script's name when it ran
+ * @property GuestScriptEvent|null $event null for a manual run or trial of a custom script
  * @property string $source default, published or draft
  * @property bool $trace
  * @property string $status running, succeeded or failed
@@ -40,6 +42,7 @@ use Illuminate\Support\Carbon;
  * @property Carbon|null $updated_at
  * @property-read Server $server
  * @property-read Task|null $task
+ * @property-read CustomScript|null $customScript
  */
 class GuestScriptLog extends Model
 {
@@ -96,5 +99,13 @@ class GuestScriptLog extends Model
     public function task(): BelongsTo
     {
         return $this->belongsTo(Task::class);
+    }
+
+    /**
+     * @return BelongsTo<CustomScript, $this>
+     */
+    public function customScript(): BelongsTo
+    {
+        return $this->belongsTo(CustomScript::class);
     }
 }

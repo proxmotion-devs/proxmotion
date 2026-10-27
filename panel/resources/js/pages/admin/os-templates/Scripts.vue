@@ -6,9 +6,12 @@ import {
     useForm,
     usePoll,
 } from '@inertiajs/vue3';
-import { Play, RotateCcw, Save, Trash2, Upload } from '@lucide/vue';
+import { Play, Plus, RotateCcw, Save, Trash2, Upload } from '@lucide/vue';
 import { trans } from 'laravel-vue-i18n';
 import { computed, reactive, ref, watch } from 'vue';
+import CustomScriptCard from '@/components/admin/CustomScriptCard.vue';
+import FormDialog from '@/components/admin/FormDialog.vue';
+import FormField from '@/components/admin/FormField.vue';
 import GuestScriptRuns from '@/components/admin/GuestScriptRuns.vue';
 import NativeSelect from '@/components/admin/NativeSelect.vue';
 import StatusBadge from '@/components/admin/StatusBadge.vue';
@@ -16,6 +19,11 @@ import CodeEditor from '@/components/apps/CodeEditor.vue';
 import Heading from '@/components/Heading.vue';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Input } from '@/components/ui/input';
+import {
+    store as storeCustom,
+    update as updateCustom,
+} from '@/routes/admin/os-templates/custom-scripts';
 import {
     destroy,
     discard,
@@ -25,6 +33,7 @@ import {
 } from '@/routes/admin/os-templates/scripts';
 import { index, scripts as scriptsPage } from '@/routes/admin/os-templates';
 import type {
+    CustomScript,
     GuestScriptEvent,
     GuestScriptRun,
     GuestScriptSlot,
@@ -36,6 +45,8 @@ const props = defineProps<{
     template: { uuid: string; name: string; platform: OsPlatform };
     scripts: GuestScriptSlot[];
     logs: Record<GuestScriptEvent, GuestScriptRun[]>;
+    customScripts: CustomScript[];
+    customLogs: Record<string, GuestScriptRun[]>;
     servers: Option[];
     maxBytes: number;
     canTrace: boolean;
@@ -184,20 +195,25 @@ const visit = (
 };
 
 // Trials are queued: follow the runs until a new one has shown up and
-// finished (or none started within a minute, e.g. no queue worker).
+// finished (or none started within a minute, e.g. no queue worker). The key
+// is an event, or a custom script's uuid.
 const awaiting = ref<{
-    event: GuestScriptEvent;
+    key: string;
     after: string | null;
     since: number;
 } | null>(null);
+const runsFor = (key: string): GuestScriptRun[] =>
+    (key in props.logs
+        ? props.logs[key as GuestScriptEvent]
+        : props.customLogs[key]) ?? [];
 const running = computed(() =>
-    Object.values(props.logs).some((runs) =>
-        runs.some((item) => item.status === 'running'),
+    [...Object.values(props.logs), ...Object.values(props.customLogs)].some(
+        (runs) => runs.some((item) => item.status === 'running'),
     ),
 );
 const { start: startPolling, stop: stopPolling } = usePoll(
     2000,
-    { only: ['logs'] },
+    { only: ['logs', 'customLogs'] },
     { autoStart: false },
 );
 
@@ -207,15 +223,15 @@ watch(
     { immediate: true },
 );
 watch(
-    () => props.logs,
-    (logs) => {
+    () => [props.logs, props.customLogs],
+    () => {
         const wait = awaiting.value;
 
         if (wait === null) {
             return;
         }
 
-        const newest = logs[wait.event]?.[0];
+        const newest = runsFor(wait.key)[0];
         const arrived =
             newest !== undefined &&
             newest.uuid !== wait.after &&
@@ -237,26 +253,88 @@ const tryScript = (slot: GuestScriptSlot) => {
             trace: props.canTrace && trace[slot.event],
         },
         preserveScroll: true,
-        onSuccess: () => {
-            const newest = props.logs[slot.event]?.[0];
-
-            // With a synchronous queue the run has finished already.
-            if (
-                newest === undefined ||
-                newest.uuid === after ||
-                newest.status === 'running'
-            ) {
-                awaiting.value = {
-                    event: slot.event,
-                    after,
-                    since: Date.now(),
-                };
-            }
-        },
+        onSuccess: () => follow(slot.event, after),
     });
 };
 
+const follow = (key: string, after: string | null) => {
+    const newest = runsFor(key)[0];
+
+    // With a synchronous queue the run has finished already.
+    if (
+        newest === undefined ||
+        newest.uuid === after ||
+        newest.status === 'running'
+    ) {
+        awaiting.value = { key, after, since: Date.now() };
+    }
+};
+
 const bytes = (text: string) => new TextEncoder().encode(text).length;
+
+// The published custom scripts that run after an event's own script, in order.
+const customAt = (event: GuestScriptEvent) =>
+    props.customScripts
+        .filter(
+            (script) =>
+                script.content !== null && script.events.includes(event),
+        )
+        .map((script) => script.name);
+
+// Adding a custom script, or changing its name and triggers (docs/adr/0043).
+const events = Object.keys(eventTitles) as GuestScriptEvent[];
+const settingsOpen = ref(false);
+const editing = ref<CustomScript | null>(null);
+const settings = useForm({
+    name: '',
+    manual: true,
+    events: [] as GuestScriptEvent[],
+    script: '',
+});
+
+const openSettings = (script: CustomScript | null) => {
+    editing.value = script;
+    settings.clearErrors();
+    settings.defaults({
+        name: script?.name ?? '',
+        manual: script?.manual ?? true,
+        events: script ? [...script.events] : [],
+        script:
+            props.template.platform === 'windows'
+                ? '$ErrorActionPreference = "Stop"\n'
+                : '#!/bin/sh\nset -eu\n',
+    });
+    settings.reset();
+    settingsOpen.value = true;
+};
+
+const toggleEvent = (event: GuestScriptEvent, on: boolean) => {
+    settings.events = on
+        ? events.filter(
+              (item) => item === event || settings.events.includes(item),
+          )
+        : settings.events.filter((item) => item !== event);
+};
+
+const saveSettings = () => {
+    const script = editing.value;
+
+    settings
+        .transform((data) =>
+            script
+                ? { name: data.name, manual: data.manual, events: data.events }
+                : data,
+        )
+        .submit(
+            script
+                ? updateCustom([props.template.uuid, script.uuid])
+                : storeCustom(props.template.uuid),
+            {
+                preserveScroll: true,
+                onSuccess: () => (settingsOpen.value = false),
+            },
+        );
+};
 </script>
 
 <template>
@@ -323,6 +401,20 @@ const bytes = (text: string) => new TextEncoder().encode(text).length;
                                 <span class="text-muted-foreground">{{
                                     $t(stage.detail)
                                 }}</span>
+                                <span
+                                    v-if="
+                                        stage.event &&
+                                        customAt(stage.event).length
+                                    "
+                                    class="text-xs"
+                                    >{{
+                                        $t('Then: :scripts', {
+                                            scripts: customAt(stage.event).join(
+                                                ', ',
+                                            ),
+                                        })
+                                    }}</span
+                                >
                             </span>
                         </li>
                     </ol>
@@ -527,5 +619,108 @@ const bytes = (text: string) => new TextEncoder().encode(text).length;
 
             <GuestScriptRuns :runs="logs[slot.event] ?? []" />
         </section>
+
+        <section id="custom-scripts" class="flex scroll-mt-4 flex-col gap-4">
+            <div class="flex flex-wrap items-start justify-between gap-3">
+                <div class="grid gap-1">
+                    <h2 class="font-medium">{{ $t('Custom scripts') }}</h2>
+                    <p class="max-w-3xl text-sm text-muted-foreground">
+                        {{
+                            $t(
+                                "Your own scripts. Run them by hand from the server page, or after the script of the events you tick, in this order; a failing one only leaves a note. Inputs: server, hostname, mac, trigger (the event, manual or trial), addresses, and at an event that event's inputs (never a password).",
+                            )
+                        }}
+                    </p>
+                </div>
+                <Button @click="openSettings(null)">
+                    <Plus class="h-4 w-4" />
+                    {{ $t('Add script') }}
+                </Button>
+            </div>
+
+            <p
+                v-if="!customScripts.length"
+                class="rounded-xl border border-dashed p-4 text-sm text-muted-foreground"
+            >
+                {{ $t('No custom scripts yet.') }}
+            </p>
+            <CustomScriptCard
+                v-for="(script, position) in customScripts"
+                :key="script.uuid"
+                :template="template"
+                :script="script"
+                :runs="customLogs[script.uuid] ?? []"
+                :servers="servers"
+                :event-titles="eventTitles"
+                :can-trace="canTrace"
+                :max-bytes="maxBytes"
+                :first="position === 0"
+                :last="position === customScripts.length - 1"
+                @edit="openSettings"
+                @started="(after) => follow(script.uuid, after)"
+            />
+        </section>
+
+        <FormDialog
+            v-model:open="settingsOpen"
+            :title="editing ? 'Edit script' : 'Add script'"
+            :description="
+                editing
+                    ? 'Name and triggers apply at once, also to the published script.'
+                    : 'The script starts as a draft: try it on a server, then publish it.'
+            "
+            :processing="settings.processing"
+            @submit="saveSettings"
+        >
+            <FormField
+                label="Name"
+                for="script-name"
+                :error="settings.errors.name"
+            >
+                <Input
+                    id="script-name"
+                    v-model="settings.name"
+                    required
+                    maxlength="64"
+                    placeholder="Monitoring agent"
+                />
+            </FormField>
+            <fieldset class="grid gap-2">
+                <legend class="mb-1 text-sm font-medium">
+                    {{ $t('Triggers') }}
+                </legend>
+                <label class="flex items-start gap-2 text-sm">
+                    <Checkbox v-model="settings.manual" class="mt-0.5" />
+                    <span class="grid gap-0.5">
+                        <span>{{ $t('Run by hand') }}</span>
+                        <span class="text-xs text-muted-foreground">{{
+                            $t('Listed under Run script on the server page.')
+                        }}</span>
+                    </span>
+                </label>
+                <label
+                    v-for="event in events"
+                    :key="event"
+                    class="flex items-start gap-2 text-sm"
+                >
+                    <Checkbox
+                        :model-value="settings.events.includes(event)"
+                        class="mt-0.5"
+                        @update:model-value="
+                            toggleEvent(event, $event === true)
+                        "
+                    />
+                    <span>{{
+                        $t('After: :event', { event: $t(eventTitles[event]) })
+                    }}</span>
+                </label>
+                <p
+                    v-if="settings.errors.events"
+                    class="text-sm text-red-600 dark:text-red-500"
+                >
+                    {{ settings.errors.events }}
+                </p>
+            </fieldset>
+        </FormDialog>
     </div>
 </template>

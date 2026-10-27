@@ -190,15 +190,30 @@ export type GuestScriptRun = {
     uuid: string;
     server: string;
     server_uuid: string;
+    /** The custom script's name when it ran (docs/adr/0043); null for an event's own script. */
+    script_name: string | null;
     source: 'default' | 'published' | 'draft';
     trace: boolean;
-    /** An administrator's trial; otherwise an operation ran it. */
-    trial: boolean;
+    /** Run by an operation, a trial on the template page, or by hand from the server page. */
+    kind: 'operation' | 'trial' | 'manual';
     status: 'running' | 'succeeded' | 'failed';
     exit_code: number | null;
     message: string | null;
     started_at: string | null;
     finished_at: string | null;
+};
+
+/** An administrator's own script on an OS template (docs/adr/0043). */
+export type CustomScript = {
+    uuid: string;
+    name: string;
+    /** Listed under Run script on the server page. */
+    manual: boolean;
+    /** Runs after the fixed script of these events. */
+    events: GuestScriptEvent[];
+    /** Null until the first draft is published. */
+    content: string | null;
+    draft: string | null;
 };
 
 export type GuestScriptRunDetail = GuestScriptRun & {

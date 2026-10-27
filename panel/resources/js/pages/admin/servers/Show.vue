@@ -32,6 +32,7 @@ import RemoveAddressButton from '@/components/servers/RemoveAddressButton.vue';
 import ResourcesDialog from '@/components/servers/ResourcesDialog.vue';
 import ResetPasswordButton from '@/components/servers/ResetPasswordButton.vue';
 import ServerChecks from '@/components/servers/ServerChecks.vue';
+import ServerScripts from '@/components/servers/ServerScripts.vue';
 import ServerStatsCards from '@/components/servers/ServerStatsCards.vue';
 import TaskList from '@/components/servers/TaskList.vue';
 import UsageSection from '@/components/servers/UsageSection.vue';
@@ -81,6 +82,7 @@ import type {
     PowerAction,
     ServerVerification,
     Drift,
+    GuestScriptRun,
     ReinstallOptions,
     ResourceOptions,
     ServerFirewall,
@@ -165,6 +167,9 @@ const props = withDefaults(
         unavailableApps: UnavailableApp[];
         entitlements: AppEntitlement[];
         entitlementOptions: Option[];
+        /** The template's manual scripts and the latest custom script runs here (docs/adr/0043). */
+        scripts: { uuid: string; name: string }[];
+        scriptRuns: GuestScriptRun[];
     }>(),
     // Vue turns a missing Boolean prop into false, which showed the agent as
     // unreachable while the deferred prop was still loading.
@@ -198,6 +203,7 @@ const { start, stop } = usePoll(
             'apps',
             'drifts',
             'moveOptions',
+            'scriptRuns',
         ],
     },
     { autoStart: false },
@@ -979,6 +985,15 @@ const resetAfterTrial = () => {
                 :verification="server.verification"
                 :action="active ? verify(server.uuid) : undefined"
                 :disabled="vmBlocked"
+            />
+
+            <ServerScripts
+                v-if="scripts.length || scriptRuns.length"
+                :server-uuid="server.uuid"
+                :hostname="server.hostname"
+                :scripts="scripts"
+                :runs="scriptRuns"
+                :disabled="!active || vmBlocked"
             />
 
             <!-- Operations that interrupt or remove the server. -->

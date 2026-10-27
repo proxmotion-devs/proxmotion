@@ -412,7 +412,7 @@ class GuestScriptsTest extends TestCase
                 ->where('canTrace', true)
                 ->has('logs.disk_resized', 1)
                 ->where('logs.disk_resized.0.uuid', $log->uuid)
-                ->where('logs.disk_resized.0.trial', true)
+                ->where('logs.disk_resized.0.kind', 'trial')
                 ->where('logs.disk_resized.0.status', 'failed')
                 ->missing('logs.disk_resized.0.stdout'));
 

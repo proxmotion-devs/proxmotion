@@ -333,6 +333,10 @@ Defaults ship for Linux (`resources/guest/linux`) and Windows (`resources/guest/
 - **publish** or discard the draft,
 - read the **log of every run** (source default / published / draft, exit code, inputs, encrypted stdout/stderr; nothing for password scripts), kept for 90 days.
 
+The page opens with a timeline of when each script runs during a create or reinstall and on later changes, and shows each script's inputs and time limit (5 minutes; 1 for the password script).
+
+**Custom scripts** ([ADR 0043](../adr/0043-custom-guest-scripts.md)): besides the five fixed scripts, administrators add their own scripts to a template, as many as they need. Each has a name and its triggers: **run by hand** (then it is offered under *Run script* on the server page of the template's servers) and/or **after** any of the five events, where it runs after the fixed script (also when the event has none), in the order of the list. Drafts, trials and run logs work as above; a failing custom script only leaves a note on the operation, while a run by hand fails its task. Custom scripts get `server`, `hostname`, `mac`, `trigger` (the event, `manual` or `trial`), `addresses` and the event's inputs, never a password. Billing systems can neither see nor run them.
+
 Only these scripts and recipe scripts ever run inside a VPS. Free-form commands from customers or the API are never executed.
 
 ### 7.3 Building templates from ISO in the panel
@@ -696,7 +700,7 @@ The panel manages customer infrastructure and is internet-facing. Key properties
 - **Console**: browsers never reach Proxmox; single-use tickets, signed single-use customer links (≤ 60 s).
 - **Anti-spoofing** (`ipfilter`, `macfilter`) on every VPS, and **isolation**: servers of one pool cannot reach each other, and no server can open connections to the Proxmox nodes or other protected networks.
 - **Strict input validation** for hostnames, rDNS names, SSH keys, cloud-init data and app inputs; nothing raw goes into Proxmox parameters or a shell.
-- **Only reviewed scripts run in guests**: recipe scripts, default guest scripts and audited overrides. Never free-form commands.
+- **Only reviewed scripts run in guests**: recipe scripts, default guest scripts, and audited overrides and custom scripts of OS templates. Never free-form commands.
 - **Mandatory 2FA** for administrators; audit log for every sensitive action; extra confirmation for destructive operations.
 - **No SSH to hypervisors**; least-privilege, pool-limited Proxmox tokens with an excess-privilege warning.
 - Vulnerabilities are reported per [`SECURITY.md`](../../SECURITY.md), never in public issues.

@@ -95,13 +95,17 @@ final readonly class TaskPlan
             }
         }
 
+        // Each event's own script, then the custom scripts bound to it (docs/adr/0043).
         if ($this->addresses->additional($server) !== []) {
             $steps[] = GuestScriptEvent::AddressesChanged->step();
+            array_push($steps, ...$this->guestScripts->customSteps($server, GuestScriptEvent::AddressesChanged));
         }
 
         if ($this->guestScripts->has($server, GuestScriptEvent::Provisioned)) {
             $steps[] = GuestScriptEvent::Provisioned->step();
         }
+
+        array_push($steps, ...$this->guestScripts->customSteps($server, GuestScriptEvent::Provisioned));
 
         $steps[] = 'verify';
 

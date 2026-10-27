@@ -113,6 +113,12 @@ const stepLabels: Record<string, string> = {
     record: 'Record the new place',
     configure_network: 'Set up the network for the new addresses',
 };
+// Custom scripts record their steps as "script:<name>" (docs/adr/0043).
+const stepLabel = (key: string): string =>
+    key.startsWith('script:')
+        ? trans('Run the script :name in the server', { name: key.slice(7) })
+        : trans(stepLabels[key] ?? key);
+
 // "1 min 52 s", from whole seconds.
 const formatDuration = (seconds: number): string => {
     const total = Math.max(0, Math.round(seconds));
@@ -264,7 +270,7 @@ const stepRows = (task: TaskProgress) => {
                                 row.step?.status !== 'done' && !row.active,
                         }"
                     >
-                        {{ $t(stepLabels[row.key] ?? row.key) }}
+                        {{ stepLabel(row.key) }}
                     </span>
                     <span
                         v-if="row.duration"

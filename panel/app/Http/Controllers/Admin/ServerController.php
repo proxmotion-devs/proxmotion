@@ -47,7 +47,9 @@ use App\Models\AppRecipe;
 use App\Models\AppRun;
 use App\Models\AuditLog;
 use App\Models\BillingSystem;
+use App\Models\CustomScript;
 use App\Models\FirewallRuleset;
+use App\Models\GuestScriptLog;
 use App\Models\IpAddress;
 use App\Models\IpPool;
 use App\Models\Location;
@@ -355,6 +357,23 @@ class ServerController extends Controller
                 'violations' => $server->usageViolations()->latest('id')->limit(10)->get()
                     ->map(fn (UsageViolation $violation) => [...$violation->toPayload(), 'label' => $violation->kind->label()]),
             ],
+            // The template's published manual scripts and the latest custom script runs here (docs/adr/0043).
+            'scripts' => fn () => $server->os_template_id === null ? [] : CustomScript::query()
+                ->where('os_template_id', $server->os_template_id)
+                ->where('manual', true)
+                ->whereNotNull('content')
+                ->orderBy('position')
+                ->orderBy('id')
+                ->get(['uuid', 'name'])
+                ->map(fn (CustomScript $script) => ['uuid' => $script->uuid, 'name' => $script->name]),
+            'scriptRuns' => fn () => GuestScriptLog::query()
+                ->where('server_id', $server->id)
+                ->whereNotNull('script_name')
+                ->with(['server:id,uuid,hostname', 'task:id,status,type,input'])
+                ->latest('id')
+                ->limit(5)
+                ->get()
+                ->map(GuestScriptController::summary(...)),
             'drifts' => $server->drifts()->visible()->with(['cluster:id,uuid,name', 'server:id,uuid,hostname,status'])->get()
                 ->map(fn (ServerDrift $drift) => DriftController::present($drift)),
             // Null (not asked) unless Proxmox says the VM runs.

@@ -13,6 +13,7 @@ use App\Enums\TaskType;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\GuestScriptRequest;
 use App\Models\AuditLog;
+use App\Models\CustomScript;
 use App\Models\GuestScript;
 use App\Models\GuestScriptLog;
 use App\Models\OsTemplate;
@@ -61,6 +62,16 @@ class GuestScriptController extends Controller
                 'timeout_seconds' => $event->timeoutSeconds(),
             ], GuestScriptEvent::cases()),
             'logs' => fn () => $this->logs($osTemplate),
+            // Administrators' own scripts and their latest runs (docs/adr/0043).
+            'customScripts' => $osTemplate->customScripts()->get()->map(fn (CustomScript $script) => [
+                'uuid' => $script->uuid,
+                'name' => $script->name,
+                'manual' => $script->manual,
+                'events' => $script->events,
+                'content' => $script->content,
+                'draft' => $script->draft_content,
+            ])->values(),
+            'customLogs' => fn () => $this->customLogs($osTemplate),
             'servers' => $osTemplate->servers()
                 ->where('status', ServerStatus::Active)
                 ->orderBy('hostname')
@@ -207,7 +218,7 @@ class GuestScriptController extends Controller
      */
     public function log(GuestScriptLog $guestScriptLog): JsonResponse
     {
-        $guestScriptLog->load(['server:id,uuid,hostname', 'task:id,status,type']);
+        $guestScriptLog->load(['server:id,uuid,hostname', 'task:id,status,type,input']);
 
         return response()->json([
             ...self::summary($guestScriptLog),
@@ -216,7 +227,8 @@ class GuestScriptController extends Controller
             'stdout' => $guestScriptLog->stdout,
             'stderr' => $guestScriptLog->stderr,
             'output_truncated' => $guestScriptLog->output_truncated,
-            'output_kept' => $guestScriptLog->event !== GuestScriptEvent::PasswordReset,
+            // Custom scripts never get the password (docs/adr/0043).
+            'output_kept' => $guestScriptLog->script_name !== null || $guestScriptLog->event !== GuestScriptEvent::PasswordReset,
         ]);
     }
 
@@ -238,7 +250,32 @@ class GuestScriptController extends Controller
             $logs[$event->value] = array_values(GuestScriptLog::query()
                 ->where('os_template_id', $osTemplate->id)
                 ->where('event', $event->value)
-                ->with(['server:id,uuid,hostname', 'task:id,status,type'])
+                // Custom scripts run at events too; they are listed with their script.
+                ->whereNull('script_name')
+                ->with(['server:id,uuid,hostname', 'task:id,status,type,input'])
+                ->latest('id')
+                ->limit(self::LOGS_PER_EVENT)
+                ->get()
+                ->map(self::summary(...))
+                ->all());
+        }
+
+        return $logs;
+    }
+
+    /**
+     * The latest runs of each custom script of the template, by its uuid.
+     *
+     * @return array<string, list<array<string, mixed>>>
+     */
+    private function customLogs(OsTemplate $osTemplate): array
+    {
+        $logs = [];
+
+        foreach ($osTemplate->customScripts()->get() as $script) {
+            $logs[$script->uuid] = array_values(GuestScriptLog::query()
+                ->where('custom_script_id', $script->id)
+                ->with(['server:id,uuid,hostname', 'task:id,status,type,input'])
                 ->latest('id')
                 ->limit(self::LOGS_PER_EVENT)
                 ->get()
@@ -252,19 +289,26 @@ class GuestScriptController extends Controller
     /**
      * @return array<string, mixed>
      */
-    private static function summary(GuestScriptLog $log): array
+    public static function summary(GuestScriptLog $log): array
     {
         // A run whose task ended without finishing it (the worker died) is over.
         $abandoned = $log->status === 'running' && $log->task !== null
             && ! in_array($log->task->status, [TaskStatus::Queued, TaskStatus::Running], true);
+        $byHand = $log->task?->type === TaskType::GuestScript;
 
         return [
             'uuid' => $log->uuid,
             'server' => $log->server->hostname,
             'server_uuid' => $log->server->uuid,
+            'script_name' => $log->script_name,
             'source' => $log->source,
             'trace' => $log->trace,
-            'trial' => $log->task?->type === TaskType::GuestScript,
+            // operation, trial (on the template page) or manual (from the server page, docs/adr/0043)
+            'kind' => match (true) {
+                $byHand && ($log->task->input['manual'] ?? false) === true => 'manual',
+                $byHand => 'trial',
+                default => 'operation',
+            },
             'status' => $abandoned ? 'failed' : $log->status,
             'exit_code' => $log->exit_code,
             'message' => $abandoned ? __('The run ended without a result.') : $log->message,

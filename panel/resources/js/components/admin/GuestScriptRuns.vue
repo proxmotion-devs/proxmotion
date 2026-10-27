@@ -22,7 +22,19 @@ import type { GuestScriptRun, GuestScriptRunDetail } from '@/types/admin';
  * operations alike (docs/adr/0023). Details opens what the script got
  * (script, inputs) and printed (stdout, stderr, exit code).
  */
-defineProps<{ runs: GuestScriptRun[] }>();
+withDefaults(
+    defineProps<{
+        runs: GuestScriptRun[];
+        /** The server page lists runs of several custom scripts on one server (docs/adr/0043). */
+        showScript?: boolean;
+        emptyText?: string;
+    }>(),
+    {
+        showScript: false,
+        emptyText:
+            'Not run yet. Runs during operations and trial runs are listed here with their output.',
+    },
+);
 
 const { formatDateTime } = useDateTime();
 
@@ -37,6 +49,11 @@ const statusTones = {
     succeeded: 'success',
     failed: 'danger',
 } as const;
+const kindLabels: Record<GuestScriptRun['kind'], string> = {
+    operation: 'Operation',
+    trial: 'Trial',
+    manual: 'Run by hand',
+};
 const sourceLabels: Record<GuestScriptRun['source'], string> = {
     default: 'Default',
     published: 'Published',
@@ -97,11 +114,7 @@ const inputsText = computed(() =>
     <div class="grid gap-2">
         <h3 class="text-sm font-medium">{{ $t('Recent runs') }}</h3>
         <p v-if="!runs.length" class="text-sm text-muted-foreground">
-            {{
-                $t(
-                    'Not run yet. Runs during operations and trial runs are listed here with their output.',
-                )
-            }}
+            {{ $t(emptyText) }}
         </p>
         <ul v-else class="divide-y rounded-lg border text-sm">
             <li
@@ -122,13 +135,17 @@ const inputsText = computed(() =>
                     :tone="statusTones[run.status]"
                     :label="statusLabels[run.status]"
                 />
+                <span v-if="showScript" class="font-medium">{{
+                    run.script_name
+                }}</span>
                 <Link
+                    v-else
                     :href="showServer(run.server_uuid)"
                     class="font-medium hover:underline"
                     >{{ run.server }}</Link
                 >
                 <span class="text-muted-foreground">
-                    {{ run.trial ? $t('Trial') : $t('Operation') }} ·
+                    {{ $t(kindLabels[run.kind]) }} ·
                     {{ $t(sourceLabels[run.source])
                     }}<template v-if="run.trace">
                         · {{ $t('traced') }}</template

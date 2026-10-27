@@ -9,6 +9,7 @@ use App\Http\Controllers\Admin\AppPackageController;
 use App\Http\Controllers\Admin\AppRecipeController;
 use App\Http\Controllers\Admin\BillingSystemController;
 use App\Http\Controllers\Admin\ClusterController;
+use App\Http\Controllers\Admin\CustomScriptController;
 use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Admin\DnsProviderController;
 use App\Http\Controllers\Admin\DriftController;
@@ -94,6 +95,17 @@ Route::post('os-templates/{osTemplate}/scripts/{event}/publish', [GuestScriptCon
 Route::delete('os-templates/{osTemplate}/scripts/{event}/draft', [GuestScriptController::class, 'discard'])->name('os-templates.scripts.discard');
 Route::post('os-templates/{osTemplate}/scripts/{event}/run', [GuestScriptController::class, 'run'])->middleware('throttle:10,1')->name('os-templates.scripts.run');
 Route::get('guest-script-logs/{guestScriptLog}', [GuestScriptController::class, 'log'])->name('guest-script-logs.show');
+// Administrators' own scripts, run by hand or at events (docs/adr/0043).
+Route::scopeBindings()->group(function () {
+    Route::post('os-templates/{osTemplate}/custom-scripts', [CustomScriptController::class, 'store'])->name('os-templates.custom-scripts.store');
+    Route::patch('os-templates/{osTemplate}/custom-scripts/{customScript}', [CustomScriptController::class, 'update'])->name('os-templates.custom-scripts.update');
+    Route::delete('os-templates/{osTemplate}/custom-scripts/{customScript}', [CustomScriptController::class, 'destroy'])->name('os-templates.custom-scripts.destroy');
+    Route::put('os-templates/{osTemplate}/custom-scripts/{customScript}/draft', [CustomScriptController::class, 'saveDraft'])->name('os-templates.custom-scripts.draft');
+    Route::delete('os-templates/{osTemplate}/custom-scripts/{customScript}/draft', [CustomScriptController::class, 'discard'])->name('os-templates.custom-scripts.discard');
+    Route::post('os-templates/{osTemplate}/custom-scripts/{customScript}/publish', [CustomScriptController::class, 'publish'])->name('os-templates.custom-scripts.publish');
+    Route::post('os-templates/{osTemplate}/custom-scripts/{customScript}/move', [CustomScriptController::class, 'move'])->name('os-templates.custom-scripts.move');
+    Route::post('os-templates/{osTemplate}/custom-scripts/{customScript}/run', [CustomScriptController::class, 'run'])->middleware('throttle:10,1')->name('os-templates.custom-scripts.run');
+});
 
 Route::resource('packages', PackageController::class)->only(['index', 'store', 'update', 'destroy']);
 Route::resource('placement-groups', PlacementGroupController::class)->only(['index', 'store', 'update', 'destroy'])
@@ -158,6 +170,8 @@ Route::get('servers/{server}/stats', ServerStatsController::class)->middleware('
 Route::post('servers/{server}/retry', [ServerController::class, 'retry'])->name('servers.retry');
 Route::post('servers/{server}/rebuild', [ServerController::class, 'rebuild'])->middleware('throttle:10,1')->name('servers.rebuild');
 Route::post('servers/{server}/verify', [ServerController::class, 'verify'])->middleware('throttle:10,1')->name('servers.verify');
+// A manual custom script of the server's OS template (docs/adr/0043).
+Route::post('servers/{server}/scripts/{customScript}/run', [CustomScriptController::class, 'runOnServer'])->middleware('throttle:10,1')->name('servers.scripts.run');
 Route::put('servers/{server}/firewall', [ServerFirewallController::class, 'update'])->middleware('throttle:20,1')->name('servers.firewall');
 Route::post('servers/{server}/firewall/ruleset', [ServerFirewallController::class, 'ruleset'])->middleware('throttle:20,1')->name('servers.firewall.ruleset');
 Route::post('servers/{server}/anti-spoofing', [ServerController::class, 'enableAntiSpoofing'])->middleware('throttle:10,1')->name('servers.enable-anti-spoofing');

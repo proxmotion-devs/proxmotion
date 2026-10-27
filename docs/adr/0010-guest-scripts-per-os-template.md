@@ -41,6 +41,8 @@ Providers build their own templates (`deploy/proxmox`, `docs/guides/iso-template
 
    `provisioned` also gets `reason`: `create` (also a rebuild from scratch), `reinstall`, or `trial` for an administrator's trial run, so one script can skip work that must happen once per server (added 2026-10-27).
 
+   Administrators' own scripts, run by hand or after these events, are in ADR 0043.
+
    The task waits for the script: a run may take at most 5 minutes (`password_reset`: 1 minute, `GuestScriptEvent::timeoutSeconds()`). Longer work is started in the background (`systemd-run --collect`, a scheduled task on Windows) and the script returns. The *Scripts* page shows this limit and when each script runs during a create or reinstall.
 
 5. Scripts run as root (Linux) or SYSTEM (Windows) inside the customer's server. This is a deliberate exception to "only recipe scripts run inside a VPS" (AGENTS §7.9): the other source is an override written by an administrator, recorded in the audit log. Customers and API tokens can never supply or choose a script.

@@ -7,6 +7,7 @@ namespace App\Domain\Servers;
 use App\Enums\GuestScriptEvent;
 use App\Enums\OsPlatform;
 use App\Enums\TaskType;
+use App\Models\CustomScript;
 use App\Models\GuestScript;
 use App\Models\GuestScriptLog;
 use App\Models\OsTemplate;
@@ -144,100 +145,191 @@ final readonly class GuestScripts
     }
 
     /**
-     * Run the event's script, if there is one. With $waitForAgent, wait for
-     * the agent of a freshly booted server first; otherwise one ping decides.
-     * Critical events throw instead of leaving a note, and leave completing
-     * their step to the caller. Every run is logged (GuestScriptLog). Only
-     * trials pass $draft (the template's saved draft instead of its script)
-     * and $trace (sh -x on Linux).
+     * Run the event's script, if there is one, then the custom scripts bound
+     * to the event (docs/adr/0043; not in trials, and after a password reset
+     * the pipeline runs them once the password is stored). With
+     * $waitForAgent, wait for the agent of a freshly booted server first;
+     * otherwise one ping decides. Critical events throw instead of leaving a
+     * note, and leave completing their step to the caller. Every run is
+     * logged (GuestScriptLog). Only trials pass $draft (the template's saved
+     * draft instead of its script) and $trace (sh -x on Linux).
      *
-     * @return bool whether the script ran and succeeded
+     * @return bool whether the event's own script ran and succeeded
      */
     public function run(Task $task, Server $server, GuestScriptEvent $event, bool $waitForAgent = false, ?string $input = null, bool $draft = false, bool $trace = false): bool
     {
-        $platform = $this->platform($server);
-        [$script, $source] = $this->resolve($server->osTemplate, $platform, $event, $draft) ?? [null, null];
+        $resolved = $this->resolve($server->osTemplate, $this->platform($server), $event, $draft);
+        $succeeded = $resolved !== null
+            && $this->execute($task, $server, ScriptSlot::event($event), $resolved[0], $resolved[1], $waitForAgent, $input, $trace);
 
-        if ($script === null || $source === null) {
-            return false;
+        if ($task->type !== TaskType::GuestScript && ! $event->isCritical()) {
+            $this->runCustom($task, $server, $event, waitForAgent: $waitForAgent && $resolved === null);
         }
 
+        return $succeeded;
+    }
+
+    /**
+     * The published custom scripts bound to the event, in their order. Each
+     * leaves a note when it fails; when the agent does not answer, each run
+     * notes that after one ping instead of waiting again.
+     */
+    public function runCustom(Task $task, Server $server, GuestScriptEvent $event, bool $waitForAgent = false): void
+    {
+        $scripts = $this->customScripts($server, $event);
+
+        if ($scripts !== [] && $waitForAgent) {
+            $this->waitForAgent($server);
+        }
+
+        foreach ($scripts as $script) {
+            $this->execute($task, $server, ScriptSlot::custom($script, $event, $event->value), (string) $script->content, GuestScriptLog::SOURCE_PUBLISHED);
+        }
+    }
+
+    /**
+     * The published custom scripts of the server's template bound to the event.
+     *
+     * @return list<CustomScript>
+     */
+    public function customScripts(Server $server, GuestScriptEvent $event): array
+    {
+        if ($server->os_template_id === null) {
+            return [];
+        }
+
+        return array_values(CustomScript::query()
+            ->where('os_template_id', $server->os_template_id)
+            ->whereNotNull('content')
+            ->orderBy('position')
+            ->orderBy('id')
+            ->get()
+            ->filter(fn (CustomScript $script) => $script->runsAt($event))
+            ->all());
+    }
+
+    /**
+     * The task steps of the custom scripts bound to the event (TaskPlan).
+     *
+     * @return list<string>
+     */
+    public function customSteps(Server $server, GuestScriptEvent $event): array
+    {
+        return array_map(fn (CustomScript $script) => $script->step(), $this->customScripts($server, $event));
+    }
+
+    /**
+     * Write one script and its inputs into the guest, run it and log the run.
+     *
+     * @return bool whether it ran and succeeded
+     */
+    private function execute(Task $task, Server $server, ScriptSlot $slot, string $script, string $source, bool $waitForAgent = false, ?string $input = null, bool $trace = false): bool
+    {
+        $platform = $this->platform($server);
         $trace = $trace && $platform === OsPlatform::Linux;
-        $task->startStep($event->step());
-        $log = $this->startLog($task, $server, $event, $script, $source, $trace);
+        $task->startStep($slot->step);
+        $log = $this->startLog($task, $server, $slot, $script, $source, $trace);
         $client = $this->clients->forCluster($server->cluster);
         $agent = $client->guestAgent($server->node->name);
 
         if (! ($waitForAgent ? $this->waitForAgent($server) : $agent->ping($server->vmid))) {
-            return $this->failed($task, $log, $event, GuestAgentException::notReachable($server->vmid), self::unreachableNote($event));
+            return $this->failed($task, $log, $slot, GuestAgentException::notReachable($server->vmid), $slot->unreachableNote());
         }
 
         $config = $client->qemu($server->node->name)->config($server->vmid) ?? [];
         $mac = self::macOf($config);
 
-        if ($mac === null && $event === GuestScriptEvent::AddressesChanged) {
-            return $this->failed($task, $log, $event, new GuestScriptFailed('The MAC address of the network interface is unknown.'), 'The MAC address of the network interface is unknown: configure the additional addresses inside the server.');
+        if ($mac === null && $slot->custom === null && $slot->event === GuestScriptEvent::AddressesChanged) {
+            return $this->failed($task, $log, $slot, new GuestScriptFailed('The MAC address of the network interface is unknown.'), 'The MAC address of the network interface is unknown: configure the additional addresses inside the server.');
         }
 
-        $inputs = ['server' => $server->uuid, 'hostname' => $server->hostname, 'mac' => $mac] + $this->inputs($server, $platform, $event, $config, $task);
+        $inputs = ['server' => $server->uuid, 'hostname' => $server->hostname, 'mac' => $mac] + $this->slotInputs($server, $platform, $slot, $config, $task);
         $log->forceFill(['inputs' => $inputs])->save();
-        $name = $event->name().($source === GuestScriptLog::SOURCE_DRAFT ? '-draft' : '');
+        $name = $slot->file.($source === GuestScriptLog::SOURCE_DRAFT ? '-draft' : '');
 
         for ($attempt = 1; ; $attempt++) {
             try {
                 $result = $platform === OsPlatform::Windows
-                    ? $this->runOnWindows($agent, $server->vmid, $event, $name, $script, $inputs, $input)
-                    : $this->runOnLinux($agent, $server->vmid, $event, $name, $script, $inputs, $input, $trace);
+                    ? $this->runOnWindows($agent, $server->vmid, $slot, $name, $script, $inputs, $input)
+                    : $this->runOnLinux($agent, $server->vmid, $slot, $name, $script, $inputs, $input, $trace);
 
                 break;
             } catch (ProxmoxException $e) {
                 // The agent went away mid-run: the guest restarted, as Windows does
                 // during its first-boot setup (sysprep, cloudbase-init). Run the
                 // script again once it is back; a critical script is never repeated.
-                $lost = ! $event->isCritical() && $attempt < self::ATTEMPTS && ! $agent->ping($server->vmid);
+                $lost = ! $slot->isCritical() && $attempt < self::ATTEMPTS && ! $agent->ping($server->vmid);
 
                 if (! $lost || ! $this->waitForAgent($server)) {
-                    return $this->failed($task, $log, $event, $e, self::failedNote($event).$e->getMessage());
+                    return $this->failed($task, $log, $slot, $e, $slot->failedNote().$e->getMessage());
                 }
             }
         }
 
-        $this->finishLog($log, $event, $result);
+        $this->finishLog($log, $slot, $result);
 
         if (! $result->succeeded()) {
             $reason = self::reason($result, $trace);
 
-            return $this->failed($task, $log, $event, new GuestScriptFailed(self::failedNote($event).$reason), self::failedNote($event).$reason);
+            return $this->failed($task, $log, $slot, new GuestScriptFailed($slot->failedNote().$reason), $slot->failedNote().$reason);
         }
 
-        if (! $event->isCritical()) {
-            $task->completeStep($event->step());
+        if (! $slot->isCritical()) {
+            $task->completeStep($slot->step);
         }
 
         return true;
     }
 
     /**
-     * An administrator's trial run of one event's script on a server (a
-     * guest_script task, input: event, draft, trace). Unlike during
-     * operations, a failure fails the task.
+     * An administrator's run of one script on a server (a guest_script task):
+     * a trial of an event's script (input: event, draft, trace), or a custom
+     * script (input: script, draft, trace, manual for a run from the server
+     * page). Unlike during operations, a failure fails the task.
      */
     public function runOnce(Task $task): void
     {
+        $server = $task->server;
+        $draft = ($task->input['draft'] ?? false) === true;
+        $trace = ($task->input['trace'] ?? false) === true;
+
+        if (is_string($task->input['script'] ?? null)) {
+            $custom = CustomScript::query()
+                ->where('uuid', $task->input['script'])
+                ->where('os_template_id', $server->os_template_id)
+                ->first() ?? throw new GuestScriptFailed('The script no longer exists.');
+            $content = $draft ? $custom->draft_content : $custom->content;
+
+            if ($content === null) {
+                throw new GuestScriptFailed($draft ? 'The script has no draft.' : 'The script is not published.');
+            }
+
+            $slot = ScriptSlot::custom($custom, null, ($task->input['manual'] ?? false) === true ? 'manual' : 'trial');
+            $this->runOrThrow($task, $slot, fn () => $this->execute($task, $server, $slot, $content, $draft ? GuestScriptLog::SOURCE_DRAFT : GuestScriptLog::SOURCE_PUBLISHED, trace: $trace));
+
+            return;
+        }
+
         $event = GuestScriptEvent::tryFrom(is_string($task->input['event'] ?? null) ? $task->input['event'] : '');
 
         if ($event === null || ! $event->canBeTried()) {
             throw new GuestScriptFailed('This script cannot be run on its own.');
         }
 
-        $draft = ($task->input['draft'] ?? false) === true;
-
-        if ($this->resolve($task->server->osTemplate, $this->platform($task->server), $event, $draft) === null) {
+        if ($this->resolve($server->osTemplate, $this->platform($server), $event, $draft) === null) {
             throw new GuestScriptFailed($draft ? 'The server\'s OS template has no draft for this event.' : 'The server\'s OS template has no script for this event.');
         }
 
-        if (! $this->run($task, $task->server, $event, draft: $draft, trace: ($task->input['trace'] ?? false) === true)) {
-            $step = collect($task->steps)->firstWhere('key', $event->step());
+        $this->runOrThrow($task, ScriptSlot::event($event), fn () => $this->run($task, $server, $event, draft: $draft, trace: $trace));
+    }
+
+    /**
+     * @param  Closure(): bool  $run
+     */
+    private function runOrThrow(Task $task, ScriptSlot $slot, Closure $run): void
+    {
+        if (! $run()) {
+            $step = collect($task->steps)->firstWhere('key', $slot->step);
 
             throw new GuestScriptFailed(is_string($step['message'] ?? null) ? $step['message'] : 'The script failed.');
         }
@@ -245,24 +337,17 @@ final readonly class GuestScripts
 
     /**
      * After creating or reinstalling a server: its additional addresses, then
-     * the template's own post-install script. The pipeline has waited for the
-     * agent of the new system already (waitForAgentStep()).
+     * the template's own post-install script, each followed by the custom
+     * scripts bound to it. The pipeline has waited for the agent of the new
+     * system already (waitForAgentStep()).
      */
     public function afterInstall(Task $task, Server $server): void
     {
-        $events = [];
-
         if ($this->addresses->additional($server) !== []) {
-            $events[] = GuestScriptEvent::AddressesChanged;
+            $this->run($task, $server, GuestScriptEvent::AddressesChanged);
         }
 
-        if ($this->has($server, GuestScriptEvent::Provisioned)) {
-            $events[] = GuestScriptEvent::Provisioned;
-        }
-
-        foreach ($events as $event) {
-            $this->run($task, $server, $event);
-        }
+        $this->run($task, $server, GuestScriptEvent::Provisioned);
     }
 
     /**
@@ -478,6 +563,23 @@ final readonly class GuestScripts
     }
 
     /**
+     * A custom script gets what triggered it and all addresses, and at an
+     * event also that event's inputs (docs/adr/0043); never a password.
+     *
+     * @param  array<string, mixed>  $config  the VM's configuration
+     * @return array<string, string|int|list<string>|null>
+     */
+    private function slotInputs(Server $server, OsPlatform $platform, ScriptSlot $slot, array $config, Task $task): array
+    {
+        if ($slot->custom === null) {
+            return $slot->event === null ? [] : $this->inputs($server, $platform, $slot->event, $config, $task);
+        }
+
+        return ['trigger' => $slot->trigger, 'addresses' => $this->addresses->all($server)]
+            + ($slot->event === null ? [] : $this->inputs($server, $platform, $slot->event, $config, $task));
+    }
+
+    /**
      * Why the post-install script runs: "create" (also a rebuild from
      * scratch), "reinstall", or "trial" for an administrator's trial run, so
      * one script can skip work that must happen only once per server.
@@ -494,44 +596,46 @@ final readonly class GuestScripts
     /**
      * @param  array<string, string|int|list<string>|null>  $inputs
      */
-    private function runOnLinux(GuestAgentResource $agent, int $vmid, GuestScriptEvent $event, string $name, string $script, array $inputs, ?string $input, bool $trace): GuestExecStatus
+    private function runOnLinux(GuestAgentResource $agent, int $vmid, ScriptSlot $slot, string $name, string $script, array $inputs, ?string $input, bool $trace): GuestExecStatus
     {
         // A draft has its own path ($name ends in -draft), so boot units that
         // run the published script never pick it up; the inputs are the same.
         $path = '/usr/local/sbin/proxmotion-'.$name;
-        $config = self::LINUX_CONFIG_DIR.'/'.$event->name();
+        $config = self::LINUX_CONFIG_DIR.'/'.$slot->file;
 
         $agent->runOrFail($vmid, ['mkdir', '-p', self::LINUX_CONFIG_DIR, '/usr/local/sbin']);
         $agent->writeFile($vmid, $config.'.json', self::json($inputs));
         $agent->writeFile($vmid, $config.'.vars', self::vars($inputs));
         $agent->writeFile($vmid, $path, $script);
 
-        return $agent->run($vmid, $trace ? ['sh', '-x', $path] : ['sh', $path], $input, timeoutSeconds: $event->timeoutSeconds());
+        return $agent->run($vmid, $trace ? ['sh', '-x', $path] : ['sh', $path], $input, timeoutSeconds: $slot->timeoutSeconds());
     }
 
     /**
      * @param  array<string, string|int|list<string>|null>  $inputs
      */
-    private function runOnWindows(GuestAgentResource $agent, int $vmid, GuestScriptEvent $event, string $name, string $script, array $inputs, ?string $input): GuestExecStatus
+    private function runOnWindows(GuestAgentResource $agent, int $vmid, ScriptSlot $slot, string $name, string $script, array $inputs, ?string $input): GuestExecStatus
     {
         $path = self::WINDOWS_DIR.'\\'.$name.'.ps1';
 
         // cmd starts much faster than PowerShell; "already exists" fails harmlessly.
         $agent->run($vmid, ['cmd.exe', '/c', 'mkdir', self::WINDOWS_DIR]);
-        $agent->writeFile($vmid, self::WINDOWS_DIR.'\\'.$event->name().'.json', self::json($inputs));
+        $agent->writeFile($vmid, self::WINDOWS_DIR.'\\'.$slot->file.'.json', self::json($inputs));
         $agent->writeFile($vmid, $path, $script);
 
-        return $agent->run($vmid, ['powershell.exe', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', $path], $input, timeoutSeconds: $event->timeoutSeconds());
+        return $agent->run($vmid, ['powershell.exe', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', $path], $input, timeoutSeconds: $slot->timeoutSeconds());
     }
 
-    private function startLog(Task $task, Server $server, GuestScriptEvent $event, string $script, string $source, bool $trace): GuestScriptLog
+    private function startLog(Task $task, Server $server, ScriptSlot $slot, string $script, string $source, bool $trace): GuestScriptLog
     {
         $log = new GuestScriptLog;
         $log->forceFill([
             'server_id' => $server->id,
             'os_template_id' => $server->os_template_id,
             'task_id' => $task->id,
-            'event' => $event,
+            'custom_script_id' => $slot->custom?->id,
+            'script_name' => $slot->custom?->name,
+            'event' => $slot->event,
             'source' => $source,
             'trace' => $trace,
             'status' => 'running',
@@ -545,9 +649,9 @@ final readonly class GuestScripts
     /**
      * Record the exit code and output; a password script's output is left out.
      */
-    private function finishLog(GuestScriptLog $log, GuestScriptEvent $event, GuestExecStatus $result): void
+    private function finishLog(GuestScriptLog $log, ScriptSlot $slot, GuestExecStatus $result): void
     {
-        $keep = $event !== GuestScriptEvent::PasswordReset;
+        $keep = $slot->keepsOutput();
         $truncated = $result->stdoutTruncated || $result->stderrTruncated
             || strlen($result->stdout) > GuestScriptLog::MAX_OUTPUT_BYTES
             || strlen($result->stderr) > GuestScriptLog::MAX_OUTPUT_BYTES;
@@ -586,40 +690,19 @@ final readonly class GuestScripts
         return reset($lines) ?: 'exit code '.$result->exitCode;
     }
 
-    private function failed(Task $task, GuestScriptLog $log, GuestScriptEvent $event, Throwable $error, string $note): bool
+    private function failed(Task $task, GuestScriptLog $log, ScriptSlot $slot, Throwable $error, string $note): bool
     {
         if ($log->status === 'running') {
             $log->forceFill(['status' => 'failed', 'message' => $note, 'finished_at' => now()])->save();
         }
 
-        if ($event->isCritical()) {
+        if ($slot->isCritical()) {
             throw $error instanceof GuestScriptFailed || $error instanceof ProxmoxException ? $error : new GuestScriptFailed($note);
         }
 
-        $task->completeStep($event->step(), $note);
+        $task->completeStep($slot->step, $note);
 
         return false;
-    }
-
-    private static function unreachableNote(GuestScriptEvent $event): string
-    {
-        return match ($event) {
-            GuestScriptEvent::AddressesChanged => 'The guest agent did not answer: configure the additional addresses inside the server.',
-            GuestScriptEvent::DiskResized => 'The guest agent did not answer: grow the file system inside the server (Linux templates with cloud-init grow it at the next boot).',
-            GuestScriptEvent::HostnameChanged => 'The guest agent did not answer: change the hostname inside the server.',
-            default => 'The guest agent did not answer: the template\'s script did not run.',
-        };
-    }
-
-    private static function failedNote(GuestScriptEvent $event): string
-    {
-        return match ($event) {
-            GuestScriptEvent::AddressesChanged => 'The additional addresses could not be configured inside the server: ',
-            GuestScriptEvent::DiskResized => 'The file system could not be grown inside the server: ',
-            GuestScriptEvent::PasswordReset => 'The password reset script failed: ',
-            GuestScriptEvent::Provisioned => 'The template\'s script failed: ',
-            GuestScriptEvent::HostnameChanged => 'The hostname could not be changed inside the server: ',
-        };
     }
 
     /**
