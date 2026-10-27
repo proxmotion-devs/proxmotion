@@ -905,3 +905,38 @@ export type FirewallRuleset = {
     opens_remote_access: boolean;
     packages_count: number;
 };
+
+/** The type of a report column: how the page formats its raw values (docs/adr/0046). */
+export type ReportColumnType =
+    | 'text'
+    | 'number'
+    | 'boolean'
+    | 'mib'
+    | 'traffic'
+    | 'percent'
+    | 'duration'
+    | 'datetime'
+    | 'server'
+    | 'server_status'
+    | 'task_type'
+    | 'usage';
+
+export type ReportCell = string | number | boolean | null;
+
+/** One table of a report; `rows` holds at most a page, the CSV has `row_count`. */
+export type ReportTable = {
+    key: string;
+    title: string;
+    description: string | null;
+    columns: { key: string; label: string; type: ReportColumnType }[];
+    rows: Record<string, ReportCell>[];
+    row_count: number;
+    totals: Record<string, ReportCell> | null;
+};
+
+export type ReportFilter = {
+    label: string;
+    /** Label of the empty choice; null when one must be chosen. */
+    all: string | null;
+    options: { value: string | number; label: string }[];
+};

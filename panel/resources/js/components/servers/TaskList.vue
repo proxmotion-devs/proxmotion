@@ -15,8 +15,9 @@ import {
 } from '@/components/ui/dialog';
 import { Spinner } from '@/components/ui/spinner';
 import { useDateTime } from '@/composables/useDateTime';
+import { TASK_TYPE_LABELS } from '@/lib/taskTypes';
 import { fail } from '@/routes/admin/tasks';
-import type { TaskProgress, TaskStatus, TaskType } from '@/types/admin';
+import type { TaskProgress, TaskStatus } from '@/types/admin';
 
 /**
  * Tasks of one server with their steps, step messages and errors. A stuck
@@ -44,31 +45,6 @@ const markFailed = () => {
     });
 };
 
-// English keys, translated in the template.
-const taskTypeLabels: Record<TaskType, string> = {
-    create: 'Create',
-    suspend: 'Suspend',
-    unsuspend: 'Unsuspend',
-    terminate: 'Delete',
-    adopt: 'Adopt',
-    start: 'Start',
-    shutdown: 'Shut down',
-    stop: 'Stop',
-    reboot: 'Reboot',
-    reset_password: 'Reset root password',
-    reinstall: 'Reinstall',
-    change_resources: 'Change resources',
-    guest_script: 'Run template script',
-    change_primary_address: 'Change primary address',
-    change_addresses: 'Update IP addresses',
-    change_hostname: 'Change hostname',
-    install_app: 'Install app',
-    app_run: 'App action or uninstall',
-    verify: 'Check the server',
-    enable_anti_spoofing: 'Enable anti-spoofing',
-    apply_firewall: 'Apply firewall',
-    move: 'Move server',
-};
 const taskStatusTone: Record<
     TaskStatus,
     'success' | 'warning' | 'danger' | 'neutral'
@@ -209,7 +185,7 @@ const stepRows = (task: TaskProgress) => {
             <div class="flex flex-wrap items-center justify-between gap-2">
                 <div class="flex items-center gap-2">
                     <span class="font-medium">{{
-                        $t(taskTypeLabels[task.type])
+                        $t(TASK_TYPE_LABELS[task.type])
                     }}</span>
                     <StatusBadge
                         :tone="taskStatusTone[task.status]"

@@ -1,5 +1,6 @@
 <?php
 
+use App\Domain\Reports\Reports;
 use App\Domain\Settings\PanelSettings;
 use App\Http\Controllers\Admin\AdoptionController;
 use App\Http\Controllers\Admin\ApiTokenController;
@@ -27,6 +28,7 @@ use App\Http\Controllers\Admin\OsTemplateController;
 use App\Http\Controllers\Admin\PackageController;
 use App\Http\Controllers\Admin\PanelSettingsController;
 use App\Http\Controllers\Admin\PlacementGroupController;
+use App\Http\Controllers\Admin\ReportController;
 use App\Http\Controllers\Admin\ServerController;
 use App\Http\Controllers\Admin\ServerFirewallController;
 use App\Http\Controllers\Admin\ServerMoveController;
@@ -54,6 +56,14 @@ Route::get('settings/{category}', [PanelSettingsController::class, 'edit'])->nam
     ->whereIn('category', array_keys(PanelSettings::CATEGORIES));
 Route::put('settings/{category}', [PanelSettingsController::class, 'update'])->name('settings.update')
     ->whereIn('category', array_keys(array_filter(PanelSettings::CATEGORIES)));
+
+// Reports (docs/adr/0046): each table also as CSV.
+Route::get('reports', [ReportController::class, 'index'])->name('reports.index');
+Route::get('reports/{report}', [ReportController::class, 'show'])->name('reports.show')
+    ->whereIn('report', array_keys(Reports::PAGES));
+Route::get('reports/{report}/{table}.csv', [ReportController::class, 'csv'])->name('reports.csv')
+    ->whereIn('report', array_keys(Reports::PAGES))
+    ->where('table', '[a-z_]+');
 
 Route::get('drifts', [DriftController::class, 'index'])->name('drifts.index');
 Route::post('drifts/{drift}/accept', [DriftController::class, 'accept'])->name('drifts.accept');

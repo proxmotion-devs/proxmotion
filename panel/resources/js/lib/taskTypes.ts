@@ -1,0 +1,27 @@
+import type { TaskType } from '@/types/admin';
+
+/** Labels of task types: English keys, translated where they are shown. */
+export const TASK_TYPE_LABELS: Record<TaskType, string> = {
+    create: 'Create',
+    suspend: 'Suspend',
+    unsuspend: 'Unsuspend',
+    terminate: 'Delete',
+    adopt: 'Adopt',
+    start: 'Start',
+    shutdown: 'Shut down',
+    stop: 'Stop',
+    reboot: 'Reboot',
+    reset_password: 'Reset root password',
+    reinstall: 'Reinstall',
+    change_resources: 'Change resources',
+    guest_script: 'Run template script',
+    change_primary_address: 'Change primary address',
+    change_addresses: 'Update IP addresses',
+    change_hostname: 'Change hostname',
+    install_app: 'Install app',
+    app_run: 'App action or uninstall',
+    verify: 'Check the server',
+    enable_anti_spoofing: 'Enable anti-spoofing',
+    apply_firewall: 'Apply firewall',
+    move: 'Move server',
+};

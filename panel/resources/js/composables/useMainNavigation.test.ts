@@ -18,11 +18,25 @@ describe('useMainNavigation', () => {
             '/admin/placement-groups',
             '/admin/firewall-rulesets',
             '/admin/apps',
+            '/admin/reports',
             '/admin/drifts',
             '/admin/users',
             '/admin/billing-systems',
             '/admin/settings',
             '/admin/help',
+        ]);
+    });
+
+    it('lists the reports under Reports', () => {
+        const reports = useMainNavigation().value.find(
+            (item) => item.title === 'Reports',
+        );
+
+        expect(reports?.items?.map((item) => toUrl(item.href))).toEqual([
+            '/admin/reports/capacity',
+            '/admin/reports/traffic',
+            '/admin/reports/servers',
+            '/admin/reports/operations',
         ]);
     });
 

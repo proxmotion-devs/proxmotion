@@ -1,5 +1,6 @@
 import {
     AppWindow,
+    ChartColumn,
     Boxes,
     Disc3,
     Globe,
@@ -30,7 +31,9 @@ import { index as locations } from '@/routes/admin/locations';
 import { index as osTemplates } from '@/routes/admin/os-templates';
 import { index as packages } from '@/routes/admin/packages';
 import { index as placementGroups } from '@/routes/admin/placement-groups';
+import { index as reports, show as reportPage } from '@/routes/admin/reports';
 import { index as servers } from '@/routes/admin/servers';
+import { REPORTS } from '@/lib/reports';
 import { SETTINGS_CATEGORIES } from '@/lib/settingsCategories';
 import {
     edit as panelSettingsPage,
@@ -64,6 +67,15 @@ export function useMainNavigation(): ComputedRef<NavItem[]> {
             icon: Shield,
         },
         { title: 'Apps', href: apps(), icon: AppWindow },
+        {
+            title: 'Reports',
+            href: reports(),
+            icon: ChartColumn,
+            items: REPORTS.map((report) => ({
+                title: report.title,
+                href: reportPage(report.key),
+            })),
+        },
         { title: 'Drift report', href: drifts(), icon: TriangleAlert },
         { title: 'Administrators', href: users(), icon: Users },
         { title: 'Billing systems', href: billingSystems(), icon: KeyRound },

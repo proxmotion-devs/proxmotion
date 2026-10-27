@@ -113,6 +113,7 @@ The admin panel is for staff. **Every panel user is an administrator**; there ar
 | **Apps** | App Marketplace catalog and the recipe editor |
 | **Servers** | List, create wizard, adopt existing VMs, server page with every operation |
 | **Drifts** | Differences between the panel and Proxmox |
+| **Reports** | Capacity (nodes, storages, IP pools after over-commit), traffic and usage of a monthly period (per server, location, package, billing system; usage violations), server inventory (by status, location, package, OS template, billing system; created and deleted per month), operations (tasks and app installations of the last 7–365 days with failure rates and median durations, failed tasks); every table as CSV (ADR 0046) |
 | **Billing systems** | Billing systems, API tokens, webhook endpoints and delivery log |
 | **Users** | Administrators |
 | **Panel settings** | Panel-wide settings: cross-cluster moves, deadlines, lowest VMID, DNS check name, protected networks, drift grace period, console limits, documentation address, format of generated root passwords (ADR 0038); shows the `.env`-only security settings read-only |
