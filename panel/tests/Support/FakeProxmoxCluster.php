@@ -137,6 +137,9 @@ class FakeProxmoxCluster
     /** @var array<string, string> per API host: the node that answers there (remote migrations land on it) */
     public array $hostNodes = [];
 
+    /** @var list<int> VMIDs that answer "does not exist" on every node but their own, as Proxmox does after a migration */
+    public array $strictNode = [];
+
     /** @var array<string, self> the clusters by API host, when several are installed (installAll()) */
     private array $network = [];
 
@@ -270,6 +273,10 @@ class FakeProxmoxCluster
     private function qemu(string $method, string $node, int $vmid, string $suffix, array $data): PromiseInterface
     {
         $vm = $this->vms[$vmid] ?? null;
+
+        if ($vm !== null && in_array($vmid, $this->strictNode, true) && $vm['node'] !== $node) {
+            $vm = null;
+        }
 
         if ($suffix === '/clone' && $method === 'POST') {
             $newId = (int) $data['newid'];

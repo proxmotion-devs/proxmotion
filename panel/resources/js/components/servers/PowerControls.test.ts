@@ -23,13 +23,11 @@ describe('PowerControls', () => {
     it('offers the actions that fit the power state', () => {
         expect(buttons('running')).toEqual(['Shut down', 'Reboot', 'Stop']);
         expect(buttons('stopped')).toEqual(['Start']);
-        expect(buttons(null)).toHaveLength(4);
     });
 
-    it('offers nothing for a VM Proxmox does not have', () => {
-        const wrapper = render('missing');
-
-        expect(wrapper.findAll('button')).toHaveLength(0);
-        expect(wrapper.text()).toContain('Not found in Proxmox');
+    it('offers everything while the state is not known', () => {
+        expect(buttons(null)).toHaveLength(4);
+        expect(buttons('unknown')).toHaveLength(4);
+        expect(render('unknown').text()).toContain('Unknown');
     });
 });

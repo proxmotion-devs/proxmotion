@@ -21,7 +21,7 @@ import type { RouteDefinition } from '@/wayfinder';
  * confirmation for everything but start.
  */
 const props = defineProps<{
-    /** Proxmox power state ("missing": no such VM); undefined while loading, null when unknown. */
+    /** Proxmox power state; undefined while loading, null when unknown. */
     power: string | null | undefined;
     /** A task is queued or running for the server. */
     busy: boolean;
@@ -75,17 +75,17 @@ const actions: {
     },
 ];
 
-// Unknown state: offer everything; every action is safe to repeat. A VM
-// Proxmox does not have cannot be powered at all.
+// Unknown state (also one Proxmox has no name for here): offer everything;
+// every action is safe to repeat.
+const known = computed(
+    () => props.power === 'running' || props.power === 'stopped',
+);
 const visible = computed(() =>
-    props.power === 'missing'
-        ? []
-        : actions.filter(
-              (item) =>
-                  props.power === undefined ||
-                  props.power === null ||
-                  (item.when === 'running') === (props.power === 'running'),
-          ),
+    actions.filter(
+        (item) =>
+            !known.value ||
+            (item.when === 'running') === (props.power === 'running'),
+    ),
 );
 
 const confirming = ref<(typeof actions)[number] | null>(null);
@@ -119,25 +119,16 @@ const stateLabel = computed(() => {
         return 'Running';
     }
 
-    if (props.power === 'missing') {
-        return 'Not found in Proxmox';
-    }
-
     return props.power === 'stopped' ? 'Stopped' : 'Unknown';
-});
-
-const tone = computed(() => {
-    if (props.power === 'running') {
-        return 'success';
-    }
-
-    return props.power === 'missing' ? 'danger' : 'neutral';
 });
 </script>
 
 <template>
     <div class="flex flex-wrap items-center gap-2">
-        <StatusBadge :tone="tone" :label="stateLabel" />
+        <StatusBadge
+            :tone="power === 'running' ? 'success' : 'neutral'"
+            :label="stateLabel"
+        />
         <Button
             v-for="item in visible"
             :key="item.value"

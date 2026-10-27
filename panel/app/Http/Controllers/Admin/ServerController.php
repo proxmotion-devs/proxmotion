@@ -18,6 +18,7 @@ use App\Domain\Servers\HostnameChanger;
 use App\Domain\Servers\MoveOptions;
 use App\Domain\Servers\ReinstallOptions;
 use App\Domain\Servers\ResourceOptions;
+use App\Domain\Servers\ServerLiveState;
 use App\Domain\Servers\ServerPasswords;
 use App\Domain\Servers\ServerPower;
 use App\Domain\Servers\ServerReinstaller;
@@ -229,7 +230,7 @@ class ServerController extends Controller
         return to_route('admin.servers.show', $server);
     }
 
-    public function show(Request $request, Server $server, MoveOptions $moves, GuestAgentProbe $agent, AppEligibility $eligibility, AppUpgrades $upgrades, TaskFailer $failer, LiveAppPolls $live, IpAllocator $ips, TaskPlan $plan, TaskEstimates $estimates): Response
+    public function show(Request $request, Server $server, MoveOptions $moves, GuestAgentProbe $agent, ServerLiveState $state, AppEligibility $eligibility, AppUpgrades $upgrades, TaskFailer $failer, LiveAppPolls $live, IpAllocator $ips, TaskPlan $plan, TaskEstimates $estimates): Response
     {
         $server->load(['node:id,uuid,name', 'cluster:id,uuid,name', 'location:id,name', 'package:id,name', 'billingSystem:id,name', 'osTemplate:id,operating_system_version_id,name,distribution,version,family,platform', 'storage:id,name', 'ipAddresses.pool:id,uuid,name,version,bridge,vlan_tag']);
 
@@ -238,16 +239,14 @@ class ServerController extends Controller
             $live->server($server);
         }
 
-        // Asked once per request for both deferred props: the agent is pinged only
-        // while the VM runs, so a VM stopped or deleted in Proxmox is not shown as
-        // a guest agent problem.
-        $power = [];
-        $powerState = function () use ($server, &$power): ?string {
-            if ($power === []) {
-                $power = [$server->status === ServerStatus::Active ? $this->power->liveState($server) : null];
-            }
-
-            return $power[0];
+        // Asked once per request for the deferred props below: the agent is pinged
+        // only while the VM runs, so a VM stopped, deleted or moved in Proxmox is
+        // not shown as a guest agent problem.
+        $read = null;
+        $liveState = function () use ($server, $state, &$read): array {
+            return $read ??= $server->status === ServerStatus::Active
+                ? $state->read($server)
+                : ['power' => null, 'vm' => ServerLiveState::PRESENT, 'node' => null];
         };
 
         return Inertia::render('admin/servers/Show', [
@@ -325,8 +324,9 @@ class ServerController extends Controller
             // Outputs of one installed app, after Show details (AppController::outputs()).
             'revealedAppOutputs' => session('revealed_app_outputs'),
             // Asked from Proxmox after the page has loaded, so a slow cluster does not block it.
-            // ServerPower::MISSING when Proxmox has no such VM on the server's node.
-            'power' => Inertia::defer($powerState),
+            'power' => Inertia::defer(fn () => $liveState()['power']),
+            // Whether the VM is where the panel recorded it (ServerLiveState).
+            'vm' => Inertia::defer(fn () => ['state' => $liveState()['vm'], 'node' => $liveState()['node']]),
             'reinstallOptions' => fn () => ReinstallOptions::for($server),
             'resourceOptions' => fn () => ResourceOptions::for($server),
             // Moving the server (docs/adr/0037).
@@ -357,8 +357,8 @@ class ServerController extends Controller
             ],
             'drifts' => $server->drifts()->visible()->with(['cluster:id,uuid,name', 'server:id,uuid,hostname,status'])->get()
                 ->map(fn (ServerDrift $drift) => DriftController::present($drift)),
-            // Null (not asked) unless the VM is running or its state is unknown.
-            'agent' => Inertia::defer(fn () => $server->status === ServerStatus::Active && in_array($powerState(), ['running', null], true) ? $agent->reachable($server) : null),
+            // Null (not asked) unless Proxmox says the VM runs.
+            'agent' => Inertia::defer(fn () => $liveState()['power'] === 'running' ? $agent->reachable($server) : null),
             'apps' => $server->appInstallations()
                 ->with([
                     'recipe:id,slug,name,is_active,latest_version_id', 'recipe.latestVersion', 'version',
