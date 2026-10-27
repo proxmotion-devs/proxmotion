@@ -239,7 +239,7 @@ const topics = [
                     <li>
                         {{
                             $t(
-                                'Install the updates, then run the Then on every Linux and Finally, as root blocks again. Clear the Cloud-Init user and password.',
+                                'Install the updates, check that steps 3 to 6 of the guide still hold (an update can bring a configuration file back), then run step 7 again. Clear the Cloud-Init user and password.',
                             )
                         }}
                     </li>

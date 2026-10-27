@@ -31,6 +31,29 @@ describe('TemplateGuide', () => {
         expect(wrapper.text()).not.toContain('cloud-init clean --logs --seed');
     });
 
+    it('starts Windows with Sysprep and switches to the way without it', async () => {
+        const wrapper = mountGuide();
+
+        await wrapper
+            .find('[data-test="template-tab-windows"]')
+            .trigger('click');
+
+        expect(
+            wrapper.find('[data-test="template-way-panel-sysprep"]').exists(),
+        ).toBe(true);
+        expect(wrapper.text()).toContain('sysprep.exe /generalize');
+
+        await wrapper
+            .find('[data-test="template-way-nosysprep"]')
+            .trigger('click');
+
+        expect(
+            wrapper.find('[data-test="template-way-panel-nosysprep"]').exists(),
+        ).toBe(true);
+        expect(wrapper.text()).toContain('SusClientId');
+        expect(wrapper.text()).not.toContain('sysprep.exe /generalize');
+    });
+
     it('explains macOS', async () => {
         const wrapper = mountGuide();
 
@@ -47,6 +70,17 @@ describe('TemplateGuide', () => {
 
         expect(
             wrapper.find('[data-test="template-panel-windows"]').exists(),
+        ).toBe(true);
+    });
+
+    it('opens the Windows way a link points to', async () => {
+        window.location.hash = '#template-guide-windows-nosysprep';
+
+        const wrapper = mountGuide();
+        await nextTick();
+
+        expect(
+            wrapper.find('[data-test="template-way-panel-nosysprep"]').exists(),
         ).toBe(true);
     });
 });
