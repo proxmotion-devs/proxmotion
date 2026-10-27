@@ -16,7 +16,7 @@ The recipes lived in `panel/recipes`, next to the panel's code. Every new app or
 4. **Downloading is the administrator's approval.** Nothing from a source is installable until it is downloaded. A download stores the version as ADR 0015 and 0016 describe (published, with its scripts). An update shows the diff against the downloaded version first. A version that installations use cannot change without a new version number. An app an administrator edited in place keeps its edits: the new version is stored, held, and not offered (ADR 0018 §2).
 5. **Removing** an app deletes it with its versions, unless installations use it: then it can only be deactivated (`RecipeEditor::delete()` has the same rule for custom apps). The recipe stays in the catalog and can be downloaded again. An app whose recipe left the source is deactivated at the next read.
 6. **Recipes from a checkout are read carefully.** The loader refuses links, script paths with `..` or absolute paths, and files that resolve outside their recipe directory: a link to `.env` in a recipe must never be stored and written into a server.
-7. **The recipes repository has its own CI:** the schema, the version rule for changed recipes (`apps:check-versions` against the base revision), shellcheck, and a parse of every PowerShell script. The panel's schemas and runner scripts come from the panel's `main` branch.
+7. **The recipes repository has its own CI** (since ADR 0042 on packages only)**:** the schema, the version rule for changed recipes (`apps:check-versions` against the base revision), shellcheck, and a parse of every PowerShell script. The panel's schemas and runner scripts come from the panel's `main` branch.
 
 ## Consequences
 

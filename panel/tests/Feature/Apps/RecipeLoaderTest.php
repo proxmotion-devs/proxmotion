@@ -15,7 +15,7 @@ use Illuminate\Support\Facades\File;
 use Tests\TestCase;
 
 /**
- * Recipe validation (apps:validate), storing packages as versions
+ * Recipe validation (apps:pack validates the sources it packs), storing packages as versions
  * and the skeleton (apps:make), docs/adr/0015 and 0016.
  */
 class RecipeLoaderTest extends TestCase
@@ -78,7 +78,7 @@ class RecipeLoaderTest extends TestCase
         $this->assertSame(['docker', 'openvpn', 'sqlserver-express', 'wireguard'], array_keys($recipes));
         $this->assertSame(['install.ps1', 'uninstall.ps1', 'actions/reset-password.ps1', 'lib.ps1'], array_keys($recipes['sqlserver-express']['files']));
         $this->assertSame(['install.sh', 'uninstall.sh', 'upgrade.sh', 'actions/add-client.sh', 'actions/revoke-client.sh', 'actions/list-clients.sh', 'lib.sh'], array_keys($recipes['wireguard']['files']));
-        $this->artisan('apps:validate', ['--path' => $this->directory])->assertSuccessful();
+        $this->artisan('apps:pack', ['--path' => $this->directory, '--out' => $this->directory.'/_packages'])->assertSuccessful();
     }
 
     public function test_inputs_labelled_optional_are_not_required()
@@ -134,11 +134,11 @@ class RecipeLoaderTest extends TestCase
         $this->assertContains('Firewall rule refers to the unknown input listen_port.', $this->errors());
     }
 
-    public function test_apps_validate_reports_invalid_recipes()
+    public function test_apps_pack_refuses_invalid_recipes()
     {
         $this->editRecipe('version: 1.3.1', 'version: one');
 
-        $this->artisan('apps:validate', ['--path' => $this->directory])->assertFailed();
+        $this->artisan('apps:pack', ['--path' => $this->directory, '--out' => $this->directory.'/_packages'])->assertFailed();
     }
 
     public function test_sync_adds_updates_and_keeps_an_admins_deactivation()
@@ -319,6 +319,6 @@ class RecipeLoaderTest extends TestCase
         $this->assertSame([], $result['created']);
         $this->assertSame(['openvpn'], $result['skipped']);
         $this->assertSame(0, AppRecipe::query()->count());
-        $this->artisan('apps:validate', ['--path' => $this->directory])->assertFailed();
+        $this->artisan('apps:pack', ['--path' => $this->directory, '--out' => $this->directory.'/_packages'])->assertFailed();
     }
 }

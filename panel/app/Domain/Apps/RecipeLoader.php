@@ -19,9 +19,6 @@ use Symfony\Component\Yaml\Yaml;
  */
 final class RecipeLoader
 {
-    /** The folder of a recipes repository that holds its built .proxapp packages (docs/adr/0042), not a recipe. */
-    public const PACKAGES = 'packages';
-
     public function __construct(private readonly ?string $directory = null) {}
 
     /**
@@ -69,7 +66,7 @@ final class RecipeLoader
         foreach (glob($this->directory().'/*', GLOB_ONLYDIR) ?: [] as $path) {
             $slug = basename($path);
 
-            if (! str_starts_with($slug, '_') && $slug !== self::PACKAGES) {
+            if (! str_starts_with($slug, '_')) {
                 $slugs[] = $slug;
             }
         }

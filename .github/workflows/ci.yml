@@ -61,10 +61,12 @@ jobs:
       - name: Checks
         run: composer ci:check
 
-      # The recipe schema, against the test fixtures. The app recipes and their packages are
-      # checked in their own repository, proxmotion-recipes (docs/adr/0042).
+      # The recipe schema, against the test fixtures packed like a recipes repository. The app
+      # packages are checked in their own repository, proxmotion-recipes (docs/adr/0042).
       - name: Validate recipe fixtures
-        run: php artisan apps:validate --path=tests/Fixtures/recipes
+        run: |
+          php artisan apps:pack --path=tests/Fixtures/recipes --out="$RUNNER_TEMP/recipes"
+          php artisan apps:validate --path="$RUNNER_TEMP/recipes"
 
   console-proxy:
     name: Console proxy

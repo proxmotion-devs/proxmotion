@@ -20,7 +20,8 @@ use ZipArchive;
  * App packages (docs/adr/0042): a .proxapp file is a zip of one recipe
  * directory, laid out as RecipeArchive reads it. An administrator uploads one
  * to add an app or a new version of it; the version is published at once.
- * The recipes repository keeps a package of each app in packages/ (apps:pack).
+ * The recipes repository holds only packages, <slug>/<slug>.proxapp (PackageDirectory),
+ * built from recipe sources with apps:pack.
  *
  * @phpstan-type Package array{slug: string, definition: array<string, mixed>, files: array<string, string>}
  */
@@ -181,12 +182,14 @@ final readonly class AppPackages
     }
 
     /**
-     * The package of one recipe of a recipes directory, as zip bytes: recipe.yaml as
-     * written, the files it uses, and its README.
+     * What the package of one recipe of a source directory holds, by path inside
+     * <slug>/: recipe.yaml as written, the files it uses, and its README.
+     *
+     * @return array<string, string>
      *
      * @throws RecipeInvalid
      */
-    public function pack(string $directory, string $slug): string
+    public function entries(string $directory, string $slug): array
     {
         ['files' => $files] = (new RecipeLoader($directory))->load($slug);
         $entries = ['recipe.yaml' => (string) file_get_contents($directory.'/'.$slug.'/recipe.yaml')] + $files;
@@ -196,6 +199,18 @@ final readonly class AppPackages
         }
 
         ksort($entries);
+
+        return $entries;
+    }
+
+    /**
+     * The package of one recipe of a source directory, as zip bytes.
+     *
+     * @throws RecipeInvalid
+     */
+    public function pack(string $directory, string $slug): string
+    {
+        $entries = $this->entries($directory, $slug);
 
         // ZipArchive writes to a file: the panel's own storage, not the system temporary directory.
         $temporary = storage_path('framework/recipes');

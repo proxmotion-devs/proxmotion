@@ -556,7 +556,7 @@ Each app is a directory `<slug>/` in the recipes repository [`proxmotion-recipes
 - `lifecycle` (install / uninstall / upgrade scripts with timeouts, `upgrade.from` range),
 - `actions` with their own inputs and outputs.
 
-Scripts start with `set -euo pipefail`, are idempotent, use the `_lib/proxmotion.sh` helpers for inputs, status and outputs, and pass shellcheck. `php artisan apps:make <slug>` creates a skeleton; `apps:validate` checks every recipe against the JSON Schema.
+Scripts start with `set -euo pipefail`, are idempotent, use the `_lib/proxmotion.sh` helpers for inputs, status and outputs, and pass shellcheck. `php artisan apps:make <slug> --path=<sources>` creates a skeleton; `apps:pack --path=<sources> --out=<repo>` checks recipes against the JSON Schema and packs each into `<repo>/<slug>/<slug>.proxapp`, and `apps:validate --path=<repo>` checks the packages of a recipes repository, which holds nothing else.
 
 **Versions are immutable.** Every version is stored and installations keep theirs; a changed bundled recipe needs a higher `version` (`apps:check-versions` enforces this in CI).
 
@@ -722,9 +722,9 @@ All features are covered by automated tests with faked HTTP (an in-memory Proxmo
 | `php artisan infra:sync` | Sync clusters (scheduled every 5 minutes) |
 | `php artisan apps:poll` | Follow running app installs, uninstalls, upgrades and actions; copy logs (every minute) |
 | *Apps → Install package* | Install an app from its `.proxapp` package (`proxmotion-recipes/packages`); an update shows its changes first (ADR 0042) |
-| `php artisan apps:validate` | Validate every recipe against the JSON Schema |
-| `php artisan apps:check-versions --base-path=<dir> --path=<dir>` | Require a higher version for changed recipes (CI of `proxmotion-recipes`) |
-| `php artisan apps:pack --path=<dir> [--check]` | Build or check the `.proxapp` packages of a recipes directory (ADR 0042) |
+| `php artisan apps:validate --path=<repo>` | Validate the `<slug>/<slug>.proxapp` packages of a recipes repository |
+| `php artisan apps:check-versions --base-path=<repo> --path=<repo>` | Require a higher version for changed packages (CI of `proxmotion-recipes`) |
+| `php artisan apps:pack --path=<sources> --out=<repo>` | Validate recipe sources and pack them into a recipes repository (ADR 0042) |
 | `php artisan apps:make <slug>` | Create a format 2 recipe skeleton |
 | `php artisan servers:stats` | Send live figures of the servers whose page is open (every 10 seconds; only with `BROADCAST_CONNECTION=reverb`) |
 | `php artisan reverb:start` | WebSocket server for live figures |

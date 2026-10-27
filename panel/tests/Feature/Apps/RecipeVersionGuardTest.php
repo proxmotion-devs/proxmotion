@@ -2,17 +2,17 @@
 
 namespace Tests\Feature\Apps;
 
-use App\Domain\Apps\RecipeLoader;
+use App\Domain\Apps\PackageDirectory;
 use App\Domain\Apps\RecipeVersionGuard;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Str;
 use Tests\TestCase;
 
 /**
- * apps:check-versions (docs/adr/0016 §2): a bundled recipe whose content
- * changed needs a higher version, or installing its package refuses it where the old
- * version is installed. Two recipe directories stand for the base branch
- * and the change.
+ * apps:check-versions (docs/adr/0016 §2): a package whose content
+ * changed needs a higher version, or installing it is refused where the old
+ * version is installed. Two recipe source directories, packed into two
+ * repositories, stand for the base branch and the change.
  */
 class RecipeVersionGuardTest extends TestCase
 {
@@ -48,7 +48,11 @@ class RecipeVersionGuardTest extends TestCase
      */
     private function problems(): array
     {
-        return (new RecipeVersionGuard)->problems(new RecipeLoader($this->base), new RecipeLoader($this->head));
+        foreach (['base', 'head'] as $side) {
+            $this->artisan('apps:pack', ['--path' => $this->{$side}, '--out' => $this->{$side}.'/_packages'])->assertSuccessful();
+        }
+
+        return app(RecipeVersionGuard::class)->problems(new PackageDirectory($this->base.'/_packages'), new PackageDirectory($this->head.'/_packages'));
     }
 
     private function setVersion(string $slug, string $version): void
@@ -60,7 +64,7 @@ class RecipeVersionGuardTest extends TestCase
     public function test_unchanged_recipes_pass()
     {
         $this->assertSame([], $this->problems());
-        $this->artisan('apps:check-versions', ['--base-path' => $this->base, '--path' => $this->head])->assertSuccessful();
+        $this->artisan('apps:check-versions', ['--base-path' => $this->base.'/_packages', '--path' => $this->head.'/_packages'])->assertSuccessful();
     }
 
     public function test_a_changed_script_without_a_new_version_fails()
@@ -68,7 +72,7 @@ class RecipeVersionGuardTest extends TestCase
         File::append($this->head.'/docker/install.sh', "# a comment\n");
 
         $this->assertSame(['docker: changed but its version is 1.3.1 (was 1.3.1); raise the version in recipe.yaml.'], $this->problems());
-        $this->artisan('apps:check-versions', ['--base-path' => $this->base, '--path' => $this->head])
+        $this->artisan('apps:check-versions', ['--base-path' => $this->base.'/_packages', '--path' => $this->head.'/_packages'])
             ->expectsOutputToContain('docker: changed but its version is 1.3.1')
             ->assertFailed();
     }

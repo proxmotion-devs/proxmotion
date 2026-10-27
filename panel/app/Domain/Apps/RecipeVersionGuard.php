@@ -4,46 +4,53 @@ declare(strict_types=1);
 
 namespace App\Domain\Apps;
 
+use Illuminate\Validation\ValidationException;
+
 /**
- * Finds bundled recipes whose content changed without a higher version
+ * Finds packages whose content changed without a higher version
  * (docs/adr/0016 §2). Installations keep the version they were installed
  * with, so installing a package refuses to replace a version in use; CI compares a pull
- * request's recipes with its base branch to catch this before release. The
- * content is what a package stores: recipe.yaml and the files it uses (a
+ * request's packages with its base branch to catch this before release. The
+ * content is what a version stores: recipe.yaml and the files it uses (a
  * README is not part of a version).
  */
-final class RecipeVersionGuard
+final readonly class RecipeVersionGuard
 {
+    public function __construct(private AppPackages $packages) {}
+
     /**
-     * Recipes in $head that changed since $base but kept or lowered their
-     * version. New and removed recipes are fine; recipes that do not
+     * Packages in $head that changed since $base but kept or lowered their
+     * version. New and removed apps are fine; packages that do not
      * validate are left to apps:validate.
      *
-     * @return list<string> one message per recipe
+     * @return list<string> one message per app
      */
-    public function problems(RecipeLoader $base, RecipeLoader $head): array
+    public function problems(PackageDirectory $base, PackageDirectory $head): array
     {
         $problems = [];
         $before = array_flip($base->slugs());
 
         foreach ($head->slugs() as $slug) {
-            if (! isset($before[$slug])) {
+            if (! isset($before[$slug]) || ! is_file($base->path($slug)) || ! is_file($head->path($slug))) {
                 continue;
             }
 
             try {
-                ['recipe' => $old, 'files' => $oldFiles] = $base->load($slug);
-                ['recipe' => $new, 'files' => $newFiles] = $head->load($slug);
-            } catch (RecipeInvalid) {
+                $old = $this->packages->read($base->path($slug));
+                $new = $this->packages->read($head->path($slug));
+            } catch (ValidationException) {
                 continue;
             }
 
-            if (RecipeSynchronizer::checksum($old, $oldFiles) === RecipeSynchronizer::checksum($new, $newFiles)) {
+            $oldRecipe = Recipe::fromArray($old['definition']);
+            $newRecipe = Recipe::fromArray($new['definition']);
+
+            if (RecipeSynchronizer::checksum($oldRecipe, $old['files']) === RecipeSynchronizer::checksum($newRecipe, $new['files'])) {
                 continue;
             }
 
-            if (! version_compare($new->version, $old->version, '>')) {
-                $problems[] = "{$slug}: changed but its version is {$new->version} (was {$old->version}); raise the version in recipe.yaml.";
+            if (! version_compare($newRecipe->version, $oldRecipe->version, '>')) {
+                $problems[] = "{$slug}: changed but its version is {$newRecipe->version} (was {$oldRecipe->version}); raise the version in recipe.yaml.";
             }
         }
 

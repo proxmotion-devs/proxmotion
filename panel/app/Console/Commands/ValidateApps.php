@@ -4,61 +4,65 @@ declare(strict_types=1);
 
 namespace App\Console\Commands;
 
-use App\Domain\Apps\RecipeInvalid;
+use App\Domain\Apps\AppPackages;
+use App\Domain\Apps\PackageDirectory;
 use App\Domain\Apps\RecipeLoader;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
+use Illuminate\Support\Arr;
+use Illuminate\Validation\ValidationException;
 
-#[Signature('apps:validate {--path= : The recipes directory to check}')]
-#[Description('Validate the app recipes of a recipes directory against the recipe schema (docs/adr/0015, 0042)')]
+#[Signature('apps:validate {--path= : The recipes repository to check}')]
+#[Description('Validate the .proxapp packages of a recipes repository, <slug>/<slug>.proxapp each (docs/adr/0042)')]
 class ValidateApps extends Command
 {
-    public function handle(): int
+    public function handle(AppPackages $packages): int
     {
-        $path = $this->recipesPath();
+        $path = $this->option('path');
 
-        if ($path === null) {
+        if (! is_string($path) || $path === '') {
+            $this->components->error('Give the recipes repository with --path.');
+
             return self::FAILURE;
         }
 
-        $loader = new RecipeLoader($path);
+        $directory = new PackageDirectory(RecipeLoader::resolve($path));
 
-        if ($loader->slugs() === []) {
-            $this->components->error("No recipes found in {$path}.");
+        if ($directory->slugs() === []) {
+            $this->components->error("No apps found in {$directory->directory}.");
 
             return self::FAILURE;
         }
 
         $failed = false;
 
-        foreach ($loader->slugs() as $slug) {
-            try {
-                $loader->load($slug);
-                $this->components->info("{$slug}: valid.");
-            } catch (RecipeInvalid $e) {
-                $failed = true;
-                $this->components->error("{$slug}:");
-                $this->components->bulletList($e->errors);
+        foreach ($directory->slugs() as $slug) {
+            $problems = $directory->problems($slug);
+
+            if (is_file($directory->path($slug))) {
+                try {
+                    $package = $packages->read($directory->path($slug));
+
+                    if ($package['slug'] !== $slug) {
+                        $problems[] = "The package's recipe.yaml has the slug {$package['slug']}; the folder must be named after it.";
+                    }
+                } catch (ValidationException $e) {
+                    array_push($problems, ...array_values(array_map('strval', Arr::flatten($e->errors()))));
+                }
             }
+
+            if ($problems === []) {
+                $this->components->info("{$slug}: valid.");
+
+                continue;
+            }
+
+            $failed = true;
+            $this->components->error("{$slug}:");
+            $this->components->bulletList($problems);
         }
 
         return $failed ? self::FAILURE : self::SUCCESS;
-    }
-
-    /**
-     * The recipes directory from --path; null (with a message) when it is missing.
-     */
-    private function recipesPath(): ?string
-    {
-        $path = $this->option('path');
-
-        if (! is_string($path) || $path === '') {
-            $this->components->error('Give the recipes directory with --path.');
-
-            return null;
-        }
-
-        return RecipeLoader::resolve($path);
     }
 }
