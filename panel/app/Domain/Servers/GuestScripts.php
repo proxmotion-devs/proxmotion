@@ -52,10 +52,11 @@ final readonly class GuestScripts
      * Prints key=value lines: image= (Windows' image state), name= and
      * active_name= (the computer name after the next restart and the one in
      * use), and with a cloudbase-init service service= (its state), plugins=
-     * (the plugins its configuration file lists), done= and later= (the
-     * plugins it recorded as done, or to run at the next boot, for the
-     * instance ID on the config drive). A fixed command: nothing in it comes
-     * from the server or a customer.
+     * and unattend= (the plugins its
+     * configuration file and cloudbase-init-unattend.conf beside it list),
+     * done= and later= (the plugins it recorded as done, or to run at the next
+     * boot, for the instance ID on the config drive). A fixed command: nothing
+     * in it comes from the server or a customer.
      *
      * Cloudbase-Init keeps a plugin's state under
      * HKLM\SOFTWARE\Cloudbase Solutions\Cloudbase-Init\<instance ID>\Plugins
@@ -73,8 +74,11 @@ final readonly class GuestScripts
             Write-Output ('service=' + $service.Status)
             $conf = Join-Path $env:ProgramFiles 'Cloudbase Solutions\Cloudbase-Init\conf\cloudbase-init.conf'
             if ((Get-CimInstance -ClassName Win32_Service -Filter 'Name=''cloudbase-init''').PathName -match '--config-file\s+\W?([a-z]:\\.+?\.conf)') { $conf = $Matches[1] }
-            $line = Get-Content -Path $conf | Where-Object { $_ -match '^\s*plugins\s*=' } | Select-Object -First 1
-            if ($line) { Write-Output ('plugins=' + ((($line -split '=', 2)[1] -split ',' | ForEach-Object { ($_.Trim() -split '\.')[-1] } | Where-Object { $_ }) -join ',')) }
+            $pluginsOf = { param($path) $line = Get-Content -Path $path | Where-Object { $_ -match '^\s*plugins\s*=' } | Select-Object -First 1; if ($line) { (($line -split '=', 2)[1] -split ',' | ForEach-Object { ($_.Trim() -split '\.')[-1] } | Where-Object { $_ }) -join ',' } }
+            $plugins = & $pluginsOf $conf
+            if ($plugins) { Write-Output ('plugins=' + $plugins) }
+            $unattend = & $pluginsOf (Join-Path (Split-Path -Path $conf) 'cloudbase-init-unattend.conf')
+            if ($unattend) { Write-Output ('unattend=' + $unattend) }
             $drive = Get-CimInstance -ClassName Win32_LogicalDisk -Filter 'DriveType=5' | Where-Object { $_.VolumeName -eq 'config-2' } | Select-Object -First 1
             $instance = if ($drive) { (Get-Content -Raw -Path ($drive.DeviceID + '\openstack\latest\meta_data.json') | ConvertFrom-Json).uuid } else { '' }
             foreach ($root in 'HKLM:\SOFTWARE\Cloudbase Solutions\Cloudbase-Init', 'HKLM:\SOFTWARE\WOW6432Node\Cloudbase Solutions\Cloudbase-Init') {
@@ -572,8 +576,12 @@ final readonly class GuestScripts
      *
      * A recorded plugin has run during this boot whatever its state: plugins
      * that run at every boot (ExtendVolumesPlugin, LocalScriptsPlugin,
-     * MTUPlugin) always record 2, never 1. One that failed records nothing
-     * (Cloudbase-Init logs the error and goes on), so it is still waited for.
+     * MTUPlugin) always record 2, never 1. One
+     * that failed records nothing (Cloudbase-Init logs the error and goes on),
+     * so it is still waited for. Without a plugins line the service runs its
+     * default plugins: then any plugin it recorded besides those of the
+     * specialize pass (cloudbase-init-unattend.conf, same instance ID) proves
+     * it has run.
      */
     public static function windowsSetupPending(string $output): ?string
     {
@@ -611,9 +619,10 @@ final readonly class GuestScripts
         $recorded = array_map(strtolower(...), [...$list('done'), ...$list('later')]);
         $required = $list('plugins');
 
-        // Without a plugins line Cloudbase-Init runs its default plugins: which it has run is unknown.
         if ($required === []) {
-            return $recorded === [] ? 'Cloudbase-Init has not run for this server yet' : null;
+            $specialize = array_map(strtolower(...), $list('unattend'));
+
+            return array_diff($recorded, $specialize) === [] ? 'Cloudbase-Init has not run for this server yet' : null;
         }
 
         $missing = array_values(array_filter($required, fn (string $plugin) => ! in_array(strtolower($plugin), $recorded, true)));

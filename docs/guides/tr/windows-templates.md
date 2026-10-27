@@ -597,8 +597,9 @@ ister.
   yanında bunu da bekler (çalışmayı sürdüren bir servis beklemeyi ancak 15 dakika sonra bitirir).
 - **`plugins`**, panelin servisin işini bitirdiğini anlamak için okuduğu satırdır da:
   `cloudbase-init.conf`'ta listelenen her plugin, sunucunun instance kimliği için kaydedilmiş
-  olmalıdır. Satırı tek satırda tutun; o satır yoksa panel kaydedilmiş herhangi bir plugin'i kabul
-  eder.
+  olmalıdır. Satırı tek satırda tutun; o satır yoksa panel, specialize aşamasının aynı instance
+  kimliği altına kaydettiği `cloudbase-init-unattend.conf` plugin'leri dışında kaydedilmiş herhangi
+  bir plugin'i kabul eder.
 - **`WillReboot` `Never` ve `& exit 0`** (Yol A): Cloudbase-Init'in kendi `Unattend.xml`'i
   `&& exit 1 || exit 2` ve `OnRequest` ile biter; çıkış kodu 1, Cloudbase-Init başarılı olsa bile
   Windows kurulumundan ek bir yeniden başlatma ister. Specialize aşamasında başarısız olan bir

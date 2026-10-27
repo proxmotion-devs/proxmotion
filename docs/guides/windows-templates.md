@@ -598,7 +598,8 @@ server's disk goes to.
   besides the plugins it recorded (a service that keeps running ends the wait only after 15 minutes).
 - **`plugins`** is also what the panel reads to know when the service is done: every plugin listed
   in `cloudbase-init.conf` must be recorded for the server's instance ID. Keep the line on one
-  line; without it the panel accepts any recorded plugins.
+  line; without it the panel accepts any plugin recorded besides those of
+  `cloudbase-init-unattend.conf`, which the specialize pass records under the same instance ID.
 - **`WillReboot` `Never` and `& exit 0`** (Way A): Cloudbase-Init's own `Unattend.xml` ends with
   `&& exit 1 || exit 2` and `OnRequest`, and exit code 1 asks Windows setup for an extra restart even
   when Cloudbase-Init succeeded. A failed run in the specialize pass is then no longer repeated; only

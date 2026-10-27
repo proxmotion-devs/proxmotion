@@ -54,11 +54,21 @@ class WindowsSetupPendingTest extends TestCase
         ]));
     }
 
-    public function test_without_a_plugins_line_any_recorded_plugin_is_enough()
+    public function test_without_a_plugins_line_any_plugin_the_service_recorded_is_enough()
     {
         $this->assertNull($this->pending(['service' => 'Stopped', 'done' => 'SetUserPasswordPlugin', 'later' => '']));
         $this->assertNull($this->pending(['service' => 'Stopped', 'done' => 'SetUserPasswordPlugin', 'later' => 'ExtendVolumesPlugin,MTUPlugin']));
         $this->assertSame('Cloudbase-Init has not run for this server yet', $this->pending(['service' => 'Stopped']));
+    }
+
+    public function test_without_a_plugins_line_the_plugins_of_the_specialize_pass_do_not_count()
+    {
+        // Way A: before the service starts it looks stopped, and only the unattend run has recorded its plugins.
+        $specialize = ['service' => 'Stopped', 'unattend' => 'SetHostNamePlugin,ExtendVolumesPlugin,UserDataPlugin'];
+
+        $this->assertSame('Cloudbase-Init has not run for this server yet', $this->pending([...$specialize, 'done' => 'SetHostNamePlugin,UserDataPlugin', 'later' => 'ExtendVolumesPlugin']));
+        $this->assertNull($this->pending([...$specialize, 'done' => 'SetHostNamePlugin,UserDataPlugin,SetUserPasswordPlugin', 'later' => 'ExtendVolumesPlugin']));
+        $this->assertSame('Cloudbase-Init has not run for this server yet', $this->pending([...$specialize, 'done' => 'sethostnameplugin', 'later' => '']), 'Registry names ignore case.');
     }
 
     public function test_a_running_service_a_pending_computer_name_and_an_unfinished_setup_are_waited_for()
