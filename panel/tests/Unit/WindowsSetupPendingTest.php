@@ -21,15 +21,27 @@ class WindowsSetupPendingTest extends TestCase
         return GuestScripts::windowsSetupPending(implode("\r\n", array_map(fn (string $key, string $value) => "{$key}={$value}", array_keys($values), $values))."\r\n");
     }
 
-    public function test_every_plugin_of_the_configuration_must_be_done_for_this_instance()
+    public function test_every_plugin_of_the_configuration_must_be_recorded_for_this_instance()
     {
         $plugins = ['service' => 'Stopped', 'plugins' => 'SetUserPasswordPlugin,NetworkConfigPlugin'];
 
         $this->assertNull($this->pending([...$plugins, 'done' => 'NetworkConfigPlugin,SetUserPasswordPlugin', 'later' => '']));
         $this->assertNull($this->pending([...$plugins, 'done' => 'setuserpasswordplugin,NETWORKCONFIGPLUGIN', 'later' => '']), 'Registry names ignore case.');
-        $this->assertSame('Cloudbase-Init has not finished NetworkConfigPlugin', $this->pending([...$plugins, 'done' => 'SetUserPasswordPlugin', 'later' => 'NetworkConfigPlugin']));
+        // A plugin that failed records nothing.
+        $this->assertSame('Cloudbase-Init has not finished NetworkConfigPlugin', $this->pending([...$plugins, 'done' => 'SetUserPasswordPlugin', 'later' => '']));
         // No config drive or no key for its instance ID: nothing ran for this server yet.
         $this->assertSame('Cloudbase-Init has not finished SetUserPasswordPlugin, NetworkConfigPlugin', $this->pending($plugins));
+    }
+
+    public function test_plugins_that_run_at_every_boot_count_as_run()
+    {
+        // The guide's configuration: ExtendVolumesPlugin and LocalScriptsPlugin record 2 (run again at the next boot), never 1.
+        $this->assertNull($this->pending([
+            'service' => 'Stopped',
+            'plugins' => 'SetUserPasswordPlugin,NetworkConfigPlugin,ExtendVolumesPlugin,SetUserSSHPublicKeysPlugin,LocalScriptsPlugin,UserDataPlugin',
+            'done' => 'SetUserPasswordPlugin,NetworkConfigPlugin,SetUserSSHPublicKeysPlugin,UserDataPlugin',
+            'later' => 'ExtendVolumesPlugin,LocalScriptsPlugin',
+        ]));
     }
 
     public function test_plugins_of_the_specialize_pass_do_not_count_for_the_service()
@@ -42,10 +54,10 @@ class WindowsSetupPendingTest extends TestCase
         ]));
     }
 
-    public function test_without_a_plugins_line_every_recorded_plugin_must_be_done()
+    public function test_without_a_plugins_line_any_recorded_plugin_is_enough()
     {
         $this->assertNull($this->pending(['service' => 'Stopped', 'done' => 'SetUserPasswordPlugin', 'later' => '']));
-        $this->assertSame('Cloudbase-Init has not finished LocalScriptsPlugin', $this->pending(['service' => 'Stopped', 'done' => 'SetUserPasswordPlugin', 'later' => 'LocalScriptsPlugin']));
+        $this->assertNull($this->pending(['service' => 'Stopped', 'done' => 'SetUserPasswordPlugin', 'later' => 'ExtendVolumesPlugin,MTUPlugin']));
         $this->assertSame('Cloudbase-Init has not run for this server yet', $this->pending(['service' => 'Stopped']));
     }
 

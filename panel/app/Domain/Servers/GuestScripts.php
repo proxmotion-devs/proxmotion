@@ -565,9 +565,14 @@ final readonly class GuestScripts
      * IMAGE_STATE_COMPLETE (no image state: a template that was never
      * generalized), no new computer name waits for a restart, and, when
      * Cloudbase-Init is installed, its service has stopped and has recorded
-     * every plugin of its configuration as done for this server's instance
-     * ID. A stopped service alone proves nothing: it looks the same before it
-     * has started and while the restart it asked for is still to come.
+     * every plugin of its configuration for this server's instance ID. A
+     * stopped service alone proves nothing: it looks the same before it has
+     * started and while the restart it asked for is still to come.
+     *
+     * A recorded plugin has run during this boot whatever its state: plugins
+     * that run at every boot (ExtendVolumesPlugin, LocalScriptsPlugin,
+     * MTUPlugin) always record 2, never 1. One that failed records nothing
+     * (Cloudbase-Init logs the error and goes on), so it is still waited for.
      */
     public static function windowsSetupPending(string $output): ?string
     {
@@ -602,21 +607,15 @@ final readonly class GuestScripts
             return "the cloudbase-init service is {$service}";
         }
 
-        $done = array_map(strtolower(...), $list('done'));
+        $recorded = array_map(strtolower(...), [...$list('done'), ...$list('later')]);
         $required = $list('plugins');
 
-        // Without a plugins line Cloudbase-Init runs its default plugins: every one it recorded must be done.
+        // Without a plugins line Cloudbase-Init runs its default plugins: which it has run is unknown.
         if ($required === []) {
-            $later = $list('later');
-
-            return match (true) {
-                $done === [] && $later === [] => 'Cloudbase-Init has not run for this server yet',
-                $later !== [] => 'Cloudbase-Init has not finished '.implode(', ', $later),
-                default => null,
-            };
+            return $recorded === [] ? 'Cloudbase-Init has not run for this server yet' : null;
         }
 
-        $missing = array_values(array_filter($required, fn (string $plugin) => ! in_array(strtolower($plugin), $done, true)));
+        $missing = array_values(array_filter($required, fn (string $plugin) => ! in_array(strtolower($plugin), $recorded, true)));
 
         return $missing === [] ? null : 'Cloudbase-Init has not finished '.implode(', ', $missing);
     }

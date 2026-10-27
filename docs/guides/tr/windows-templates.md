@@ -596,9 +596,9 @@ ister.
 - **`stop_service_on_exit=true`**: servis işini bitirince durur; panel, kaydettiği plugin'lerin
   yanında bunu da bekler (çalışmayı sürdüren bir servis beklemeyi ancak 15 dakika sonra bitirir).
 - **`plugins`**, panelin servisin işini bitirdiğini anlamak için okuduğu satırdır da:
-  `cloudbase-init.conf`'ta listelenen her plugin, sunucunun instance kimliği için tamamlandı olarak
-  kaydedilmiş olmalıdır. Satırı tek satırda tutun; o satır yoksa panel kaydedilmiş herhangi bir
-  plugin'i kabul eder, yeter ki hiçbiri sonraki açılışı beklemesin.
+  `cloudbase-init.conf`'ta listelenen her plugin, sunucunun instance kimliği için kaydedilmiş
+  olmalıdır. Satırı tek satırda tutun; o satır yoksa panel kaydedilmiş herhangi bir plugin'i kabul
+  eder.
 - **`WillReboot` `Never` ve `& exit 0`** (Yol A): Cloudbase-Init'in kendi `Unattend.xml`'i
   `&& exit 1 || exit 2` ve `OnRequest` ile biter; çıkış kodu 1, Cloudbase-Init başarılı olsa bile
   Windows kurulumundan ek bir yeniden başlatma ister. Specialize aşamasında başarısız olan bir
@@ -700,9 +700,10 @@ olana kadar sürer:
 - `cloudbase-init` servisi artık çalışmıyordur (`Stopped` ya da kurulu değil) ve
 - Cloudbase-Init, servisin yapılandırmasındaki her plugin'i (servisin çalıştığı
   `cloudbase-init.conf`'un `plugins` satırı) `HKLM\SOFTWARE\Cloudbase Solutions\Cloudbase-Init\<instance kimliği>\Plugins`
-  altında tamamlandı (`1`) olarak kaydetmiştir; instance kimliği config drive'daki
-  `openstack\latest\meta_data.json`'un `uuid`'sidir. Specialize aşamasının plugin'leri de oraya
-  kaydedilir ama sayılmaz.
+  altında kaydetmiştir; instance kimliği config drive'daki `openstack\latest\meta_data.json`'un
+  `uuid`'sidir. Kayıt tamamlandı (`1`) ya da sonraki açılışta yeniden çalışacak (`2`) olabilir; her
+  açılışta çalışan plugin'ler (`ExtendVolumesPlugin`, `LocalScriptsPlugin`, `MTUPlugin`) her zaman
+  `2` kaydeder. Specialize aşamasının plugin'leri de oraya kaydedilir ama sayılmaz.
 
 Servisin durmuş olması tek başına yetmez: başlamadan önce de, çalışması bittikten sonra istediği
 yeniden başlatmaya kadar da, yeni bilgisayar adı henüz kullanılmazken, aynı görünür. Böyle bir anda
@@ -714,7 +715,7 @@ Aradaki yeniden başlatmalar beklenir. Sunucu ancak o zaman *Aktif* olur ve adre
 adım Linux'taki gibi bu notla biter; kurulum 15 dakika sonra bitmediyse adım, son kontrolün hâlâ
 neyi beklediğiyle birlikte *Windows setup did not finish within 15 minutes* notunu düşer (örneğin
 *Cloudbase-Init has not finished NetworkConfigPlugin*: başarısız olan bir plugin hiçbir zaman
-tamamlandı olarak kaydedilmez; `cloudbase-init.log`'a bakın) ve görev devam eder. Bir yeniden başlatma yine de bir
+kaydedilmez; `cloudbase-init.log`'a bakın) ve görev devam eder. Bir yeniden başlatma yine de bir
 script'i keserse panel agent'ı bekleyip script'i yeniden çalıştırır (en çok üç kez) ve Windows
 script'leri ağa dokunmadan önce Cloudbase-Init'i bekler.
 

@@ -65,11 +65,13 @@ class WindowsSetupWaitTest extends TestCase
         string $done = 'SetUserPasswordPlugin,NetworkConfigPlugin,UserDataPlugin',
         string $name = 'WEB1',
         string $activeName = 'WEB1',
+        string $plugins = 'SetUserPasswordPlugin,NetworkConfigPlugin,UserDataPlugin',
+        string $later = '',
     ): string {
         $lines = ["image={$image}", "name={$name}", "active_name={$activeName}"];
 
         if ($service !== null) {
-            $lines = [...$lines, "service={$service}", 'plugins=SetUserPasswordPlugin,NetworkConfigPlugin,UserDataPlugin', "done={$done}", 'later='];
+            $lines = [...$lines, "service={$service}", "plugins={$plugins}", "done={$done}", "later={$later}"];
         }
 
         return implode("\r\n", $lines)."\r\n";
@@ -122,6 +124,24 @@ class WindowsSetupWaitTest extends TestCase
 
         $this->assertSame(2, $this->checks);
         $this->assertSame(ServerStatus::Active, $server->status);
+    }
+
+    public function test_plugins_cloudbase_init_runs_at_every_boot_do_not_hold_the_wait()
+    {
+        // ExtendVolumesPlugin and LocalScriptsPlugin record "run at the next boot" (2) even after they ran.
+        $this->answers = [self::checkOutput(
+            plugins: 'SetUserPasswordPlugin,ExtendVolumesPlugin,LocalScriptsPlugin',
+            done: 'SetUserPasswordPlugin',
+            later: 'ExtendVolumesPlugin,LocalScriptsPlugin',
+        )];
+        Sleep::fake();
+
+        $server = app(ServerCreator::class)->create($this->order())->refresh();
+
+        $this->assertSame(1, $this->checks);
+        Sleep::assertNeverSlept();
+        $this->assertSame(ServerStatus::Active, $server->status);
+        $this->assertNull($this->waitStep($server->tasks()->sole())['message']);
     }
 
     public function test_a_finished_windows_setup_without_cloudbase_init_counts_as_finished()

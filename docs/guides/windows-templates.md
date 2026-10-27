@@ -597,8 +597,8 @@ server's disk goes to.
 - **`stop_service_on_exit=true`**: the service stops when it is done; the panel waits for that,
   besides the plugins it recorded (a service that keeps running ends the wait only after 15 minutes).
 - **`plugins`** is also what the panel reads to know when the service is done: every plugin listed
-  in `cloudbase-init.conf` must be recorded as done for the server's instance ID. Keep the line on
-  one line; without it the panel accepts any recorded plugins, none waiting for the next boot.
+  in `cloudbase-init.conf` must be recorded for the server's instance ID. Keep the line on one
+  line; without it the panel accepts any recorded plugins.
 - **`WillReboot` `Never` and `& exit 0`** (Way A): Cloudbase-Init's own `Unattend.xml` ends with
   `&& exit 1 || exit 2` and `OnRequest`, and exit code 1 asks Windows setup for an extra restart even
   when Cloudbase-Init succeeded. A failed run in the specialize pass is then no longer repeated; only
@@ -694,10 +694,12 @@ agent* step goes on, checking through the agent every few seconds, until
   `HKLM\SYSTEM\CurrentControlSet\Control\ComputerName` are the same),
 - the `cloudbase-init` service is no longer running (`Stopped`, or not installed), and
 - Cloudbase-Init has recorded every plugin of the service's configuration (the `plugins` line of the
-  `cloudbase-init.conf` its service runs with) as done (`1`) under
+  `cloudbase-init.conf` its service runs with) under
   `HKLM\SOFTWARE\Cloudbase Solutions\Cloudbase-Init\<instance ID>\Plugins`, where the instance ID is
-  the `uuid` of `openstack\latest\meta_data.json` on the config drive. Plugins of the specialize
-  pass are recorded there too but do not count.
+  the `uuid` of `openstack\latest\meta_data.json` on the config drive: as done (`1`), or as to run
+  again at the next boot (`2`), which plugins that run at every boot (`ExtendVolumesPlugin`,
+  `LocalScriptsPlugin`, `MTUPlugin`) always record. Plugins of the specialize pass are recorded
+  there too but do not count.
 
 A stopped service alone is not enough: it looks the same before it has started and between the
 end of its run and the restart it asked for, while the new computer name is not in use yet. Checks
@@ -709,7 +711,7 @@ the template's own script run. When the agent has not answered at all after 10 m
 without an agent), the step ends with that note as on Linux; when setup has not finished after 15
 minutes, the step notes *Windows setup did not finish within 15 minutes* with what the last check
 still waited for (for example *Cloudbase-Init has not finished NetworkConfigPlugin*: a plugin that
-failed is never recorded as done; see `cloudbase-init.log`) and the task goes on.
+failed is never recorded; see `cloudbase-init.log`) and the task goes on.
 Should a restart still interrupt a script, the panel waits for the agent and runs the script again
 (up to three times), and the Windows scripts wait for Cloudbase-Init before they touch the network.
 

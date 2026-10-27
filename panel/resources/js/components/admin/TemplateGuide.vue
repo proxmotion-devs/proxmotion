@@ -907,7 +907,7 @@ const cloudbaseUrl = 'https://cloudbase.it/cloudbase-init/';
                     <p>
                         {{
                             $t(
-                                'The panel waits until the guest agent answers, Windows setup reports IMAGE_STATE_COMPLETE, Cloudbase-Init has recorded every plugin of its configuration as done for the server and stopped, and no new computer name waits for a restart; then the server is Active and its scripts run. Customers log in with Remote Desktop as Administrator, the account whose password the panel sets.',
+                                'The panel waits until the guest agent answers, Windows setup reports IMAGE_STATE_COMPLETE, Cloudbase-Init has recorded every plugin of its configuration for the server and stopped, and no new computer name waits for a restart; then the server is Active and its scripts run. Customers log in with Remote Desktop as Administrator, the account whose password the panel sets.',
                             )
                         }}
                     </p>
