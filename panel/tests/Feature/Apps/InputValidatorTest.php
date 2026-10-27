@@ -110,4 +110,12 @@ class InputValidatorTest extends TestCase
         $this->assertArrayNotHasKey('admin_password', $values);
         $this->assertSame('2000', (string) $values['port']);
     }
+
+    public function test_empty_inputs_take_their_defaults()
+    {
+        // port and mode are required with a default; tls is optional with one.
+        $values = $this->validate(['name' => 'office-vpn', 'port' => '', 'mode' => '', 'tls' => '']);
+
+        $this->assertSame(['port' => 8080, 'mode' => 'safe', 'name' => 'office-vpn', 'tls' => true], $values);
+    }
 }

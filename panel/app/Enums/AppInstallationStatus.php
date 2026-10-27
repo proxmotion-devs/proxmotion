@@ -56,6 +56,17 @@ enum AppInstallationStatus: string
     }
 
     /**
+     * Statuses of an app that is on the server: installing it again would
+     * run its installer over it.
+     *
+     * @return list<self>
+     */
+    public static function onServer(): array
+    {
+        return [self::Installed, self::Uninstalling, self::UninstallFailed, self::Upgrading, self::UpgradeFailed];
+    }
+
+    /**
      * Can be uninstalled (when its recipe has an uninstall script).
      */
     public function canUninstall(): bool

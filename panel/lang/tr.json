@@ -1241,6 +1241,7 @@
     "This app has no draft.": "Bu uygulamanın taslağı yok.",
     "The draft of an app that was never published cannot be discarded; delete the app instead.": "Hiç yayınlanmamış bir uygulamanın taslağı silinemez; bunun yerine uygulamayı silin.",
     "This app has installations; deactivate it instead.": "Bu uygulamanın kurulumları var; bunun yerine pasifleştirin.",
+    "Servers have the right to install this app; revoke it or deactivate the app instead.": "Sunucuların bu uygulamayı kurma hakkı var; hakkı geri alın veya bunun yerine uygulamayı pasifleştirin.",
     "Bundled apps are read-only; copy the app to change it.": "Dahili uygulamalar salt okunurdur; değiştirmek için uygulamayı kopyalayın.",
     "Capabilities": "Yetenekler",
     "What the template offers to apps. Apps ask for capabilities instead of naming distributions; the family suggests them.": "Şablonun uygulamalara sunduğu özellikler. Uygulamalar dağıtım adı yerine yetenek ister; aile seçimi bunları önerir.",

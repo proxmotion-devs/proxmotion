@@ -204,6 +204,23 @@ class AppApiTest extends ApiTestCase
         $this->assertSame(0, WebhookDelivery::query()->count());
     }
 
+    public function test_an_uninstall_ended_by_a_wiped_server_is_reported_as_its_runs_outcome()
+    {
+        Queue::fake([DeliverWebhook::class]);
+        WebhookEndpoint::factory()->for($this->billingSystem)->create();
+        $installation = $this->installed();
+        $this->api('DELETE', "/api/v1/servers/{$this->server->uuid}/apps/{$installation->uuid}")->assertAccepted();
+        WebhookDelivery::query()->delete();
+
+        app(AppInstallations::class)->serverWiped($this->server->refresh(), 'The server was terminated.');
+
+        $delivery = WebhookDelivery::query()->sole();
+        $payload = json_decode($delivery->payload, true);
+        $this->assertSame('app.uninstall_failed', $delivery->event, 'Not app.failed: the app was installed.');
+        $this->assertSame('The server was terminated.', $payload['data']['run']['error']);
+        $this->assertSame(AppInstallationStatus::Removed, $installation->refresh()->status);
+    }
+
     public function test_password_inputs_are_never_shown()
     {
         $recipe = AppRecipe::factory()->create();

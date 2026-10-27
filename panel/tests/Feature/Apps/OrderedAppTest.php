@@ -2,9 +2,12 @@
 
 namespace Tests\Feature\Apps;
 
+use App\Domain\Apps\AppEntitlements;
 use App\Domain\Apps\AppNotEligible;
 use App\Domain\Apps\InstallationPoller;
+use App\Domain\Apps\OrderedAppOptions;
 use App\Domain\Servers\ServerReinstaller;
+use App\Enums\AppEntitlementSource;
 use App\Enums\AppInstallationStatus;
 use App\Enums\AppInstallMode;
 use App\Enums\ServerStatus;
@@ -183,6 +186,21 @@ class OrderedAppTest extends TestCase
 
         $this->assertSame(AppInstallationStatus::Removed, $stale->refresh()->status);
         $this->assertSame(0, $this->startCommands($server));
+    }
+
+    public function test_the_reinstall_form_offers_paid_apps_only_with_an_entitlement()
+    {
+        $server = app(ServerCreator::class)->create($this->order())->refresh();
+        $paid = AppRecipe::factory()->withDefinition(['billing' => 'paid'])->create();
+        $paid->osVersions()->attach($server->osTemplate->operating_system_version_id);
+        $offered = fn () => array_column(app(OrderedAppOptions::class)->for([$server->osTemplate], $server), 'slug');
+
+        $this->assertNotContains($paid->slug, $offered());
+        $this->assertContains('docker', $offered());
+
+        app(AppEntitlements::class)->grant($server, $paid->refresh(), AppEntitlementSource::Admin, $this->admin);
+
+        $this->assertContains($paid->slug, $offered());
     }
 
     public function test_an_app_that_does_not_fit_the_new_system_refuses_the_reinstall()

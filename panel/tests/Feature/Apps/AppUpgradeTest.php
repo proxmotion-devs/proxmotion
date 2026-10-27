@@ -112,6 +112,17 @@ class AppUpgradeTest extends TestCase
         $this->assertNull($target(), 'The new version needs more memory than the server has.');
     }
 
+    public function test_an_administrators_edit_of_the_installed_version_is_offered_as_an_upgrade()
+    {
+        $installation = $this->installed();
+        $this->assertSame('1.3.1', $installation->version->version);
+
+        // Published by the editor after editing the bundled app in place (docs/adr/0018 §2).
+        $edit = $this->publishVersion('wireguard', '1.3.1-local.1', from: '>=1.3.1 <1.4.0');
+
+        $this->assertTrue($edit->is(app(AppUpgrades::class)->target($installation->refresh()->load('recipe.latestVersion'))));
+    }
+
     public function test_an_upgrade_runs_the_new_versions_script_with_the_installed_inputs()
     {
         $installation = $this->installed();

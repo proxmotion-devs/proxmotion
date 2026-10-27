@@ -54,6 +54,21 @@ final readonly class VersionRange
     }
 
     /**
+     * Whether $candidate is newer than $installed for an upgrade. An
+     * administrator's edit sorts before the version it was made from
+     * (docs/adr/0018 §2), but is newer than an installation of that very
+     * version: 1.1.0-local.1 is newer than 1.1.0.
+     */
+    public static function isNewer(string $candidate, string $installed): bool
+    {
+        if ($candidate !== $installed && self::base($candidate) === $installed) {
+            return true;
+        }
+
+        return version_compare($candidate, $installed, '>');
+    }
+
+    /**
      * The released version an administrator's edit was made from: 1.1.0-local.2 → 1.1.0.
      */
     public static function base(string $version): string

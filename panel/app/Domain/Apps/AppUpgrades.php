@@ -32,7 +32,7 @@ final readonly class AppUpgrades
         $target = $installation->recipe->latestVersion;
         $installed = $installation->version;
 
-        if ($target === null || $target->is($installed) || ! version_compare($target->version, $installed->version, '>')) {
+        if ($target === null || $target->is($installed) || ! VersionRange::isNewer($target->version, $installed->version)) {
             return null;
         }
 

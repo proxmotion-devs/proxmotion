@@ -171,12 +171,12 @@ final readonly class AppPackages
             throw new PackageRefused('This app has installations; deactivate it instead.');
         }
 
-        DB::transaction(function () use ($app) {
-            $app->installations()->delete();
-            $app->forceFill(['latest_version_id' => null])->save();
-            $app->versions()->delete();
-            $app->delete();
-        });
+        // Billing systems still sell the right to install it (docs/adr/0019).
+        if ($app->entitlements()->active()->exists()) {
+            throw new PackageRefused('Servers have the right to install this app; revoke it or deactivate the app instead.');
+        }
+
+        DB::transaction(fn () => $app->deleteWithHistory());
 
         AuditLog::record('app.removed', $admin, null, ['app' => $app->slug], $ipAddress);
     }

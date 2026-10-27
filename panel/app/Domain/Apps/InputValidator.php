@@ -56,7 +56,9 @@ final class InputValidator
         $values = [];
 
         foreach ($declared as $input) {
-            $value = $given[$input->key] ?? $input->default;
+            $value = $given[$input->key] ?? null;
+            // A field left empty takes the default like one left out.
+            $value = $value === null || $value === '' ? $input->default : $value;
 
             if ($value === null || $value === '') {
                 if ($input->required) {

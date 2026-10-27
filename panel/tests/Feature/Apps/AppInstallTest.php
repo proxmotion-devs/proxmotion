@@ -356,6 +356,38 @@ class AppInstallTest extends TestCase
         $this->assertSame(AppInstallationStatus::Installing, $this->install('docker')->status);
     }
 
+    public function test_an_app_whose_uninstall_or_upgrade_failed_is_still_installed()
+    {
+        $wireguard = $this->install();
+        $this->guestWrites($wireguard, 'status.json', ['status' => 'installed']);
+        $this->poll($wireguard);
+
+        foreach ([AppInstallationStatus::UninstallFailed, AppInstallationStatus::UpgradeFailed] as $status) {
+            $wireguard->forceFill(['status' => $status])->save();
+
+            $this->expectExceptionOnInstall('wireguard', 'This app is already installed on the server.');
+        }
+    }
+
+    public function test_a_failed_installation_is_not_retried_once_the_app_was_installed_again()
+    {
+        $failed = $this->install();
+        $this->guestWrites($failed, 'status.json', ['status' => 'failed', 'message' => 'boom']);
+        $this->poll($failed);
+        $again = $this->install();
+        $this->guestWrites($again, 'status.json', ['status' => 'installed']);
+        $this->poll($again);
+
+        try {
+            app(AppInstaller::class)->retry($failed->refresh(), $this->admin, '127.0.0.1');
+            $this->fail('The failed installation was retried.');
+        } catch (AppInstallConflict $e) {
+            $this->assertSame('This app is already installed on the server.', $e->getMessage());
+        }
+
+        $this->assertSame(AppInstallationStatus::Failed, $failed->refresh()->status);
+    }
+
     private function expectExceptionOnInstall(string $slug, string $message): void
     {
         try {

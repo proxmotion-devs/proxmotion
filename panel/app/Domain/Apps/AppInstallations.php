@@ -25,6 +25,7 @@ final readonly class AppInstallations
         private Webhooks $webhooks,
         private AdminNotifier $notifier,
         private AppLogs $logs,
+        private AppRuns $runs,
     ) {}
 
     /**
@@ -70,9 +71,16 @@ final readonly class AppInstallations
                 continue;
             }
 
-            // Uninstalls and actions end with the system they ran on (docs/adr/0016 §4).
+            // Uninstalls, upgrades and actions end with the system they ran on (docs/adr/0016 §4),
+            // with their own webhooks; an uninstall or upgrade leaves the installation
+            // uninstall_failed or upgrade_failed, so it is not reported as a failed install.
             foreach ($installation->runs()->whereIn('status', [AppRunStatus::Queued, AppRunStatus::Running])->get() as $run) {
-                $run->forceFill(['status' => AppRunStatus::Failed, 'error' => Str::limit($reason, 997), 'finished_at' => now()])->save();
+                $this->runs->failed($run->setRelation('installation', $installation), $reason);
+            }
+
+            // Uninstalling or upgrading without a run left to fail: not a failed install either.
+            if (in_array($installation->status, [AppInstallationStatus::Uninstalling, AppInstallationStatus::Upgrading], true)) {
+                $installation->forceFill(['status' => AppInstallationStatus::Removed, 'finished_at' => now()])->save();
             }
 
             if ($installation->status->isBusy()) {

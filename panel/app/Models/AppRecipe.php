@@ -157,6 +157,28 @@ class AppRecipe extends Model
     }
 
     /**
+     * @return HasMany<AppEntitlement, $this>
+     */
+    public function entitlements(): HasMany
+    {
+        return $this->hasMany(AppEntitlement::class);
+    }
+
+    /**
+     * Delete the app with its versions, its removed installations and its
+     * revoked entitlements (callers refuse apps in use or with active
+     * entitlements first). Call inside a transaction.
+     */
+    public function deleteWithHistory(): void
+    {
+        $this->installations()->delete();
+        $this->entitlements()->delete();
+        $this->forceFill(['latest_version_id' => null])->save();
+        $this->versions()->delete();
+        $this->delete();
+    }
+
+    /**
      * Installed on a server, or tried on a test server that still has it
      * (docs/adr/0018 §7): the app cannot be deleted, only deactivated.
      */

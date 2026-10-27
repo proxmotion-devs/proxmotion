@@ -3,9 +3,12 @@
 namespace Tests\Feature\Admin;
 
 use App\Domain\Apps\AppPackages;
+use App\Enums\AppEntitlementSource;
+use App\Models\AppEntitlement;
 use App\Models\AppInstallation;
 use App\Models\AppRecipe;
 use App\Models\AuditLog;
+use App\Models\Server;
 use App\Models\User;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\File;
@@ -168,6 +171,22 @@ class AppPackageTest extends AdminTestCase
         $this->delete(route('admin.apps.packages.remove', $app))->assertRedirect();
         $this->assertFalse(AppRecipe::query()->exists());
         $this->assertTrue(AuditLog::query()->where('action', 'app.removed')->exists());
+    }
+
+    public function test_an_app_is_removed_with_revoked_entitlements_but_not_with_active_ones()
+    {
+        $this->post($this->preview());
+        $app = AppRecipe::query()->sole();
+        $entitlement = (new AppEntitlement)->forceFill(['server_id' => Server::factory()->create()->id, 'app_recipe_id' => $app->id, 'source' => AppEntitlementSource::Api]);
+        $entitlement->save();
+
+        $this->delete(route('admin.apps.packages.remove', $app))->assertRedirect();
+        $this->assertTrue(AppRecipe::query()->exists(), 'A billing system still sells the right to install it.');
+
+        $entitlement->forceFill(['revoked_at' => now()])->save();
+        $this->delete(route('admin.apps.packages.remove', $app))->assertRedirect();
+        $this->assertFalse(AppRecipe::query()->exists());
+        $this->assertFalse(AppEntitlement::query()->exists());
     }
 
     public function test_an_exported_app_is_a_proxapp_package()

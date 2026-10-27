@@ -4,12 +4,15 @@ namespace Tests\Feature\Admin;
 
 use App\Domain\Apps\AppEligibility;
 use App\Domain\Apps\RecipeLoader;
+use App\Enums\AppEntitlementSource;
 use App\Enums\AppRecipeVersionStatus;
+use App\Models\AppEntitlement;
 use App\Models\AppInstallation;
 use App\Models\AppRecipe;
 use App\Models\AppRecipeVersion;
 use App\Models\AuditLog;
 use App\Models\OsTemplate;
+use App\Models\Server;
 use Illuminate\Support\Facades\File;
 use Illuminate\Testing\TestResponse;
 use Symfony\Component\Yaml\Yaml;
@@ -196,6 +199,20 @@ class RecipeEditorTest extends AdminTestCase
         $this->assertNull(AppRecipe::query()->where('slug', 'my-docker')->first());
         $this->assertSame(0, AppRecipeVersion::query()->where('app_recipe_id', $app->id)->count());
         $this->delete(route('admin.apps.destroy', $this->app('docker')))->assertSessionHasErrors('app');
+    }
+
+    public function test_a_custom_app_servers_have_the_right_to_is_not_deleted()
+    {
+        $this->post(route('admin.apps.copy', $this->app('docker')), ['slug' => 'my-docker', 'name' => 'My Docker']);
+        $app = $this->app('my-docker');
+        $entitlement = (new AppEntitlement)->forceFill(['server_id' => Server::factory()->create()->id, 'app_recipe_id' => $app->id, 'source' => AppEntitlementSource::Admin]);
+        $entitlement->save();
+
+        $this->delete(route('admin.apps.destroy', $app))->assertSessionHasErrors('app');
+
+        $entitlement->forceFill(['revoked_at' => now()])->save();
+        $this->delete(route('admin.apps.destroy', $app))->assertRedirect(route('admin.apps.index'));
+        $this->assertNull(AppRecipe::query()->where('slug', 'my-docker')->first());
     }
 
     public function test_the_apps_page_lists_custom_drafts()
