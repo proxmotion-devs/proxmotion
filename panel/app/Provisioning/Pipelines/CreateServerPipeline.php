@@ -394,7 +394,10 @@ final readonly class CreateServerPipeline implements StagedPipeline
      * sets the real one. Every other VM is named after the hostname, which
      * cloud-init and Cloudbase-Init set themselves, so this does nothing. Windows
      * applies it at its next restart, done here; the next stage waits for its
-     * agent again. A failing script leaves a note.
+     * agent again. A failing script leaves a note. Custom scripts bound to
+     * hostname changes do not run: the hostname is the one the server was
+     * ordered with (on Windows not even in use before the restart), and those
+     * bound to the post-install script run later (docs/adr/0043).
      */
     private function nameGuest(Task $task, Server $server): null
     {
@@ -404,7 +407,7 @@ final readonly class CreateServerPipeline implements StagedPipeline
             return null;
         }
 
-        if (! $this->guestScripts->run($task, $server, GuestScriptEvent::HostnameChanged)
+        if (! $this->guestScripts->run($task, $server, GuestScriptEvent::HostnameChanged, custom: false)
             || $this->guestScripts->platform($server) !== OsPlatform::Windows) {
             return null;
         }

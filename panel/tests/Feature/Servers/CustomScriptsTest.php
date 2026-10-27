@@ -178,6 +178,20 @@ class CustomScriptsTest extends TestCase
         $this->assertSame('reinstall', json_decode($this->proxmox->guestFiles[$this->server->vmid]["/etc/proxmotion/script-{$this->osTemplate->customScripts()->sole()->id}.json"], true)['reason']);
     }
 
+    public function test_the_rename_of_a_vm_named_after_its_address_runs_no_hostname_scripts()
+    {
+        // Named from its location's template before 2026-10-20 (docs/adr/0031 §2a): the pipeline sets the real hostname inside.
+        $this->server->forceFill(['vm_name' => '203.0.113.9'])->save();
+        $script = $this->custom('Rename hook', "echo renamed\n", [GuestScriptEvent::HostnameChanged]);
+
+        $task = app(TaskRunner::class)->start($this->server, TaskType::Reinstall)->refresh();
+
+        $this->assertSame(TaskStatus::Succeeded, $task->status, (string) $task->error);
+        $this->assertNotNull($this->step($task, GuestScriptEvent::HostnameChanged->step()), 'The template\'s hostname script ran.');
+        $this->assertNull($this->step($task, 'script:hostname_changed:Rename hook'));
+        $this->assertFalse(GuestScriptLog::query()->where('custom_script_id', $script->id)->exists());
+    }
+
     public function test_after_a_password_reset_they_run_once_the_password_is_stored_and_never_get_it()
     {
         $script = $this->custom('Notify', "echo done\n", [GuestScriptEvent::PasswordReset]);

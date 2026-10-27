@@ -194,17 +194,18 @@ final readonly class GuestScripts
      * otherwise one ping decides. Critical events throw instead of leaving a
      * note, and leave completing their step to the caller. Every run is
      * logged (GuestScriptLog). Only trials pass $draft (the template's saved
-     * draft instead of its script) and $trace (sh -x on Linux).
+     * draft instead of its script) and $trace (sh -x on Linux). Without
+     * $custom only the event's own script runs.
      *
      * @return bool whether the event's own script ran and succeeded
      */
-    public function run(Task $task, Server $server, GuestScriptEvent $event, bool $waitForAgent = false, ?string $input = null, bool $draft = false, bool $trace = false): bool
+    public function run(Task $task, Server $server, GuestScriptEvent $event, bool $waitForAgent = false, ?string $input = null, bool $draft = false, bool $trace = false, bool $custom = true): bool
     {
         $resolved = $this->resolve($server->osTemplate, $this->platform($server), $event, $draft);
         $succeeded = $resolved !== null
             && $this->execute($task, $server, ScriptSlot::event($event), $resolved[0], $resolved[1], $waitForAgent, $input, $trace);
 
-        if ($task->type !== TaskType::GuestScript && ! $event->isCritical()) {
+        if ($custom && $task->type !== TaskType::GuestScript && ! $event->isCritical()) {
             $this->runCustom($task, $server, $event, waitForAgent: $waitForAgent && $resolved === null);
         }
 
