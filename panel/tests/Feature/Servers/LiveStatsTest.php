@@ -12,6 +12,7 @@ use App\Support\Broadcasting\ReverbFallback;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Broadcast;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -181,8 +182,11 @@ class LiveStatsTest extends TestCase
             ['name' => 'sda1', 'mountpoint' => '/', 'type' => 'ext4', 'used-bytes' => 3 * 1024 ** 3, 'total-bytes' => 12 * 1024 ** 3],
         ];
 
+        // The first answer has none yet: the agent is asked once the response has been sent.
+        $this->stats()->assertOk()->assertJsonPath('stats.status', 'running')->assertJsonPath('disk', null);
+        $this->assertSame(1, $this->fsinfoRequests());
+
         $this->stats()
-            ->assertOk()
             ->assertJsonPath('disk.available', true)
             ->assertJsonPath('disk.file_systems', [
                 ['mountpoint' => '/', 'type' => 'ext4', 'used_bytes' => 3 * 1024 ** 3, 'total_bytes' => 12 * 1024 ** 3],
@@ -193,25 +197,50 @@ class LiveStatsTest extends TestCase
         $this->stats()->assertJsonPath('disk.available', true);
         $this->assertSame(1, $this->fsinfoRequests());
 
+        // A stale answer is still shown while it is asked again.
+        $this->proxmox->guestFileSystems[100][1]['used-bytes'] = 6 * 1024 ** 3;
         $this->travel(20)->seconds();
-        $this->stats();
+        $this->stats()->assertJsonPath('disk.file_systems.0.used_bytes', 3 * 1024 ** 3);
         $this->assertSame(2, $this->fsinfoRequests());
+        $this->stats()->assertJsonPath('disk.file_systems.0.used_bytes', 6 * 1024 ** 3);
     }
 
-    public function test_disk_space_is_unknown_while_the_guest_agent_does_not_answer()
+    public function test_an_old_answer_is_no_longer_shown()
+    {
+        $this->stats();
+        $this->stats()->assertJsonPath('disk.available', true);
+
+        $this->travel(DiskSpace::KEEP_SECONDS + 1)->seconds();
+        $this->stats()->assertJsonPath('disk', null);
+    }
+
+    public function test_a_guest_agent_that_did_not_answer_is_asked_again_sooner()
     {
         $this->proxmox->agentDown[100] = true;
 
+        $this->stats();
         $this->stats()
             ->assertOk()
             ->assertJsonPath('stats.status', 'running')
             ->assertJsonPath('disk.available', false)
             ->assertJsonPath('disk.file_systems', []);
-
-        // Not asked again for a minute.
-        $this->travel(LiveStats::FRESH_SECONDS + 1)->seconds();
-        $this->stats()->assertJsonPath('disk.available', false);
         $this->assertSame(1, $this->fsinfoRequests());
+
+        // The agent started a few seconds later, as after a boot.
+        $this->proxmox->agentDown[100] = false;
+        $this->travel(DiskSpace::RETRY_SECONDS)->seconds();
+        $this->stats()->assertJsonPath('disk.available', false);
+        $this->assertSame(2, $this->fsinfoRequests());
+        $this->stats()->assertJsonPath('disk.available', true);
+    }
+
+    public function test_a_refresh_already_under_way_is_not_started_again()
+    {
+        // Another request is refreshing the figures right now.
+        Cache::add('server-stats:disk:'.$this->server->id.':refreshing', true, 60);
+
+        $this->stats()->assertJsonPath('disk', null);
+        $this->assertSame(0, $this->fsinfoRequests());
     }
 
     public function test_the_guest_agent_of_a_stopped_vm_is_not_asked()

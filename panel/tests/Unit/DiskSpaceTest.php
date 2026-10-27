@@ -61,6 +61,18 @@ class DiskSpaceTest extends TestCase
         ]));
     }
 
+    public function test_a_path_mounted_over_is_listed_once_with_what_is_mounted_last()
+    {
+        $fileSystems = DiskSpace::summarize(array_map(GuestFileSystem::fromApi(...), [
+            ['name' => 'sda1', 'mountpoint' => '/', 'type' => 'ext4', 'used-bytes' => 1, 'total-bytes' => 10],
+            ['name' => 'sdb1', 'mountpoint' => '/mnt', 'type' => 'ext4', 'used-bytes' => 1, 'total-bytes' => 10],
+            ['name' => 'sdc1', 'mountpoint' => '/mnt', 'type' => 'xfs', 'used-bytes' => 2, 'total-bytes' => 20],
+        ]));
+
+        $this->assertSame(['/', '/mnt'], array_column($fileSystems, 'mountpoint'));
+        $this->assertSame('xfs', $fileSystems[1]['type']);
+    }
+
     public function test_at_most_ten_file_systems_are_listed()
     {
         $result = array_map(fn (int $i) => ['name' => "sd{$i}", 'mountpoint' => "/mnt/{$i}", 'type' => 'ext4', 'used-bytes' => 1, 'total-bytes' => 10], range(1, 15));

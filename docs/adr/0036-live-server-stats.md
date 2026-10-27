@@ -52,8 +52,9 @@ When Echo is not configured (no `VITE_REVERB_APP_KEY`) or its connection is not 
 
 The disk I/O card shows rates only; how full the disk is cannot come from Proxmox, which reports `disk: 0` for QEMU VMs. The server page also shows a *Disk space* card under the four others, filled from the guest agent's `get-fsinfo` (`GuestAgentResource::fileSystems()`, `DiskSpace`):
 
-- Only for a VM whose live status is `running`, and only in the answer to the page's own request (`GET /admin/servers/{server}/stats`, every 10 or 30 seconds), never in the samples `servers:stats` pushes: the figure changes slowly, and an agent that does not answer can hold a request for seconds.
-- Each server's answer is cached for 60 seconds, a failure too, so open pages ask its agent at most once a minute.
+- Only for a VM whose live status is `running`, and only in the answer to the page's own request (`GET /admin/servers/{server}/stats`, every 10 or 30 seconds), never in the samples `servers:stats` pushes: the figure changes slowly.
+- The request never waits for the agent, which can take seconds to fail when it hangs (a VM paused in Proxmox still reports `running`). It answers with the last known figures (none before the first, so the card appears with the next refresh) and, when they are older than 60 seconds, asks the agent with `defer()` once the response has been sent; one refresh per server at a time (a cache lock), however many pages are open.
+- An agent that did not answer is asked again after 15 seconds instead, since it is usually still starting after a boot. Figures older than 5 minutes are no longer shown.
 - The sizes are the agent's `used-bytes` and `total-bytes` (like `df`: the blocks reserved for root left out). Entries without sizes, read-only images and optical media (`squashfs`, `iso9660`, `udf`, `CDFS`) and Windows volumes without a drive letter are skipped; a device mounted several times (bind mounts, btrfs subvolumes) is listed once by its shortest mount point. The root file system (`/`, `C:\`) comes first, then the others by mount point, at most 10.
 - Admin panel only: the billing API and modules do not get it.
 
