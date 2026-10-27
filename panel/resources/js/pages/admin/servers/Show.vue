@@ -7,7 +7,7 @@ import {
     useHttp,
     usePoll,
 } from '@inertiajs/vue3';
-import { Eye, Monitor, Pause, Play, RotateCcw } from '@lucide/vue';
+import { Eye, Monitor, RotateCcw } from '@lucide/vue';
 import { trans } from 'laravel-vue-i18n';
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import ConfirmDelete from '@/components/admin/ConfirmDelete.vue';
@@ -34,7 +34,9 @@ import ResetPasswordButton from '@/components/servers/ResetPasswordButton.vue';
 import ServerChecks from '@/components/servers/ServerChecks.vue';
 import ServerScripts from '@/components/servers/ServerScripts.vue';
 import ServerStatsCards from '@/components/servers/ServerStatsCards.vue';
+import SuspendDialog from '@/components/servers/SuspendDialog.vue';
 import TaskList from '@/components/servers/TaskList.vue';
+import UnsuspendDialog from '@/components/servers/UnsuspendDialog.vue';
 import UsageSection from '@/components/servers/UsageSection.vue';
 import { Button } from '@/components/ui/button';
 import { useDateTime } from '@/composables/useDateTime';
@@ -1021,26 +1023,26 @@ const resetAfterTrial = () => {
                     </p>
                 </div>
                 <div class="flex flex-wrap gap-2">
-                    <Button
+                    <SuspendDialog
                         v-if="active"
-                        variant="outline"
-                        size="sm"
+                        :action="suspend(server.uuid)"
                         :disabled="vmBlocked"
-                        @click="post(suspend(server.uuid))"
-                    >
-                        <Pause class="h-4 w-4" />
-                        {{ $t('Suspend') }}
-                    </Button>
-                    <Button
-                        v-if="server.status === 'suspended'"
-                        variant="outline"
-                        size="sm"
+                    />
+                    <!-- Suspended by the panel itself: an administrator may make it theirs (docs/adr/0039 §8). -->
+                    <SuspendDialog
+                        v-if="
+                            server.status === 'suspended' &&
+                            server.suspension_cause
+                        "
+                        take-over
+                        :action="suspend(server.uuid)"
                         :disabled="busy"
-                        @click="post(unsuspend(server.uuid))"
-                    >
-                        <Play class="h-4 w-4" />
-                        {{ $t('Unsuspend') }}
-                    </Button>
+                    />
+                    <UnsuspendDialog
+                        v-if="server.status === 'suspended'"
+                        :action="unsuspend(server.uuid)"
+                        :disabled="busy"
+                    />
                     <ReinstallDialog
                         v-if="active"
                         :action="reinstall(server.uuid)"

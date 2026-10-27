@@ -37,6 +37,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\AddressChangeRequest;
 use App\Http\Requests\Admin\ChangeResourcesRequest;
 use App\Http\Requests\Admin\ServerRequest;
+use App\Http\Requests\Admin\SuspendServerRequest;
 use App\Http\Requests\HostnameRequest;
 use App\Http\Requests\RebuildRequest;
 use App\Http\Requests\ReinstallRequest;
@@ -100,10 +101,13 @@ class ServerController extends Controller
     public function index(Request $request): Response
     {
         $showTerminated = $request->boolean('terminated');
+        // One status only, e.g. the suspended servers; unknown values list them all.
+        $status = ServerStatus::tryFrom($request->string('status')->value());
 
         return Inertia::render('admin/servers/Index', [
             'servers' => Server::query()
-                ->when(! $showTerminated, fn ($query) => $query->occupying())
+                ->when($status !== null, fn ($query) => $query->where('status', $status))
+                ->when($status === null && ! $showTerminated, fn ($query) => $query->occupying())
                 ->with(['node:id,name', 'location:id,name', 'package:id,name', 'billingSystem:id,name', 'ipAddresses:id,server_id,address'])
                 ->withExists(['drifts as firewall_drift' => fn ($query) => $query->where('type', DriftType::FirewallMismatch)->whereNull('resolved_at')->whereNull('dismissed_at')])
                 ->latest()
@@ -127,6 +131,7 @@ class ServerController extends Controller
                     'unprotected' => (bool) $server->getAttribute('firewall_drift'),
                 ]),
             'showTerminated' => $showTerminated,
+            'status' => $status,
         ]);
     }
 
@@ -458,14 +463,32 @@ class ServerController extends Controller
         ]);
     }
 
-    public function suspend(Server $server, #[CurrentUser] User $admin): RedirectResponse
+    public function suspend(SuspendServerRequest $request, Server $server, #[CurrentUser] User $admin): RedirectResponse
     {
-        return $this->startTask($server, TaskType::Suspend, $admin, [ServerStatus::Active], 'Suspending the server…');
+        $reason = $request->reason();
+
+        // Suspended by the panel over its traffic quota or a usage limit: the suspension becomes
+        // the administrator's, so the panel never unsuspends it by itself (docs/adr/0039 §8).
+        if ($server->status === ServerStatus::Suspended && $server->suspension_cause !== null) {
+            $server->forceFill(['suspension_cause' => null, 'suspension_reason' => $reason ?? $server->suspension_reason])->save();
+            AuditLog::record('server.suspended', $admin, $server, ['hostname' => $server->hostname, 'reason' => $reason, 'taken_over' => true], $request->ip());
+            $this->toast('success', 'The server stays suspended until you or the billing system unsuspend it.');
+
+            return back();
+        }
+
+        return $this->startTask($server, TaskType::Suspend, $admin, [ServerStatus::Active], 'Suspending the server…', function () use ($server, $admin, $request, $reason): void {
+            // Shown on the server page; cleared again when the server is unsuspended.
+            $server->forceFill(['suspension_reason' => $reason])->save();
+            AuditLog::record('server.suspended', $admin, $server, ['hostname' => $server->hostname, 'reason' => $reason], $request->ip());
+        });
     }
 
-    public function unsuspend(Server $server, #[CurrentUser] User $admin): RedirectResponse
+    public function unsuspend(Request $request, Server $server, #[CurrentUser] User $admin): RedirectResponse
     {
-        return $this->startTask($server, TaskType::Unsuspend, $admin, [ServerStatus::Suspended], 'Starting the server…');
+        return $this->startTask($server, TaskType::Unsuspend, $admin, [ServerStatus::Suspended], 'Starting the server…', function () use ($server, $admin, $request): void {
+            AuditLog::record('server.unsuspended', $admin, $server, ['hostname' => $server->hostname], $request->ip());
+        });
     }
 
     /**
@@ -717,8 +740,9 @@ class ServerController extends Controller
 
     /**
      * @param  list<ServerStatus>  $allowedFrom
+     * @param  (callable(): void)|null  $queued  run once the task is queued, e.g. to audit it
      */
-    private function startTask(Server $server, TaskType $type, User $admin, array $allowedFrom, string $message): RedirectResponse
+    private function startTask(Server $server, TaskType $type, User $admin, array $allowedFrom, string $message, ?callable $queued = null): RedirectResponse
     {
         if (! in_array($server->status, $allowedFrom, true)) {
             $this->toast('error', 'This action is not possible while the server is :status.', ['status' => __(ucfirst($server->status->value))]);
@@ -732,6 +756,10 @@ class ServerController extends Controller
             $this->toast('error', $e->getMessage());
 
             return back();
+        }
+
+        if ($queued !== null) {
+            $queued();
         }
 
         $this->toast('info', $message);

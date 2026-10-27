@@ -2260,5 +2260,16 @@
     "VirtIO driver folder": "VirtIO sürücü klasörü",
     "Smallest template disk": "En küçük şablon diski",
     "TPM 2.0 and Secure Boot": "TPM 2.0 ve Secure Boot",
-    "Built-in Administrator": "Yerleşik Administrator"
+    "Built-in Administrator": "Yerleşik Administrator",
+    "Keep suspended": "Askıda tut",
+    "Keep the server suspended": "Sunucuyu askıda tut",
+    "The panel suspended this server itself. It then stays suspended until you or the billing system unsuspend it.": "Bu sunucuyu panel kendisi askıya aldı. Bundan sonra siz veya faturalama sistemi askıdan çıkarana kadar askıda kalır.",
+    "The server is shut down and stays off until it is unsuspended. Its disks and IP addresses are kept.": "Sunucu kapatılır ve askıdan çıkarılana kadar kapalı kalır. Diskleri ve IP adresleri korunur.",
+    "Reason (optional)": "Sebep (isteğe bağlı)",
+    "Shown on the server page until it is unsuspended.": "Askıdan çıkarılana kadar sunucu sayfasında gösterilir.",
+    "Unsuspend the server": "Sunucuyu askıdan çıkar",
+    "The server is started again and its suspension reason is cleared. The billing system is told through its webhooks, if it has any.": "Sunucu yeniden başlatılır ve askıya alma sebebi silinir. Faturalama sisteminin webhook'ları varsa ona da bildirilir.",
+    "The server stays suspended until you or the billing system unsuspend it.": "Sunucu, siz veya faturalama sistemi askıdan çıkarana kadar askıda kalır.",
+    "All statuses": "Tüm durumlar",
+    "No servers with this status.": "Bu durumda sunucu yok."
 }
