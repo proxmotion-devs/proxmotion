@@ -36,6 +36,7 @@ describe('useMainNavigation', () => {
             '/admin/settings/network',
             '/admin/settings/usage',
             '/admin/settings/general',
+            '/admin/settings/notifications',
             '/admin/settings/environment',
         ]);
     });

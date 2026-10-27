@@ -28,6 +28,11 @@ export const SETTINGS_CATEGORIES = [
             'Console session limits, when stopped servers are reported, and the documentation link.',
     },
     {
+        key: 'notifications',
+        title: 'Notifications',
+        description: 'Email to administrators about failures and other events.',
+    },
+    {
         // Shown only: these stay in .env.
         key: 'environment',
         title: 'Set in .env only',

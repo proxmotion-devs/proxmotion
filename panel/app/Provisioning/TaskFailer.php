@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Provisioning;
 
+use App\Domain\Notifications\AdminNotifier;
 use App\Domain\Webhooks\Webhooks;
 use App\Enums\ServerStatus;
 use App\Enums\TaskStatus;
@@ -19,7 +20,10 @@ use Throwable;
  */
 final class TaskFailer
 {
-    public function __construct(private readonly Webhooks $webhooks) {}
+    public function __construct(
+        private readonly Webhooks $webhooks,
+        private readonly AdminNotifier $notifier,
+    ) {}
 
     public function fail(Task $task, string $message): void
     {
@@ -46,6 +50,7 @@ final class TaskFailer
         }
 
         $this->notify($task);
+        $this->notifier->taskFailed($task);
     }
 
     /**

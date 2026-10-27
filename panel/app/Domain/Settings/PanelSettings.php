@@ -47,6 +47,9 @@ final class PanelSettings
         'password_characters' => 'passwords.characters',
         'password_prefix' => 'passwords.prefix',
         'password_suffix' => 'passwords.suffix',
+        'notifications_enabled' => 'notifications.enabled',
+        'notification_recipients' => 'notifications.recipients',
+        'notification_throttle_minutes' => 'notifications.throttle_minutes',
     ];
 
     /**
@@ -79,6 +82,7 @@ final class PanelSettings
             'usage_action',
         ],
         'general' => ['console_max_minutes', 'console_idle_minutes', 'drift_stopped_grace_minutes', 'docs_url'],
+        'notifications' => ['notifications_enabled', 'notification_recipients', 'notification_throttle_minutes'],
         'environment' => [],
     ];
 

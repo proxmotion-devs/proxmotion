@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Jobs;
 
+use App\Domain\Notifications\AdminNotifier;
 use App\Domain\Webhooks\WebhookSignature;
 use App\Enums\WebhookDeliveryStatus;
 use App\Models\WebhookDelivery;
@@ -92,6 +93,11 @@ class DeliverWebhook implements ShouldQueue
             self::dispatch($delivery)->delay($retryAt);
         } else {
             $endpoint->increment('failure_count');
+
+            // Administrators hear of a delivery that gave up, not of a test or "send again" they started.
+            if ($this->retry) {
+                app(AdminNotifier::class)->webhookFailed($delivery);
+            }
         }
     }
 

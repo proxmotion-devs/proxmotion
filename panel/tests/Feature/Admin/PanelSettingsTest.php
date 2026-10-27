@@ -40,6 +40,9 @@ class PanelSettingsTest extends AdminTestCase
             'password_characters' => 'lower',
             'password_prefix' => null,
             'password_suffix' => '.example!',
+            'notifications_enabled' => true,
+            'notification_recipients' => 'ops@example.com',
+            'notification_throttle_minutes' => 30,
             ...$overrides,
         ];
     }
@@ -119,7 +122,7 @@ class PanelSettingsTest extends AdminTestCase
         $this->assertTrue(ServerMover::crossClusterEnabled());
 
         $entries = AuditLog::query()->where('action', 'settings.updated')->orderBy('id')->get();
-        $this->assertCount(4, $entries);
+        $this->assertCount(5, $entries);
         $this->assertSame(['from' => false, 'to' => true], $entries->first()->properties['changes']['cross_cluster_moves']);
     }
 

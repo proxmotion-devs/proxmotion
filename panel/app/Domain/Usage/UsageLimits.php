@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Domain\Usage;
 
+use App\Domain\Notifications\AdminNotifier;
 use App\Domain\Settings\PanelSettings;
 use App\Domain\Webhooks\Webhooks;
 use App\Enums\PowerAction;
@@ -39,6 +40,7 @@ final readonly class UsageLimits
     public function __construct(
         private TaskRunner $tasks,
         private Webhooks $webhooks,
+        private AdminNotifier $notifier,
     ) {}
 
     /**
@@ -215,6 +217,7 @@ final readonly class UsageLimits
         $open[$server->id] = ($open[$server->id] ?? new Collection)->push($violation);
 
         $this->webhooks->usageExceeded($violation);
+        $this->notifier->usageExceeded($violation);
     }
 
     private function resolve(UsageViolation $violation): void

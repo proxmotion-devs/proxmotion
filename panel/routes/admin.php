@@ -47,6 +47,8 @@ use Illuminate\Support\Facades\Route;
 Route::get('/', DashboardController::class)->name('dashboard');
 Route::get('help', HelpController::class)->name('help');
 Route::get('settings', [PanelSettingsController::class, 'index'])->name('settings.index');
+Route::post('settings/notifications/test', [PanelSettingsController::class, 'test'])->name('settings.test-email')
+    ->middleware('throttle:3,1');
 Route::get('settings/{category}', [PanelSettingsController::class, 'edit'])->name('settings.edit')
     ->whereIn('category', array_keys(PanelSettings::CATEGORIES));
 Route::put('settings/{category}', [PanelSettingsController::class, 'update'])->name('settings.update')

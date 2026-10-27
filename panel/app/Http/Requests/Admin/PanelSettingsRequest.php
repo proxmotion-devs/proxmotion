@@ -21,6 +21,9 @@ use Illuminate\Validation\Validator;
  */
 class PanelSettingsRequest extends FormRequest
 {
+    /** Further notification recipients besides the administrators (docs/adr/0044). */
+    private const int MAX_RECIPIENTS = 10;
+
     /**
      * @return array<string, ValidationRule|array<mixed>|string>
      */
@@ -58,7 +61,37 @@ class PanelSettingsRequest extends FormRequest
             'password_characters' => ['required', 'string', 'in:lower,mixed,symbols'],
             'password_prefix' => ['nullable', 'string', 'max:32', Rule::regex('/^[A-Za-z0-9!@#%+=.,:_-]+$/')],
             'password_suffix' => ['nullable', 'string', 'max:32', Rule::regex('/^[A-Za-z0-9!@#%+=.,:_-]+$/')],
+            // Email notifications (docs/adr/0044): recipients one per line or comma-separated.
+            'notifications_enabled' => ['required', 'boolean'],
+            'notification_recipients' => ['nullable', 'string', 'max:2550', function (string $attribute, mixed $value, Closure $fail) {
+                $addresses = self::addresses((string) $value);
+
+                if (count($addresses) > self::MAX_RECIPIENTS) {
+                    $fail(__('Enter at most :count addresses.', ['count' => self::MAX_RECIPIENTS]));
+                }
+
+                foreach ($addresses as $address) {
+                    if (filter_var($address, FILTER_VALIDATE_EMAIL) === false) {
+                        $fail(__(':address is not a valid email address.', ['address' => $address]));
+
+                        return;
+                    }
+                }
+            }],
+            'notification_throttle_minutes' => ['required', 'integer', 'min:5', 'max:1440'],
         ], array_flip($this->fields()));
+    }
+
+    /**
+     * Email addresses entered one per line or comma-separated, lowercase, each once.
+     *
+     * @return list<string>
+     */
+    private static function addresses(string $value): array
+    {
+        $addresses = preg_split('/[\s,;]+/', strtolower($value), flags: PREG_SPLIT_NO_EMPTY);
+
+        return array_values(array_unique($addresses === false ? [] : $addresses));
     }
 
     /**
@@ -127,6 +160,9 @@ class PanelSettingsRequest extends FormRequest
             'password_characters' => fn () => (string) $data['password_characters'],
             'password_prefix' => fn () => $optionalString('password_prefix'),
             'password_suffix' => fn () => $optionalString('password_suffix'),
+            'notifications_enabled' => fn () => (bool) $data['notifications_enabled'],
+            'notification_recipients' => fn () => self::addresses((string) ($data['notification_recipients'] ?? '')),
+            'notification_throttle_minutes' => fn () => (int) $data['notification_throttle_minutes'],
         ];
 
         // Only the page's category: the other settings keep their values.

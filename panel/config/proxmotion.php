@@ -171,4 +171,23 @@ return [
         'suffix' => (string) env('PROXMOTION_PASSWORD_SUFFIX', '') === '' ? null : (string) env('PROXMOTION_PASSWORD_SUFFIX'),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Email notifications (docs/adr/0044)
+    |--------------------------------------------------------------------------
+    |
+    | Administrators get email about failures and other events they choose
+    | under Settings > Notifications; recipients also get every event. Events
+    | a scheduled command may raise again (drift, unreachable clusters, failed
+    | webhooks) are sent once per throttle_minutes. The mail transport is
+    | Laravel's own (MAIL_* in .env) and is never set on Panel settings.
+    |
+    */
+
+    'notifications' => [
+        'enabled' => (bool) env('PROXMOTION_NOTIFICATIONS', false),
+        'recipients' => array_values(array_filter(array_map('trim', explode(',', (string) env('PROXMOTION_NOTIFICATION_RECIPIENTS', ''))))),
+        'throttle_minutes' => (int) env('PROXMOTION_NOTIFICATION_THROTTLE_MINUTES', 60),
+    ],
+
 ];

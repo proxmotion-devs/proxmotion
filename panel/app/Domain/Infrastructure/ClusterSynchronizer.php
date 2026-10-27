@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Domain\Infrastructure;
 
 use App\Domain\Networking\ProtectedAddresses;
+use App\Domain\Notifications\AdminNotifier;
 use App\Enums\ClusterType;
 use App\Enums\NodeStatus;
 use App\Models\Cluster;
@@ -33,6 +34,7 @@ final readonly class ClusterSynchronizer
         private ProtectedAddresses $protected,
         private DriftDetector $drift,
         private FirewallChecker $firewall,
+        private AdminNotifier $notifier,
     ) {}
 
     /**
@@ -51,7 +53,13 @@ final readonly class ClusterSynchronizer
             $bridges = $this->fetchBridges($client, $nodes);
             $firewall = $client->cluster()->firewall();
         } catch (ProxmoxException $e) {
+            // Mailed only when it was reachable at the last sync (docs/adr/0044).
+            $wasReachable = $cluster->last_synced_at !== null && $cluster->last_sync_error === null;
             $cluster->forceFill(['last_sync_error' => $e->getMessage()])->save();
+
+            if ($wasReachable) {
+                $this->notifier->clusterUnreachable($cluster, $e->getMessage());
+            }
 
             throw $e;
         }

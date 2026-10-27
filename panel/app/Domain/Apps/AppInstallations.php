@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Domain\Apps;
 
+use App\Domain\Notifications\AdminNotifier;
 use App\Domain\Webhooks\Webhooks;
 use App\Enums\AppInstallationStatus;
 use App\Enums\AppInstallMode;
@@ -22,6 +23,7 @@ final readonly class AppInstallations
 {
     public function __construct(
         private Webhooks $webhooks,
+        private AdminNotifier $notifier,
         private AppLogs $logs,
     ) {}
 
@@ -52,6 +54,7 @@ final readonly class AppInstallations
         ])->save();
 
         $this->notify($installation);
+        $this->notifier->appInstallFailed($installation);
     }
 
     /**

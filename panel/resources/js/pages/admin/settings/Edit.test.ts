@@ -4,8 +4,9 @@ import type { SettingsCategoryKey } from '@/lib/settingsCategories';
 import Edit from '@/pages/admin/settings/Edit.vue';
 import type { PanelSettings } from '@/types/admin';
 
-const { submit, transformed, layoutProps } = vi.hoisted(() => ({
+const { submit, transformed, layoutProps, visit } = vi.hoisted(() => ({
     submit: vi.fn(),
+    visit: vi.fn(),
     transformed: { value: null as Record<string, unknown> | null },
     layoutProps: vi.fn(),
 }));
@@ -16,6 +17,7 @@ vi.mock('@inertiajs/vue3', async () => {
     return {
         Head: { template: '<div />' },
         setLayoutProps: layoutProps,
+        router: { visit },
         useForm: (data: Record<string, unknown>) => {
             const form = reactive({
                 ...data,
@@ -63,6 +65,9 @@ const settings = (overrides: Partial<PanelSettings> = {}): PanelSettings => ({
     password_characters: 'mixed',
     password_prefix: null,
     password_suffix: null,
+    notifications_enabled: false,
+    notification_recipients: [],
+    notification_throttle_minutes: 60,
     ...overrides,
 });
 
@@ -80,6 +85,8 @@ const mountPage = (
             environment: {
                 require_admin_two_factor: true,
                 console_proxy: false,
+                mailer: 'log',
+                mail_from: 'panel@example.com',
             },
         },
         global: { mocks: { $t: (key: string) => key } },
@@ -88,6 +95,7 @@ const mountPage = (
 describe('Panel settings page', () => {
     beforeEach(() => {
         submit.mockReset();
+        visit.mockReset();
         layoutProps.mockReset();
         transformed.value = null;
     });
@@ -171,5 +179,40 @@ describe('Panel settings page', () => {
                 .find('[data-test="settings-unsaved"]')
                 .exists(),
         ).toBe(false);
+    });
+
+    it('sends the notification settings and queues a test email', async () => {
+        const wrapper = mountPage('notifications', [
+            'notifications_enabled',
+            'notification_recipients',
+            'notification_throttle_minutes',
+        ]);
+
+        // The mailer of the fixture only logs.
+        expect(
+            wrapper.find('[data-test="mailer-not-delivering"]').exists(),
+        ).toBe(true);
+
+        await wrapper
+            .find('#notification_recipients')
+            .setValue('ops@example.com\nnoc@example.com');
+        await wrapper.find('form').trigger('submit');
+
+        expect(submit.mock.calls[0][0]).toMatchObject({
+            url: '/admin/settings/notifications',
+        });
+        expect(transformed.value).toEqual({
+            notifications_enabled: false,
+            notification_recipients: 'ops@example.com\nnoc@example.com',
+            notification_throttle_minutes: 60,
+        });
+
+        await wrapper.find('[data-test="send-test-email"]').trigger('click');
+
+        expect(submit).toHaveBeenCalledOnce();
+        expect(visit.mock.calls[0][0]).toMatchObject({
+            url: '/admin/settings/notifications/test',
+            method: 'post',
+        });
     });
 });

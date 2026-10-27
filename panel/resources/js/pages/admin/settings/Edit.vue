@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { Head, setLayoutProps, useForm } from '@inertiajs/vue3';
-import { Save } from '@lucide/vue';
+import { Head, router, setLayoutProps, useForm } from '@inertiajs/vue3';
+import { Mail, Save } from '@lucide/vue';
 import { trans } from 'laravel-vue-i18n';
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import FormField from '@/components/admin/FormField.vue';
 import NativeSelect from '@/components/admin/NativeSelect.vue';
 import StatusBadge from '@/components/admin/StatusBadge.vue';
@@ -16,7 +16,7 @@ import { passwordExample } from '@/lib/passwordExample';
 import type { PasswordCharacters } from '@/lib/passwordExample';
 import { SETTINGS_CATEGORIES } from '@/lib/settingsCategories';
 import type { SettingsCategoryKey } from '@/lib/settingsCategories';
-import { edit, index, update } from '@/routes/admin/settings';
+import { edit, index, testEmail, update } from '@/routes/admin/settings';
 import type { PanelSettings } from '@/types/admin';
 
 /**
@@ -34,6 +34,8 @@ const props = defineProps<{
     environment: {
         require_admin_two_factor: boolean;
         console_proxy: boolean;
+        mailer: string;
+        mail_from: string | null;
     };
 }>();
 
@@ -78,7 +80,25 @@ const form = useForm({
     password_characters: props.settings.password_characters,
     password_prefix: props.settings.password_prefix ?? '',
     password_suffix: props.settings.password_suffix ?? '',
+    notifications_enabled: props.settings.notifications_enabled,
+    notification_recipients: props.settings.notification_recipients.join('\n'),
+    notification_throttle_minutes: props.settings.notification_throttle_minutes,
 });
+
+// Email notifications (docs/adr/0044): a test mail through the mailer of .env.
+const sendingTest = ref(false);
+
+const sendTestEmail = () =>
+    router.visit(testEmail(), {
+        preserveScroll: true,
+        onStart: () => (sendingTest.value = true),
+        onFinish: () => (sendingTest.value = false),
+    });
+
+// Mailers that never deliver: notifications only end up in the log.
+const mailerDelivers = computed(
+    () => !['log', 'array'].includes(props.environment.mailer),
+);
 
 // Traffic quotas and usage limits (docs/adr/0039).
 const countedOptions = computed(() => [
@@ -625,7 +645,113 @@ const sectionClass = 'flex flex-col gap-4 rounded-xl border p-4';
                             />
                         </dd>
                     </div>
+                    <div
+                        class="flex flex-wrap items-center justify-between gap-2"
+                        data-test="environment-mail"
+                    >
+                        <dt class="grid">
+                            <span>{{ $t('Mail') }}</span>
+                            <span
+                                class="font-mono text-xs text-muted-foreground"
+                                >MAIL_MAILER, MAIL_FROM_ADDRESS</span
+                            >
+                        </dt>
+                        <dd class="flex flex-wrap items-center gap-2">
+                            <span class="font-mono text-xs">{{
+                                environment.mail_from ?? '—'
+                            }}</span>
+                            <StatusBadge
+                                :tone="mailerDelivers ? 'success' : 'warning'"
+                                :label="environment.mailer"
+                            />
+                        </dd>
+                    </div>
                 </dl>
+            </section>
+        </template>
+
+        <template v-if="category === 'notifications'">
+            <p
+                v-if="!mailerDelivers"
+                class="rounded-md border border-amber-500/40 bg-amber-500/5 px-3 py-2 text-sm"
+                data-test="mailer-not-delivering"
+            >
+                {{
+                    $t(
+                        'The mailer in .env is ":mailer": mail is written to the log, not sent. Set MAIL_MAILER and the SMTP settings in .env to send it.',
+                        { mailer: environment.mailer },
+                    )
+                }}
+            </p>
+
+            <section :class="sectionClass" data-test="settings-notifications">
+                <label class="flex items-start gap-2 text-sm">
+                    <Checkbox
+                        id="notifications_enabled"
+                        :model-value="form.notifications_enabled"
+                        @update:model-value="
+                            (checked) =>
+                                (form.notifications_enabled = checked === true)
+                        "
+                    />
+                    <span class="grid gap-1">
+                        <span class="font-medium">{{
+                            $t('Send email notifications')
+                        }}</span>
+                        <span class="text-xs text-muted-foreground">{{
+                            $t(
+                                'Each administrator chooses the events they get under Settings > Notifications. Mail goes through the mail settings of .env.',
+                            )
+                        }}</span>
+                    </span>
+                </label>
+                <div class="grid gap-4 sm:grid-cols-2">
+                    <FormField
+                        label="Further recipients"
+                        for="notification_recipients"
+                        :error="form.errors.notification_recipients"
+                        hint="One address per line, at most 10, e.g. a team mailbox. They get every event."
+                    >
+                        <textarea
+                            id="notification_recipients"
+                            v-model="form.notification_recipients"
+                            rows="4"
+                            class="w-full rounded-md border border-input bg-transparent px-3 py-2 font-mono text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 dark:bg-input/30"
+                            placeholder="ops@example.com"
+                        />
+                    </FormField>
+                    <FormField
+                        label="Repeat notifications after (minutes)"
+                        for="notification_throttle_minutes"
+                        :error="form.errors.notification_throttle_minutes"
+                        hint="Drift, unreachable clusters and failed webhooks are mailed once per this long for each cluster or endpoint."
+                    >
+                        <Input
+                            id="notification_throttle_minutes"
+                            v-model.number="form.notification_throttle_minutes"
+                            type="number"
+                            min="5"
+                            max="1440"
+                        />
+                    </FormField>
+                </div>
+                <div class="flex flex-wrap items-center gap-3">
+                    <Button
+                        type="button"
+                        variant="outline"
+                        :disabled="sendingTest"
+                        data-test="send-test-email"
+                        @click="sendTestEmail"
+                    >
+                        <Mail class="h-4 w-4" />
+                        {{ $t('Send a test email') }}
+                    </Button>
+                    <span class="text-xs text-muted-foreground">{{
+                        $t(
+                            'Sent to your own address, also while notifications are off.',
+                        )
+                    }}</span>
+                </div>
             </section>
         </template>
 
