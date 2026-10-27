@@ -34,7 +34,7 @@ final readonly class ScriptSlot
 
     public static function custom(CustomScript $script, ?GuestScriptEvent $event, string $trigger): self
     {
-        return new self($script->step(), 'script-'.$script->id, $event, $script, $trigger);
+        return new self($script->step($event), 'script-'.$script->id, $event, $script, $trigger);
     }
 
     /** Whether a failure fails the task instead of leaving a note. */

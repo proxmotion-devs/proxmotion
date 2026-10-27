@@ -113,10 +113,13 @@ const stepLabels: Record<string, string> = {
     record: 'Record the new place',
     configure_network: 'Set up the network for the new addresses',
 };
-// Custom scripts record their steps as "script:<name>" (docs/adr/0043).
+// Custom scripts record their steps as "script:<event>:<name>" at an event and
+// "script:<name>" otherwise; names cannot contain ":" (docs/adr/0043).
 const stepLabel = (key: string): string =>
     key.startsWith('script:')
-        ? trans('Run the script :name in the server', { name: key.slice(7) })
+        ? trans('Run the script :name in the server', {
+              name: key.slice(7).replace(/^[a-z_]+:/, ''),
+          })
         : trans(stepLabels[key] ?? key);
 
 // "1 min 52 s", from whole seconds.

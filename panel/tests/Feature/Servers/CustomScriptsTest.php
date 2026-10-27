@@ -15,6 +15,7 @@ use App\Models\Server;
 use App\Models\Task;
 use App\Models\User;
 use App\Provisioning\ServerCreator;
+use App\Provisioning\ServerSpec;
 use App\Provisioning\TaskPlan;
 use App\Provisioning\TaskRunner;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -95,7 +96,7 @@ class CustomScriptsTest extends TestCase
         $this->assertSame('web2.example.com', $inputs['hostname']);
         $this->assertCount(1, $inputs['addresses']);
         $this->assertStringContainsString("trigger=provisioned\n", $files["/etc/proxmotion/script-{$script->id}.vars"]);
-        $this->assertNotNull($step = $this->step($task, 'script:Monitoring agent'), 'The script has its own step.');
+        $this->assertNotNull($step = $this->step($task, 'script:provisioned:Monitoring agent'), 'The script has its own step.');
         $this->assertNull($step['message']);
         $this->assertNull($this->step($task, 'guest_provisioned'), 'The template has no script of its own.');
         $this->assertCount(1, array_filter($this->commands(), fn (array $command) => str_starts_with($command[1] ?? '', '/usr/local/sbin/proxmotion-script-')), 'Only the bound script ran.');
@@ -127,8 +128,33 @@ class CustomScriptsTest extends TestCase
             ['sh', "/usr/local/sbin/proxmotion-script-{$first->id}"],
             ['sh', "/usr/local/sbin/proxmotion-script-{$second->id}"],
         ], $ran);
-        $this->assertSame('The script First failed: agent missing', $this->step($task, 'script:First')['message']);
-        $this->assertNull($this->step($task, 'script:Second')['message']);
+        $this->assertSame('The script First failed: agent missing', $this->step($task, 'script:provisioned:First')['message']);
+        $this->assertNull($this->step($task, 'script:provisioned:Second')['message']);
+    }
+
+    public function test_a_script_bound_to_two_events_of_one_task_records_a_step_for_each()
+    {
+        $this->package->update(['ipv4_count' => 2]);
+        $script = $this->custom('Monitoring agent', "echo x\n", [GuestScriptEvent::AddressesChanged, GuestScriptEvent::Provisioned]);
+        $runs = 0;
+        // The first run (after the additional addresses) fails, the second succeeds.
+        $this->proxmox->execHandler = function (array $command) use ($script, &$runs) {
+            return $command === ['sh', "/usr/local/sbin/proxmotion-script-{$script->id}"] && ++$runs === 1 ? [1, '', "no network yet\n"] : [0, '', ''];
+        };
+
+        $server = app(ServerCreator::class)->create($this->order(['hostname' => 'web2.example.com', 'spec' => ServerSpec::fromPackage($this->package)]))->refresh();
+        $task = $server->tasks()->sole();
+
+        $this->assertSame(TaskStatus::Succeeded, $task->status, (string) $task->error);
+        $this->assertSame(2, $runs);
+        $this->assertSame('The script Monitoring agent failed: no network yet', $this->step($task, 'script:addresses_changed:Monitoring agent')['message']);
+        $this->assertSame('done', $this->step($task, 'script:provisioned:Monitoring agent')['status']);
+        $this->assertNull($this->step($task, 'script:provisioned:Monitoring agent')['message']);
+
+        $planned = app(TaskPlan::class)->steps($task);
+        $this->assertSame(1, count(array_keys($planned, 'script:addresses_changed:Monitoring agent', true)));
+        $this->assertSame(1, count(array_keys($planned, 'script:provisioned:Monitoring agent', true)));
+        $this->assertSame([GuestScriptEvent::AddressesChanged, GuestScriptEvent::Provisioned], GuestScriptLog::query()->where('custom_script_id', $script->id)->orderBy('id')->pluck('event')->all());
     }
 
     public function test_unpublished_scripts_never_run_at_events()
@@ -138,7 +164,7 @@ class CustomScriptsTest extends TestCase
 
         $server = app(ServerCreator::class)->create($this->order(['hostname' => 'web2.example.com']))->refresh();
 
-        $this->assertNull($this->step($server->tasks()->sole(), 'script:Draft only'));
+        $this->assertNull($this->step($server->tasks()->sole(), 'script:provisioned:Draft only'));
         $this->assertSame(0, GuestScriptLog::query()->count());
     }
 
@@ -148,7 +174,7 @@ class CustomScriptsTest extends TestCase
 
         $task = app(ServerReinstaller::class)->request($this->server, $this->osTemplate, [], $this->admin, null)->refresh();
 
-        $this->assertContains('script:Monitoring agent', app(TaskPlan::class)->steps($task));
+        $this->assertContains('script:provisioned:Monitoring agent', app(TaskPlan::class)->steps($task));
         $this->assertSame('reinstall', json_decode($this->proxmox->guestFiles[$this->server->vmid]["/etc/proxmotion/script-{$this->osTemplate->customScripts()->sole()->id}.json"], true)['reason']);
     }
 
@@ -176,7 +202,7 @@ class CustomScriptsTest extends TestCase
         $task = app(TaskRunner::class)->start($this->server, TaskType::ResetPassword, $this->admin, secret: 'chosen-password-123')->refresh();
 
         $this->assertSame(TaskStatus::Succeeded, $task->status);
-        $this->assertSame('The script Notify failed: nope', $this->step($task, 'script:Notify')['message']);
+        $this->assertSame('The script Notify failed: nope', $this->step($task, 'script:password_reset:Notify')['message']);
     }
 
     public function test_administrators_run_a_manual_script_from_the_server_page()

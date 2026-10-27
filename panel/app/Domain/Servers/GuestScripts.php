@@ -257,7 +257,7 @@ final readonly class GuestScripts
      */
     public function customSteps(Server $server, GuestScriptEvent $event): array
     {
-        return array_map(fn (CustomScript $script) => $script->step(), $this->customScripts($server, $event));
+        return array_map(fn (CustomScript $script) => $script->step($event), $this->customScripts($server, $event));
     }
 
     /**

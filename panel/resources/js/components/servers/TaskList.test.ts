@@ -83,6 +83,33 @@ describe('TaskList', () => {
         ]);
     });
 
+    it('names custom script steps by the script, with or without their event', () => {
+        const rows = render([
+            task({
+                type: 'create',
+                planned_steps: [
+                    'guest_addresses',
+                    'script:addresses_changed:Monitoring agent',
+                    'script:provisioned:Monitoring agent',
+                ],
+                steps: [],
+            }),
+            task({
+                uuid: 'task-2',
+                type: 'guest_script',
+                planned_steps: [],
+                steps: [done('script:Clear cache')],
+            }),
+        ]).findAll('li');
+
+        expect(rows.map((row) => row.text())).toEqual([
+            'Configure additional IP addresses in the server',
+            'Run the script Monitoring agent in the server',
+            'Run the script Monitoring agent in the server',
+            'Run the script Clear cache in the server',
+        ]);
+    });
+
     it('shows how long finished steps took', () => {
         const durations = render([
             task({

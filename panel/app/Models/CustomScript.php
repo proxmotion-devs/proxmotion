@@ -50,15 +50,19 @@ class CustomScript extends Model
         return in_array($event->value, $this->events, true);
     }
 
-    /** The task step of its runs at events. */
-    public function step(): string
+    /**
+     * The task step of a run: script:<event>:<name> at an event, so a script
+     * bound to two events of one task records both runs; script:<name> for a
+     * manual run or trial. Names cannot contain ":" (CustomScriptRequest).
+     */
+    public function step(?GuestScriptEvent $event = null): string
     {
-        return self::stepFor($this->name);
+        return self::stepFor($this->name, $event);
     }
 
-    public static function stepFor(string $name): string
+    public static function stepFor(string $name, ?GuestScriptEvent $event = null): string
     {
-        return 'script:'.$name;
+        return 'script:'.($event === null ? '' : $event->value.':').$name;
     }
 
     /**
