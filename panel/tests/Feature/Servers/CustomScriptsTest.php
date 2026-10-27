@@ -386,12 +386,15 @@ class CustomScriptsTest extends TestCase
         $this->assertNull($script->draft_content);
     }
 
-    public function test_going_back_drops_the_runs_without_an_event_and_makes_the_event_required_again()
+    public function test_going_back_drops_the_runs_of_custom_scripts_and_makes_the_event_required_again()
     {
+        $own = new GuestScript;
+        $own->forceFill(['os_template_id' => $this->osTemplate->id, 'event' => GuestScriptEvent::Provisioned, 'content' => "echo own\n"])->save();
         $script = $this->custom('Clear cache', "echo\n", [GuestScriptEvent::Provisioned], manual: true);
         app(ServerCreator::class)->create($this->order(['hostname' => 'web2.example.com']));
         $this->actingAs($this->admin)->post(route('admin.servers.scripts.run', [$this->server, $script]));
         $this->assertSame(1, GuestScriptLog::query()->whereNull('event')->count(), 'The manual run has no event.');
+        $this->assertSame(2, GuestScriptLog::query()->where('event', GuestScriptEvent::Provisioned)->count(), 'The template\'s script and the custom one after it.');
 
         $migration = require database_path('migrations/2026_12_03_000000_create_custom_scripts_table.php');
         $migration->down();
@@ -399,7 +402,8 @@ class CustomScriptsTest extends TestCase
         $this->assertFalse(Schema::hasTable('custom_scripts'));
         $this->assertFalse(Schema::hasColumn('guest_script_logs', 'custom_script_id'));
         $this->assertFalse(Schema::hasColumn('guest_script_logs', 'script_name'));
-        $this->assertSame(['provisioned'], DB::table('guest_script_logs')->pluck('event')->all());
+        // Only the template's own script is left: the old Scripts page would list a custom run at an event as its run.
+        $this->assertSame([['provisioned', "echo own\n"]], DB::table('guest_script_logs')->get(['event', 'script'])->map(fn (object $log) => [$log->event, $log->script])->all());
         $this->assertFalse(collect(Schema::getColumns('guest_script_logs'))->firstWhere('name', 'event')['nullable']);
 
         $migration->up();

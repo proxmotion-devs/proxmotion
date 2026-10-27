@@ -44,8 +44,9 @@ return new class extends Migration
 
     public function down(): void
     {
-        // Manual runs and trials of custom scripts have no event; every older log has one.
-        DB::table('guest_script_logs')->whereNull('event')->delete();
+        // Every run of a custom script: those without an event would break the event
+        // column, and the others would be listed as runs of the template's own script.
+        DB::table('guest_script_logs')->whereNull('event')->orWhereNotNull('script_name')->delete();
 
         Schema::table('guest_script_logs', function (Blueprint $table) {
             $table->dropConstrainedForeignId('custom_script_id');
