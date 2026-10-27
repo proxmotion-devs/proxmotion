@@ -19,6 +19,8 @@ use App\Provisioning\ServerSpec;
 use App\Provisioning\TaskPlan;
 use App\Provisioning\TaskRunner;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\Concerns\BuildsInfrastructure;
 use Tests\Support\FakeProxmoxCluster;
@@ -338,6 +340,26 @@ class CustomScriptsTest extends TestCase
         $this->actingAs($this->admin)->post(route('admin.os-templates.custom-scripts.publish', [$this->osTemplate, $script]));
         $this->assertSame("#!/bin/sh\necho hi\n", $script->refresh()->content);
         $this->assertNull($script->draft_content);
+    }
+
+    public function test_going_back_drops_the_runs_without_an_event_and_makes_the_event_required_again()
+    {
+        $script = $this->custom('Clear cache', "echo\n", [GuestScriptEvent::Provisioned], manual: true);
+        app(ServerCreator::class)->create($this->order(['hostname' => 'web2.example.com']));
+        $this->actingAs($this->admin)->post(route('admin.servers.scripts.run', [$this->server, $script]));
+        $this->assertSame(1, GuestScriptLog::query()->whereNull('event')->count(), 'The manual run has no event.');
+
+        $migration = require database_path('migrations/2026_12_03_000000_create_custom_scripts_table.php');
+        $migration->down();
+
+        $this->assertFalse(Schema::hasTable('custom_scripts'));
+        $this->assertFalse(Schema::hasColumn('guest_script_logs', 'custom_script_id'));
+        $this->assertFalse(Schema::hasColumn('guest_script_logs', 'script_name'));
+        $this->assertSame(['provisioned'], DB::table('guest_script_logs')->pluck('event')->all());
+        $this->assertFalse(collect(Schema::getColumns('guest_script_logs'))->firstWhere('name', 'event')['nullable']);
+
+        $migration->up();
+        $this->assertTrue(Schema::hasTable('custom_scripts'));
     }
 
     public function test_scripts_of_another_template_are_not_found_under_this_one()

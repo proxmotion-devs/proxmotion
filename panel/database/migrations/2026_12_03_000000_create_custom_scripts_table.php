@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
@@ -43,9 +44,13 @@ return new class extends Migration
 
     public function down(): void
     {
+        // Manual runs and trials of custom scripts have no event; every older log has one.
+        DB::table('guest_script_logs')->whereNull('event')->delete();
+
         Schema::table('guest_script_logs', function (Blueprint $table) {
             $table->dropConstrainedForeignId('custom_script_id');
             $table->dropColumn('script_name');
+            $table->string('event', 32)->nullable(false)->change();
         });
 
         Schema::dropIfExists('custom_scripts');
