@@ -252,6 +252,9 @@ export type Package = ResourceLimitValues & {
     network_models: NetworkModel[];
     is_active: boolean;
     sort_order: number;
+    /** Reinstalls through the billing API within reinstall_period_days; null: unlimited (docs/adr/0045). */
+    reinstall_limit: number | null;
+    reinstall_period_days: number | null;
     /** Empty: any node; otherwise the groups of the ordered location (docs/adr/0020). */
     placement_group_ids: number[];
     /** Empty: any OS template; otherwise the ones its servers may use (docs/adr/0040). */
@@ -495,6 +498,25 @@ export type ServerUsage = {
         quota_bytes: number | null;
     };
     violations: UsageViolation[];
+};
+
+/** How often a server's billing system may reinstall it (ReinstallLimits, docs/adr/0045). */
+export type ReinstallLimitState = {
+    /** server: its own limit; package: its package's (none without a package). */
+    source: 'server' | 'package';
+    /** The limit that applies; null: unlimited, as are the counts then. */
+    limit: number | null;
+    period_days: number | null;
+    used: number | null;
+    remaining: number | null;
+    /** When the next reinstall is possible once none remain; null for a limit of 0. */
+    available_at: string | null;
+    server_limit: number | null;
+    server_period_days: number | null;
+    package_limit: number | null;
+    package_period_days: number | null;
+    has_package: boolean;
+    reset_at: string | null;
 };
 
 /** The latest checks from inside a server (ServerVerifier, docs/adr/0032 §6). */

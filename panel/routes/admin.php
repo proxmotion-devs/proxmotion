@@ -30,6 +30,7 @@ use App\Http\Controllers\Admin\PlacementGroupController;
 use App\Http\Controllers\Admin\ServerController;
 use App\Http\Controllers\Admin\ServerFirewallController;
 use App\Http\Controllers\Admin\ServerMoveController;
+use App\Http\Controllers\Admin\ServerReinstallLimitController;
 use App\Http\Controllers\Admin\ServerStatsController;
 use App\Http\Controllers\Admin\StorageController;
 use App\Http\Controllers\Admin\TaskController;
@@ -196,6 +197,8 @@ Route::post('servers/{server}/moves/{move}/finish', [ServerMoveController::class
 Route::put('servers/{server}/test', [AppController::class, 'testServer'])->name('servers.test');
 // Violations of traffic quotas and usage limits are recorded but never acted on (docs/adr/0039).
 Route::put('servers/{server}/usage-exempt', [ServerController::class, 'usageExempt'])->name('servers.usage-exempt');
+Route::put('servers/{server}/reinstall-limit', [ServerReinstallLimitController::class, 'update'])->name('servers.reinstall-limit');
+Route::post('servers/{server}/reinstall-limit/reset', [ServerReinstallLimitController::class, 'reset'])->name('servers.reinstall-limit.reset');
 Route::post('servers/{server}/trial-reset', [AppController::class, 'resetTestServer'])->middleware('throttle:10,1')->name('servers.trial-reset');
 Route::post('servers/{server}/apps', [AppController::class, 'install'])->middleware('throttle:10,1')->name('servers.apps');
 Route::post('servers/{server}/app-entitlements', [AppEntitlementController::class, 'store'])->middleware('throttle:20,1')->name('servers.app-entitlements');

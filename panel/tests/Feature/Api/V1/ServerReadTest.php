@@ -25,6 +25,8 @@ class ServerReadTest extends ApiTestCase
                 'suspension_cause' => null,
                 'reboot_required' => false,
                 'power_state' => 'running',
+                // Unlimited (docs/adr/0045).
+                'reinstalls' => ['limit' => null, 'period_days' => null, 'used' => null, 'remaining' => null, 'available_at' => null],
                 'network_model' => 'bridged',
                 'package' => ['id' => $this->package->uuid, 'name' => $this->package->name],
                 'location' => ['id' => $this->location->uuid, 'name' => $this->location->name],

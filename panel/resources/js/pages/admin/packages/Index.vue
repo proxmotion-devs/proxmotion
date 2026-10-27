@@ -11,6 +11,7 @@ import NativeSelect from '@/components/admin/NativeSelect.vue';
 import StatusBadge from '@/components/admin/StatusBadge.vue';
 import Heading from '@/components/Heading.vue';
 import LimitFields from '@/components/servers/LimitFields.vue';
+import ReinstallLimitFields from '@/components/servers/ReinstallLimitFields.vue';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
@@ -95,6 +96,8 @@ const form = useForm({
     cpu_units: '' as OptionalNumber,
     disk_mb_s: '' as OptionalNumber,
     disk_iops: '' as OptionalNumber,
+    reinstall_limit: '' as OptionalNumber,
+    reinstall_period_days: 30 as OptionalNumber,
     ipv4_count: 1,
     ipv6_count: 1,
     snapshot_slots: 1,
@@ -126,6 +129,8 @@ const openForm = (pkg: Package | null) => {
                   cpu_units: pkg.cpu_units ?? '',
                   disk_mb_s: pkg.disk_mb_s ?? '',
                   disk_iops: pkg.disk_iops ?? '',
+                  reinstall_limit: pkg.reinstall_limit ?? '',
+                  reinstall_period_days: pkg.reinstall_period_days ?? 30,
                   ipv4_count: pkg.ipv4_count,
                   ipv6_count: pkg.ipv6_count,
                   snapshot_slots: pkg.snapshot_slots,
@@ -148,6 +153,8 @@ const openForm = (pkg: Package | null) => {
                   cpu_units: '',
                   disk_mb_s: '',
                   disk_iops: '',
+                  reinstall_limit: '',
+                  reinstall_period_days: 30,
                   ipv4_count: 1,
                   ipv6_count: 1,
                   snapshot_slots: 1,
@@ -187,6 +194,11 @@ const submit = () => {
         cpu_units: optionalNumber(data.cpu_units),
         disk_mb_s: optionalNumber(data.disk_mb_s),
         disk_iops: optionalNumber(data.disk_iops),
+        reinstall_limit: optionalNumber(data.reinstall_limit),
+        reinstall_period_days:
+            data.reinstall_limit === ''
+                ? null
+                : optionalNumber(data.reinstall_period_days),
     })).submit(editing.value ? update(editing.value.uuid) : store(), {
         preserveScroll: true,
         onSuccess: () => (dialogOpen.value = false),
@@ -229,6 +241,13 @@ const modelLabel = (value: string) =>
                     {{
                         $t(
                             'Changing a package does not change existing servers. Use Change resources on a server, or the upgrade in the billing system.',
+                        )
+                    }}
+                </li>
+                <li>
+                    {{
+                        $t(
+                            "The reinstall limit is the exception: it applies to the package's servers at once, unless a server has its own.",
                         )
                     }}
                 </li>
@@ -454,6 +473,11 @@ const modelLabel = (value: string) =>
             v-model:cpu-units="form.cpu_units"
             v-model:disk-mb-s="form.disk_mb_s"
             v-model:disk-iops="form.disk_iops"
+            :errors="form.errors"
+        />
+        <ReinstallLimitFields
+            v-model:limit="form.reinstall_limit"
+            v-model:days="form.reinstall_period_days"
             :errors="form.errors"
         />
         <FormField

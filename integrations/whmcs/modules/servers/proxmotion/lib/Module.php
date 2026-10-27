@@ -1002,7 +1002,45 @@ class Module
             'addresses' => $this->addressesOf($server),
             'traffic' => $this->presentTraffic($server, $this->lang),
             'suspension' => $status === 'suspended' ? $this->presentSuspension($server) : null,
+            'reinstalls' => $this->presentReinstalls($server),
         ];
+    }
+
+    /**
+     * How many reinstalls are left (docs/adr/0045); allowed is false when
+     * none are, so the form is not shown. Null when unlimited or Proxmotion
+     * does not say (a panel before reinstall limits).
+     *
+     * @param array<string, mixed> $server
+     * @return array{allowed: bool, message: string}|null
+     */
+    private function presentReinstalls(array $server): ?array
+    {
+        if (!isset($server['reinstalls']) || !is_array($server['reinstalls']) || !isset($server['reinstalls']['limit'])) {
+            return null;
+        }
+
+        $reinstalls = $server['reinstalls'];
+        $replace = [
+            'limit' => (string) (int) $reinstalls['limit'],
+            'days' => (string) (isset($reinstalls['period_days']) ? (int) $reinstalls['period_days'] : 0),
+            'remaining' => (string) (isset($reinstalls['remaining']) ? (int) $reinstalls['remaining'] : 0),
+        ];
+
+        if ((int) $reinstalls['limit'] === 0) {
+            return ['allowed' => false, 'message' => $this->lang->get('reinstalls_not_allowed')];
+        }
+
+        if ($replace['remaining'] === '0') {
+            $time = isset($reinstalls['available_at']) ? (string) $reinstalls['available_at'] : '';
+
+            return ['allowed' => false, 'message' => $this->lang->get('reinstalls_none_left', $replace + [
+                // Proxmotion's time zone, as it sent the time.
+                'time' => preg_match('/^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})/', $time, $match) === 1 ? $match[1] . ' ' . $match[2] : $time,
+            ])];
+        }
+
+        return ['allowed' => true, 'message' => $this->lang->get('reinstalls_left', $replace)];
     }
 
     /**

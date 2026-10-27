@@ -29,6 +29,10 @@ class PackageResource extends JsonResource
             'ipv6_count' => $this->ipv6_count,
             'port_speed_mbps' => $this->port_speed_mbps,
             'traffic_bytes' => $this->traffic_bytes,
+            // How often its servers may be reinstalled through the API; null for unlimited (docs/adr/0045).
+            'reinstall_limit' => $this->reinstall_limit === null || $this->reinstall_period_days === null
+                ? null
+                : ['count' => $this->reinstall_limit, 'period_days' => $this->reinstall_period_days],
             'network_models' => $this->network_models->map(fn (NetworkModel $model) => $model->value)->values(),
             // The OS templates its servers may use; empty for any (docs/adr/0040).
             'os_templates' => $this->osTemplates->pluck('uuid')->values(),

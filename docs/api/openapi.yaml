@@ -343,6 +343,12 @@ paths:
         Scope: `servers:write`. Active servers only. **Wipes the disks**; ask the customer to
         confirm first. VMID, addresses and MAC address stay the same. A new root password is
         generated and can be fetched once with `GET /servers/{id}/password`.
+
+        The server's package (or the server itself) may limit how often it is reinstalled through
+        the API within a rolling window of days (docs/adr/0045); `reinstalls` on `GET /servers/{id}`
+        says how many remain. Over the limit the answer is `409` with `error: reinstall_limit_reached`
+        and `available_at`, and nothing changes. Failed reinstalls and administrators' reinstalls do
+        not count.
       operationId: reinstallServer
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
@@ -363,7 +369,20 @@ paths:
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
-        '409': { $ref: '#/components/responses/Conflict' }
+        '409':
+          description: |
+            Not possible in the server's current status, another task is still running, a request with
+            the same Idempotency-Key is still being processed, or the reinstall limit is reached
+            (`error: reinstall_limit_reached`).
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [message]
+                properties:
+                  message: { type: string }
+                  error: { type: string, enum: [reinstall_limit_reached], description: Only when the reinstall limit is reached }
+                  available_at: { type: [string, 'null'], format: date-time, description: 'When the next reinstall is possible; null for a limit of 0 (no reinstalls through the API)' }
         '422': { $ref: '#/components/responses/ValidationError' }
 
   /servers/{server}/package:
@@ -1301,6 +1320,13 @@ components:
         ipv6_count: { type: integer }
         port_speed_mbps: { type: [integer, 'null'] }
         traffic_bytes: { type: [integer, 'null'] }
+        reinstall_limit:
+          type: [object, 'null']
+          description: 'How often its servers may be reinstalled through the API: `count` times (0: never) within the last `period_days` days; null is unlimited (docs/adr/0045).'
+          required: [count, period_days]
+          properties:
+            count: { type: integer, minimum: 0 }
+            period_days: { type: integer, minimum: 1, maximum: 365 }
         network_models: { type: array, items: { $ref: '#/components/schemas/NetworkModel' } }
         os_templates: { type: array, items: { type: string, format: uuid }, description: 'The OS templates its servers may use (`GET /os-templates`); empty: any (docs/adr/0040).' }
     FirewallRule:
@@ -1419,6 +1445,19 @@ components:
         power_state:
           type: [string, 'null']
           description: Only on `GET /servers/{id}`. `running`, `stopped`, …; null when the server is not active or Proxmox could not be asked.
+        reinstalls:
+          type: object
+          description: |
+            Only on `GET /servers/{id}` (docs/adr/0045). How often the server may still be reinstalled through
+            the API: `used` of `limit` within the last `period_days` days, and once none remain, when the next
+            one is possible (`available_at`, null for a limit of 0). Every field is null when unlimited.
+          required: [limit, period_days, used, remaining, available_at]
+          properties:
+            limit: { type: [integer, 'null'], minimum: 0 }
+            period_days: { type: [integer, 'null'] }
+            used: { type: [integer, 'null'] }
+            remaining: { type: [integer, 'null'] }
+            available_at: { type: [string, 'null'], format: date-time }
         network_model: { $ref: '#/components/schemas/NetworkModel' }
         package:
           type: [object, 'null']

@@ -35,6 +35,8 @@ class PackageController extends Controller
                     'traffic_bytes' => $package->traffic_bytes,
                     'port_speed_mbps' => $package->port_speed_mbps,
                     ...ResourceLimits::of($package)->columns(),
+                    'reinstall_limit' => $package->reinstall_limit,
+                    'reinstall_period_days' => $package->reinstall_period_days,
                     'ipv4_count' => $package->ipv4_count,
                     'ipv6_count' => $package->ipv6_count,
                     'snapshot_slots' => $package->snapshot_slots,

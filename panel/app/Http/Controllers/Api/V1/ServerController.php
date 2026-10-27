@@ -6,6 +6,8 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Domain\Apps\AppNotEligible;
 use App\Domain\Servers\HostnameChanger;
+use App\Domain\Servers\ReinstallLimitReached;
+use App\Domain\Servers\ReinstallLimits;
 use App\Domain\Servers\ServerPower;
 use App\Domain\Servers\ServerReinstaller;
 use App\Domain\Usage\TrafficPeriods;
@@ -38,7 +40,7 @@ use Illuminate\Validation\Rule;
  */
 class ServerController extends ApiController
 {
-    private const WITH = ['package:id,uuid,name', 'location:id,uuid,name', 'osTemplate:id,uuid,operating_system_version_id,name', 'ipAddresses.pool'];
+    private const WITH = ['package:id,uuid,name,reinstall_limit,reinstall_period_days', 'location:id,uuid,name', 'osTemplate:id,uuid,operating_system_version_id,name', 'ipAddresses.pool'];
 
     public function __construct(private readonly TaskRunner $tasks) {}
 
@@ -97,11 +99,13 @@ class ServerController extends ApiController
         return $this->accepted($server->tasks()->latest('id')->firstOrFail());
     }
 
-    public function show(Server $server, ServerPower $power): ServerResource
+    public function show(Server $server, ServerPower $power, ReinstallLimits $reinstalls): ServerResource
     {
         $server->load(self::with());
 
-        return ServerResource::make($server)->withPowerState($server->status === ServerStatus::Active ? $power->state($server) : null);
+        return ServerResource::make($server)
+            ->withPowerState($server->status === ServerStatus::Active ? $power->state($server) : null)
+            ->withReinstalls($reinstalls->usage($server));
     }
 
     public function suspend(Request $request, Server $server): JsonResponse
@@ -161,6 +165,13 @@ class ServerController extends ApiController
             return $this->accepted($reinstaller->request($server, $request->osTemplate(), $request->sshKeys(), $this->token($request), $request->ip(), $request->app(), $request->appInputs()));
         } catch (AppNotEligible $e) {
             return $this->appNotEligible($e);
+        } catch (ReinstallLimitReached $e) {
+            // docs/adr/0045 §6
+            return response()->json([
+                'message' => $e->translatedMessage(),
+                'error' => 'reinstall_limit_reached',
+                'available_at' => $e->availableAt?->toIso8601String(),
+            ], 409);
         } catch (ProvisioningException $e) {
             return $this->conflict($e->translatedMessage());
         }

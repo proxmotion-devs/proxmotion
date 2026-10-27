@@ -356,7 +356,8 @@ A **package** (plan) defines:
 - backup quota,
 - allowed **network models**,
 - optional **placement groups**,
-- optional **OS templates** ([ADR 0040](../adr/0040-package-os-templates.md)): the templates its servers may be created or reinstalled with; none means any. A server keeps its template when its package changes; the new package applies on the next create or reinstall.
+- optional **OS templates** ([ADR 0040](../adr/0040-package-os-templates.md)): the templates its servers may be created or reinstalled with; none means any. A server keeps its template when its package changes; the new package applies on the next create or reinstall,
+- optional **reinstall limit** ([ADR 0045](../adr/0045-reinstall-limits.md)): how often the billing system may reinstall a server within the last N days (0: never; empty: unlimited). Unlike resources it is not copied: editing the package changes it for all its servers at once, unless a server has its own limit (*Reinstall limit* on the server page, which also resets the count). Only reinstalls through the billing API count, failed ones do not, and administrators are never limited. Over the limit the API answers `409` with `error: reinstall_limit_reached` and `available_at`; `GET /servers/{id}` returns `reinstalls`, and the WHMCS client area shows how many are left.
 
 Units are consistent everywhere: disk and memory in **MiB**, traffic in **bytes**, port speed in **Mbps**.
 

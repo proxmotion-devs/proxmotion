@@ -246,6 +246,10 @@
             {if $pmx.osTemplates}
                 <hr>
                 <h4>{$pmx.lang.reinstall_title|escape}</h4>
+                {if $pmx.server.reinstalls}
+                    <p class="{if $pmx.server.reinstalls.allowed}help-block{else}text-warning{/if}">{$pmx.server.reinstalls.message|escape}</p>
+                {/if}
+                {if !$pmx.server.reinstalls || $pmx.server.reinstalls.allowed}
                 <p class="text-danger">{$pmx.lang.reinstall_warning|escape}</p>
                 <form method="post" action="{$pmxAction}Reinstall">
                     <input type="hidden" name="token" value="{$token}">
@@ -278,6 +282,7 @@
                     </div>
                     <button type="submit" class="btn btn-danger">{$pmx.lang.reinstall_submit|escape}</button>
                 </form>
+                {/if}
             {/if}
 
             {if $pmx.installations || $pmx.apps}

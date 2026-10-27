@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Requests\Admin;
 
+use App\Domain\Servers\ReinstallLimits;
 use App\Enums\NetworkModel;
 use App\Models\FirewallRuleset;
 use App\Provisioning\ResourceLimits;
@@ -31,6 +32,8 @@ class PackageRequest extends FormRequest
             'port_speed_mbps' => ['nullable', 'integer', 'between:1,400000'],
             // Empty: unlimited (docs/adr/0034).
             ...ResourceLimits::rules(),
+            // Reinstalls through the billing API within a rolling window; empty: unlimited (docs/adr/0045).
+            ...ReinstallLimits::rules(),
             // New servers start with these rules and its default policy (docs/adr/0035 §3).
             'firewall_ruleset' => ['nullable', 'string', Rule::exists('firewall_rulesets', 'uuid')],
             'ipv4_count' => ['required', 'integer', 'between:0,64'],
@@ -76,6 +79,8 @@ class PackageRequest extends FormRequest
         $data['disk_mib'] = $this->integer('disk_gib') * 1024;
         $data['traffic_bytes'] = $this->filled('traffic_gb') ? $this->integer('traffic_gb') * 1000 ** 3 : null;
         $data['port_speed_mbps'] = $this->filled('port_speed_mbps') ? $this->integer('port_speed_mbps') : null;
+        $data['reinstall_limit'] = $this->filled('reinstall_limit') ? $this->integer('reinstall_limit') : null;
+        $data['reinstall_period_days'] = $data['reinstall_limit'] === null ? null : $this->integer('reinstall_period_days');
 
         return [...$data, ...ResourceLimits::fromRequest($this)->columns()];
     }

@@ -28,6 +28,7 @@ import AntiSpoofingButton from '@/components/servers/AntiSpoofingButton.vue';
 import FirewallSection from '@/components/servers/FirewallSection.vue';
 import ReapplyAddressesButton from '@/components/servers/ReapplyAddressesButton.vue';
 import ReinstallDialog from '@/components/servers/ReinstallDialog.vue';
+import ReinstallLimitSection from '@/components/servers/ReinstallLimitSection.vue';
 import RemoveAddressButton from '@/components/servers/RemoveAddressButton.vue';
 import ResourcesDialog from '@/components/servers/ResourcesDialog.vue';
 import ResetPasswordButton from '@/components/servers/ResetPasswordButton.vue';
@@ -59,6 +60,7 @@ import {
     reapplyAddresses,
     rebuild,
     reinstall,
+    reinstallLimit as updateReinstallLimit,
     resetPassword,
     resources,
     retry,
@@ -71,6 +73,7 @@ import {
     verify,
 } from '@/routes/admin/servers';
 import { finish as finishMove } from '@/routes/admin/servers/moves';
+import { reset as resetReinstalls } from '@/routes/admin/servers/reinstall-limit';
 import { NETWORK_MODELS } from '@/types/admin';
 import type {
     AddressPoolOption,
@@ -85,6 +88,7 @@ import type {
     ServerVerification,
     Drift,
     GuestScriptRun,
+    ReinstallLimitState,
     ReinstallOptions,
     ResourceOptions,
     ServerFirewall,
@@ -144,6 +148,8 @@ const props = withDefaults(
         tasks: Task[];
         revealedAppOutputs: RevealedAppOutputs | null;
         reinstallOptions: ReinstallOptions;
+        /** docs/adr/0045 */
+        reinstallLimit: ReinstallLimitState;
         resourceOptions: ResourceOptions;
         /** docs/adr/0037 */
         moveOptions: MoveOptions;
@@ -986,6 +992,17 @@ const resetAfterTrial = () => {
                 :usage="usage"
                 :exempt="server.usage_exempt"
                 :exempt-action="usageExempt(server.uuid)"
+            />
+
+            <!-- Only the billing system's reinstalls are limited (docs/adr/0045). -->
+            <ReinstallLimitSection
+                v-if="
+                    server.billing_system &&
+                    ['active', 'suspended'].includes(server.status)
+                "
+                :limit="reinstallLimit"
+                :action="updateReinstallLimit(server.uuid)"
+                :reset-action="resetReinstalls(server.uuid)"
             />
 
             <ServerChecks

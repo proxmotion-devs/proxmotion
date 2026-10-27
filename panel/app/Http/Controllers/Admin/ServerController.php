@@ -16,6 +16,7 @@ use App\Domain\Firewall\ServerFirewalls;
 use App\Domain\Servers\GuestAgentProbe;
 use App\Domain\Servers\HostnameChanger;
 use App\Domain\Servers\MoveOptions;
+use App\Domain\Servers\ReinstallLimits;
 use App\Domain\Servers\ReinstallOptions;
 use App\Domain\Servers\ResourceOptions;
 use App\Domain\Servers\ServerLiveState;
@@ -239,7 +240,7 @@ class ServerController extends Controller
 
     public function show(Request $request, Server $server, MoveOptions $moves, GuestAgentProbe $agent, ServerLiveState $state, AppEligibility $eligibility, AppUpgrades $upgrades, TaskFailer $failer, LiveAppPolls $live, IpAllocator $ips, TaskPlan $plan, TaskEstimates $estimates): Response
     {
-        $server->load(['node:id,uuid,name', 'cluster:id,uuid,name', 'location:id,name', 'package:id,name', 'billingSystem:id,name', 'osTemplate:id,operating_system_version_id,name,distribution,version,family,platform', 'storage:id,name', 'ipAddresses.pool:id,uuid,name,version,bridge,vlan_tag']);
+        $server->load(['node:id,uuid,name', 'cluster:id,uuid,name', 'location:id,name', 'package:id,name,reinstall_limit,reinstall_period_days', 'billingSystem:id,name', 'osTemplate:id,operating_system_version_id,name,distribution,version,family,platform', 'storage:id,name', 'ipAddresses.pool:id,uuid,name,version,bridge,vlan_tag']);
 
         // The page's refreshes while an app script runs ask the guest, so step and progress show live (docs/adr/0021).
         if (in_array('apps', explode(',', (string) $request->header('X-Inertia-Partial-Data')), true)) {
@@ -335,6 +336,16 @@ class ServerController extends Controller
             // Whether the VM is where the panel recorded it (ServerLiveState).
             'vm' => Inertia::defer(fn () => ['state' => $liveState()['vm'], 'node' => $liveState()['node']]),
             'reinstallOptions' => fn () => ReinstallOptions::for($server),
+            // How often its billing system may reinstall it (docs/adr/0045).
+            'reinstallLimit' => fn () => [
+                ...app(ReinstallLimits::class)->usage($server),
+                'server_limit' => $server->reinstall_limit,
+                'server_period_days' => $server->reinstall_period_days,
+                'package_limit' => $server->package?->reinstall_limit,
+                'package_period_days' => $server->package?->reinstall_period_days,
+                'has_package' => $server->package !== null,
+                'reset_at' => $server->reinstalls_reset_at?->toIso8601String(),
+            ],
             'resourceOptions' => fn () => ResourceOptions::for($server),
             // Moving the server (docs/adr/0037).
             'moveOptions' => fn () => $moves->for($server),
