@@ -27,7 +27,7 @@ const props = defineProps<{
     hostname: string;
     scripts: { uuid: string; name: string }[];
     runs: GuestScriptRun[];
-    /** Not active, busy or the VM is not where the panel recorded it. */
+    /** Not active, busy, the VM is not where the panel recorded it, or its guest agent cannot answer. */
     disabled: boolean;
 }>();
 

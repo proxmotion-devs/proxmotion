@@ -415,7 +415,7 @@ const vmBadge = computed(
             moving: 'Move not finished',
         })[vmState.value],
 );
-// Password reset and apps need the agent; a VM not running cannot have one.
+// Password reset, apps and scripts need the agent; a VM not running cannot have one.
 const agentDown = computed(
     () => vmAway.value || vmStopped.value || props.agent === false,
 );
@@ -993,7 +993,7 @@ const resetAfterTrial = () => {
                 :hostname="server.hostname"
                 :scripts="scripts"
                 :runs="scriptRuns"
-                :disabled="!active || vmBlocked"
+                :disabled="!active || vmBlocked || agentDown"
             />
 
             <!-- Operations that interrupt or remove the server. -->
