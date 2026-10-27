@@ -51,8 +51,9 @@ server, it:
 6. Inside the VM, **cloud-init** reads that CD on the first boot: it grows the root partition and
    file system to fill the disk, writes the network configuration, sets the hostname, the root
    password and the SSH keys, and creates new SSH host keys.
-7. The panel **waits for the QEMU guest agent** and then for `cloud-init status` to stop saying
-   `running`. Then it runs its guest scripts through the agent (additional addresses, a different
+7. The panel **waits for the QEMU guest agent** and then until `cloud-init status` no longer says
+   that cloud-init has not started or is running (`not started` / `running`; before cloud-init
+   24.1, as on EL8 and Debian 12, `not run` / `degraded running`). Then it runs its guest scripts through the agent (additional addresses, a different
    primary address) and checks the server from inside (addresses, gateway, DNS, hostname, disk).
 
 So the template is an installed system that has been made to **forget who it is** and that
@@ -207,7 +208,8 @@ On Ubuntu these are `subiquity-disable-cloudinit-networking.cfg`, `99-installer.
 `90-installer-network.cfg` and, if present, `/etc/cloud/cloud-init.disabled`.
 
 **Check:** `cloud-init status --long` must not say `disabled`. (On the template it says `done` or
-`not started`; after step 7 it is `not started`, which is what a clone should see.)
+`not started`; after step 7 it is `not started`, which is what a clone should see. cloud-init before
+24.1 says `not run` instead of `not started`.)
 
 ## Step 4: hand the network to cloud-init
 

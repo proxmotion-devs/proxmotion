@@ -56,6 +56,48 @@ class CloudInitWaitTest extends TestCase
         $this->assertNull($this->waitStep($server->tasks()->sole())['message']);
     }
 
+    public function test_the_statuses_of_cloud_init_before_24_1_are_waited_for_too()
+    {
+        // cloud-init 23.4 (EL8): "not run" before it starts, "degraded running" after a recoverable error.
+        $this->proxmox->cloudInitStatus[self::VMID] = ['status: not run', 'status: running', 'status: degraded running', 'status: done'];
+        Sleep::fake();
+
+        $server = app(ServerCreator::class)->create($this->order())->refresh();
+
+        $this->assertSame(4, $this->proxmox->cloudInitChecks[self::VMID]);
+        Sleep::assertSleptTimes(3);
+        $this->assertSame(ServerStatus::Active, $server->status);
+        $this->assertNull($this->waitStep($server->tasks()->sole())['message']);
+    }
+
+    public function test_a_cloud_init_before_24_1_that_finished_with_recoverable_errors_leaves_a_note()
+    {
+        $this->proxmox->cloudInitStatus[self::VMID] = ['status: degraded running', 'status: degraded done'];
+        Sleep::fake();
+
+        $server = app(ServerCreator::class)->create($this->order())->refresh();
+
+        $this->assertSame(2, $this->proxmox->cloudInitChecks[self::VMID]);
+        $this->assertSame(
+            'cloud-init finished with status degraded done: check /var/log/cloud-init.log inside the server.',
+            $this->waitStep($server->tasks()->sole())['message'],
+        );
+    }
+
+    public function test_a_cloud_init_that_never_starts_leaves_its_own_note()
+    {
+        $this->proxmox->cloudInitStatus[self::VMID] = ['status: not run'];
+        Sleep::fake(syncWithCarbon: true);
+
+        $server = app(ServerCreator::class)->create($this->order())->refresh();
+
+        $this->assertSame(ServerStatus::Active, $server->status);
+        $this->assertSame(
+            "cloud-init had not started after 10 minutes: check that the template's cloud-init is enabled and finds the CloudInit drive.",
+            $this->waitStep($server->tasks()->sole())['message'],
+        );
+    }
+
     public function test_a_system_without_cloud_init_is_ready_at_once()
     {
         $this->proxmox->cloudInitStatus[self::VMID] = [''];

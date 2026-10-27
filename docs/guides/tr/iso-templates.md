@@ -50,8 +50,9 @@ Windows'un kendi rehberi var: [windows-templates.md](windows-templates.md).
 6. VM'in içinde **cloud-init** ilk açılışta bu CD'yi okur: root partition'ını ve dosya sistemini
    diski dolduracak şekilde büyütür, ağ yapılandırmasını yazar, hostname'i, root parolasını ve SSH
    anahtarlarını ayarlar ve yeni SSH host anahtarları üretir.
-7. Panel önce **QEMU guest agent**'ı, sonra `cloud-init status`'un `running` demeyi bırakmasını
-   **bekler**. Ardından guest script'lerini agent üzerinden çalıştırır (ek adresler, farklı bir
+7. Panel önce **QEMU guest agent**'ı, sonra `cloud-init status`'un cloud-init'in henüz başlamadığını
+   ya da çalıştığını söylemeyi bırakmasını **bekler** (`not started` / `running`; EL8 ve Debian 12'deki
+   gibi 24.1'den eski cloud-init'te `not run` / `degraded running`). Ardından guest script'lerini agent üzerinden çalıştırır (ek adresler, farklı bir
    birincil adres) ve sunucuyu içeriden kontrol eder (adresler, gateway, DNS, hostname, disk).
 
 Yani şablon, **kim olduğunu unutturulmuş** ve şimdi kim olduğunu **cloud-init'in ve guest agent'ın
@@ -209,7 +210,8 @@ Ubuntu'da bunlar `subiquity-disable-cloudinit-networking.cfg`, `99-installer.cfg
 `90-installer-network.cfg` ve varsa `/etc/cloud/cloud-init.disabled`'dır.
 
 **Kontrol:** `cloud-init status --long` `disabled` dememelidir. (Şablonda `done` veya `not started`
-der; 7. adımdan sonra `not started` der, bir klonun görmesi gereken de budur.)
+der; 7. adımdan sonra `not started` der, bir klonun görmesi gereken de budur. 24.1'den eski
+cloud-init `not started` yerine `not run` der.)
 
 ## Adım 4: ağı cloud-init'e bırakın
 

@@ -105,6 +105,17 @@ final readonly class GuestScripts
      */
     public const CLOUD_INIT_STATUS_COMMAND = ['sh', '-c', 'command -v cloud-init > /dev/null 2>&1 || exit 0; cloud-init status 2> /dev/null || true'];
 
+    /**
+     * Statuses of a cloud-init that has not finished yet. Before 24.1 one that
+     * has not started says "not run" (24.1: "not started") and one running
+     * after a recoverable error "degraded running" (24.1: "running"); EL8 and
+     * Debian 12 ship such versions.
+     */
+    private const CLOUD_INIT_WAITING = ['not started', 'not run', 'running', 'degraded running'];
+
+    /** Statuses of a cloud-init that has finished with errors (before 24.1 also "degraded done"). */
+    private const CLOUD_INIT_FAILED = ['error', 'degraded', 'degraded done'];
+
     /** Runs of a script when the guest restarts while it runs. */
     private const ATTEMPTS = 3;
 
@@ -459,24 +470,28 @@ final readonly class GuestScripts
     }
 
     /**
-     * One check whether cloud-init still runs (done, error, disabled, or not
-     * installed end the wait). The agent going away meanwhile (cloud-init
-     * restarting the guest) counts as a check that has not passed yet.
+     * One check whether cloud-init still runs or has yet to start
+     * (CLOUD_INIT_WAITING; done, an error, disabled, or not installed end the
+     * wait). The agent going away meanwhile (cloud-init restarting the guest)
+     * counts as a check that has not passed yet. The last status seen is kept
+     * in $state['cloud_init_status'] for the note of a wait that times out.
      *
      * @param  array<string, mixed>  $state
      * @param  Closure(?string): null  $done
      */
-    private function checkCloudInit(GuestAgentResource $agent, Server $server, array $state, Closure $done): ?int
+    private function checkCloudInit(GuestAgentResource $agent, Server $server, array &$state, Closure $done): ?int
     {
         try {
             $result = $agent->run($server->vmid, self::CLOUD_INIT_STATUS_COMMAND, timeoutSeconds: 60);
             $status = preg_match('/^status:\s*(.+)$/m', $result->stdout, $match) === 1 ? trim($match[1]) : '';
 
-            if (! in_array($status, ['running', 'not started'], true)) {
-                return $done(in_array($status, ['error', 'degraded', 'degraded done'], true)
+            if (! in_array($status, self::CLOUD_INIT_WAITING, true)) {
+                return $done(in_array($status, self::CLOUD_INIT_FAILED, true)
                     ? "cloud-init finished with status {$status}: check /var/log/cloud-init.log inside the server."
                     : null);
             }
+
+            $state['cloud_init_status'] = $status;
         } catch (GuestCommandDisabled $e) {
             return $done('Could not check whether cloud-init has finished: '.$e->getMessage());
         } catch (ProxmoxException) {
@@ -486,7 +501,11 @@ final readonly class GuestScripts
         $since = is_int($state['cloud_init_since'] ?? null) ? $state['cloud_init_since'] : $state['since'];
 
         if (Carbon::now()->getTimestamp() >= $since + self::CLOUD_INIT_TIMEOUT_SECONDS) {
-            return $done('cloud-init was still running after '.intdiv(self::CLOUD_INIT_TIMEOUT_SECONDS, 60).' minutes: the server may still be setting itself up.');
+            $minutes = intdiv(self::CLOUD_INIT_TIMEOUT_SECONDS, 60);
+
+            return $done(in_array($state['cloud_init_status'] ?? null, ['not started', 'not run'], true)
+                ? "cloud-init had not started after {$minutes} minutes: check that the template's cloud-init is enabled and finds the CloudInit drive."
+                : "cloud-init was still running after {$minutes} minutes: the server may still be setting itself up.");
         }
 
         return 5;
