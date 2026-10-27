@@ -358,12 +358,9 @@ class ServerController extends Controller
                     ->map(fn (UsageViolation $violation) => [...$violation->toPayload(), 'label' => $violation->kind->label()]),
             ],
             // The template's published manual scripts and the latest custom script runs here (docs/adr/0043).
-            'scripts' => fn () => $server->os_template_id === null ? [] : CustomScript::query()
-                ->where('os_template_id', $server->os_template_id)
+            'scripts' => fn () => $server->osTemplate === null ? [] : $server->osTemplate->customScripts()
                 ->where('manual', true)
                 ->whereNotNull('content')
-                ->orderBy('position')
-                ->orderBy('id')
                 ->get(['uuid', 'name'])
                 ->map(fn (CustomScript $script) => ['uuid' => $script->uuid, 'name' => $script->name]),
             'scriptRuns' => fn () => GuestScriptLog::query()
