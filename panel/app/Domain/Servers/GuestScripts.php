@@ -49,16 +49,47 @@ final readonly class GuestScripts
     public const WINDOWS_SETUP_TIMEOUT_SECONDS = 900;
 
     /**
-     * Prints Windows' image state and the state of the Cloudbase-Init service
-     * (empty when there is none), one per line. A fixed command: nothing in
-     * it comes from the server or a customer.
+     * Prints key=value lines: image= (Windows' image state), name= and
+     * active_name= (the computer name after the next restart and the one in
+     * use), and with a cloudbase-init service service= (its state), plugins=
+     * (the plugins its configuration file lists), done= and later= (the
+     * plugins it recorded as done, or to run at the next boot, for the
+     * instance ID on the config drive). A fixed command: nothing in it comes
+     * from the server or a customer.
+     *
+     * Cloudbase-Init keeps a plugin's state under
+     * HKLM\SOFTWARE\Cloudbase Solutions\Cloudbase-Init\<instance ID>\Plugins
+     * (1 done, 2 at the next boot); the instance ID is the uuid of
+     * openstack\latest\meta_data.json on the config drive (label config-2).
      */
-    public const WINDOWS_SETUP_COMMAND = [
-        'powershell.exe', '-NoProfile', '-NonInteractive', '-Command',
-        "\$state = Get-ItemProperty -Path 'HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Setup\\State' -Name ImageState -ErrorAction SilentlyContinue; "
-        .'$service = Get-Service -Name cloudbase-init -ErrorAction SilentlyContinue; '
-        .'Write-Output ([string]$state.ImageState); Write-Output ([string]$service.Status)',
-    ];
+    public const WINDOWS_SETUP_SCRIPT = <<<'PS'
+        $ErrorActionPreference = 'SilentlyContinue'
+        Write-Output ('image=' + (Get-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Setup\State').ImageState)
+        $names = 'HKLM:\SYSTEM\CurrentControlSet\Control\ComputerName'
+        Write-Output ('name=' + (Get-ItemProperty -Path ($names + '\ComputerName')).ComputerName)
+        Write-Output ('active_name=' + (Get-ItemProperty -Path ($names + '\ActiveComputerName')).ComputerName)
+        $service = Get-Service -Name cloudbase-init
+        if ($service) {
+            Write-Output ('service=' + $service.Status)
+            $conf = Join-Path $env:ProgramFiles 'Cloudbase Solutions\Cloudbase-Init\conf\cloudbase-init.conf'
+            if ((Get-CimInstance -ClassName Win32_Service -Filter 'Name=''cloudbase-init''').PathName -match '--config-file\s+\W?([a-z]:\\.+?\.conf)') { $conf = $Matches[1] }
+            $line = Get-Content -Path $conf | Where-Object { $_ -match '^\s*plugins\s*=' } | Select-Object -First 1
+            if ($line) { Write-Output ('plugins=' + ((($line -split '=', 2)[1] -split ',' | ForEach-Object { ($_.Trim() -split '\.')[-1] } | Where-Object { $_ }) -join ',')) }
+            $drive = Get-CimInstance -ClassName Win32_LogicalDisk -Filter 'DriveType=5' | Where-Object { $_.VolumeName -eq 'config-2' } | Select-Object -First 1
+            $instance = if ($drive) { (Get-Content -Raw -Path ($drive.DeviceID + '\openstack\latest\meta_data.json') | ConvertFrom-Json).uuid } else { '' }
+            foreach ($root in 'HKLM:\SOFTWARE\Cloudbase Solutions\Cloudbase-Init', 'HKLM:\SOFTWARE\WOW6432Node\Cloudbase Solutions\Cloudbase-Init') {
+                $key = if ($instance) { Get-Item -Path (Join-Path $root ($instance + '\Plugins')) } else { $null }
+                if ($key) {
+                    Write-Output ('done=' + (($key.Property | Where-Object { $key.GetValue($_) -eq 1 }) -join ','))
+                    Write-Output ('later=' + (($key.Property | Where-Object { $key.GetValue($_) -ne 1 }) -join ','))
+                    break
+                }
+            }
+        }
+        exit 0
+        PS;
+
+    public const WINDOWS_SETUP_COMMAND = ['powershell.exe', '-NoProfile', '-NonInteractive', '-Command', self::WINDOWS_SETUP_SCRIPT];
 
     /**
      * How long cloud-init of a new Linux system may still run once its guest
@@ -462,11 +493,12 @@ final readonly class GuestScripts
     }
 
     /**
-     * One check whether Windows reports IMAGE_STATE_COMPLETE and
-     * Cloudbase-Init no longer runs. The agent goes away while Windows
-     * restarts during setup: that counts as a check that has not passed yet.
-     * The agent must still answer for the first time within $agentTimeoutSeconds
-     * (a template without one).
+     * One check whether Windows setup and Cloudbase-Init have finished
+     * (windowsSetupPending()). The agent goes away while Windows restarts
+     * during setup: that counts as a check that has not passed yet. The agent
+     * must still answer for the first time within $agentTimeoutSeconds (a
+     * template without one). What the last check still waited for is kept in
+     * $state['waiting_for'] for the note of a wait that times out.
      *
      * @param  array<string, mixed>  $state
      * @param  Closure(?string): null  $done
@@ -478,9 +510,19 @@ final readonly class GuestScripts
         if ($agent->ping($server->vmid)) {
             $state['answered'] = true;
 
-            if ($this->windowsSetupFinished($agent, $server->vmid)) {
+            try {
+                $result = $agent->run($server->vmid, self::WINDOWS_SETUP_COMMAND, timeoutSeconds: 60);
+                $pending = $result->succeeded() ? self::windowsSetupPending($result->stdout) : 'the setup check did not succeed';
+            } catch (ProxmoxException) {
+                // Windows restarted while the check ran.
+                $pending = is_string($state['waiting_for'] ?? null) ? $state['waiting_for'] : 'Windows restarted during the check';
+            }
+
+            if ($pending === null) {
                 return $done(null);
             }
+
+            $state['waiting_for'] = $pending;
         }
 
         $now = Carbon::now()->getTimestamp();
@@ -490,30 +532,74 @@ final readonly class GuestScripts
         }
 
         if ($now >= $state['since'] + $timeoutSeconds) {
-            return $done('Windows setup did not finish within '.intdiv($timeoutSeconds, 60).' minutes: the server may still be setting itself up.');
+            $waitingFor = is_string($state['waiting_for'] ?? null) ? " ({$state['waiting_for']})" : '';
+
+            return $done('Windows setup did not finish within '.intdiv($timeoutSeconds, 60)." minutes{$waitingFor}: the server may still be setting itself up.");
         }
 
         return 5;
     }
 
-    private function windowsSetupFinished(GuestAgentResource $agent, int $vmid): bool
+    /**
+     * What a Windows server is still waiting for, from the output of
+     * WINDOWS_SETUP_COMMAND, or null once it is ready: Windows setup reports
+     * IMAGE_STATE_COMPLETE (no image state: a template that was never
+     * generalized), no new computer name waits for a restart, and, when
+     * Cloudbase-Init is installed, its service has stopped and has recorded
+     * every plugin of its configuration as done for this server's instance
+     * ID. A stopped service alone proves nothing: it looks the same before it
+     * has started and while the restart it asked for is still to come.
+     */
+    public static function windowsSetupPending(string $output): ?string
     {
-        try {
-            $result = $agent->run($vmid, self::WINDOWS_SETUP_COMMAND, timeoutSeconds: 60);
-        } catch (ProxmoxException) {
-            // Windows restarted while the check ran.
-            return false;
+        $values = [];
+
+        foreach (preg_split('/\R/', $output) ?: [] as $line) {
+            if (str_contains($line, '=')) {
+                [$key, $value] = explode('=', $line, 2);
+                $values[trim($key)] = trim($value);
+            }
         }
 
-        if (! $result->succeeded()) {
-            return false;
+        $list = fn (string $key) => array_values(array_filter(array_map(trim(...), explode(',', $values[$key] ?? '')), fn (string $name) => $name !== ''));
+        $image = $values['image'] ?? '';
+        $service = $values['service'] ?? '';
+        $name = $values['name'] ?? '';
+        $active = $values['active_name'] ?? '';
+
+        if (! in_array($image, ['', 'IMAGE_STATE_COMPLETE'], true)) {
+            return "Windows setup reports {$image}";
         }
 
-        $lines = array_map(trim(...), explode("\n", $result->stdout));
+        if ($name !== '' && $active !== '' && strcasecmp($name, $active) !== 0) {
+            return "the computer name {$name} takes effect at the next restart";
+        }
 
-        // No image state: a template that was never generalized, so no setup to wait for.
-        return in_array($lines[0], ['', 'IMAGE_STATE_COMPLETE'], true)
-            && in_array($lines[1] ?? '', ['', 'Stopped'], true);
+        if ($service === '') {
+            return null;
+        }
+
+        if ($service !== 'Stopped') {
+            return "the cloudbase-init service is {$service}";
+        }
+
+        $done = array_map(strtolower(...), $list('done'));
+        $required = $list('plugins');
+
+        // Without a plugins line Cloudbase-Init runs its default plugins: every one it recorded must be done.
+        if ($required === []) {
+            $later = $list('later');
+
+            return match (true) {
+                $done === [] && $later === [] => 'Cloudbase-Init has not run for this server yet',
+                $later !== [] => 'Cloudbase-Init has not finished '.implode(', ', $later),
+                default => null,
+            };
+        }
+
+        $missing = array_values(array_filter($required, fn (string $plugin) => ! in_array(strtolower($plugin), $done, true)));
+
+        return $missing === [] ? null : 'Cloudbase-Init has not finished '.implode(', ', $missing);
     }
 
     private static function agentTimeoutNote(int $timeoutSeconds): string

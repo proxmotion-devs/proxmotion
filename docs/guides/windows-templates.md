@@ -48,8 +48,10 @@ remembers in the registry, per instance ID, which plugins already ran. A clone h
 ID, so every plugin runs once on it; on later boots they are skipped.
 
 The panel then waits until Windows is ready (see [What the panel does](#what-the-panel-does-for-windows)):
-the guest agent answers, Windows setup reports `IMAGE_STATE_COMPLETE`, and the `cloudbase-init`
-service has stopped. Then it runs its own scripts (additional addresses) through the guest agent.
+the guest agent answers, Windows setup reports `IMAGE_STATE_COMPLETE`, the `cloudbase-init` service
+has stopped after recording every plugin of its configuration as done for this server's instance
+ID, and no new computer name waits for a restart. Then it runs its own scripts (additional
+addresses) through the guest agent.
 Customers log in with Remote Desktop as **`Administrator`**, the account whose password the panel
 sets and resets.
 
@@ -471,9 +473,9 @@ locations=cdrom
 
 `cloudbase-init-unattend.conf` and `Unattend.xml` are not used on this way; leave them as they are.
 
-Keep the `cloudbase-init` service's startup type **Automatic**, not *Automatic (Delayed Start)*:
-without a setup pass to wait for, the panel decides that Windows is ready once the service has
-stopped, and a service that has not started yet looks stopped.
+Keep the `cloudbase-init` service's startup type **Automatic**, not *Automatic (Delayed Start)*: the
+panel waits until the service has recorded its plugins for the new server, so a service that starts
+late only makes every server ready later.
 
 ### B2. Remove what must differ per server
 
@@ -592,8 +594,11 @@ server's disk goes to.
   `config_drive_vfat` and `config_drive_raw_hdd`.
 - **`allow_reboot`**: `false` in the unattend file, because a restart in the specialize pass breaks
   Sysprep; `true` in the service, which on Way B restarts for the computer name.
-- **`stop_service_on_exit=true`**: the service stops when it is done; the panel waits for exactly
-  that.
+- **`stop_service_on_exit=true`**: the service stops when it is done; the panel waits for that,
+  besides the plugins it recorded (a service that keeps running ends the wait only after 15 minutes).
+- **`plugins`** is also what the panel reads to know when the service is done: every plugin listed
+  in `cloudbase-init.conf` must be recorded as done for the server's instance ID. Keep the line on
+  one line; without it the panel accepts any recorded plugins, none waiting for the next boot.
 - **`WillReboot` `Never` and `& exit 0`** (Way A): Cloudbase-Init's own `Unattend.xml` ends with
   `&& exit 1 || exit 2` and `OnRequest`, and exit code 1 asks Windows setup for an extra restart even
   when Cloudbase-Init succeeded. A failed run in the specialize pass is then no longer repeated; only
@@ -685,13 +690,26 @@ agent* step goes on, checking through the agent every few seconds, until
 
 - `ImageState` under `HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Setup\State` is
   `IMAGE_STATE_COMPLETE` (on Way B it already is; a template without the value counts as complete),
-  and
-- the `cloudbase-init` service is no longer running (`Stopped`, or not installed).
+- no new computer name waits for a restart (`ComputerName` and `ActiveComputerName` under
+  `HKLM\SYSTEM\CurrentControlSet\Control\ComputerName` are the same),
+- the `cloudbase-init` service is no longer running (`Stopped`, or not installed), and
+- Cloudbase-Init has recorded every plugin of the service's configuration (the `plugins` line of the
+  `cloudbase-init.conf` its service runs with) as done (`1`) under
+  `HKLM\SOFTWARE\Cloudbase Solutions\Cloudbase-Init\<instance ID>\Plugins`, where the instance ID is
+  the `uuid` of `openstack\latest\meta_data.json` on the config drive. Plugins of the specialize
+  pass are recorded there too but do not count.
+
+A stopped service alone is not enough: it looks the same before it has started and between the
+end of its run and the restart it asked for, while the new computer name is not in use yet. Checks
+from inside that ran at such a moment (Server 2022 51 seconds after the start, Windows 10 after about four minutes) reported a
+`WIN-…` or `DESKTOP-…` name and a `C:` not yet extended, though the server had its name later.
 
 Restarts in between are waited out. Only then is the server *Active* and do the address script and
 the template's own script run. When the agent has not answered at all after 10 minutes (a template
 without an agent), the step ends with that note as on Linux; when setup has not finished after 15
-minutes, the step notes *Windows setup did not finish within 15 minutes* and the task goes on.
+minutes, the step notes *Windows setup did not finish within 15 minutes* with what the last check
+still waited for (for example *Cloudbase-Init has not finished NetworkConfigPlugin*: a plugin that
+failed is never recorded as done; see `cloudbase-init.log`) and the task goes on.
 Should a restart still interrupt a script, the panel waits for the agent and runs the script again
 (up to three times), and the Windows scripts wait for Cloudbase-Init before they touch the network.
 
@@ -722,10 +740,10 @@ configuration of A1 removes:
 | Way B: the computer name stays the template's | `UserDataPlugin` is missing, or `allow_reboot=false`: B1. `cloudbase-init.log` shows `Changing hostname` |
 | Way B: the template's password works on a new server | `SetUserPasswordPlugin` did not run: Cloudbase-Init believes it already handled this instance (registry not cleared in B2) or the VM's OS type is not Windows |
 | Way B: Remote Desktop warns about the same certificate on every server | The certificate was not deleted in B2 |
-| Way B: the panel ran its scripts before the network was set | The service started late (delayed start) and the panel saw it stopped: B1 |
+| Way B: every server takes a while longer to become *Active* | The service starts late (delayed start): B1 |
 | "Getting ready" takes long, *Working on updates* | Updates were still pending in the template |
 | Hostname still `WIN-…` or `DESKTOP-…` (Way A) | `cloudbase-init-unattend.log` should show `Changing hostname` |
-| The task takes 15 minutes and notes *Windows setup did not finish* | The `cloudbase-init` service never stopped (`stop_service_on_exit=true` missing) or setup hangs: see the console and `cloudbase-init.log` |
+| The task takes 15 minutes and notes *Windows setup did not finish* | The note says what the last check waited for. *the cloudbase-init service is Running*: `stop_service_on_exit=true` missing. *Cloudbase-Init has not finished …*: those plugins failed (`cloudbase-init.log`), or the config drive has no `config-2` label. *Cloudbase-Init has not run for this server yet*: the template has no `plugins` line and the service recorded nothing. *Windows setup reports …*: setup hangs, see the console |
 | *The additional addresses could not be configured inside the server: QEMU guest agent is not running* | Windows restarted while the script ran, three times. The scheduled task applies the addresses at the next startup; or *Run on server* on the Scripts page |
 | *Get-NetAdapter : Critical error* | Windows was still in its setup; current scripts wait for that. Update the template's override if it replaced the default |
 
@@ -751,10 +769,13 @@ each plugin took, and `ImageState` when setup finished.
   OOBE screen, that `AdministratorPassword` with `HideLocalAccountScreen` creates no extra account,
   that the Store package removal of A2 is enough for Sysprep, the TPM state in linked clones, and the
   bundled Windows app recipes on client versions.
+- **The readiness check since 2026-10-27:** the plugin states under the instance ID read from the
+  config drive, the `--config-file` of the service's command line, and `ActiveComputerName` until
+  the restart (the check before only looked at the service, which looked stopped too early on Server
+  2022 and Windows 10). Taken from Cloudbase-Init's source and tried on sample values only.
 - **Way B:** the computer name set by the service with its restart, the deletion of the Remote
-  Desktop certificate and the Windows Update client ID, clearing Cloudbase-Init's registry key, and
-  whether the panel's readiness check (service stopped) can pass before the service has started. The
-  authentication failures between machines with the same SID are taken from Microsoft's release
+  Desktop certificate and the Windows Update client ID, and clearing Cloudbase-Init's registry key.
+  The authentication failures between machines with the same SID are taken from Microsoft's release
   notes, not tried by us.
 - The lifecycle dates and the QMTH licensing note are from Microsoft's public documents; check them
   before you rely on them.

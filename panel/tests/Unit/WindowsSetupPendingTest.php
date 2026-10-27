@@ -1,0 +1,67 @@
+<?php
+
+namespace Tests\Unit;
+
+use App\Domain\Servers\GuestScripts;
+use PHPUnit\Framework\TestCase;
+
+/**
+ * What a new Windows server still waits for, read from the output of
+ * GuestScripts::WINDOWS_SETUP_COMMAND (the wait itself: WindowsSetupWaitTest).
+ */
+class WindowsSetupPendingTest extends TestCase
+{
+    /**
+     * @param  array<string, string>  $values
+     */
+    private function pending(array $values): ?string
+    {
+        $values += ['image' => 'IMAGE_STATE_COMPLETE', 'name' => 'WEB1', 'active_name' => 'WEB1'];
+
+        return GuestScripts::windowsSetupPending(implode("\r\n", array_map(fn (string $key, string $value) => "{$key}={$value}", array_keys($values), $values))."\r\n");
+    }
+
+    public function test_every_plugin_of_the_configuration_must_be_done_for_this_instance()
+    {
+        $plugins = ['service' => 'Stopped', 'plugins' => 'SetUserPasswordPlugin,NetworkConfigPlugin'];
+
+        $this->assertNull($this->pending([...$plugins, 'done' => 'NetworkConfigPlugin,SetUserPasswordPlugin', 'later' => '']));
+        $this->assertNull($this->pending([...$plugins, 'done' => 'setuserpasswordplugin,NETWORKCONFIGPLUGIN', 'later' => '']), 'Registry names ignore case.');
+        $this->assertSame('Cloudbase-Init has not finished NetworkConfigPlugin', $this->pending([...$plugins, 'done' => 'SetUserPasswordPlugin', 'later' => 'NetworkConfigPlugin']));
+        // No config drive or no key for its instance ID: nothing ran for this server yet.
+        $this->assertSame('Cloudbase-Init has not finished SetUserPasswordPlugin, NetworkConfigPlugin', $this->pending($plugins));
+    }
+
+    public function test_plugins_of_the_specialize_pass_do_not_count_for_the_service()
+    {
+        // Way A: the unattend run recorded its own plugins under the same instance ID before the service ran.
+        $this->assertSame('Cloudbase-Init has not finished SetUserPasswordPlugin', $this->pending([
+            'service' => 'Stopped',
+            'plugins' => 'SetUserPasswordPlugin',
+            'done' => 'SetHostNamePlugin,ExtendVolumesPlugin,UserDataPlugin',
+        ]));
+    }
+
+    public function test_without_a_plugins_line_every_recorded_plugin_must_be_done()
+    {
+        $this->assertNull($this->pending(['service' => 'Stopped', 'done' => 'SetUserPasswordPlugin', 'later' => '']));
+        $this->assertSame('Cloudbase-Init has not finished LocalScriptsPlugin', $this->pending(['service' => 'Stopped', 'done' => 'SetUserPasswordPlugin', 'later' => 'LocalScriptsPlugin']));
+        $this->assertSame('Cloudbase-Init has not run for this server yet', $this->pending(['service' => 'Stopped']));
+    }
+
+    public function test_a_running_service_a_pending_computer_name_and_an_unfinished_setup_are_waited_for()
+    {
+        $finished = ['service' => 'Stopped', 'plugins' => 'UserDataPlugin', 'done' => 'UserDataPlugin'];
+
+        $this->assertSame('the cloudbase-init service is Running', $this->pending([...$finished, 'service' => 'Running']));
+        $this->assertSame('the computer name WEB1 takes effect at the next restart', $this->pending([...$finished, 'active_name' => 'WIN-KC2E3BTDPBV']));
+        $this->assertNull($this->pending([...$finished, 'active_name' => 'web1']));
+        $this->assertSame('Windows setup reports IMAGE_STATE_UNDEPLOYABLE', $this->pending([...$finished, 'image' => 'IMAGE_STATE_UNDEPLOYABLE']));
+    }
+
+    public function test_a_template_that_was_never_generalized_and_has_no_cloudbase_init_is_ready()
+    {
+        $this->assertNull($this->pending(['image' => '']));
+        $this->assertNull(GuestScripts::windowsSetupPending(''));
+    }
+}

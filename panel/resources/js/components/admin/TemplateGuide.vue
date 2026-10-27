@@ -907,7 +907,7 @@ const cloudbaseUrl = 'https://cloudbase.it/cloudbase-init/';
                     <p>
                         {{
                             $t(
-                                'The panel waits until the guest agent answers, Windows setup reports IMAGE_STATE_COMPLETE and the cloudbase-init service has stopped; then the server is Active and its scripts run. Customers log in with Remote Desktop as Administrator, the account whose password the panel sets.',
+                                'The panel waits until the guest agent answers, Windows setup reports IMAGE_STATE_COMPLETE, Cloudbase-Init has recorded every plugin of its configuration as done for the server and stopped, and no new computer name waits for a restart; then the server is Active and its scripts run. Customers log in with Remote Desktop as Administrator, the account whose password the panel sets.',
                             )
                         }}
                     </p>
@@ -1298,7 +1298,7 @@ const cloudbaseUrl = 'https://cloudbase.it/cloudbase-init/';
                         <p>
                             {{
                                 $t(
-                                    'Keep the startup type of the cloudbase-init service Automatic, not delayed: without a setup pass the panel treats Windows as ready once the service has stopped, and a service that has not started yet looks stopped.',
+                                    'Keep the startup type of the cloudbase-init service Automatic, not delayed: the panel waits until the service has recorded its plugins for the new server, so a service that starts late only makes every server ready later.',
                                 )
                             }}
                         </p>

@@ -48,8 +48,10 @@ hangi plugin'lerin çalıştığını registry'de instance ID başına hatırlar
 yenidir; bu yüzden her plugin onda bir kez çalışır, sonraki açılışlarda atlanır.
 
 Panel ardından Windows hazır olana kadar bekler (bkz. [Panel ne yapar](#panel-windows-için-ne-yapar)):
-guest agent cevap verir, Windows kurulumu `IMAGE_STATE_COMPLETE` bildirir ve `cloudbase-init`
-servisi durur. Sonra kendi script'lerini (ek adresler) guest agent üzerinden çalıştırır. Müşteriler
+guest agent cevap verir, Windows kurulumu `IMAGE_STATE_COMPLETE` bildirir, `cloudbase-init` servisi
+yapılandırmasındaki her plugin'i bu sunucunun instance kimliği için tamamlandı olarak kaydedip durur
+ve hiçbir yeni bilgisayar adı yeniden başlatma beklemez. Sonra kendi script'lerini (ek adresler)
+guest agent üzerinden çalıştırır. Müşteriler
 Uzak Masaüstü ile **`Administrator`** olarak girer; panelin parolasını ayarlayıp sıfırladığı hesap
 budur.
 
@@ -473,8 +475,8 @@ locations=cdrom
 `cloudbase-init-unattend.conf` ve `Unattend.xml` bu yolda kullanılmaz; olduğu gibi bırakın.
 
 `cloudbase-init` servisinin başlangıç türünü **Automatic** bırakın, *Automatic (Delayed Start)*
-değil: beklenecek bir kurulum aşaması olmadığından panel, servis durduğunda Windows'u hazır sayar;
-henüz başlamamış bir servis de durmuş görünür.
+değil: panel, servis yeni sunucu için plugin'lerini kaydedene kadar bekler; geç başlayan bir servis
+yalnızca her sunucunun daha geç hazır olmasına yol açar.
 
 ### B2. Sunucu başına farklı olması gerekenleri silin
 
@@ -591,7 +593,12 @@ ister.
   `config_drive_cdrom`, `config_drive_vfat` ve `config_drive_raw_hdd`'nin yerini alır.
 - **`allow_reboot`**: unattend dosyasında `false`, çünkü specialize aşamasındaki bir yeniden
   başlatma Sysprep'i bozar; serviste `true`, Yol B'de bilgisayar adı için yeniden başlatır.
-- **`stop_service_on_exit=true`**: servis işini bitirince durur; panel tam olarak bunu bekler.
+- **`stop_service_on_exit=true`**: servis işini bitirince durur; panel, kaydettiği plugin'lerin
+  yanında bunu da bekler (çalışmayı sürdüren bir servis beklemeyi ancak 15 dakika sonra bitirir).
+- **`plugins`**, panelin servisin işini bitirdiğini anlamak için okuduğu satırdır da:
+  `cloudbase-init.conf`'ta listelenen her plugin, sunucunun instance kimliği için tamamlandı olarak
+  kaydedilmiş olmalıdır. Satırı tek satırda tutun; o satır yoksa panel kaydedilmiş herhangi bir
+  plugin'i kabul eder, yeter ki hiçbiri sonraki açılışı beklemesin.
 - **`WillReboot` `Never` ve `& exit 0`** (Yol A): Cloudbase-Init'in kendi `Unattend.xml`'i
   `&& exit 1 || exit 2` ve `OnRequest` ile biter; çıkış kodu 1, Cloudbase-Init başarılı olsa bile
   Windows kurulumundan ek bir yeniden başlatma ister. Specialize aşamasında başarısız olan bir
@@ -686,13 +693,28 @@ olana kadar sürer:
 
 - `HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Setup\State` altındaki `ImageState`
   `IMAGE_STATE_COMPLETE` olur (Yol B'de zaten öyledir; bu değeri olmayan bir şablon tamamlanmış
-  sayılır) ve
-- `cloudbase-init` servisi artık çalışmıyordur (`Stopped` ya da kurulu değil).
+  sayılır),
+- hiçbir yeni bilgisayar adı yeniden başlatma beklemez
+  (`HKLM\SYSTEM\CurrentControlSet\Control\ComputerName` altındaki `ComputerName` ile
+  `ActiveComputerName` aynıdır),
+- `cloudbase-init` servisi artık çalışmıyordur (`Stopped` ya da kurulu değil) ve
+- Cloudbase-Init, servisin yapılandırmasındaki her plugin'i (servisin çalıştığı
+  `cloudbase-init.conf`'un `plugins` satırı) `HKLM\SOFTWARE\Cloudbase Solutions\Cloudbase-Init\<instance kimliği>\Plugins`
+  altında tamamlandı (`1`) olarak kaydetmiştir; instance kimliği config drive'daki
+  `openstack\latest\meta_data.json`'un `uuid`'sidir. Specialize aşamasının plugin'leri de oraya
+  kaydedilir ama sayılmaz.
+
+Servisin durmuş olması tek başına yetmez: başlamadan önce de, çalışması bittikten sonra istediği
+yeniden başlatmaya kadar da, yeni bilgisayar adı henüz kullanılmazken, aynı görünür. Böyle bir anda
+çalışan içeriden kontroller (Server 2022'de başlatmadan 51 saniye, Windows 10'da yaklaşık dört dakika sonra) `WIN-…` ya da `DESKTOP-…`
+adını ve henüz büyütülmemiş bir `C:` bildirdi; sunucu adını daha sonra almıştı.
 
 Aradaki yeniden başlatmalar beklenir. Sunucu ancak o zaman *Aktif* olur ve adres script'i ile
 şablonun kendi script'i çalışır. Agent 10 dakika sonra hiç cevap vermediyse (agent'sız bir şablon)
-adım Linux'taki gibi bu notla biter; kurulum 15 dakika sonra bitmediyse adım *Windows setup did not
-finish within 15 minutes* notunu düşer ve görev devam eder. Bir yeniden başlatma yine de bir
+adım Linux'taki gibi bu notla biter; kurulum 15 dakika sonra bitmediyse adım, son kontrolün hâlâ
+neyi beklediğiyle birlikte *Windows setup did not finish within 15 minutes* notunu düşer (örneğin
+*Cloudbase-Init has not finished NetworkConfigPlugin*: başarısız olan bir plugin hiçbir zaman
+tamamlandı olarak kaydedilmez; `cloudbase-init.log`'a bakın) ve görev devam eder. Bir yeniden başlatma yine de bir
 script'i keserse panel agent'ı bekleyip script'i yeniden çalıştırır (en çok üç kez) ve Windows
 script'leri ağa dokunmadan önce Cloudbase-Init'i bekler.
 
@@ -723,10 +745,10 @@ varsayılanları iki tane daha ekler; A1'deki yapılandırma bunları kaldırır
 | Yol B: bilgisayar adı şablonunki olarak kalıyor | `UserDataPlugin` eksik ya da `allow_reboot=false`: B1. `cloudbase-init.log` `Changing hostname` göstermeli |
 | Yol B: şablonun parolası yeni bir sunucuda çalışıyor | `SetUserPasswordPlugin` çalışmamış: Cloudbase-Init bu instance'ı zaten işlediğini sanıyor (B2'de registry temizlenmemiş) ya da VM'in OS türü Windows değil |
 | Yol B: Uzak Masaüstü her sunucuda aynı sertifika için uyarıyor | Sertifika B2'de silinmemiş |
-| Yol B: panel script'lerini ağ ayarlanmadan çalıştırdı | Servis geç başladı (gecikmeli başlatma) ve panel onu durmuş gördü: B1 |
+| Yol B: her sunucunun *Aktif* olması biraz daha uzun sürüyor | Servis geç başlıyor (gecikmeli başlatma): B1 |
 | "Getting ready" uzun sürüyor, *Working on updates* | Şablonda bekleyen güncellemeler vardı |
 | Hostname hâlâ `WIN-…` veya `DESKTOP-…` (Yol A) | `cloudbase-init-unattend.log` `Changing hostname` göstermeli |
-| Görev 15 dakika sürüyor ve *Windows setup did not finish* notunu düşüyor | `cloudbase-init` servisi hiç durmamış (`stop_service_on_exit=true` eksik) ya da kurulum takılmış: konsola ve `cloudbase-init.log`'a bakın |
+| Görev 15 dakika sürüyor ve *Windows setup did not finish* notunu düşüyor | Not, son kontrolün neyi beklediğini söyler. *the cloudbase-init service is Running*: `stop_service_on_exit=true` eksik. *Cloudbase-Init has not finished …*: o plugin'ler başarısız oldu (`cloudbase-init.log`) ya da config drive'ın `config-2` etiketi yok. *Cloudbase-Init has not run for this server yet*: şablonda `plugins` satırı yok ve servis hiçbir şey kaydetmedi. *Windows setup reports …*: kurulum takıldı, konsola bakın |
 | *The additional addresses could not be configured inside the server: QEMU guest agent is not running* | Script çalışırken Windows üç kez yeniden başladı. Zamanlanmış görev adresleri bir sonraki açılışta uygular; ya da Script'ler sayfasında *Sunucuda çalıştır* |
 | *Get-NetAdapter : Critical error* | Windows hâlâ kurulumdaydı; güncel script'ler bunu bekler. Varsayılanın yerine geçtiyse şablonun override'ını güncelleyin |
 
@@ -752,11 +774,15 @@ plugin'in ne kadar sürdüğünü, `ImageState` kurulumun ne zaman bittiğini g�
   bırakmadığı, `HideLocalAccountScreen` ile `AdministratorPassword`'ün ek bir hesap oluşturmadığı,
   A2'deki Store paketi temizliğinin Sysprep için yettiği, linked clone'larda TPM state ve dahili
   Windows recipe'lerinin istemci sürümlerinde çalışması.
+- **2026-10-27'den beri hazır olma kontrolü:** config drive'dan okunan instance kimliği altındaki
+  plugin durumları, servis komut satırının `--config-file`'ı ve yeniden başlatmaya kadar
+  `ActiveComputerName` (önceki kontrol yalnızca servise bakıyordu; servis Server 2022 ve Windows
+  10'da çok erken durmuş görünüyordu). Cloudbase-Init'in kaynağından alındı, yalnızca örnek
+  değerlerle denendi.
 - **Yol B:** bilgisayar adının servis tarafından yeniden başlatmasıyla ayarlanması, Uzak Masaüstü
-  sertifikasının ve Windows Update istemci kimliğinin silinmesi, Cloudbase-Init'in registry
-  anahtarının temizlenmesi ve panelin hazır olma kontrolünün (servis durmuş) servis başlamadan önce
-  geçip geçemeyeceği. Aynı SID'li makineler arasındaki kimlik doğrulama hataları Microsoft'un sürüm
-  notlarından alındı, tarafımızdan denenmedi.
+  sertifikasının ve Windows Update istemci kimliğinin silinmesi ve Cloudbase-Init'in registry
+  anahtarının temizlenmesi. Aynı SID'li makineler arasındaki kimlik doğrulama hataları Microsoft'un
+  sürüm notlarından alındı, tarafımızdan denenmedi.
 - Yaşam döngüsü tarihleri ve QMTH lisans notu Microsoft'un kamuya açık belgelerinden alındı; onlara
   güvenmeden önce kontrol edin.
 - Ölçülmedi: `PersistAllDeviceInstalls`, `CreateUserPlugin`'siz servis, küçültme komutları, bir

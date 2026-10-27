@@ -51,7 +51,7 @@ class WindowsAppTest extends TestCase
         $this->proxmox = (new FakeProxmoxCluster)->addTemplate(9000)->install();
         // Windows setup has finished as soon as the server is created.
         $this->proxmox->execHandler = fn (array $command) => $command === GuestScripts::WINDOWS_SETUP_COMMAND
-            ? [0, "IMAGE_STATE_COMPLETE\r\nStopped\r\n", '']
+            ? [0, "image=IMAGE_STATE_COMPLETE\r\nservice=Stopped\r\nplugins=SetUserPasswordPlugin\r\ndone=SetUserPasswordPlugin\r\n", '']
             : [0, '', ''];
         $this->server = app(ServerCreator::class)->create($this->order())->refresh();
         $this->admin = User::factory()->create();
