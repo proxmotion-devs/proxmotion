@@ -562,6 +562,32 @@ class Module
     }
 
     /**
+     * Take, roll back to or delete a snapshot (docs/adr/0051); the form's
+     * "op" says which. Proxmotion checks the server's state and slots and
+     * answers with the reason when it refuses.
+     *
+     * @param array<string, mixed> $input from the form
+     */
+    public function snapshots(array $input): string
+    {
+        $op = isset($input['op']) ? (string) $input['op'] : '';
+        $snapshot = isset($input['snapshot']) ? (string) $input['snapshot'] : '';
+
+        if ($op === 'take') {
+            $label = isset($input['label']) ? trim((string) $input['label']) : '';
+            $this->client->createSnapshot((string) $this->requireActiveServer()['id'], $label, $this->idempotencyKey('snapshot'));
+        } elseif ($op === 'rollback' && $snapshot !== '') {
+            $this->client->rollbackSnapshot((string) $this->requireActiveServer()['id'], $snapshot, $this->idempotencyKey('snapshot-rollback'));
+        } elseif ($op === 'delete' && $snapshot !== '') {
+            $this->client->deleteSnapshot((string) $this->requireServer()['id'], $snapshot, $this->idempotencyKey('snapshot-delete'));
+        } else {
+            return $this->lang->get('snapshot_unknown');
+        }
+
+        return 'success';
+    }
+
+    /**
      * The keys of GET /servers/{id}/ssh-keys.
      *
      * @param array<string, mixed> $data
@@ -816,6 +842,7 @@ class Module
             'appsBusy' => false,
             'firewall' => null,
             'sshKeys' => null,
+            'snapshots' => null,
         ];
 
         try {
@@ -848,6 +875,7 @@ class Module
                     })) > 0;
                     $vars['firewall'] = $this->presentFirewall($this->client->firewall((string) $server['id']), $this->client->firewallRulesets());
                     $vars['sshKeys'] = $this->presentSshKeys((string) $server['id']);
+                    $vars['snapshots'] = $this->presentSnapshots((string) $server['id']);
                 }
 
                 if ($server['status'] === 'active' || $server['status'] === 'suspended') {
@@ -1067,6 +1095,50 @@ class Module
                 ];
             }, $keys),
             'full' => $max !== null && count($keys) >= $max,
+        ];
+    }
+
+    /**
+     * The snapshots for the template (docs/adr/0051), or null when the
+     * server may have none or Proxmotion cannot say (a panel before
+     * snapshots, or an error): the rest of the page still shows.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function presentSnapshots(string $id): ?array
+    {
+        try {
+            $data = $this->client->snapshots($id);
+        } catch (ApiException $e) {
+            return null;
+        }
+
+        $slots = isset($data['slots']) ? (int) $data['slots'] : 0;
+
+        if ($slots === 0) {
+            return null;
+        }
+
+        $items = [];
+
+        foreach (isset($data['snapshots']) && is_array($data['snapshots']) ? $data['snapshots'] : [] as $snapshot) {
+            if (is_array($snapshot) && isset($snapshot['id'])) {
+                $items[] = [
+                    'id' => (string) $snapshot['id'],
+                    'label' => isset($snapshot['label']) && is_string($snapshot['label']) && $snapshot['label'] !== '' ? $snapshot['label'] : $this->lang->get('snapshot_no_label'),
+                    // Date and time as Proxmotion sent them (its own time zone).
+                    'time' => isset($snapshot['created_at']) ? substr(str_replace('T', ' ', (string) $snapshot['created_at']), 0, 16) : '',
+                ];
+            }
+        }
+
+        $unavailable = isset($data['unavailable_reason']) && is_string($data['unavailable_reason']) ? $data['unavailable_reason'] : null;
+
+        return [
+            'items' => $items,
+            'count' => $this->lang->get('snapshots_count', ['count' => count($items), 'slots' => $slots]),
+            'canTake' => $unavailable === null && count($items) < $slots,
+            'unavailable' => $unavailable,
         ];
     }
 

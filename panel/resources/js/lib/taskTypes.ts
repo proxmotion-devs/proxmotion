@@ -25,4 +25,7 @@ export const TASK_TYPE_LABELS: Record<TaskType, string> = {
     enable_anti_spoofing: 'Enable anti-spoofing',
     apply_firewall: 'Apply firewall',
     move: 'Move server',
+    create_snapshot: 'Take snapshot',
+    rollback_snapshot: 'Roll back to snapshot',
+    delete_snapshot: 'Delete snapshot',
 };

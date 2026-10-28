@@ -49,6 +49,10 @@ final readonly class TaskPlan
             TaskType::ChangeSshKeys => [GuestScriptEvent::SshKeysChanged->step()],
             TaskType::EnableAntiSpoofing, TaskType::ApplyFirewall => ['firewall'],
             TaskType::Move => $this->move($task),
+            // Snapshots (docs/adr/0051 §3, §5).
+            TaskType::CreateSnapshot => ['snapshot'],
+            TaskType::RollbackSnapshot => ['rollback', 'configure', 'resize', 'firewall', 'start', GuestScriptEvent::AddressesChanged->step(), GuestScriptEvent::HostnameChanged->step(), GuestScriptEvent::SshKeysChanged->step()],
+            TaskType::DeleteSnapshot => ['delete_snapshot'],
             default => [],
         };
     }

@@ -14,11 +14,9 @@ use App\Models\Task;
 use App\Provisioning\IpAllocator;
 use App\Provisioning\Network\NetworkConfig;
 use App\Provisioning\Network\ServerFirewall;
-use App\Provisioning\ResourceLimits;
-use App\Proxmox\Data\BootDisk;
+use App\Provisioning\VmState;
 use App\Proxmox\ProxmoxClientFactory;
 use App\Proxmox\Resources\QemuResource;
-use RuntimeException;
 
 /**
  * Applies a server's new resources (recorded by ResourceChanger) to its VM:
@@ -43,6 +41,7 @@ final readonly class ChangeResourcesPipeline
         private GuestScripts $guestScripts,
         private GuestAddresses $guestAddresses,
         private ServerFirewall $firewallRules,
+        private VmState $vm,
     ) {}
 
     public function run(Task $task): void
@@ -71,37 +70,13 @@ final readonly class ChangeResourcesPipeline
 
     private function configure(Task $task, Server $server, QemuResource $qemu): void
     {
-        $current = $qemu->config($server->vmid) ?? throw new RuntimeException("VM {$server->vmid} does not exist.");
-        $params = ['cores' => $server->cpu_cores, 'sockets' => 1, 'memory' => $server->memory_mib];
-
-        // net0 carries the port speed; the MAC address and bridge stay the same.
-        $network = $this->network->proxmoxParams($server, is_string($current['net0'] ?? null) ? $current['net0'] : null);
-
-        if (isset($network['net0'])) {
-            $params['net0'] = $network['net0'];
-        }
-
-        // CPU and disk limits (docs/adr/0034); Proxmox applies them to a running VM at once.
-        $limits = ResourceLimits::of($server)->proxmoxConfig($current);
-        $qemu->updateConfig($server->vmid, [...$params, ...$limits['params']], $limits['delete']);
-
-        // Fills it in for servers created before the panel recorded MAC addresses.
-        $server->forceFill(['mac_address' => $this->network->macAddress($current) ?? $server->mac_address])->save();
+        $this->vm->configure($server, $qemu);
         $task->completeStep('configure');
     }
 
     private function growDisk(Task $task, Server $server, QemuResource $qemu): void
     {
-        $disk = BootDisk::fromConfig($qemu->config($server->vmid) ?? []) ?? throw new RuntimeException('Could not find the boot disk of the VM.');
-
-        if ($disk->sizeMib < $server->disk_mib) {
-            $upid = $qemu->resize($server->vmid, $disk->key, $server->disk_mib);
-
-            if ($upid !== null) {
-                $this->clients->forCluster($server->cluster)->taskWaiter()->wait($upid, timeoutSeconds: 600);
-            }
-        }
-
+        $this->vm->growDisk($server, $qemu, $this->clients->forCluster($server->cluster)->taskWaiter());
         $task->completeStep('resize');
     }
 

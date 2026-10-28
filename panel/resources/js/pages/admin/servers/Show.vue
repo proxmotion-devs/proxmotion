@@ -26,6 +26,7 @@ import RdnsDialog from '@/components/servers/RdnsDialog.vue';
 import RebuildDialog from '@/components/servers/RebuildDialog.vue';
 import AntiSpoofingButton from '@/components/servers/AntiSpoofingButton.vue';
 import FirewallSection from '@/components/servers/FirewallSection.vue';
+import SnapshotsSection from '@/components/servers/SnapshotsSection.vue';
 import SshKeysSection from '@/components/servers/SshKeysSection.vue';
 import ReapplyAddressesButton from '@/components/servers/ReapplyAddressesButton.vue';
 import ReinstallDialog from '@/components/servers/ReinstallDialog.vue';
@@ -94,6 +95,7 @@ import type {
     ReinstallOptions,
     ResourceOptions,
     ServerFirewall,
+    ServerSnapshots,
     ServerSshKeys,
     ServerAddress,
     ServerUsage,
@@ -160,6 +162,8 @@ const props = withDefaults(
         firewall: ServerFirewall;
         /** docs/adr/0049 */
         sshKeys: ServerSshKeys;
+        /** docs/adr/0051 */
+        snapshots: ServerSnapshots;
         /** Pools addresses may be added from (docs/adr/0028). */
         addressPools: AddressPoolOption[];
         drifts: Drift[];
@@ -346,7 +350,14 @@ const modelLabel =
 
 // Overview, apps, firewall, SSH keys and tasks on their own tabs. The tab survives the
 // redirect back after an action (e.g. installing an app) for this server.
-type Tab = 'overview' | 'usage' | 'apps' | 'firewall' | 'ssh-keys' | 'tasks';
+type Tab =
+    | 'overview'
+    | 'usage'
+    | 'apps'
+    | 'firewall'
+    | 'ssh-keys'
+    | 'snapshots'
+    | 'tasks';
 const tabKey = `server-tab:${props.server.uuid}`;
 
 // The firewall can be changed while the server is active or suspended (docs/adr/0035).
@@ -359,6 +370,10 @@ const hasUsage = computed(
 );
 // SSH keys only while it is active: the guest agent writes them (docs/adr/0049).
 const hasSshKeys = computed(() => props.server.status === 'active');
+// Snapshots while its VM exists (docs/adr/0051).
+const hasSnapshots = computed(() =>
+    ['active', 'suspended'].includes(props.server.status),
+);
 
 const storedTab = (): Tab | null => {
     try {
@@ -369,7 +384,8 @@ const storedTab = (): Tab | null => {
             value === 'apps' ||
             value === 'tasks' ||
             (value === 'firewall' && hasFirewall.value) ||
-            (value === 'ssh-keys' && hasSshKeys.value)
+            (value === 'ssh-keys' && hasSshKeys.value) ||
+            (value === 'snapshots' && hasSnapshots.value)
             ? value
             : null;
     } catch {
@@ -388,6 +404,11 @@ watch(hasFirewall, (value) => {
 });
 watch(hasSshKeys, (value) => {
     if (!value && tab.value === 'ssh-keys') {
+        tab.value = 'overview';
+    }
+});
+watch(hasSnapshots, (value) => {
+    if (!value && tab.value === 'snapshots') {
         tab.value = 'overview';
     }
 });
@@ -428,6 +449,15 @@ const tabs = computed(() => [
               },
           ]
         : []),
+    ...(hasSnapshots.value
+        ? [
+              {
+                  value: 'snapshots' as Tab,
+                  label: 'Snapshots',
+                  count: props.snapshots.items.length,
+              },
+          ]
+        : []),
     { value: 'tasks' as Tab, label: 'Tasks', count: null },
 ]);
 
@@ -445,6 +475,21 @@ const changingSshKeys = computed(() =>
 watch(changingSshKeys, (changing, before) => {
     if (before && !changing) {
         router.reload({ only: ['sshKeys'] });
+    }
+});
+
+// Snapshots are listed once their task succeeded (docs/adr/0051).
+const SNAPSHOT_TASKS = [
+    'create_snapshot',
+    'rollback_snapshot',
+    'delete_snapshot',
+];
+const snapshotBusy = computed(() =>
+    runningTasks.value.some((task) => SNAPSHOT_TASKS.includes(task.type)),
+);
+watch(snapshotBusy, (busy, before) => {
+    if (before && !busy) {
+        router.reload({ only: ['snapshots', 'server', 'apps'] });
     }
 });
 
@@ -1207,6 +1252,15 @@ const resetAfterTrial = () => {
             :ssh-keys="sshKeys"
             :changing="changingSshKeys"
             :disabled="vmBlocked || agentDown"
+        />
+
+        <SnapshotsSection
+            v-else-if="tab === 'snapshots'"
+            :server="server.uuid"
+            :hostname="server.hostname"
+            :snapshots="snapshots"
+            :busy="snapshotBusy"
+            :disabled="vmBlocked"
         />
 
         <TaskList v-else :tasks="tasks" />

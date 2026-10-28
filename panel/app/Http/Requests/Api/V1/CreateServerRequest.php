@@ -13,6 +13,7 @@ use App\Models\BillingSystem;
 use App\Models\Location;
 use App\Models\OsTemplate;
 use App\Models\Package;
+use App\Provisioning\BackupSlots;
 use App\Provisioning\HostnameGenerator;
 use App\Provisioning\NewServer;
 use App\Provisioning\ServerSpec;
@@ -65,6 +66,9 @@ class CreateServerRequest extends FormRequest
             'resources.ipv6_count' => ['nullable', 'integer', 'between:0,64'],
             'resources.port_speed_mbps' => ['nullable', 'integer', 'between:1,400000'],
             'resources.traffic_bytes' => ['nullable', 'integer', 'between:1,10000000000000000'],
+            // Snapshots and backups a server may have (docs/adr/0051 §2).
+            'resources.snapshot_slots' => ['nullable', 'integer', 'between:0,'.BackupSlots::MAX],
+            'resources.backup_slots' => ['nullable', 'integer', 'between:0,'.BackupSlots::MAX],
             // An app installed once the server has booted (docs/adr/0016 §5); eligibility and inputs are checked by the creator.
             'app' => ['nullable', 'string', Rule::exists('app_recipes', 'slug')],
             'app_inputs' => ['nullable', 'array'],
@@ -181,6 +185,10 @@ class CreateServerRequest extends FormRequest
             trafficBytes: $override('traffic_bytes', $package->trafficBytes),
             // From the package; the API takes no overrides (docs/adr/0034).
             limits: $package->limits,
+            slots: new BackupSlots(
+                snapshots: (int) $override('snapshot_slots', $package->slots->snapshots),
+                backups: (int) $override('backup_slots', $package->slots->backups),
+            ),
         );
     }
 }

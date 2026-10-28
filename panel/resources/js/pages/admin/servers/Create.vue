@@ -91,6 +91,8 @@ const form = useForm({
         cpu_units: '',
         disk_mb_s: '',
         disk_iops: '',
+        snapshot_slots: 0,
+        backup_slots: 0,
     } as NewServerResources,
     os_template:
         props.selectedOsTemplate ?? props.osTemplates[0]?.value ?? null,
@@ -205,6 +207,8 @@ const resources = computed<NewServerResources>(() => {
               cpu_units: pkg.cpu_units ?? '',
               disk_mb_s: pkg.disk_mb_s ?? '',
               disk_iops: pkg.disk_iops ?? '',
+              snapshot_slots: pkg.snapshot_slots,
+              backup_slots: pkg.backup_slots,
           }
         : form.resources;
 });

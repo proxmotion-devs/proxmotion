@@ -38,6 +38,8 @@ abstract class ModuleTestCase extends TestCase
         $this->api->on('GET /servers/' . self::SERVER_ID . '/firewall', 200, ['data' => ['default_policy' => 'accept', 'rules' => [], 'app_rules' => []]]);
         $this->api->on('GET /firewall-rulesets', 200, ['data' => []]);
         $this->api->on('GET /servers/' . self::SERVER_ID . '/ssh-keys', 200, ['data' => ['ssh_keys' => [], 'max_keys' => 20]]);
+        // And its snapshots (docs/adr/0051), here none allowed.
+        $this->api->on('GET /servers/' . self::SERVER_ID . '/snapshots', 200, ['data' => ['snapshots' => [], 'slots' => 0, 'unavailable_reason' => 'Snapshots are not part of this server\'s plan.']]);
         // And its usage history (docs/adr/0050), here with nothing recorded.
         $this->api->on('GET /servers/' . self::SERVER_ID . '/usage?range=day', 200, ['data' => ['range' => 'day', 'interval_seconds' => 300, 'from' => '2026-10-14T12:00:00+03:00', 'to' => '2026-10-15T12:00:00+03:00', 'points' => [], 'traffic' => ['interval' => 'hour', 'buckets' => []]]]);
     }

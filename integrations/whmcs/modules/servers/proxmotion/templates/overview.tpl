@@ -278,6 +278,50 @@
                 {/if}
             {/if}
 
+            {if $pmx.snapshots}
+                {* Snapshots of the disk and settings (docs/adr/0051). *}
+                <hr>
+                <h4>{$pmx.lang.snapshots|escape} <small>{$pmx.snapshots.count|escape}</small></h4>
+                <p class="text-muted">{$pmx.lang.snapshots_intro|escape}</p>
+                {if $pmx.snapshots.unavailable}
+                    <p class="text-muted">{$pmx.snapshots.unavailable|escape}</p>
+                {/if}
+                <table class="table table-condensed">
+                    <tbody>
+                        {foreach from=$pmx.snapshots.items item=snapshot}
+                            <tr>
+                                <td>{$snapshot.label|escape}</td>
+                                <td class="text-muted">{$snapshot.time|escape}</td>
+                                <td class="text-right">
+                                    <form method="post" action="{$pmxAction}Snapshots" style="display: inline;" onsubmit="return confirm('{$pmx.lang.snapshot_rollback_confirm|escape:'javascript'}');">
+                                        <input type="hidden" name="token" value="{$token}">
+                                        <input type="hidden" name="op" value="rollback">
+                                        <input type="hidden" name="snapshot" value="{$snapshot.id|escape}">
+                                        <button type="submit" class="btn btn-warning btn-xs">{$pmx.lang.snapshot_rollback|escape}</button>
+                                    </form>
+                                    <form method="post" action="{$pmxAction}Snapshots" style="display: inline;" onsubmit="return confirm('{$pmx.lang.snapshot_delete_confirm|escape:'javascript'}');">
+                                        <input type="hidden" name="token" value="{$token}">
+                                        <input type="hidden" name="op" value="delete">
+                                        <input type="hidden" name="snapshot" value="{$snapshot.id|escape}">
+                                        <button type="submit" class="btn btn-danger btn-xs">{$pmx.lang.snapshot_delete|escape}</button>
+                                    </form>
+                                </td>
+                            </tr>
+                        {foreachelse}
+                            <tr><td class="text-muted">{$pmx.lang.snapshots_none|escape}</td></tr>
+                        {/foreach}
+                    </tbody>
+                </table>
+                {if $pmx.snapshots.canTake}
+                    <form method="post" action="{$pmxAction}Snapshots" class="form-inline" style="margin-bottom: 10px;">
+                        <input type="hidden" name="token" value="{$token}">
+                        <input type="hidden" name="op" value="take">
+                        <input type="text" name="label" class="form-control input-sm" maxlength="64" placeholder="{$pmx.lang.snapshot_label|escape}">
+                        <button type="submit" class="btn btn-default btn-sm">{$pmx.lang.snapshot_take|escape}</button>
+                    </form>
+                {/if}
+            {/if}
+
             {if $pmx.sshKeys}
                 <hr>
                 <h4>{$pmx.lang.ssh_keys|escape}</h4>

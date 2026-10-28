@@ -32,7 +32,7 @@ class Proxmotion extends ServerModule
     private const BUSY = ['pending', 'provisioning', 'reinstalling', 'terminating'];
 
     /** Tools that need a running server, hidden while it is busy or not active. */
-    private const SERVER_TOOLS = ['start-server', 'stop-server', 'restart-server', 'poweroff-server', 'reset-password', 'reinstall-os', 'vnc-console', 'hostname-change', 'reverse-dns', 'apps', 'firewall', 'ssh-keys'];
+    private const SERVER_TOOLS = ['start-server', 'stop-server', 'restart-server', 'poweroff-server', 'reset-password', 'reinstall-os', 'vnc-console', 'hostname-change', 'reverse-dns', 'apps', 'firewall', 'ssh-keys', 'snapshots'];
 
     /** App installation statuses during which the installer still runs. */
     private const APP_BUSY = ['queued', 'installing', 'uninstalling', 'upgrading'];
@@ -113,6 +113,18 @@ class Proxmotion extends ServerModule
             'type' => 'page-loader',
             'capabilities' => ['list', 'add', 'delete'],
         ]);
+
+        // Snapshots of the server (docs/adr/0051): pages/tools/snapshots.php.
+        $this->add_tool('snapshots', [
+            'name' => $this->text('tool_snapshots'),
+            'label' => $this->text('tool_snapshots'),
+            'group' => 'system',
+            'order' => 18,
+            'icon' => 'bi bi-camera',
+            'page' => 'snapshots',
+            'type' => 'page-loader',
+            'capabilities' => ['list', 'take', 'rollback', 'delete'],
+        ]);
     }
 
     /**
@@ -129,6 +141,8 @@ class Proxmotion extends ServerModule
         $filters['firewall'] = ['ruleset' => 'route', 'mode' => 'identifier', 'rule_action' => 'identifier', 'protocol' => 'identifier', 'index' => 'identifier', 'default_policy' => 'identifier'];
         // Unchanged: keys and fingerprints hold +, / and =; Proxmotion validates the keys.
         $filters['ssh-keys'] = ['public_key' => null, 'fingerprint' => null];
+        // Proxmotion validates the label.
+        $filters['snapshots'] = ['snapshot' => 'route', 'label' => null];
 
         return $filters;
     }
@@ -552,6 +566,10 @@ class Proxmotion extends ServerModule
             return $this->sshKeysData((string) $this->requireActiveServer()['id']);
         }
 
+        if ($tool === 'snapshots') {
+            return $this->snapshotsData((string) $this->requireActiveServer()['id']);
+        }
+
         $server = $this->api->server((string) $this->requireActiveServer()['id']);
 
         return match ($tool) {
@@ -611,6 +629,7 @@ class Proxmotion extends ServerModule
             },
             'firewall' => $this->firewall($id, $action, $data),
             'ssh-keys' => $this->sshKeys($id, $action, $data),
+            'snapshots' => $this->snapshots($id, $action, $data),
             default => throw new Exception('Unknown tool: ' . $tool),
         };
     }
@@ -945,6 +964,54 @@ class Proxmotion extends ServerModule
         $this->api->updateFirewall($id, $policy, $rules, $this->idempotencyKey('firewall'));
 
         return $done;
+    }
+
+    /**
+     * The Snapshots tool's page (docs/adr/0051): the snapshots, the slots and
+     * whether one more can be taken.
+     *
+     * @return array<string, mixed>
+     */
+    private function snapshotsData(string $id): array
+    {
+        $data = $this->api->snapshots($id);
+        $slots = is_int($data['slots'] ?? null) ? $data['slots'] : 0;
+        $unavailable = is_string($data['unavailable_reason'] ?? null) ? $data['unavailable_reason'] : null;
+        $items = array_values(array_map(static fn (array $snapshot): array => [
+            'id' => (string) $snapshot['id'],
+            'label' => is_string($snapshot['label'] ?? null) ? $snapshot['label'] : '',
+            // Date and time as Proxmotion sent them (its own time zone).
+            'time' => substr(str_replace('T', ' ', (string) ($snapshot['created_at'] ?? '')), 0, 16),
+        ], array_filter(is_array($data['snapshots'] ?? null) ? $data['snapshots'] : [], static fn (mixed $snapshot): bool => is_array($snapshot) && isset($snapshot['id']))));
+
+        return [
+            'snapshots' => $items,
+            'slots' => $slots,
+            'unavailable' => $unavailable,
+            'can_take' => $unavailable === null && count($items) < $slots,
+        ];
+    }
+
+    /**
+     * Take (label), roll back to or delete (snapshot) a snapshot. Proxmotion
+     * checks the server's state and slots and answers with the reason when
+     * it refuses.
+     *
+     * @param array<string, mixed> $data
+     * @return array<string, mixed>
+     */
+    private function snapshots(string $id, string $action, array $data): array
+    {
+        $snapshot = trim((string) ($data['snapshot'] ?? ''));
+
+        match (true) {
+            $action === 'take' => $this->api->createSnapshot($id, trim((string) ($data['label'] ?? '')), $this->idempotencyKey('snapshot')),
+            $action === 'rollback' && $snapshot !== '' => $this->api->rollbackSnapshot($id, $snapshot, $this->idempotencyKey('snapshot-rollback')),
+            $action === 'delete' && $snapshot !== '' => $this->api->deleteSnapshot($id, $snapshot, $this->idempotencyKey('snapshot-delete')),
+            default => throw new Exception($this->text('snapshot_unknown')),
+        };
+
+        return ['status' => 'successful', 'message' => $this->text('snapshot_started'), 'successToast' => true];
     }
 
     /**

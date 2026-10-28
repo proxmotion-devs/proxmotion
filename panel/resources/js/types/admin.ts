@@ -360,6 +360,9 @@ export type TaskType =
     | 'app_run'
     | 'verify'
     | 'move'
+    | 'create_snapshot'
+    | 'rollback_snapshot'
+    | 'delete_snapshot'
     | PowerAction;
 
 export type PowerAction = 'start' | 'shutdown' | 'stop' | 'reboot';
@@ -434,6 +437,9 @@ export type ResourceValues = ResourceLimitValues & {
     ipv6_count: number;
     port_speed_mbps: number | null;
     traffic_gb: number | null;
+    /** docs/adr/0051 */
+    snapshot_slots: number;
+    backup_slots: number;
 };
 
 /** Choices for ResourcesDialog: packages for the server's network model, and its current resources. */
@@ -920,6 +926,9 @@ export type PackageOption = Option &
         ipv6_count: number;
         port_speed_mbps: number | null;
         traffic_gb: number | null;
+        /** docs/adr/0051 */
+        snapshot_slots: number;
+        backup_slots: number;
     };
 
 /** A placement group (docs/adr/0020): nodes, and optionally storages, of one location. */
@@ -956,6 +965,9 @@ export type NewServerResources = {
     cpu_units: number | '';
     disk_mb_s: number | '';
     disk_iops: number | '';
+    /** docs/adr/0051 */
+    snapshot_slots: number;
+    backup_slots: number;
 };
 
 /** One inbound firewall rule (docs/adr/0035); null port, source or comment: none. */
@@ -1006,6 +1018,22 @@ export type ServerSshKeys = {
     keys: SshKey[];
     /** How many keys a server can have. */
     max: number;
+};
+
+/** A snapshot of a server's disk and configuration (docs/adr/0051). */
+export type ServerSnapshot = {
+    id: string;
+    label: string | null;
+    created_at: string | null;
+};
+
+/** A server's snapshots on its page. */
+export type ServerSnapshots = {
+    items: ServerSnapshot[];
+    /** How many it may have; 0: none. */
+    slots: number;
+    /** Why it cannot have any at all (translated), or null. */
+    unavailable: string | null;
 };
 
 /** A server's firewall on its page, with the rule sets that can be applied. */

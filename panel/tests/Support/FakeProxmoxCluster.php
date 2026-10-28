@@ -28,6 +28,12 @@ class FakeProxmoxCluster
     /** @var list<array{method: string, path: string, data: array<string, mixed>}> */
     public array $writes = [];
 
+    /** @var array<int, array<string, array{description: string, snaptime: int, config: array<string, mixed>, firewall: array<string, mixed>, rules: list<array<string, mixed>>, ipset: list<string>|null}>> snapshots per VMID by name, with what a rollback brings back (docs/adr/0051) */
+    public array $snapshots = [];
+
+    /** When set, taking, rolling back or deleting a snapshot fails with this exit status. */
+    public ?string $failSnapshot = null;
+
     /** @var array<string, list<string>> privileges per ACL path */
     public array $permissions = [];
 
@@ -338,6 +344,10 @@ class FakeProxmoxCluster
             $suffix === '/migrate' && $method === 'POST' => $this->migrate($node, $vmid, $data),
             $suffix === '/remote_migrate' && $method === 'POST' => $this->remoteMigrate($node, $vmid, $data),
             $suffix === '' && $method === 'DELETE' => $this->destroyVm($node, $vmid),
+            $suffix === '/snapshot' && $method === 'GET' => $this->snapshotList($vmid),
+            $suffix === '/snapshot' && $method === 'POST' => $this->takeSnapshot($node, $vmid, $data),
+            (bool) preg_match('#^/snapshot/([A-Za-z0-9_-]+)/rollback$#', $suffix, $m) && $method === 'POST' => $this->rollbackSnapshot($node, $vmid, $m[1]),
+            (bool) preg_match('#^/snapshot/([A-Za-z0-9_-]+)$#', $suffix, $m) && $method === 'DELETE' => $this->deleteSnapshot($node, $vmid, $m[1]),
             $suffix === '/config' && $method === 'GET' => $this->ok($vm['config']),
             $suffix === '/config' && $method === 'PUT' => $this->updateConfig($vmid, $data),
             $suffix === '/pending' && $method === 'GET' => $this->pendingOf($vmid),
@@ -604,7 +614,13 @@ class FakeProxmoxCluster
             $this->activeTasks[$vmid] = array_values(array_diff($upids, [$upid]));
         }
 
-        return $this->ok(['status' => 'stopped', 'exitstatus' => $failed ? (string) (str_contains($upid, ':qmigrate-fail:') ? $this->failMigration : $this->failClone) : 'OK']);
+        $failure = match (true) {
+            str_contains($upid, ':qmigrate-fail:') => $this->failMigration,
+            (bool) preg_match('/:qm(snapshot|rollback|delsnapshot)-fail:/', $upid) => $this->failSnapshot,
+            default => $this->failClone,
+        };
+
+        return $this->ok(['status' => 'stopped', 'exitstatus' => $failed ? (string) $failure : 'OK']);
     }
 
     /**
@@ -747,9 +763,89 @@ class FakeProxmoxCluster
         return $this->ok(null);
     }
 
+    private function snapshotList(int $vmid): PromiseInterface
+    {
+        $list = [];
+
+        foreach ($this->snapshots[$vmid] ?? [] as $name => $snapshot) {
+            $list[] = ['name' => $name, 'description' => $snapshot['description'], 'snaptime' => $snapshot['snaptime']];
+        }
+
+        return $this->ok([...$list, ['name' => 'current', 'description' => 'You are here!', 'running' => $this->vms[$vmid]['status'] === 'running' ? 1 : 0]]);
+    }
+
+    /**
+     * A snapshot keeps the configuration and the firewall of its time, like
+     * Proxmox (the firewall file is not part of a snapshot there; kept here
+     * so tests can see the panel write its own back after a rollback).
+     *
+     * @param  array<string, mixed>  $data
+     */
+    private function takeSnapshot(string $node, int $vmid, array $data): PromiseInterface
+    {
+        if ($this->failSnapshot === null) {
+            $vm = $this->vms[$vmid];
+            $this->snapshots[$vmid][(string) $data['snapname']] = [
+                'description' => (string) ($data['description'] ?? ''),
+                'snaptime' => now()->getTimestamp(),
+                'config' => $vm['config'],
+                'firewall' => $vm['firewall'],
+                'rules' => $vm['rules'],
+                'ipset' => $vm['ipset'],
+            ];
+            $this->vms[$vmid]['config']['parent'] = (string) $data['snapname'];
+        }
+
+        return $this->upid($node, $this->failSnapshot !== null ? 'qmsnapshot-fail' : 'qmsnapshot', $vmid);
+    }
+
+    /**
+     * Without RAM state, Proxmox leaves the VM stopped after a rollback.
+     */
+    private function rollbackSnapshot(string $node, int $vmid, string $name): PromiseInterface
+    {
+        $snapshot = $this->snapshots[$vmid][$name] ?? null;
+
+        if ($snapshot === null) {
+            return Create::promiseFor(new Psr7Response(500, ['Content-Type' => 'application/json'], '{"data":null}', '1.1', "snapshot '{$name}' does not exist"));
+        }
+
+        if ($this->failSnapshot === null) {
+            $this->vms[$vmid] = [
+                ...$this->vms[$vmid],
+                'status' => 'stopped',
+                'config' => [...$snapshot['config'], 'parent' => $name],
+                'firewall' => $snapshot['firewall'],
+                'rules' => $snapshot['rules'],
+                'ipset' => $snapshot['ipset'],
+            ];
+        }
+
+        return $this->upid($node, $this->failSnapshot !== null ? 'qmrollback-fail' : 'qmrollback', $vmid);
+    }
+
+    private function deleteSnapshot(string $node, int $vmid, string $name): PromiseInterface
+    {
+        if (! isset($this->snapshots[$vmid][$name])) {
+            return Create::promiseFor(new Psr7Response(500, ['Content-Type' => 'application/json'], '{"data":null}', '1.1', "snapshot '{$name}' does not exist"));
+        }
+
+        if ($this->failSnapshot === null) {
+            unset($this->snapshots[$vmid][$name]);
+
+            if (($this->vms[$vmid]['config']['parent'] ?? null) === $name) {
+                $remaining = array_keys($this->snapshots[$vmid]);
+                $this->vms[$vmid]['config']['parent'] = end($remaining) ?: null;
+                $this->vms[$vmid]['config'] = array_filter($this->vms[$vmid]['config'], fn ($value) => $value !== null);
+            }
+        }
+
+        return $this->upid($node, $this->failSnapshot !== null ? 'qmdelsnapshot-fail' : 'qmdelsnapshot', $vmid);
+    }
+
     private function destroyVm(string $node, int $vmid): PromiseInterface
     {
-        unset($this->vms[$vmid]);
+        unset($this->vms[$vmid], $this->snapshots[$vmid]);
 
         return $this->upid($node, 'qmdestroy', $vmid);
     }

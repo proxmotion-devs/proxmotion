@@ -12,6 +12,7 @@ use App\Domain\Apps\LiveAppPolls;
 use App\Domain\Apps\OrderedAppOptions;
 use App\Domain\Apps\RecipeAction;
 use App\Domain\Apps\RecipeInput;
+use App\Domain\Backups\ServerSnapshots;
 use App\Domain\Firewall\ServerFirewalls;
 use App\Domain\Servers\GuestAgentProbe;
 use App\Domain\Servers\HostnameChanger;
@@ -359,6 +360,12 @@ class ServerController extends Controller
             ],
             // The keys the panel manages on the server (docs/adr/0049).
             'sshKeys' => fn () => ['keys' => ServerSshKeys::describe($server), 'max' => ServerSshKeys::max()],
+            // Snapshots of the VM (docs/adr/0051).
+            'snapshots' => fn () => [
+                'items' => ServerSnapshots::describe($server),
+                'slots' => $server->snapshot_slots,
+                'unavailable' => ServerSnapshots::unavailable($server)?->translatedMessage(),
+            ],
             // Pools addresses may be added from: same location, network model, bridge and VLAN (docs/adr/0028).
             'addressPools' => fn () => collect(IpVersion::cases())
                 ->flatMap(fn (IpVersion $version) => $ips->sameNetworkPools($server->location, $server->network_model, $version, $server->ipAddresses->first()?->pool))

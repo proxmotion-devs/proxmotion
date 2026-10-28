@@ -112,6 +112,10 @@ const stepLabels: Record<string, string> = {
     migrate: 'Move the VM (Proxmox)',
     record: 'Record the new place',
     configure_network: 'Set up the network for the new addresses',
+    // Snapshots (docs/adr/0051).
+    snapshot: 'Take the snapshot (Proxmox)',
+    rollback: 'Roll back to the snapshot (Proxmox)',
+    delete_snapshot: 'Delete the snapshot (Proxmox)',
 };
 // Custom scripts record their steps as "script:<event>:<name>" at an event and
 // "script:<name>" otherwise; names cannot contain ":" (docs/adr/0043).

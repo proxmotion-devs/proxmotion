@@ -228,6 +228,55 @@ final readonly class QemuResource
     }
 
     /**
+     * The VM's snapshots by name with their descriptions and times, without
+     * Proxmox's "current" entry (docs/adr/0051).
+     *
+     * @return array<string, array{description: string, time: int|null}>
+     */
+    public function snapshots(int $vmid): array
+    {
+        $snapshots = [];
+
+        foreach (ClusterResource::listOfArrays($this->client->get($this->path($vmid, 'snapshot'))) as $snapshot) {
+            $name = $snapshot['name'] ?? null;
+
+            if (is_string($name) && $name !== 'current') {
+                $snapshots[$name] = [
+                    'description' => is_string($snapshot['description'] ?? null) ? $snapshot['description'] : '',
+                    'time' => is_numeric($snapshot['snaptime'] ?? null) ? (int) $snapshot['snaptime'] : null,
+                ];
+            }
+        }
+
+        return $snapshots;
+    }
+
+    /**
+     * Snapshot the disks and configuration, never the RAM (docs/adr/0051 §3).
+     */
+    public function snapshot(int $vmid, string $name, string $description): Upid
+    {
+        return $this->upid($this->client->post($this->path($vmid, 'snapshot'), [
+            'snapname' => $name,
+            'description' => $description,
+            'vmstate' => 0,
+        ]));
+    }
+
+    /**
+     * Take the disks and configuration back to the snapshot; the VM is left as Proxmox leaves it.
+     */
+    public function rollback(int $vmid, string $name): Upid
+    {
+        return $this->upid($this->client->post($this->path($vmid, 'snapshot/'.rawurlencode($name).'/rollback')));
+    }
+
+    public function deleteSnapshot(int $vmid, string $name): Upid
+    {
+        return $this->upid($this->client->delete($this->path($vmid, 'snapshot/'.rawurlencode($name))));
+    }
+
+    /**
      * Delete the VM and all of its disks.
      */
     public function destroy(int $vmid): Upid

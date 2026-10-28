@@ -69,6 +69,7 @@ Configurable options are matched by their **option name** (the part before `|`, 
 | `ipv4_count`, `ipv6_count` | Quantity / dropdown | Number of addresses |
 | `port_speed_mbps` | Quantity / dropdown | Port speed |
 | `traffic_gb` | Quantity / dropdown | Monthly traffic in GB (10⁹ bytes) |
+| `snapshots`, `backups` | Quantity / dropdown | How many snapshots and backups the server may have (0: none; Proxmotion docs/adr/0051) |
 | `extra_<any of the above>` | Quantity / dropdown | **Added** to the package's value, e.g. `extra_memory_gib` with 2 adds 2 GB, `extra_ipv4_count` adds addresses |
 
 The ids of OS templates and locations are listed by `GET /api/v1/os-templates` and
@@ -188,6 +189,16 @@ Proxmotion first and sends the whole list back with an `Idempotency-Key`; Proxmo
 checks the rules and the module shows its message when one is wrong. Nothing is stored in
 WHMCS. Changes take a few seconds to reach the server; the console works even when the
 firewall locks the customer out.
+
+### Snapshots
+
+Active servers whose package (or `snapshots` option) allows snapshots list them in a
+**Snapshots** section (Proxmotion docs/adr/0051): label and time, *Roll back* and *Delete*,
+each with a confirmation, and a form to take one with an optional label while slots are
+free (custom action `Snapshots` with `op` take, rollback or delete). A rollback takes the
+disk back to that moment and Proxmotion puts its own settings back; the root password then
+is the one of that time, so the customer resets it. Proxmotion's message is shown when a
+server is full or cannot have snapshots. Hidden with a Proxmotion without snapshots, or when it answers with an error (the rest of the page still shows).
 
 ### SSH keys
 

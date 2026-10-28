@@ -480,6 +480,46 @@ class ApiClient
     }
 
     /**
+     * The server's snapshots: snapshots, slots, unavailable_reason (docs/adr/0051).
+     *
+     * @return array<string, mixed>
+     */
+    public function snapshots(string $id): array
+    {
+        return $this->dataOf($this->request('GET', '/servers/' . rawurlencode($id) . '/snapshots'));
+    }
+
+    /**
+     * Take a snapshot; returns the task.
+     *
+     * @return array<string, mixed>
+     */
+    public function createSnapshot(string $id, string $label, string $idempotencyKey): array
+    {
+        return $this->dataOf($this->request('POST', '/servers/' . rawurlencode($id) . '/snapshots', ['label' => $label === '' ? null : $label], $idempotencyKey));
+    }
+
+    /**
+     * Roll the server back to a snapshot; returns the task.
+     *
+     * @return array<string, mixed>
+     */
+    public function rollbackSnapshot(string $id, string $snapshot, string $idempotencyKey): array
+    {
+        return $this->dataOf($this->request('POST', '/servers/' . rawurlencode($id) . '/snapshots/' . rawurlencode($snapshot) . '/rollback', null, $idempotencyKey));
+    }
+
+    /**
+     * Delete a snapshot; returns the task.
+     *
+     * @return array<string, mixed>
+     */
+    public function deleteSnapshot(string $id, string $snapshot, string $idempotencyKey): array
+    {
+        return $this->dataOf($this->request('DELETE', '/servers/' . rawurlencode($id) . '/snapshots/' . rawurlencode($snapshot), null, $idempotencyKey));
+    }
+
+    /**
      * The server's usage over a range: day, week, month or year (docs/adr/0050);
      * Proxmotion answers 404 before it has usage history.
      *

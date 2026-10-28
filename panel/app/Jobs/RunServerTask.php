@@ -23,6 +23,7 @@ use App\Provisioning\Pipelines\MoveServerPipeline;
 use App\Provisioning\Pipelines\PowerPipeline;
 use App\Provisioning\Pipelines\ReinstallServerPipeline;
 use App\Provisioning\Pipelines\ResetPasswordPipeline;
+use App\Provisioning\Pipelines\SnapshotPipeline;
 use App\Provisioning\Pipelines\SshKeysPipeline;
 use App\Provisioning\Pipelines\TerminateServerPipeline;
 use App\Provisioning\Stages\StagedPipeline;
@@ -60,7 +61,7 @@ class RunServerTask implements ShouldQueue
      */
     public function __construct(public Task $task, public int $dispatch = 0) {}
 
-    public function handle(CreateServerPipeline $create, MoveServerPipeline $move, PowerPipeline $power, TerminateServerPipeline $terminate, ResetPasswordPipeline $resetPassword, ReinstallServerPipeline $reinstall, ChangeResourcesPipeline $changeResources, GuestScripts $guestScripts, AddressesPipeline $addresses, HostnamePipeline $hostname, SshKeysPipeline $sshKeys, InstallAppPipeline $installApp, AppRunPipeline $appRun, AntiSpoofingPipeline $antiSpoofing, FirewallPipeline $firewall, ServerVerifier $verifier, StageRunner $stages, TaskFailer $failer): void
+    public function handle(CreateServerPipeline $create, MoveServerPipeline $move, PowerPipeline $power, TerminateServerPipeline $terminate, ResetPasswordPipeline $resetPassword, ReinstallServerPipeline $reinstall, ChangeResourcesPipeline $changeResources, GuestScripts $guestScripts, AddressesPipeline $addresses, HostnamePipeline $hostname, SshKeysPipeline $sshKeys, InstallAppPipeline $installApp, AppRunPipeline $appRun, AntiSpoofingPipeline $antiSpoofing, FirewallPipeline $firewall, SnapshotPipeline $snapshots, ServerVerifier $verifier, StageRunner $stages, TaskFailer $failer): void
     {
         $task = $this->task;
 
@@ -115,6 +116,7 @@ class RunServerTask implements ShouldQueue
                     TaskType::Verify => $verifier->runTask($task),
                     TaskType::EnableAntiSpoofing => $antiSpoofing->run($task),
                     TaskType::ApplyFirewall => $firewall->run($task),
+                    TaskType::CreateSnapshot, TaskType::RollbackSnapshot, TaskType::DeleteSnapshot => $snapshots->run($task),
                 };
             }
         } catch (Throwable $e) {

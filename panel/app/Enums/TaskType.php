@@ -29,4 +29,7 @@ enum TaskType: string
     case EnableAntiSpoofing = 'enable_anti_spoofing';
     case ApplyFirewall = 'apply_firewall';
     case Move = 'move';
+    case CreateSnapshot = 'create_snapshot';
+    case RollbackSnapshot = 'rollback_snapshot';
+    case DeleteSnapshot = 'delete_snapshot';
 }

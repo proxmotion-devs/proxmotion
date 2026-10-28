@@ -34,6 +34,7 @@ use App\Http\Controllers\Admin\ServerController;
 use App\Http\Controllers\Admin\ServerFirewallController;
 use App\Http\Controllers\Admin\ServerMoveController;
 use App\Http\Controllers\Admin\ServerReinstallLimitController;
+use App\Http\Controllers\Admin\ServerSnapshotController;
 use App\Http\Controllers\Admin\ServerSshKeyController;
 use App\Http\Controllers\Admin\ServerStatsController;
 use App\Http\Controllers\Admin\ServerUsageController;
@@ -200,6 +201,10 @@ Route::post('servers/{server}/firewall/ruleset', [ServerFirewallController::clas
 Route::put('servers/{server}/ssh-keys', [ServerSshKeyController::class, 'update'])->middleware('throttle:20,1')->name('servers.ssh-keys');
 // The keys really inside the server, read through the guest agent (docs/adr/0049 §11).
 Route::get('servers/{server}/ssh-keys/guest', [ServerSshKeyController::class, 'guest'])->middleware('throttle:20,1')->name('servers.ssh-keys.guest');
+// Snapshots (docs/adr/0051).
+Route::post('servers/{server}/snapshots', [ServerSnapshotController::class, 'store'])->middleware('throttle:20,1')->name('servers.snapshots.store');
+Route::post('servers/{server}/snapshots/{snapshot}/rollback', [ServerSnapshotController::class, 'rollback'])->middleware('throttle:10,1')->name('servers.snapshots.rollback');
+Route::delete('servers/{server}/snapshots/{snapshot}', [ServerSnapshotController::class, 'destroy'])->middleware('throttle:20,1')->name('servers.snapshots.destroy');
 Route::post('servers/{server}/anti-spoofing', [ServerController::class, 'enableAntiSpoofing'])->middleware('throttle:10,1')->name('servers.enable-anti-spoofing');
 Route::post('tasks/{task}/fail', [TaskController::class, 'fail'])->name('tasks.fail');
 Route::post('tasks/{task}/cancel', [TaskController::class, 'cancel'])->name('tasks.cancel');

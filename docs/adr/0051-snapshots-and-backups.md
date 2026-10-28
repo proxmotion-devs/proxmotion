@@ -1,6 +1,6 @@
 # 51. Snapshots and backups
 
-- **Status:** Accepted (phase 1, snapshots, in progress)
+- **Status:** Accepted (phase 1, snapshots, built 2026-10-28; backups not built)
 - **Date:** 2026-10-28
 
 ## Context
@@ -164,6 +164,18 @@ A restore over an existing VM may need more (`VM.Allocate` on the VMID, or on `/
 - Whether vzdump includes the VM's firewall file and the cloud-init drive.
 - What cloud-init does after a restore of an unchanged config.
 - Proxmox Backup Server as a storage.
+
+## Phase 1 as built (2026-10-28)
+
+Snapshots are built as decided above, with these details settled while building them. Tested with the faked Proxmox and billing systems only.
+
+- **The list is the panel's rows.** Reading Proxmox's snapshots on every page view would put a Proxmox call into HTTP requests. A snapshot deleted in Proxmox is noticed when it is deleted through the panel (nothing left to delete counts as done) or rolled back to (the task fails with Proxmox's message). Snapshots made outside the panel are not listed, nor reported as drift yet (§3 planned that; left for later).
+- **Storage types** that take snapshots: `lvmthin`, `zfspool`, `rbd`, and `dir`, `nfs`, `cifs` (Proxmox itself refuses raw files there). A server without a recorded storage (adopted) may try; Proxmox decides.
+- **Status:** taking and rolling back need an active server; deleting also works while it is suspended.
+- **Snapshot tasks are not staged.** They wait for Proxmox like power actions (up to 30 minutes per Proxmox task). Backups (phase 2) stay staged as §4 says.
+- **After a rollback** (§5): `VmState` (shared with resource changes) writes resources, port speed, the disk size and the firewall with exactly the server's addresses. The guest's addresses, hostname and SSH keys go back in with the `addresses_changed`, `hostname_changed` and `ssh_keys_changed` scripts (`GuestRefresh`) when the server starts: at once when it ran (the rollback starts it again), else at its first start through the panel (*Start*, *Reboot*, *Unsuspend*; `servers.guest_refresh_pending`, cleared once the address script ran), so a server its owner stopped stays stopped. A failing SSH key script leaves a note instead of failing the rollback or the start. Starts outside the panel (in Proxmox) miss the refresh; *Apply again* on the server page covers the addresses then. Apps installed after the snapshot are marked removed, and the stored root password is cleared.
+- **Admin:** a *Snapshots* tab on the server page; it becomes *Backups* (with both lists) in phase 2. The custom create form and *Change resources* have the two slot fields.
+- **Billing:** WHMCS configurable options `snapshots` / `backups` set the slots and `extra_snapshots` / `extra_backups` add to the package's, like the other resources; WISECP takes the `extra_…` add-on values.
 
 ## Answered questions
 

@@ -42,6 +42,8 @@ final readonly class TerminateServerPipeline
             $client->taskWaiter()->wait($qemu->destroy($server->vmid), timeoutSeconds: 600);
         }
 
+        // Its snapshots went with the VM (docs/adr/0051 §3).
+        $server->snapshots()->delete();
         $task->completeStep('destroy');
 
         $this->ips->release($server);

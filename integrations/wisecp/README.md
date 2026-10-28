@@ -75,7 +75,8 @@ Product requirements (questions on the order form) can be mapped to the module:
 
 Add-on options can carry module values that are **added** to the package's (or the
 product's) value: `extra_cpu_cores`, `extra_memory_gib`, `extra_disk_gib`,
-`extra_ipv4_count`, `extra_ipv6_count`, `extra_port_speed_mbps`, `extra_traffic_gb`.
+`extra_ipv4_count`, `extra_ipv6_count`, `extra_port_speed_mbps`, `extra_traffic_gb`,
+`extra_snapshots`, `extra_backups` (snapshot and backup slots, Proxmotion docs/adr/0051).
 They need a package or the matching product field; otherwise the order fails with a
 readable error. When an add-on changes, upgrade the service so Proxmotion gets the
 new values.
@@ -178,6 +179,15 @@ reads the current keys and sends the whole list with an `Idempotency-Key`; Proxm
 message is shown when a key is wrong. The fields `public_key` and `fingerprint` are passed
 on unfiltered, since keys hold `+`, `/` and `=`. Keys the customer added inside the server
 are not listed and stay. Like the other added tools, it is unverified whether WISECP shows it.
+
+### Snapshots
+
+A **Snapshots** tool (`pages/tools/snapshots.php`, Proxmotion docs/adr/0051), shown while
+the server is active, lists the snapshots of the server's disk and settings with *Roll back*
+and *Delete* (each confirmed), and a form to take one with an optional label while slots
+are free. How many a server may have comes from the package, plus the add-on value
+`extra_snapshots` (`extra_backups` for backups, which come later). Proxmotion refuses with
+its reason when a server is full or cannot have snapshots. Unverified whether WISECP shows it.
 
 ## Webhooks
 

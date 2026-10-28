@@ -469,6 +469,8 @@ Moves to other clusters need *Allow moves to other clusters and locations* on *P
 
 **Usage history** ([ADR 0050](../adr/0050-usage-history.md)): every collection also rolls its samples up into hours (kept 35 days) and days (kept 400 days). The *Usage* tab of a server page shows CPU, memory, network and disk I/O over the last 24 hours, 7 days, 30 days or 12 months as line charts, and the traffic per hour, day or month as bars. Billing systems read the same with `GET /servers/{id}/usage`; the WHMCS client area draws CPU, network and traffic for the chosen range. Tested with a faked Proxmox only.
 
+**Snapshots** ([ADR 0051](../adr/0051-snapshots-and-backups.md)): a server may have as many snapshots as its package's *snapshot slots* (or its own, for custom servers and billing options). A snapshot keeps the disk and settings, not the memory, on the server's own storage (thin LVM, ZFS, Ceph RBD, qcow2). The *Snapshots* tab of a server page takes one with an optional label, rolls back to one (the hostname typed to confirm) and deletes one; billing systems do the same through the API, the WHMCS client area and a WISECP tool. After a rollback the panel writes back the current resources, port speed, disk size and firewall, and inside the server its addresses, hostname and SSH keys; the root password is the one of the snapshot's time. A reinstall deletes the snapshots, the disk cannot grow while there are any, and *Reset after trial* rolls a test server back to its snapshot labelled `trial base`. Tested with a faked Proxmox only.
+
 ### 9.5 Windows guests
 
 Windows templates are supported by the data model and default guest scripts exist (`addresses.ps1`, `disk.ps1`, `hostname.ps1`, password for `Administrator`), with a [Windows template guide](../guides/windows-templates.md). They have **not run on a real Windows guest yet**.
@@ -631,6 +633,7 @@ Every change is audited with a version diff. A custom recipe can never override 
 | **Apps** | `POST`/`GET /servers/{id}/apps`, `GET /servers/{id}/apps/{installation}`, `POST …/retry`, `POST …/cancel`, `DELETE …` (uninstall), `POST …/upgrade`, `POST …/actions/{key}`, `GET …/runs`, `GET …/runs/{run}`, `POST …/runs/{run}/cancel` |
 | **Entitlements** | `POST`/`GET /servers/{id}/app-entitlements`, `DELETE /servers/{id}/app-entitlements/{app}` |
 | **Tasks** | `GET /tasks/{id}` |
+| **Snapshots** | `GET`/`POST /servers/{id}/snapshots`, `POST …/snapshots/{snapshot}/rollback`, `DELETE …/snapshots/{snapshot}` ([ADR 0051](../adr/0051-snapshots-and-backups.md)) |
 | **Usage** | The current month's traffic and `suspension_cause` on every server ([ADR 0039](../adr/0039-usage-limits.md)); `GET /servers/{id}/usage?range=day\|week\|month\|year`: CPU, memory, network and disk averages and traffic per hour, day or month ([ADR 0050](../adr/0050-usage-history.md)) |
 
 Tasks and audit log entries record the API token that started them.
@@ -802,7 +805,7 @@ See `panel/.env.example` for the full list (database, Redis, mail, …).
 | 4 | Billing API, WHMCS and WISECP modules, webhooks | Done |
 | 5 | App Marketplace: install, order-time apps, paid apps, uninstall/upgrade/actions, logs, editor, trials, import/export, 16 recipes | Mostly done; catalogs and signing (ADR 0017) open |
 | 6 | Usage and quotas: traffic collection, graphs, throttle/suspend, `UsageUpdate` | Resource changes, guest scripts, primary address and hostname changes done early; traffic collection, quotas and usage limits with suspend/stop, WHMCS `UsageUpdate` and traffic in the billing modules done (ADR 0039); usage history with graphs in the admin panel, the API and the WHMCS client area done (ADR 0050); throttling not started |
-| 7 | Snapshots and backups, Proxmox Backup Server | Planned |
+| 7 | Snapshots and backups, Proxmox Backup Server | Snapshots done (ADR 0051, phase 1); backups, restore and schedules planned |
 | 8 | Virtualizor import, native installer, production images, branding | Planned |
 | 9 | NAT VPS, LXC, ISO mount, rescue mode, customer firewall, moving servers (pulled forward, see 9.4), reseller system, more billing modules | Planned |
 

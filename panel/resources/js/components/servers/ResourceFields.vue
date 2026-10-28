@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import FormField from '@/components/admin/FormField.vue';
 import LimitFields from '@/components/servers/LimitFields.vue';
+import SlotFields from '@/components/servers/SlotFields.vue';
 import { Input } from '@/components/ui/input';
 import type { NewServerResources } from '@/types/admin';
 
@@ -98,5 +99,13 @@ const optional = (value: string | number): number | '' =>
         @update:cpu-units="(value) => set('cpu_units', value)"
         @update:disk-mb-s="(value) => set('disk_mb_s', value)"
         @update:disk-iops="(value) => set('disk_iops', value)"
+    />
+
+    <SlotFields
+        :snapshots="values.snapshot_slots"
+        :backups="values.backup_slots"
+        :errors="errors"
+        @update:snapshots="(value) => set('snapshot_slots', value)"
+        @update:backups="(value) => set('backup_slots', value)"
     />
 </template>
