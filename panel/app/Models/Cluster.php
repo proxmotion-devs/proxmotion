@@ -4,16 +4,22 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use App\Domain\Infrastructure\StorageHealthCheck;
 use App\Enums\ClusterType;
+use App\Enums\NodeStatus;
+use App\Enums\StorageHealth;
 use App\Models\Concerns\HasPublicUuid;
 use App\Proxmox\ProxmoxConnection;
+use Closure;
 use Database\Factories\ClusterFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasManyThrough;
 use Illuminate\Support\Carbon;
 
 /**
@@ -39,6 +45,8 @@ use Illuminate\Support\Carbon;
  * @property string|null $last_sync_error
  * @property bool|null $firewall_enabled the datacenter firewall's `enable` option at the last sync; null: not read yet
  * @property bool|null $firewall_ebtables the datacenter firewall's `ebtables` option (ARP filtering) at the last sync
+ * @property string|null $ceph_health HEALTH_OK, HEALTH_WARN or HEALTH_ERR of the Ceph cluster Proxmox manages; null without one (docs/adr/0047)
+ * @property list<array{severity: string, message: string}>|null $ceph_checks Ceph's health checks, in Ceph's own English
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  * @property-read Location $location
@@ -66,6 +74,7 @@ class Cluster extends Model
             'last_synced_at' => 'datetime',
             'firewall_enabled' => 'boolean',
             'firewall_ebtables' => 'boolean',
+            'ceph_checks' => 'array',
         ];
     }
 
@@ -135,6 +144,66 @@ class Cluster extends Model
     public function nodes(): HasMany
     {
         return $this->hasMany(Node::class);
+    }
+
+    /**
+     * @return HasManyThrough<Storage, Node, $this>
+     */
+    public function storages(): HasManyThrough
+    {
+        return $this->hasManyThrough(Storage::class, Node::class);
+    }
+
+    /**
+     * @return HasManyThrough<NodeDisk, Node, $this>
+     */
+    public function disks(): HasManyThrough
+    {
+        return $this->hasManyThrough(NodeDisk::class, Node::class);
+    }
+
+    /**
+     * Counts for withCount() that storageHealth() reads, so a list needs no query per cluster.
+     * Only online nodes count: offline ones are shown as such, and nodes removed from the
+     * cluster keep their last rows forever.
+     *
+     * @return array<string, Closure(Builder<Model>): mixed>
+     */
+    public static function storageHealthCounts(): array
+    {
+        $counts = [];
+
+        foreach (['storages', 'disks'] as $relation) {
+            foreach ([StorageHealth::Warning, StorageHealth::Critical] as $health) {
+                $counts["{$relation} as {$relation}_{$health->value}_count"] = fn (Builder $query) => $query
+                    ->where("{$query->getModel()->getTable()}.health", $health->value)
+                    ->where('nodes.status', NodeStatus::Online->value);
+            }
+        }
+
+        return $counts;
+    }
+
+    /**
+     * The worst health of its storages, disks and Ceph cluster (docs/adr/0047).
+     */
+    public function storageHealth(): StorageHealth
+    {
+        if ($this->getAttribute('storages_critical_count') === null) {
+            $this->loadCount(self::storageHealthCounts());
+        }
+
+        $count = fn (string $key): int => (int) $this->getAttribute($key);
+        $ceph = StorageHealthCheck::ceph($this->ceph_health);
+
+        return match (true) {
+            $count('storages_critical_count') + $count('disks_critical_count') > 0 => StorageHealth::Critical,
+            $ceph === StorageHealth::Critical => StorageHealth::Critical,
+            $count('storages_warning_count') + $count('disks_warning_count') > 0 => StorageHealth::Warning,
+            $ceph === StorageHealth::Warning => StorageHealth::Warning,
+            $this->last_synced_at === null => StorageHealth::Unknown,
+            default => StorageHealth::Ok,
+        };
     }
 
     /**

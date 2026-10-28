@@ -25,6 +25,8 @@ export type PanelSettings = {
     verify_dns_name: string | null;
     protected_networks: string[];
     drift_stopped_grace_minutes: number;
+    storage_warning_percent: number;
+    storage_critical_percent: number;
     console_max_minutes: number;
     console_idle_minutes: number;
     docs_url: string | null;
@@ -37,6 +39,13 @@ export type PanelSettings = {
     usage_network_mbps: number | null;
     usage_window_minutes: number;
     usage_action: 'none' | 'stop' | 'suspend';
+    password_length: number;
+    password_characters: 'lower' | 'mixed' | 'symbols';
+    password_prefix: string | null;
+    password_suffix: string | null;
+    notifications_enabled: boolean;
+    notification_recipients: string[];
+    notification_throttle_minutes: number;
 };
 
 export type Cluster = {
@@ -61,6 +70,41 @@ export type Cluster = {
     incoming_token_id: string | null;
     receives_moves: boolean;
     tls_fingerprint: string | null;
+    /** The worst health of its storages, disks and Ceph cluster (docs/adr/0047). */
+    storage_health: StorageHealth;
+    /** HEALTH_OK, HEALTH_WARN or HEALTH_ERR of the Ceph cluster Proxmox manages; null without one. */
+    ceph_health: string | null;
+    /** Ceph's health checks, in Ceph's own English. */
+    ceph_checks: { severity: string; message: string }[];
+};
+
+export type StorageHealth = 'ok' | 'warning' | 'critical' | 'unknown';
+
+/** What is wrong with a storage or disk: an English key with its placeholders. */
+export type HealthProblem = {
+    severity: 'warning' | 'critical';
+    message: string;
+    replace: Record<string, string | number>;
+};
+
+export type NodeDisk = {
+    id: number;
+    devpath: string;
+    model: string | null;
+    serial: string | null;
+    /** ssd, hdd, nvme, usb… */
+    type: string | null;
+    size_bytes: number | null;
+    /** What Proxmox says uses it (LVM, ZFS, partitions…). */
+    used: string | null;
+    /** smartctl's overall result (PASSED, FAILED, OK, UNKNOWN). */
+    smart: string | null;
+    /** Rated life left in per cent (SSDs and NVMe). */
+    wearout: number | null;
+    health: StorageHealth;
+    health_problems: HealthProblem[];
+    /** False once Proxmox no longer reports it. */
+    is_present: boolean;
 };
 
 export type Storage = {
@@ -74,6 +118,13 @@ export type Storage = {
     supports_vm_disks: boolean;
     total_bytes: number | null;
     used_bytes: number | null;
+    health: StorageHealth;
+    health_problems: HealthProblem[];
+    /** The state of its ZFS pool (ONLINE, DEGRADED…) or of the Ceph cluster (HEALTH_OK…). */
+    pool_state: string | null;
+    /** LVM thin pools: metadata in use. */
+    metadata_used_bytes: number | null;
+    metadata_total_bytes: number | null;
 };
 
 export type Bridge = {
@@ -101,6 +152,10 @@ export type Node = {
     api_host: string | null;
     last_seen_at: string | null;
     storages: Storage[];
+    /** Its physical disks (docs/adr/0047). */
+    disks: NodeDisk[];
+    /** Why its disks and pools could not be read at the last sync. */
+    disk_health_error: string | null;
     bridges: Bridge[];
 };
 
@@ -177,6 +232,8 @@ export type GuestScriptSlot = {
     inputs: string[];
     can_be_tried: boolean;
     critical: boolean;
+    /** How long one run may take; the task waits for it. */
+    timeout_seconds: number;
 };
 
 /** One run of a guest script, as the Scripts page lists it. */
@@ -184,15 +241,30 @@ export type GuestScriptRun = {
     uuid: string;
     server: string;
     server_uuid: string;
+    /** The custom script's name when it ran (docs/adr/0043); null for an event's own script. */
+    script_name: string | null;
     source: 'default' | 'published' | 'draft';
     trace: boolean;
-    /** An administrator's trial; otherwise an operation ran it. */
-    trial: boolean;
+    /** Run by an operation, a trial on the template page, or by hand from the server page. */
+    kind: 'operation' | 'trial' | 'manual';
     status: 'running' | 'succeeded' | 'failed';
     exit_code: number | null;
     message: string | null;
     started_at: string | null;
     finished_at: string | null;
+};
+
+/** An administrator's own script on an OS template (docs/adr/0043). */
+export type CustomScript = {
+    uuid: string;
+    name: string;
+    /** Listed under Run script on the server page. */
+    manual: boolean;
+    /** Runs after the fixed script of these events. */
+    events: GuestScriptEvent[];
+    /** Null until the first draft is published. */
+    content: string | null;
+    draft: string | null;
 };
 
 export type GuestScriptRunDetail = GuestScriptRun & {
@@ -228,8 +300,13 @@ export type Package = ResourceLimitValues & {
     network_models: NetworkModel[];
     is_active: boolean;
     sort_order: number;
+    /** Reinstalls through the billing API within reinstall_period_days; null: unlimited (docs/adr/0045). */
+    reinstall_limit: number | null;
+    reinstall_period_days: number | null;
     /** Empty: any node; otherwise the groups of the ordered location (docs/adr/0020). */
     placement_group_ids: number[];
+    /** Empty: any OS template; otherwise the ones its servers may use (docs/adr/0040). */
+    os_template_ids: number[];
     /** New servers start with these rules and its default policy (docs/adr/0035 §3). */
     firewall_ruleset: string | null;
 };
@@ -471,6 +548,25 @@ export type ServerUsage = {
     violations: UsageViolation[];
 };
 
+/** How often a server's billing system may reinstall it (ReinstallLimits, docs/adr/0045). */
+export type ReinstallLimitState = {
+    /** server: its own limit; package: its package's (none without a package). */
+    source: 'server' | 'package';
+    /** The limit that applies; null: unlimited, as are the counts then. */
+    limit: number | null;
+    period_days: number | null;
+    used: number | null;
+    remaining: number | null;
+    /** When the next reinstall is possible once none remain; null for a limit of 0. */
+    available_at: string | null;
+    server_limit: number | null;
+    server_period_days: number | null;
+    package_limit: number | null;
+    package_period_days: number | null;
+    has_package: boolean;
+    reset_at: string | null;
+};
+
 /** The latest checks from inside a server (ServerVerifier, docs/adr/0032 §6). */
 export type ServerVerification = {
     checked_at: string;
@@ -500,6 +596,20 @@ export type ServerStats = {
     net_out: number | null;
     disk_read: number | null;
     disk_write: number | null;
+};
+
+/** How full a running server's file systems are, from its guest agent. */
+export type ServerDiskUsage = {
+    time: number;
+    /** False when the guest agent did not answer. */
+    available: boolean;
+    /** The root file system (/ or C:) first. */
+    file_systems: {
+        mountpoint: string;
+        type: string;
+        used_bytes: number;
+        total_bytes: number;
+    }[];
 };
 
 /** One minute of a server's last hour, or one live sample. */
@@ -535,6 +645,8 @@ export type TaskProgress = {
     created_at: string | null;
     /** Stuck (queued, or running past its time limit): an administrator may end it. */
     can_fail?: boolean;
+    /** An administrator's script run, queued or running: it may be cancelled. */
+    can_cancel?: boolean;
 };
 
 export type PermissionCheck = {
@@ -759,6 +871,8 @@ export type PackageOption = Option &
     ResourceLimitValues & {
         network_models: NetworkModel[];
         placement_groups: string[];
+        /** The OS templates its servers may use; empty for any (docs/adr/0040). */
+        os_templates: string[];
         cpu_cores: number;
         memory_mib: number;
         disk_gib: number;
@@ -840,4 +954,39 @@ export type FirewallRuleset = {
     /** Whether its rules let SSH or RDP in. */
     opens_remote_access: boolean;
     packages_count: number;
+};
+
+/** The type of a report column: how the page formats its raw values (docs/adr/0046). */
+export type ReportColumnType =
+    | 'text'
+    | 'number'
+    | 'boolean'
+    | 'mib'
+    | 'traffic'
+    | 'percent'
+    | 'duration'
+    | 'datetime'
+    | 'server'
+    | 'server_status'
+    | 'task_type'
+    | 'usage';
+
+export type ReportCell = string | number | boolean | null;
+
+/** One table of a report; `rows` holds at most a page, the CSV has `row_count`. */
+export type ReportTable = {
+    key: string;
+    title: string;
+    description: string | null;
+    columns: { key: string; label: string; type: ReportColumnType }[];
+    rows: Record<string, ReportCell>[];
+    row_count: number;
+    totals: Record<string, ReportCell> | null;
+};
+
+export type ReportFilter = {
+    label: string;
+    /** Label of the empty choice; null when one must be chosen. */
+    all: string | null;
+    options: { value: string | number; label: string }[];
 };

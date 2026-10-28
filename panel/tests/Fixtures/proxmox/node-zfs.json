@@ -1,0 +1,13 @@
+{
+    "data": [
+        {
+            "name": "rpool",
+            "size": 1000204886016,
+            "alloc": 107374182400,
+            "free": 892830703616,
+            "frag": 3,
+            "dedup": 1,
+            "health": "ONLINE"
+        }
+    ]
+}

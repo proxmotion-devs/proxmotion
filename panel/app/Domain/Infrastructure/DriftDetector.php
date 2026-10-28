@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Domain\Infrastructure;
 
+use App\Domain\Notifications\AdminNotifier;
 use App\Enums\DriftType;
 use App\Enums\ServerStatus;
 use App\Enums\TaskStatus;
@@ -22,6 +23,8 @@ use App\Proxmox\Data\VmResource;
 final readonly class DriftDetector
 {
     private const MIB = 1024 * 1024;
+
+    public function __construct(private AdminNotifier $notifier) {}
 
     /**
      * @param  list<VmResource>  $guests  every guest of the cluster, from /cluster/resources
@@ -123,11 +126,13 @@ final readonly class DriftDetector
             ->keyBy(fn (ServerDrift $drift) => "{$drift->type->value}:{$drift->vmid}");
         $now = now();
         $seen = [];
+        $new = 0;
 
         foreach ($findings as [$type, $vmid, $serverId, $expected, $actual]) {
             $key = "{$type->value}:{$vmid}";
             $seen[$key] = true;
             $drift = $open->get($key) ?? new ServerDrift;
+            $new += $drift->exists ? 0 : 1;
 
             $drift->forceFill([
                 'cluster_id' => $cluster->id,
@@ -149,6 +154,10 @@ final readonly class DriftDetector
             if (! isset($seen[$key]) && ! in_array($drift->server_id, $skippedServerIds, true)) {
                 $drift->resolve('gone');
             }
+        }
+
+        if ($new > 0) {
+            $this->notifier->driftDetected($cluster, $new);
         }
     }
 }

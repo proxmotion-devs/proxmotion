@@ -7,7 +7,7 @@ use App\Models\AppRecipe;
 use App\Models\AppRecipeVersion;
 
 /**
- * Publishes a newer version of a synced recipe, as the editor or apps:sync
+ * Publishes a newer version of a synced recipe, as the editor or a package
  * would, so installations of the older one can be upgraded (docs/adr/0016 §4).
  */
 trait PublishesRecipeVersions

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use App\Enums\StorageHealth;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -11,6 +12,8 @@ use Illuminate\Support\Carbon;
 
 /**
  * A Proxmox storage as seen from one node (shared storages appear once per node).
+ *
+ * @phpstan-type HealthProblem array{severity: string, message: string, replace: array<string, string|int>}
  *
  * @property int $id
  * @property int $node_id
@@ -22,6 +25,11 @@ use Illuminate\Support\Carbon;
  * @property bool $use_for_servers
  * @property int|null $total_bytes
  * @property int|null $used_bytes
+ * @property StorageHealth $health the worst of its problems at the last sync (docs/adr/0047)
+ * @property list<HealthProblem>|null $health_problems what is wrong: English keys with their placeholders
+ * @property string|null $pool_state the state of its ZFS pool (ONLINE, DEGRADED…) or of the Ceph cluster (HEALTH_OK…)
+ * @property int|null $metadata_used_bytes LVM thin pools: metadata in use
+ * @property int|null $metadata_total_bytes
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  * @property-read Node $node
@@ -41,6 +49,10 @@ class Storage extends Model
             'use_for_servers' => 'boolean',
             'total_bytes' => 'integer',
             'used_bytes' => 'integer',
+            'health' => StorageHealth::class,
+            'health_problems' => 'array',
+            'metadata_used_bytes' => 'integer',
+            'metadata_total_bytes' => 'integer',
         ];
     }
 

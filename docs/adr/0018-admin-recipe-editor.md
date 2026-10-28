@@ -2,6 +2,7 @@
 
 - **Status:** Accepted (phases 1 and 2 built 2026-10-17, phase 3 built 2026-10-18, phase 4 built 2026-10-19)
 - **Date:** 2026-10-17
+- **Revised 2026-10-27 (ADR 0042):** bundled apps are installed from `.proxapp` packages, not from `panel/recipes` and `apps:sync`; exports are `.proxapp` packages too. The rules below for bundled apps otherwise stand.
 - **Builds on:** ADR 0015 (App Marketplace), ADR 0016 (recipe format v2, stored versions, uninstall and actions). Distribution between panels: ADR 0017.
 
 ## Context

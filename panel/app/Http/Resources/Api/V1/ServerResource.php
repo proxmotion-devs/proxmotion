@@ -35,6 +35,30 @@ class ServerResource extends JsonResource
     }
 
     /**
+     * Reinstalls the billing system may still make (ReinstallLimits::usage()),
+     * when the controller counted them (docs/adr/0045).
+     *
+     * @var array{limit: int|null, period_days: int|null, used: int|null, remaining: int|null, available_at: string|null}|null
+     */
+    private ?array $reinstalls = null;
+
+    /**
+     * @param  array{source: string, limit: int|null, period_days: int|null, used: int|null, remaining: int|null, available_at: string|null}  $usage
+     */
+    public function withReinstalls(array $usage): self
+    {
+        $this->reinstalls = [
+            'limit' => $usage['limit'],
+            'period_days' => $usage['period_days'],
+            'used' => $usage['used'],
+            'remaining' => $usage['remaining'],
+            'available_at' => $usage['available_at'],
+        ];
+
+        return $this;
+    }
+
+    /**
      * @return array<string, mixed>
      */
     public function toArray(Request $request): array
@@ -52,6 +76,8 @@ class ServerResource extends JsonResource
             'reboot_required' => $this->reboot_required,
             // "running", "stopped" or null when Proxmox could not be asked; only on GET /servers/{id}.
             'power_state' => $this->when($this->withPowerState, fn () => $this->powerState),
+            // Reinstalls through the API within the rolling window, all null when unlimited; only on GET /servers/{id} (docs/adr/0045).
+            'reinstalls' => $this->when($this->reinstalls !== null, fn () => $this->reinstalls),
             'network_model' => $this->network_model->value,
             'package' => $this->package === null ? null : ['id' => $this->package->uuid, 'name' => $this->package->name],
             'location' => ['id' => $this->location->uuid, 'name' => $this->location->name],

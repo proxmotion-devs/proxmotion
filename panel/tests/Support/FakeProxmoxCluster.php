@@ -63,6 +63,12 @@ class FakeProxmoxCluster
      */
     public array $guestInterfaces = [];
 
+    /**
+     * @var array<int, list<array<string, mixed>>> per VMID: what get-fsinfo answers; by default an ext4
+     *                                             root file system of 10 GiB with 2 GiB used
+     */
+    public array $guestFileSystems = [];
+
     /** @var array<int, string> per VMID: what the ServerVerifier script prints; by default every check passes */
     public array $verifyOutput = [];
 
@@ -122,7 +128,23 @@ class FakeProxmoxCluster
     /** How many exec-status polls report a command as still running. */
     public int $execPollsUntilExited = 0;
 
-    /** @var array<int, array{exitcode: int, out: string, err: string, polls: int}> */
+    /**
+     * Decides which guest commands keep running until a stop command of
+     * GuestScripts ends them (Linux by their PROXMOTION_SCRIPT_RUN marker,
+     * Windows by pid); then they report execHandler's output.
+     *
+     * @var (callable(list<string>): bool)|null
+     */
+    public $hangs = null;
+
+    /**
+     * Called on each exec-status poll of a hanging command, with its pid (to cancel its task meanwhile).
+     *
+     * @var (callable(int): void)|null
+     */
+    public $whileHanging = null;
+
+    /** @var array<int, array{exitcode: int, out: string, err: string, polls: int, signal?: int, hanging?: bool, marker?: string|null}> */
     private array $processes = [];
 
     /** When set, migrations (migrate, remote_migrate) fail with this exit status and move nothing. */
@@ -136,6 +158,9 @@ class FakeProxmoxCluster
 
     /** @var array<string, string> per API host: the node that answers there (remote migrations land on it) */
     public array $hostNodes = [];
+
+    /** @var list<int> VMIDs that answer "does not exist" on every node but their own, as Proxmox does after a migration */
+    public array $strictNode = [];
 
     /** @var array<string, self> the clusters by API host, when several are installed (installAll()) */
     private array $network = [];
@@ -270,6 +295,10 @@ class FakeProxmoxCluster
     private function qemu(string $method, string $node, int $vmid, string $suffix, array $data): PromiseInterface
     {
         $vm = $this->vms[$vmid] ?? null;
+
+        if ($vm !== null && in_array($vmid, $this->strictNode, true) && $vm['node'] !== $node) {
+            $vm = null;
+        }
 
         if ($suffix === '/clone' && $method === 'POST') {
             $newId = (int) $data['newid'];
@@ -413,15 +442,30 @@ class FakeProxmoxCluster
                         : [0, base64_encode(substr($file, (int) $commandLine[$read + 1], (int) $commandLine[$read + 2])), ''];
                 } else {
                     $this->guestCommands[] = ['vmid' => $vmid, 'command' => $commandLine, 'input' => $input];
-                    [$exitCode, $out, $err] = $this->execHandler !== null ? ($this->execHandler)($commandLine, $input) : [0, '', ''];
+                    [$exitCode, $out, $err] = $this->stopHanging($commandLine)
+                        ? [0, '', '']
+                        : ($this->execHandler !== null ? ($this->execHandler)($commandLine, $input) : [0, '', '']);
                 }
                 $pid = 1000 + count($this->processes);
                 $this->processes[$pid] = ['exitcode' => $exitCode, 'out' => $out, 'err' => $err, 'polls' => 0];
+
+                if ($read === null && $this->hangs !== null && ($this->hangs)($commandLine)) {
+                    $marker = $commandLine[0] === 'env' && str_starts_with($commandLine[1] ?? '', 'PROXMOTION_SCRIPT_RUN=') ? substr($commandLine[1], 22) : null;
+                    $this->processes[$pid] += ['hanging' => true, 'marker' => $marker];
+                }
 
                 return $this->ok(['pid' => $pid]);
             case 'exec-status':
                 $pid = (int) $data['pid'];
                 $process = &$this->processes[$pid];
+
+                if (($process['hanging'] ?? false) === true) {
+                    if ($this->whileHanging !== null) {
+                        ($this->whileHanging)($pid);
+                    }
+
+                    return $this->ok(['exited' => 0]);
+                }
 
                 if ($this->execPollsUntilExited > $process['polls']++) {
                     return $this->ok(['exited' => 0]);
@@ -429,12 +473,17 @@ class FakeProxmoxCluster
 
                 return $this->ok(array_filter([
                     'exited' => 1,
-                    'exitcode' => $process['exitcode'],
+                    'exitcode' => isset($process['signal']) ? null : $process['exitcode'],
+                    'signal' => $process['signal'] ?? null,
                     'out-data' => $process['out'],
                     'err-data' => $process['err'],
-                ], fn ($value) => $value !== ''));
+                ], fn ($value) => $value !== '' && $value !== null));
             case 'network-get-interfaces':
                 return $this->ok(['result' => $this->guestInterfaces[$vmid] ?? $this->defaultInterfaces($vmid)]);
+            case 'get-fsinfo':
+                return $this->ok(['result' => $this->guestFileSystems[$vmid] ?? [
+                    ['name' => 'sda1', 'mountpoint' => '/', 'type' => 'ext4', 'used-bytes' => 2 * 1024 ** 3, 'total-bytes' => 10 * 1024 ** 3, 'disk' => []],
+                ]]);
             case 'set-user-password':
                 $this->guestPasswords[$vmid][(string) $data['username']] = (string) $data['password'];
 
@@ -442,6 +491,34 @@ class FakeProxmoxCluster
             default:
                 return Http::response(['data' => null], 501);
         }
+    }
+
+    /**
+     * A stop command of GuestScripts ends the hanging commands it finds:
+     * Linux and FreeBSD ones by their marker (killed, signal 9), Windows ones by pid
+     * (exit code 1, as Stop-Process -Force leaves it).
+     *
+     * @param  list<string>  $command
+     */
+    private function stopHanging(array $command): bool
+    {
+        if ($command[0] === 'sh' && in_array($command[2] ?? null, [GuestScripts::LINUX_STOP_SCRIPT, GuestScripts::FREEBSD_STOP_SCRIPT], true)) {
+            $matches = fn (int $pid, array $process) => ($process['marker'] ?? null) === $command[4];
+            $ending = ['signal' => 9];
+        } elseif ($command[0] === 'powershell.exe' && preg_match('/\$tree\.Add\((\d+)\)/', $command[4] ?? '', $found) === 1) {
+            $matches = fn (int $pid) => $pid === (int) $found[1];
+            $ending = ['exitcode' => 1];
+        } else {
+            return false;
+        }
+
+        foreach ($this->processes as $pid => $process) {
+            if (($process['hanging'] ?? false) === true && $matches($pid, $process)) {
+                $this->processes[$pid] = ['hanging' => false] + $ending + $process;
+            }
+        }
+
+        return true;
     }
 
     /**

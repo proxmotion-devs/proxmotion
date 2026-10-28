@@ -21,6 +21,7 @@ class TemplateNameGuessTest extends TestCase
             'alma short' => ['alma9', ['name' => 'AlmaLinux 9', 'distribution' => 'almalinux', 'version' => '9']],
             'rocky' => ['tpl-rocky-linux-9.5', ['name' => 'Rocky Linux 9.5', 'distribution' => 'rocky', 'version' => '9.5']],
             'arch' => ['archlinux-cloud', ['name' => 'Arch Linux', 'distribution' => 'arch', 'version' => '']],
+            'freebsd' => ['FreeBSD-14.3-ufs', ['name' => 'FreeBSD 14.3', 'distribution' => 'freebsd', 'version' => '14.3']],
             'windows server' => ['win2022-std', ['name' => 'Windows Server 2022', 'distribution' => 'windows', 'version' => '2022']],
             'own version numbers' => ['pardus-23-cloud', ['name' => 'Pardus 23', 'distribution' => 'pardus', 'version' => '23']],
             'mint before ubuntu' => ['linuxmint-22-ubuntu', ['name' => 'Linux Mint 22', 'distribution' => 'linuxmint', 'version' => '22']],

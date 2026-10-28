@@ -1,0 +1,27 @@
+{
+    "data": [
+        {
+            "storage": "local",
+            "type": "dir",
+            "path": "/var/lib/vz",
+            "content": "iso,vztmpl,backup",
+            "digest": "0f1e2d3c"
+        },
+        {
+            "storage": "local-lvm",
+            "type": "lvmthin",
+            "vgname": "pve",
+            "thinpool": "data",
+            "content": "images,rootdir",
+            "digest": "0f1e2d3c"
+        },
+        {
+            "storage": "ceph-vm",
+            "type": "rbd",
+            "pool": "vm",
+            "content": "images",
+            "krbd": 0,
+            "digest": "0f1e2d3c"
+        }
+    ]
+}

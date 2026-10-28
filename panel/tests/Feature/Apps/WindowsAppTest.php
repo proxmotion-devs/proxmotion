@@ -9,7 +9,6 @@ use App\Domain\Apps\AppInstaller;
 use App\Domain\Apps\AppLogs;
 use App\Domain\Apps\AppRunner;
 use App\Domain\Apps\InstallationPoller;
-use App\Domain\Apps\RecipeSynchronizer;
 use App\Domain\Apps\RunPoller;
 use App\Domain\Servers\GuestScripts;
 use App\Enums\AppInstallationStatus;
@@ -52,11 +51,11 @@ class WindowsAppTest extends TestCase
         $this->proxmox = (new FakeProxmoxCluster)->addTemplate(9000)->install();
         // Windows setup has finished as soon as the server is created.
         $this->proxmox->execHandler = fn (array $command) => $command === GuestScripts::WINDOWS_SETUP_COMMAND
-            ? [0, "IMAGE_STATE_COMPLETE\r\nStopped\r\n", '']
+            ? [0, "image=IMAGE_STATE_COMPLETE\r\nservice=Stopped\r\nplugins=SetUserPasswordPlugin\r\ndone=SetUserPasswordPlugin\r\n", '']
             : [0, '', ''];
         $this->server = app(ServerCreator::class)->create($this->order())->refresh();
         $this->admin = User::factory()->create();
-        app(RecipeSynchronizer::class)->sync();
+        $this->syncRecipes();
         $this->offerApps();
     }
 
@@ -93,7 +92,7 @@ class WindowsAppTest extends TestCase
 
         $this->assertSame(OsPlatform::Windows, $this->osTemplate->refresh()->platform);
 
-        foreach (['iis', 'sqlserver-express', 'chocolatey'] as $slug) {
+        foreach (['sqlserver-express'] as $slug) {
             $this->assertNull($eligibility->forCatalog($this->app($slug)->load('latestVersion'), $this->osTemplate, $this->package), $slug);
             $this->assertNotNull($eligibility->forCatalog($this->app($slug)->load('latestVersion'), $linux, $this->package), $slug);
         }
@@ -105,7 +104,7 @@ class WindowsAppTest extends TestCase
     {
         $eligibility = app(AppEligibility::class);
         $this->server->osTemplate->forceFill(['distribution' => 'ubuntu', 'version' => '24.04'])->save();
-        $app = $this->app('iis');
+        $app = $this->app('sqlserver-express');
 
         $problem = $eligibility->forTrial($app, $app->latestVersion, $this->server->refresh());
 
@@ -123,8 +122,8 @@ class WindowsAppTest extends TestCase
         $this->assertSame($directory, $installation->guestDirectory());
 
         // .ps1 files get a byte order mark for Windows PowerShell 5.1; JSON does not.
-        $this->assertSame("\u{FEFF}".file_get_contents(base_path('recipes/sqlserver-express/install.ps1')), $files[$directory.'/install.ps1']);
-        $this->assertSame("\u{FEFF}".file_get_contents(base_path('recipes/sqlserver-express/lib.ps1')), $files[$directory.'/lib.ps1']);
+        $this->assertSame("\u{FEFF}".file_get_contents(base_path('tests/Fixtures/recipes/sqlserver-express/install.ps1')), $files[$directory.'/install.ps1']);
+        $this->assertSame("\u{FEFF}".file_get_contents(base_path('tests/Fixtures/recipes/sqlserver-express/lib.ps1')), $files[$directory.'/lib.ps1']);
 
         foreach (['proxmotion.ps1', 'run.ps1', 'start.ps1', 'read-log.ps1'] as $library) {
             $this->assertSame("\u{FEFF}".file_get_contents(base_path('recipes/_lib/'.$library)), $files[$directory.'/'.$library]);

@@ -35,6 +35,7 @@ use Illuminate\Support\Carbon;
  * @property string $disk_overcommit
  * @property int|null $max_servers
  * @property Carbon|null $last_seen_at
+ * @property string|null $disk_health_error why its disks and pools could not be read at the last sync (docs/adr/0047)
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  * @property-read Cluster $cluster
@@ -94,6 +95,14 @@ class Node extends Model
     public function storages(): HasMany
     {
         return $this->hasMany(Storage::class);
+    }
+
+    /**
+     * @return HasMany<NodeDisk, $this>
+     */
+    public function disks(): HasMany
+    {
+        return $this->hasMany(NodeDisk::class);
     }
 
     /**

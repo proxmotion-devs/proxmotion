@@ -8,7 +8,6 @@ use App\Domain\Apps\AppNotEligible;
 use App\Domain\Apps\AppRunner;
 use App\Domain\Apps\AppUpgrades;
 use App\Domain\Apps\InstallationPoller;
-use App\Domain\Apps\RecipeSynchronizer;
 use App\Domain\Apps\RunPoller;
 use App\Enums\AppInstallationStatus;
 use App\Enums\AppRunKind;
@@ -51,7 +50,7 @@ class AppUpgradeTest extends TestCase
         $this->proxmox = (new FakeProxmoxCluster)->addTemplate(9000)->install();
         $this->server = app(ServerCreator::class)->create($this->order())->refresh();
         $this->admin = User::factory()->create();
-        app(RecipeSynchronizer::class)->sync();
+        $this->syncRecipes();
         $this->offerApps();
     }
 
@@ -111,6 +110,17 @@ class AppUpgradeTest extends TestCase
 
         $this->publishVersion('wireguard', '1.6.0', changes: ['resources' => ['min_memory_mib' => 65536]]);
         $this->assertNull($target(), 'The new version needs more memory than the server has.');
+    }
+
+    public function test_an_administrators_edit_of_the_installed_version_is_offered_as_an_upgrade()
+    {
+        $installation = $this->installed();
+        $this->assertSame('1.3.1', $installation->version->version);
+
+        // Published by the editor after editing the bundled app in place (docs/adr/0018 §2).
+        $edit = $this->publishVersion('wireguard', '1.3.1-local.1', from: '>=1.3.1 <1.4.0');
+
+        $this->assertTrue($edit->is(app(AppUpgrades::class)->target($installation->refresh()->load('recipe.latestVersion'))));
     }
 
     public function test_an_upgrade_runs_the_new_versions_script_with_the_installed_inputs()
@@ -257,7 +267,7 @@ class AppUpgradeTest extends TestCase
 
         $this->upgrade($installation);
 
-        $this->assertTrue($target->inUse(), 'apps:sync must not replace its content.');
+        $this->assertTrue($target->inUse(), 'A package must not replace its content.');
         $this->assertFalse(AppRecipe::query()->where('slug', 'openvpn')->firstOrFail()->latestVersion?->inUse());
     }
 }

@@ -61,9 +61,11 @@ final class ApiClient
     /**
      * @return list<array<string, mixed>>
      */
-    public function osTemplates(): array
+    public function osTemplates(?string $serverId = null): array
     {
-        return $this->listOf($this->request('GET', '/os-templates'));
+        $query = $serverId === null ? [] : ['server' => $serverId];
+
+        return $this->listOf($this->request('GET', '/os-templates' . ($query === [] ? '' : '?' . http_build_query($query))));
     }
 
     /**

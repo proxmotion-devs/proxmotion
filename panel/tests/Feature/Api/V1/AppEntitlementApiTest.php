@@ -2,7 +2,6 @@
 
 namespace Tests\Feature\Api\V1;
 
-use App\Domain\Apps\RecipeSynchronizer;
 use App\Enums\ServerStatus;
 use App\Models\AppRecipe;
 use App\Models\AuditLog;
@@ -22,7 +21,7 @@ class AppEntitlementApiTest extends ApiTestCase
     {
         parent::setUp();
 
-        app(RecipeSynchronizer::class)->sync();
+        $this->syncRecipes();
 
         $this->offerApps();
         $this->server = $this->provisionedServer();

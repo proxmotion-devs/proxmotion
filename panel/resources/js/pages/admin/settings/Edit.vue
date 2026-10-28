@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { Head, useForm } from '@inertiajs/vue3';
-import { Save } from '@lucide/vue';
+import { Head, router, setLayoutProps, useForm } from '@inertiajs/vue3';
+import { Mail, Save } from '@lucide/vue';
 import { trans } from 'laravel-vue-i18n';
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import FormField from '@/components/admin/FormField.vue';
 import NativeSelect from '@/components/admin/NativeSelect.vue';
 import StatusBadge from '@/components/admin/StatusBadge.vue';
@@ -12,26 +12,45 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { optionalNumber } from '@/lib/forms';
 import type { OptionalNumber } from '@/lib/forms';
-import { edit, update } from '@/routes/admin/settings';
+import { fitsCloudInit, passwordExample } from '@/lib/passwordExample';
+import type { PasswordCharacters } from '@/lib/passwordExample';
+import { SETTINGS_CATEGORIES } from '@/lib/settingsCategories';
+import type { SettingsCategoryKey } from '@/lib/settingsCategories';
+import { edit, index, testEmail, update } from '@/routes/admin/settings';
 import type { PanelSettings } from '@/types/admin';
 
 /**
- * Panel settings (docs/adr/0038). A setting never saved here follows its
- * .env variable; once saved, the value here wins. Security and deployment
+ * One page of Panel settings (docs/adr/0038), opened from its entry under
+ * Panel settings in the menu. A setting never saved here follows its .env
+ * variable; once saved, the value here wins. Security and deployment
  * settings stay in .env and are only shown.
  */
-defineOptions({
-    layout: { breadcrumbs: [{ title: 'Panel settings', href: edit() }] },
-});
-
 const props = defineProps<{
+    category: SettingsCategoryKey;
+    /** The settings this page saves. */
+    fields: string[];
     settings: PanelSettings;
     unsaved: string[];
     environment: {
         require_admin_two_factor: boolean;
         console_proxy: boolean;
+        mailer: string;
+        mail_from: string | null;
     };
 }>();
+
+const current = computed(
+    () =>
+        SETTINGS_CATEGORIES.find((entry) => entry.key === props.category) ??
+        SETTINGS_CATEGORIES[0],
+);
+
+setLayoutProps({
+    breadcrumbs: [
+        { title: 'Panel settings', href: index() },
+        { title: current.value.title, href: edit(props.category) },
+    ],
+});
 
 const form = useForm({
     cross_cluster_moves: props.settings.cross_cluster_moves,
@@ -42,6 +61,8 @@ const form = useForm({
     verify_dns_name: props.settings.verify_dns_name ?? '',
     protected_networks: props.settings.protected_networks.join('\n'),
     drift_stopped_grace_minutes: props.settings.drift_stopped_grace_minutes,
+    storage_warning_percent: props.settings.storage_warning_percent,
+    storage_critical_percent: props.settings.storage_critical_percent,
     console_max_minutes: props.settings.console_max_minutes,
     console_idle_minutes: props.settings.console_idle_minutes,
     docs_url: props.settings.docs_url ?? '',
@@ -57,7 +78,29 @@ const form = useForm({
         '') as OptionalNumber,
     usage_window_minutes: props.settings.usage_window_minutes,
     usage_action: props.settings.usage_action,
+    password_length: props.settings.password_length,
+    password_characters: props.settings.password_characters,
+    password_prefix: props.settings.password_prefix ?? '',
+    password_suffix: props.settings.password_suffix ?? '',
+    notifications_enabled: props.settings.notifications_enabled,
+    notification_recipients: props.settings.notification_recipients.join('\n'),
+    notification_throttle_minutes: props.settings.notification_throttle_minutes,
 });
+
+// Email notifications (docs/adr/0044): a test mail through the mailer of .env.
+const sendingTest = ref(false);
+
+const sendTestEmail = () =>
+    router.visit(testEmail(), {
+        preserveScroll: true,
+        onStart: () => (sendingTest.value = true),
+        onFinish: () => (sendingTest.value = false),
+    });
+
+// Mailers that never deliver: notifications only end up in the log.
+const mailerDelivers = computed(
+    () => !['log', 'array'].includes(props.environment.mailer),
+);
 
 // Traffic quotas and usage limits (docs/adr/0039).
 const countedOptions = computed(() => [
@@ -79,33 +122,54 @@ const usageActionOptions = computed(() => [
 
 const submit = () =>
     form
-        .transform((data) => ({
-            ...data,
-            move_bwlimit_kib: optionalNumber(data.move_bwlimit_kib),
-            usage_cpu_percent: optionalNumber(data.usage_cpu_percent),
-            usage_memory_percent: optionalNumber(data.usage_memory_percent),
-            usage_disk_mb_s: optionalNumber(data.usage_disk_mb_s),
-            usage_network_mbps: optionalNumber(data.usage_network_mbps),
-        }))
-        .submit(update(), { preserveScroll: true });
+        .transform((data) => {
+            const values: Record<string, unknown> = {
+                ...data,
+                move_bwlimit_kib: optionalNumber(data.move_bwlimit_kib),
+                usage_cpu_percent: optionalNumber(data.usage_cpu_percent),
+                usage_memory_percent: optionalNumber(data.usage_memory_percent),
+                usage_disk_mb_s: optionalNumber(data.usage_disk_mb_s),
+                usage_network_mbps: optionalNumber(data.usage_network_mbps),
+            };
+
+            // Only this page's settings; the others keep their values.
+            return Object.fromEntries(
+                props.fields.map((field) => [field, values[field]]),
+            );
+        })
+        .submit(update(props.category), { preserveScroll: true });
+
+// Generated root passwords (docs/adr/0038): the format and an example of it.
+const passwordCharacterOptions = computed(() => [
+    { value: 'lower', label: trans('Lowercase letters and digits') },
+    { value: 'mixed', label: trans('Upper and lowercase letters and digits') },
+    { value: 'symbols', label: trans('Letters, digits and symbols') },
+]);
+
+const passwordExampleText = computed(() =>
+    passwordExample(
+        Number(form.password_length),
+        form.password_characters as PasswordCharacters,
+        form.password_prefix,
+        form.password_suffix,
+    ),
+);
+
+// A prefix that does not start with a letter, or a colon: Windows passwords then go through the guest agent.
+const passwordSkipsCloudInit = computed(
+    () =>
+        passwordExampleText.value !== null &&
+        !fitsCloudInit(passwordExampleText.value),
+);
 
 const sectionClass = 'flex flex-col gap-4 rounded-xl border p-4';
 </script>
 
 <template>
-    <Head title="Panel settings" />
+    <Head :title="current.title" />
 
     <form class="flex flex-col gap-6 p-4" @submit.prevent="submit">
-        <div class="flex flex-wrap items-start justify-between gap-4">
-            <Heading
-                title="Panel settings"
-                description="Settings that apply to the whole panel. They take effect at once, also for queued tasks."
-            />
-            <Button type="submit" :disabled="form.processing">
-                <Save class="h-4 w-4" />
-                {{ $t('Save settings') }}
-            </Button>
-        </div>
+        <Heading :title="current.title" :description="current.description" />
 
         <p
             v-if="unsaved.length > 0"
@@ -119,383 +183,614 @@ const sectionClass = 'flex flex-col gap-4 rounded-xl border p-4';
             }}
         </p>
 
-        <section :class="sectionClass" data-test="settings-moves">
-            <Heading
-                variant="small"
-                title="Moving servers"
-                description="Moves to another node of the same cluster are always offered."
-            />
-            <label class="flex items-start gap-2 text-sm">
-                <Checkbox
-                    id="cross_cluster_moves"
-                    :model-value="form.cross_cluster_moves"
-                    @update:model-value="
-                        (checked) =>
-                            (form.cross_cluster_moves = checked === true)
-                    "
+        <template v-if="category === 'servers'">
+            <section :class="sectionClass" data-test="settings-provisioning">
+                <Heading
+                    variant="small"
+                    title="Creating and reinstalling servers"
                 />
-                <span class="grid gap-1">
-                    <span class="font-medium">{{
-                        $t('Allow moves to other clusters and locations')
-                    }}</span>
+                <div class="grid gap-4 sm:grid-cols-2">
+                    <FormField
+                        label="Lowest VMID of new servers"
+                        for="min_vmid"
+                        :error="form.errors.min_vmid"
+                        hint="0: Proxmox's next free ID. A higher value keeps new servers apart from VMs managed by hand."
+                    >
+                        <Input
+                            id="min_vmid"
+                            v-model.number="form.min_vmid"
+                            type="number"
+                            min="0"
+                        />
+                    </FormField>
+                    <FormField
+                        label="Time limit of a creation or reinstall (minutes)"
+                        for="provisioning_deadline_minutes"
+                        :error="form.errors.provisioning_deadline_minutes"
+                        hint="All waits included, e.g. Windows setup."
+                    >
+                        <Input
+                            id="provisioning_deadline_minutes"
+                            v-model.number="form.provisioning_deadline_minutes"
+                            type="number"
+                            min="15"
+                            max="1440"
+                        />
+                    </FormField>
+                    <FormField
+                        label="DNS name checked from inside"
+                        for="verify_dns_name"
+                        :error="form.errors.verify_dns_name"
+                        hint="After a creation or reinstall the server checks that this name resolves. Empty: DNS is not checked."
+                    >
+                        <Input
+                            id="verify_dns_name"
+                            v-model="form.verify_dns_name"
+                            class="font-mono"
+                            placeholder="example.com"
+                            autocomplete="off"
+                        />
+                    </FormField>
+                </div>
+            </section>
+
+            <section :class="sectionClass" data-test="settings-passwords">
+                <Heading
+                    variant="small"
+                    title="Generated passwords"
+                    description="Used when the panel makes up a root password: a new server ordered without one, a reinstall, a reset without a chosen password. A password you or a billing system chose is kept as it is."
+                />
+                <div class="grid gap-4 sm:grid-cols-2">
+                    <FormField
+                        label="Random part length"
+                        for="password_length"
+                        :error="form.errors.password_length"
+                        hint="12 to 64 characters."
+                    >
+                        <Input
+                            id="password_length"
+                            v-model.number="form.password_length"
+                            type="number"
+                            min="12"
+                            max="64"
+                        />
+                    </FormField>
+                    <FormField
+                        label="Characters"
+                        for="password_characters"
+                        :error="form.errors.password_characters"
+                        hint="Windows needs three kinds of characters in a password. With letters and digits only, add a symbol or a capital letter to the prefix or suffix."
+                    >
+                        <NativeSelect
+                            id="password_characters"
+                            v-model="form.password_characters"
+                            :options="passwordCharacterOptions"
+                        />
+                    </FormField>
+                    <FormField
+                        label="Prefix"
+                        for="password_prefix"
+                        :error="form.errors.password_prefix"
+                        hint="Letters, digits and ! @ # % + = . , : _ - only. Up to 32."
+                    >
+                        <Input
+                            id="password_prefix"
+                            v-model="form.password_prefix"
+                            class="font-mono"
+                            autocomplete="off"
+                        />
+                    </FormField>
+                    <FormField
+                        label="Suffix"
+                        for="password_suffix"
+                        :error="form.errors.password_suffix"
+                        hint="The same characters as the prefix. Up to 32."
+                    >
+                        <Input
+                            id="password_suffix"
+                            v-model="form.password_suffix"
+                            class="font-mono"
+                            autocomplete="off"
+                        />
+                    </FormField>
+                </div>
+                <p class="text-sm text-muted-foreground">
+                    {{ $t('Example') }}:
+                    <span
+                        class="font-mono text-foreground"
+                        data-test="password-example"
+                        >{{ passwordExampleText ?? '—' }}</span
+                    >
+                </p>
+                <p
+                    v-if="passwordSkipsCloudInit"
+                    class="rounded-md border border-dashed px-3 py-2 text-sm text-muted-foreground"
+                    data-test="password-cloud-init"
+                >
+                    {{
+                        $t(
+                            "Passwords in this format do not fit Cloudbase-Init's user data: Windows servers get a temporary password first, which the guest agent replaces once Windows setup has finished. Start the prefix with a letter and leave out colons so that Cloudbase-Init sets them directly.",
+                        )
+                    }}
+                </p>
+            </section>
+
+            <section :class="sectionClass" data-test="settings-moves">
+                <Heading
+                    variant="small"
+                    title="Moving servers"
+                    description="Moves to another node of the same cluster are always offered."
+                />
+                <label class="flex items-start gap-2 text-sm">
+                    <Checkbox
+                        id="cross_cluster_moves"
+                        :model-value="form.cross_cluster_moves"
+                        @update:model-value="
+                            (checked) =>
+                                (form.cross_cluster_moves = checked === true)
+                        "
+                    />
+                    <span class="grid gap-1">
+                        <span class="font-medium">{{
+                            $t('Allow moves to other clusters and locations')
+                        }}</span>
+                        <span class="text-xs text-muted-foreground">{{
+                            $t(
+                                "These use Proxmox's remote migration, which Proxmox still calls experimental. Try it on a test server first. The target cluster also needs an incoming move token.",
+                            )
+                        }}</span>
+                    </span>
+                </label>
+                <div class="grid gap-4 sm:grid-cols-2">
+                    <FormField
+                        label="Time limit of a move (minutes)"
+                        for="move_deadline_minutes"
+                        :error="form.errors.move_deadline_minutes"
+                        hint="Copying disks to another cluster can take hours."
+                    >
+                        <Input
+                            id="move_deadline_minutes"
+                            v-model.number="form.move_deadline_minutes"
+                            type="number"
+                            min="30"
+                            max="10080"
+                        />
+                    </FormField>
+                    <FormField
+                        label="Bandwidth limit of a move (KiB/s)"
+                        for="move_bwlimit_kib"
+                        :error="form.errors.move_bwlimit_kib"
+                        hint="Empty: Proxmox's own migration limit."
+                    >
+                        <Input
+                            id="move_bwlimit_kib"
+                            v-model.number="form.move_bwlimit_kib"
+                            type="number"
+                            min="1"
+                        />
+                    </FormField>
+                </div>
+            </section>
+        </template>
+
+        <template v-if="category === 'network'">
+            <section :class="sectionClass" data-test="settings-isolation">
+                <Heading
+                    variant="small"
+                    title="Protected networks"
+                    description="Servers of every location cannot open connections to these networks, e.g. the panel's own address. Each location can add its own; the Proxmox nodes are always protected."
+                />
+                <FormField
+                    label="Networks"
+                    for="protected_networks"
+                    :error="form.errors.protected_networks"
+                    hint="One address or CIDR per line. Applied to a server's firewall at its next firewall change."
+                >
+                    <textarea
+                        id="protected_networks"
+                        v-model="form.protected_networks"
+                        rows="4"
+                        class="w-full rounded-md border border-input bg-transparent px-3 py-2 font-mono text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 dark:bg-input/30"
+                        placeholder="198.51.100.0/24"
+                    />
+                </FormField>
+            </section>
+        </template>
+
+        <template v-if="category === 'usage'">
+            <section :class="sectionClass" data-test="settings-usage">
+                <Heading
+                    variant="small"
+                    title="Traffic quotas"
+                    description="Traffic is counted every 5 minutes. A server's quota comes from its package or its own resources; empty means unlimited."
+                />
+                <div class="grid gap-4 sm:grid-cols-3">
+                    <FormField
+                        label="Traffic resets on day"
+                        for="traffic_reset_day"
+                        :error="form.errors.traffic_reset_day"
+                        hint="Of every month, at midnight in the panel's time zone (1–28)."
+                    >
+                        <Input
+                            id="traffic_reset_day"
+                            v-model.number="form.traffic_reset_day"
+                            type="number"
+                            min="1"
+                            max="28"
+                        />
+                    </FormField>
+                    <FormField
+                        label="Traffic that counts"
+                        for="traffic_counted"
+                        :error="form.errors.traffic_counted"
+                    >
+                        <NativeSelect
+                            id="traffic_counted"
+                            v-model="form.traffic_counted"
+                            :options="countedOptions"
+                        />
+                    </FormField>
+                    <FormField
+                        label="When a server is over its quota"
+                        for="traffic_action"
+                        :error="form.errors.traffic_action"
+                        hint="A server suspended over its quota is unsuspended when the next month starts or its quota is raised."
+                    >
+                        <NativeSelect
+                            id="traffic_action"
+                            v-model="form.traffic_action"
+                            :options="trafficActionOptions"
+                        />
+                    </FormField>
+                </div>
+            </section>
+
+            <section :class="sectionClass" data-test="settings-limits">
+                <Heading
+                    variant="small"
+                    title="Usage limits"
+                    description="A server whose average over the time window reaches a limit is over it. Leave a limit empty to turn it off."
+                />
+                <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                    <FormField
+                        label="CPU (%)"
+                        for="usage_cpu_percent"
+                        :error="form.errors.usage_cpu_percent"
+                        hint="Of the server's own vCPUs."
+                    >
+                        <Input
+                            id="usage_cpu_percent"
+                            v-model.number="form.usage_cpu_percent"
+                            type="number"
+                            min="1"
+                            max="100"
+                        />
+                    </FormField>
+                    <FormField
+                        label="Memory (%)"
+                        for="usage_memory_percent"
+                        :error="form.errors.usage_memory_percent"
+                        hint="Without the balloon driver Proxmox reports what QEMU holds, which stays near the server's memory."
+                    >
+                        <Input
+                            id="usage_memory_percent"
+                            v-model.number="form.usage_memory_percent"
+                            type="number"
+                            min="1"
+                            max="100"
+                        />
+                    </FormField>
+                    <FormField
+                        label="Disk I/O (MB/s)"
+                        for="usage_disk_mb_s"
+                        :error="form.errors.usage_disk_mb_s"
+                        hint="Read and write together."
+                    >
+                        <Input
+                            id="usage_disk_mb_s"
+                            v-model.number="form.usage_disk_mb_s"
+                            type="number"
+                            min="1"
+                        />
+                    </FormField>
+                    <FormField
+                        label="Network (Mbps)"
+                        for="usage_network_mbps"
+                        :error="form.errors.usage_network_mbps"
+                        hint="Incoming and outgoing together."
+                    >
+                        <Input
+                            id="usage_network_mbps"
+                            v-model.number="form.usage_network_mbps"
+                            type="number"
+                            min="1"
+                        />
+                    </FormField>
+                </div>
+                <div class="grid gap-4 sm:grid-cols-2">
+                    <FormField
+                        label="Time window (minutes)"
+                        for="usage_window_minutes"
+                        :error="form.errors.usage_window_minutes"
+                        hint="How long the average must stay at or above a limit."
+                    >
+                        <Input
+                            id="usage_window_minutes"
+                            v-model.number="form.usage_window_minutes"
+                            type="number"
+                            min="15"
+                            max="1440"
+                        />
+                    </FormField>
+                    <FormField
+                        label="When a server is over a limit"
+                        for="usage_action"
+                        :error="form.errors.usage_action"
+                        hint="A stopped server may be started again by its customer. A suspended one stays suspended until you or the billing system unsuspend it."
+                    >
+                        <NativeSelect
+                            id="usage_action"
+                            v-model="form.usage_action"
+                            :options="usageActionOptions"
+                        />
+                    </FormField>
+                </div>
+            </section>
+        </template>
+
+        <template v-if="category === 'general'">
+            <section :class="sectionClass" data-test="settings-other">
+                <div class="grid gap-4 sm:grid-cols-2">
+                    <FormField
+                        label="Longest console session (minutes)"
+                        for="console_max_minutes"
+                        :error="form.errors.console_max_minutes"
+                    >
+                        <Input
+                            id="console_max_minutes"
+                            v-model.number="form.console_max_minutes"
+                            type="number"
+                            min="1"
+                            max="1440"
+                        />
+                    </FormField>
+                    <FormField
+                        label="Idle console sessions close after (minutes)"
+                        for="console_idle_minutes"
+                        :error="form.errors.console_idle_minutes"
+                    >
+                        <Input
+                            id="console_idle_minutes"
+                            v-model.number="form.console_idle_minutes"
+                            type="number"
+                            min="1"
+                            max="1440"
+                        />
+                    </FormField>
+                    <FormField
+                        label="Report stopped servers after (minutes)"
+                        for="drift_stopped_grace_minutes"
+                        :error="form.errors.drift_stopped_grace_minutes"
+                        hint="Customers may shut their servers down themselves, so a stopped active server is only reported after this long."
+                    >
+                        <Input
+                            id="drift_stopped_grace_minutes"
+                            v-model.number="form.drift_stopped_grace_minutes"
+                            type="number"
+                            min="0"
+                            max="10080"
+                        />
+                    </FormField>
+                    <FormField
+                        label="Storage warning at (%)"
+                        for="storage_warning_percent"
+                        :error="form.errors.storage_warning_percent"
+                        hint="A storage, a thin pool's metadata or a disk's rated life used at or above this is shown as a warning."
+                    >
+                        <Input
+                            id="storage_warning_percent"
+                            v-model.number="form.storage_warning_percent"
+                            type="number"
+                            min="50"
+                            max="99"
+                        />
+                    </FormField>
+                    <FormField
+                        label="Storage critical at (%)"
+                        for="storage_critical_percent"
+                        :error="form.errors.storage_critical_percent"
+                        hint="Must be above the warning."
+                    >
+                        <Input
+                            id="storage_critical_percent"
+                            v-model.number="form.storage_critical_percent"
+                            type="number"
+                            min="51"
+                            max="100"
+                        />
+                    </FormField>
+                    <FormField
+                        label="Documentation address"
+                        for="docs_url"
+                        :error="form.errors.docs_url"
+                        hint="Where the full guides can be read, e.g. your fork. The Help page links to it."
+                    >
+                        <Input
+                            id="docs_url"
+                            v-model="form.docs_url"
+                            type="url"
+                            placeholder="https://"
+                            autocomplete="off"
+                        />
+                    </FormField>
+                </div>
+            </section>
+        </template>
+
+        <template v-if="category === 'environment'">
+            <section :class="sectionClass" data-test="settings-environment">
+                <dl class="grid gap-3 text-sm sm:grid-cols-2">
+                    <div
+                        class="flex flex-wrap items-center justify-between gap-2"
+                    >
+                        <dt class="grid">
+                            <span>{{
+                                $t(
+                                    'Two-factor authentication for administrators',
+                                )
+                            }}</span>
+                            <span
+                                class="font-mono text-xs text-muted-foreground"
+                                >PROXMOTION_REQUIRE_ADMIN_2FA</span
+                            >
+                        </dt>
+                        <dd>
+                            <StatusBadge
+                                v-if="environment.require_admin_two_factor"
+                                tone="success"
+                                label="Required"
+                            />
+                            <StatusBadge
+                                v-else
+                                tone="warning"
+                                label="Not required"
+                            />
+                        </dd>
+                    </div>
+                    <div
+                        class="flex flex-wrap items-center justify-between gap-2"
+                    >
+                        <dt class="grid">
+                            <span>{{ $t('Console proxy') }}</span>
+                            <span
+                                class="font-mono text-xs text-muted-foreground"
+                                >CONSOLE_PROXY_SECRET</span
+                            >
+                        </dt>
+                        <dd>
+                            <StatusBadge
+                                v-if="environment.console_proxy"
+                                tone="success"
+                                label="Set up"
+                            />
+                            <StatusBadge
+                                v-else
+                                tone="warning"
+                                label="Not set up"
+                            />
+                        </dd>
+                    </div>
+                    <div
+                        class="flex flex-wrap items-center justify-between gap-2"
+                        data-test="environment-mail"
+                    >
+                        <dt class="grid">
+                            <span>{{ $t('Mail') }}</span>
+                            <span
+                                class="font-mono text-xs text-muted-foreground"
+                                >MAIL_MAILER, MAIL_FROM_ADDRESS</span
+                            >
+                        </dt>
+                        <dd class="flex flex-wrap items-center gap-2">
+                            <span class="font-mono text-xs">{{
+                                environment.mail_from ?? '—'
+                            }}</span>
+                            <StatusBadge
+                                :tone="mailerDelivers ? 'success' : 'warning'"
+                                :label="environment.mailer"
+                            />
+                        </dd>
+                    </div>
+                </dl>
+            </section>
+        </template>
+
+        <template v-if="category === 'notifications'">
+            <p
+                v-if="!mailerDelivers"
+                class="rounded-md border border-amber-500/40 bg-amber-500/5 px-3 py-2 text-sm"
+                data-test="mailer-not-delivering"
+            >
+                {{
+                    $t(
+                        'The mailer in .env is ":mailer": mail is written to the log, not sent. Set MAIL_MAILER and the SMTP settings in .env to send it.',
+                        { mailer: environment.mailer },
+                    )
+                }}
+            </p>
+
+            <section :class="sectionClass" data-test="settings-notifications">
+                <label class="flex items-start gap-2 text-sm">
+                    <Checkbox
+                        id="notifications_enabled"
+                        :model-value="form.notifications_enabled"
+                        @update:model-value="
+                            (checked) =>
+                                (form.notifications_enabled = checked === true)
+                        "
+                    />
+                    <span class="grid gap-1">
+                        <span class="font-medium">{{
+                            $t('Send email notifications')
+                        }}</span>
+                        <span class="text-xs text-muted-foreground">{{
+                            $t(
+                                'Each administrator chooses the events they get under Settings > Notifications. Mail goes through the mail settings of .env.',
+                            )
+                        }}</span>
+                    </span>
+                </label>
+                <div class="grid gap-4 sm:grid-cols-2">
+                    <FormField
+                        label="Further recipients"
+                        for="notification_recipients"
+                        :error="form.errors.notification_recipients"
+                        hint="One address per line, at most 10, e.g. a team mailbox. They get every event."
+                    >
+                        <textarea
+                            id="notification_recipients"
+                            v-model="form.notification_recipients"
+                            rows="4"
+                            class="w-full rounded-md border border-input bg-transparent px-3 py-2 font-mono text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 dark:bg-input/30"
+                            placeholder="ops@example.com"
+                        />
+                    </FormField>
+                    <FormField
+                        label="Repeat notifications after (minutes)"
+                        for="notification_throttle_minutes"
+                        :error="form.errors.notification_throttle_minutes"
+                        hint="Drift, unreachable clusters and failed webhooks are mailed once per this long for each cluster or endpoint."
+                    >
+                        <Input
+                            id="notification_throttle_minutes"
+                            v-model.number="form.notification_throttle_minutes"
+                            type="number"
+                            min="5"
+                            max="1440"
+                        />
+                    </FormField>
+                </div>
+                <div class="flex flex-wrap items-center gap-3">
+                    <Button
+                        type="button"
+                        variant="outline"
+                        :disabled="sendingTest"
+                        data-test="send-test-email"
+                        @click="sendTestEmail"
+                    >
+                        <Mail class="h-4 w-4" />
+                        {{ $t('Send a test email') }}
+                    </Button>
                     <span class="text-xs text-muted-foreground">{{
                         $t(
-                            "These use Proxmox's remote migration, which Proxmox still calls experimental. Try it on a test server first. The target cluster also needs an incoming move token.",
+                            'Sent to your own address, also while notifications are off.',
                         )
                     }}</span>
-                </span>
-            </label>
-            <div class="grid gap-4 sm:grid-cols-2">
-                <FormField
-                    label="Time limit of a move (minutes)"
-                    for="move_deadline_minutes"
-                    :error="form.errors.move_deadline_minutes"
-                    hint="Copying disks to another cluster can take hours."
-                >
-                    <Input
-                        id="move_deadline_minutes"
-                        v-model.number="form.move_deadline_minutes"
-                        type="number"
-                        min="30"
-                        max="10080"
-                    />
-                </FormField>
-                <FormField
-                    label="Bandwidth limit of a move (KiB/s)"
-                    for="move_bwlimit_kib"
-                    :error="form.errors.move_bwlimit_kib"
-                    hint="Empty: Proxmox's own migration limit."
-                >
-                    <Input
-                        id="move_bwlimit_kib"
-                        v-model.number="form.move_bwlimit_kib"
-                        type="number"
-                        min="1"
-                    />
-                </FormField>
-            </div>
-        </section>
-
-        <section :class="sectionClass" data-test="settings-provisioning">
-            <Heading
-                variant="small"
-                title="Creating and reinstalling servers"
-            />
-            <div class="grid gap-4 sm:grid-cols-2">
-                <FormField
-                    label="Lowest VMID of new servers"
-                    for="min_vmid"
-                    :error="form.errors.min_vmid"
-                    hint="0: Proxmox's next free ID. A higher value keeps new servers apart from VMs managed by hand."
-                >
-                    <Input
-                        id="min_vmid"
-                        v-model.number="form.min_vmid"
-                        type="number"
-                        min="0"
-                    />
-                </FormField>
-                <FormField
-                    label="Time limit of a creation or reinstall (minutes)"
-                    for="provisioning_deadline_minutes"
-                    :error="form.errors.provisioning_deadline_minutes"
-                    hint="All waits included, e.g. Windows setup."
-                >
-                    <Input
-                        id="provisioning_deadline_minutes"
-                        v-model.number="form.provisioning_deadline_minutes"
-                        type="number"
-                        min="15"
-                        max="1440"
-                    />
-                </FormField>
-                <FormField
-                    label="DNS name checked from inside"
-                    for="verify_dns_name"
-                    :error="form.errors.verify_dns_name"
-                    hint="After a creation or reinstall the server checks that this name resolves. Empty: DNS is not checked."
-                >
-                    <Input
-                        id="verify_dns_name"
-                        v-model="form.verify_dns_name"
-                        class="font-mono"
-                        placeholder="example.com"
-                        autocomplete="off"
-                    />
-                </FormField>
-            </div>
-        </section>
-
-        <section :class="sectionClass" data-test="settings-isolation">
-            <Heading
-                variant="small"
-                title="Protected networks"
-                description="Servers of every location cannot open connections to these networks, e.g. the panel's own address. Each location can add its own; the Proxmox nodes are always protected."
-            />
-            <FormField
-                label="Networks"
-                for="protected_networks"
-                :error="form.errors.protected_networks"
-                hint="One address or CIDR per line. Applied to a server's firewall at its next firewall change."
-            >
-                <textarea
-                    id="protected_networks"
-                    v-model="form.protected_networks"
-                    rows="4"
-                    class="w-full rounded-md border border-input bg-transparent px-3 py-2 font-mono text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 dark:bg-input/30"
-                    placeholder="198.51.100.0/24"
-                />
-            </FormField>
-        </section>
-
-        <section :class="sectionClass" data-test="settings-usage">
-            <Heading
-                variant="small"
-                title="Traffic quotas"
-                description="Traffic is counted every 5 minutes. A server's quota comes from its package or its own resources; empty means unlimited."
-            />
-            <div class="grid gap-4 sm:grid-cols-3">
-                <FormField
-                    label="Traffic resets on day"
-                    for="traffic_reset_day"
-                    :error="form.errors.traffic_reset_day"
-                    hint="Of every month, at midnight in the panel's time zone (1–28)."
-                >
-                    <Input
-                        id="traffic_reset_day"
-                        v-model.number="form.traffic_reset_day"
-                        type="number"
-                        min="1"
-                        max="28"
-                    />
-                </FormField>
-                <FormField
-                    label="Traffic that counts"
-                    for="traffic_counted"
-                    :error="form.errors.traffic_counted"
-                >
-                    <NativeSelect
-                        id="traffic_counted"
-                        v-model="form.traffic_counted"
-                        :options="countedOptions"
-                    />
-                </FormField>
-                <FormField
-                    label="When a server is over its quota"
-                    for="traffic_action"
-                    :error="form.errors.traffic_action"
-                    hint="A server suspended over its quota is unsuspended when the next month starts or its quota is raised."
-                >
-                    <NativeSelect
-                        id="traffic_action"
-                        v-model="form.traffic_action"
-                        :options="trafficActionOptions"
-                    />
-                </FormField>
-            </div>
-        </section>
-
-        <section :class="sectionClass" data-test="settings-limits">
-            <Heading
-                variant="small"
-                title="Usage limits"
-                description="A server whose average over the time window reaches a limit is over it. Leave a limit empty to turn it off."
-            />
-            <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                <FormField
-                    label="CPU (%)"
-                    for="usage_cpu_percent"
-                    :error="form.errors.usage_cpu_percent"
-                    hint="Of the server's own vCPUs."
-                >
-                    <Input
-                        id="usage_cpu_percent"
-                        v-model.number="form.usage_cpu_percent"
-                        type="number"
-                        min="1"
-                        max="100"
-                    />
-                </FormField>
-                <FormField
-                    label="Memory (%)"
-                    for="usage_memory_percent"
-                    :error="form.errors.usage_memory_percent"
-                    hint="Without the balloon driver Proxmox reports what QEMU holds, which stays near the server's memory."
-                >
-                    <Input
-                        id="usage_memory_percent"
-                        v-model.number="form.usage_memory_percent"
-                        type="number"
-                        min="1"
-                        max="100"
-                    />
-                </FormField>
-                <FormField
-                    label="Disk I/O (MB/s)"
-                    for="usage_disk_mb_s"
-                    :error="form.errors.usage_disk_mb_s"
-                    hint="Read and write together."
-                >
-                    <Input
-                        id="usage_disk_mb_s"
-                        v-model.number="form.usage_disk_mb_s"
-                        type="number"
-                        min="1"
-                    />
-                </FormField>
-                <FormField
-                    label="Network (Mbps)"
-                    for="usage_network_mbps"
-                    :error="form.errors.usage_network_mbps"
-                    hint="Incoming and outgoing together."
-                >
-                    <Input
-                        id="usage_network_mbps"
-                        v-model.number="form.usage_network_mbps"
-                        type="number"
-                        min="1"
-                    />
-                </FormField>
-            </div>
-            <div class="grid gap-4 sm:grid-cols-2">
-                <FormField
-                    label="Time window (minutes)"
-                    for="usage_window_minutes"
-                    :error="form.errors.usage_window_minutes"
-                    hint="How long the average must stay at or above a limit."
-                >
-                    <Input
-                        id="usage_window_minutes"
-                        v-model.number="form.usage_window_minutes"
-                        type="number"
-                        min="15"
-                        max="1440"
-                    />
-                </FormField>
-                <FormField
-                    label="When a server is over a limit"
-                    for="usage_action"
-                    :error="form.errors.usage_action"
-                    hint="A stopped server may be started again by its customer. A suspended one stays suspended until you or the billing system unsuspend it."
-                >
-                    <NativeSelect
-                        id="usage_action"
-                        v-model="form.usage_action"
-                        :options="usageActionOptions"
-                    />
-                </FormField>
-            </div>
-        </section>
-
-        <section :class="sectionClass" data-test="settings-other">
-            <Heading variant="small" title="Console, drift report and help" />
-            <div class="grid gap-4 sm:grid-cols-2">
-                <FormField
-                    label="Longest console session (minutes)"
-                    for="console_max_minutes"
-                    :error="form.errors.console_max_minutes"
-                >
-                    <Input
-                        id="console_max_minutes"
-                        v-model.number="form.console_max_minutes"
-                        type="number"
-                        min="1"
-                        max="1440"
-                    />
-                </FormField>
-                <FormField
-                    label="Idle console sessions close after (minutes)"
-                    for="console_idle_minutes"
-                    :error="form.errors.console_idle_minutes"
-                >
-                    <Input
-                        id="console_idle_minutes"
-                        v-model.number="form.console_idle_minutes"
-                        type="number"
-                        min="1"
-                        max="1440"
-                    />
-                </FormField>
-                <FormField
-                    label="Report stopped servers after (minutes)"
-                    for="drift_stopped_grace_minutes"
-                    :error="form.errors.drift_stopped_grace_minutes"
-                    hint="Customers may shut their servers down themselves, so a stopped active server is only reported after this long."
-                >
-                    <Input
-                        id="drift_stopped_grace_minutes"
-                        v-model.number="form.drift_stopped_grace_minutes"
-                        type="number"
-                        min="0"
-                        max="10080"
-                    />
-                </FormField>
-                <FormField
-                    label="Documentation address"
-                    for="docs_url"
-                    :error="form.errors.docs_url"
-                    hint="Where the full guides can be read, e.g. your fork. The Help page links to it."
-                >
-                    <Input
-                        id="docs_url"
-                        v-model="form.docs_url"
-                        type="url"
-                        placeholder="https://"
-                        autocomplete="off"
-                    />
-                </FormField>
-            </div>
-        </section>
-
-        <section :class="sectionClass" data-test="settings-environment">
-            <Heading
-                variant="small"
-                title="Set in .env only"
-                description="These protect the panel or depend on how it is installed, so they cannot be changed here."
-            />
-            <dl class="grid gap-3 text-sm sm:grid-cols-2">
-                <div class="flex flex-wrap items-center justify-between gap-2">
-                    <dt class="grid">
-                        <span>{{
-                            $t('Two-factor authentication for administrators')
-                        }}</span>
-                        <span class="font-mono text-xs text-muted-foreground"
-                            >PROXMOTION_REQUIRE_ADMIN_2FA</span
-                        >
-                    </dt>
-                    <dd>
-                        <StatusBadge
-                            v-if="environment.require_admin_two_factor"
-                            tone="success"
-                            label="Required"
-                        />
-                        <StatusBadge
-                            v-else
-                            tone="warning"
-                            label="Not required"
-                        />
-                    </dd>
                 </div>
-                <div class="flex flex-wrap items-center justify-between gap-2">
-                    <dt class="grid">
-                        <span>{{ $t('Console proxy') }}</span>
-                        <span class="font-mono text-xs text-muted-foreground"
-                            >CONSOLE_PROXY_SECRET</span
-                        >
-                    </dt>
-                    <dd>
-                        <StatusBadge
-                            v-if="environment.console_proxy"
-                            tone="success"
-                            label="Set up"
-                        />
-                        <StatusBadge v-else tone="warning" label="Not set up" />
-                    </dd>
-                </div>
-            </dl>
-        </section>
+            </section>
+        </template>
 
-        <div>
+        <div v-if="fields.length > 0">
             <Button type="submit" :disabled="form.processing">
                 <Save class="h-4 w-4" />
                 {{ $t('Save settings') }}

@@ -7,7 +7,7 @@ namespace App\Enums;
 /**
  * State of a stored recipe version (docs/adr/0016 §2, 0017 §4, 0018 §3).
  * New installations get the app's published version; installations keep
- * theirs when it is archived. Bundled versions are published by apps:sync,
+ * theirs when it is archived. Bundled versions are published when their package is installed,
  * custom ones by an administrator.
  */
 enum AppRecipeVersionStatus: string

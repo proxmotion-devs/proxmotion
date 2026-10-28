@@ -2,7 +2,6 @@
 
 namespace Tests\Feature\Admin;
 
-use App\Domain\Apps\RecipeSynchronizer;
 use App\Enums\AppInstallationStatus;
 use App\Models\AppInstallation;
 use App\Models\AppRecipe;
@@ -33,7 +32,7 @@ class AppManagementTest extends AdminTestCase
         $this->buildInfrastructure();
         $this->proxmox = (new FakeProxmoxCluster)->addTemplate(9000)->install();
         $this->server = app(ServerCreator::class)->create($this->order())->refresh();
-        app(RecipeSynchronizer::class)->sync();
+        $this->syncRecipes();
         $this->offerApps();
     }
 
@@ -43,11 +42,11 @@ class AppManagementTest extends AdminTestCase
             ->assertOk()
             ->assertInertia(fn (Assert $page) => $page
                 ->component('admin/apps/Index')
-                ->has('apps', 20)
-                ->where('apps.3.slug', 'docker')
-                ->where('apps.3.is_active', true)
-                ->where('apps.3.recipe_os', ['linux: debian family', 'ubuntu ≥ 22.04', 'debian ≥ 12'])
-                ->where('apps.3.os_version_ids', [$this->server->osTemplate->operating_system_version_id])
+                ->has('apps', 4)
+                ->where('apps.0.slug', 'docker')
+                ->where('apps.0.is_active', true)
+                ->where('apps.0.recipe_os', ['linux: debian family', 'ubuntu ≥ 22.04', 'debian ≥ 12'])
+                ->where('apps.0.os_version_ids', [$this->server->osTemplate->operating_system_version_id])
                 ->has('osVersions', 1));
     }
 
@@ -81,14 +80,13 @@ class AppManagementTest extends AdminTestCase
     public function test_apps_that_do_not_fit_are_listed_with_the_reason_but_not_offered()
     {
         $this->server->forceFill(['cpu_cores' => 1])->save();
-        AppRecipe::query()->where('slug', 'aapanel')->update(['is_active' => false]);
+        AppRecipe::query()->where('slug', 'sqlserver-express')->update(['is_active' => false]);
 
         $this->get(route('admin.servers.show', $this->server))
             ->assertInertia(fn (Assert $page) => $page
-                ->where('appOptions', fn ($options) => ! collect($options)->contains('slug', 'coolify'))
-                ->where('unavailableApps', fn ($apps) => collect($apps)->firstWhere('slug', 'coolify') === ['slug' => 'coolify', 'name' => 'Coolify', 'reason' => 'This app needs at least 2 vCPU cores.']
-                    && ! collect($apps)->contains('slug', 'aapanel')
-                    && ! collect($apps)->contains('slug', 'docker')));
+                ->where('appOptions', fn ($options) => ! collect($options)->contains('slug', 'docker'))
+                ->where('unavailableApps', fn ($apps) => collect($apps)->firstWhere('slug', 'docker') === ['slug' => 'docker', 'name' => 'Docker', 'reason' => 'This app needs at least 2 vCPU cores.']
+                    && ! collect($apps)->contains('slug', 'openvpn')));
     }
 
     public function test_invalid_inputs_show_up_on_the_form()

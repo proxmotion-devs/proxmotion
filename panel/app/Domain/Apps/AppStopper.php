@@ -14,7 +14,7 @@ use App\Proxmox\Resources\GuestAgentResource;
 
 /**
  * Stops app scripts inside the server (docs/adr/0030) by the name they were
- * started as (AppGuest::installName(), runName()): recipes/_lib/stop.sh on
+ * started as (AppGuest::installName(), runName()): panel/recipes/_lib/stop.sh on
  * Linux, stop.ps1 on Windows. A name that is not running counts as stopped.
  * Nothing the script did is undone.
  */

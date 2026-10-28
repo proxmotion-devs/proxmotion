@@ -173,6 +173,26 @@ const { syncing, startSync } = useClusterSync();
                                     label="Anti-spoofing off"
                                 />
                             </div>
+                            <div
+                                v-if="
+                                    cluster.storage_health === 'warning' ||
+                                    cluster.storage_health === 'critical'
+                                "
+                                class="mt-1"
+                            >
+                                <StatusBadge
+                                    :tone="
+                                        cluster.storage_health === 'critical'
+                                            ? 'danger'
+                                            : 'warning'
+                                    "
+                                    :label="
+                                        cluster.storage_health === 'critical'
+                                            ? 'Storage critical'
+                                            : 'Storage warning'
+                                    "
+                                />
+                            </div>
                         </td>
                         <td class="px-4 py-3">
                             <div class="flex justify-end gap-1">

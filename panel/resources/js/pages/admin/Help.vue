@@ -239,7 +239,7 @@ const topics = [
                     <li>
                         {{
                             $t(
-                                'Install the updates, then run the Then on every Linux and Finally, as root blocks again. Clear the Cloud-Init user and password.',
+                                'Install the updates, check that steps 3 to 6 of the guide still hold (an update can bring a configuration file back), then run step 7 again. Clear the Cloud-Init user and password.',
                             )
                         }}
                     </li>
@@ -302,7 +302,7 @@ const topics = [
                 <p>
                     {{
                         $t(
-                            'Bundled apps come with the panel. After an update, run php artisan apps:sync to store their new versions. Deactivate the ones you do not want to offer. You can edit a bundled app in place; Back to bundled version undoes your changes.',
+                            'Apps come as .proxapp packages; the recipes repository keeps one for each app in its packages folder. Install package shows what a package changes before anything is installed. Deactivate the ones you do not want to offer. You can edit an installed app in place; Back to bundled version undoes your changes.',
                         )
                     }}
                 </p>

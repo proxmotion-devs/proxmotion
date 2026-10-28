@@ -3,7 +3,6 @@
 namespace Tests\Feature\Servers;
 
 use App\Domain\Apps\AppInstaller;
-use App\Domain\Apps\RecipeSynchronizer;
 use App\Domain\Firewall\FirewallRule;
 use App\Domain\Firewall\ServerFirewalls;
 use App\Domain\Infrastructure\DriftDetector;
@@ -143,7 +142,7 @@ class ServerFirewallTest extends TestCase
 
     public function test_app_ports_are_opened_while_the_firewall_is_on_and_closed_when_the_app_is_gone()
     {
-        app(RecipeSynchronizer::class)->sync();
+        $this->syncRecipes();
         $this->offerApps();
         $server = $this->create();
         $this->turnOn($server);

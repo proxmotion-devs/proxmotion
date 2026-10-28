@@ -2,21 +2,46 @@
 import { onBeforeUnmount, onMounted, ref } from 'vue';
 
 /**
- * Building an OS template by hand, one tab per operating system. Follows
- * docs/guides/iso-templates.md and docs/guides/windows-templates.md; keep
- * them in step. Links such as #template-guide-windows open a tab.
+ * Building an OS template by hand, one tab per operating system. It explains
+ * what a template must provide and why, so it works for any distribution
+ * and for every Windows version from Server 2016 to Windows 11, and how to
+ * check each point. Follows docs/guides/iso-templates.md,
+ * docs/guides/windows-templates.md and docs/guides/freebsd-templates.md;
+ * keep them in step. Links such as #template-guide-windows open a tab,
+ * #template-guide-windows-nosysprep also picks the way of making Windows
+ * clones unique.
  */
-type Os = 'linux' | 'windows' | 'macos';
+type Os = 'linux' | 'windows' | 'freebsd' | 'macos';
+type WindowsWay = 'sysprep' | 'nosysprep';
 
 const tabs: { os: Os; label: string }[] = [
     { os: 'linux', label: 'Linux' },
     { os: 'windows', label: 'Windows' },
+    { os: 'freebsd', label: 'FreeBSD' },
     { os: 'macos', label: 'macOS' },
 ];
 
+const ways: { way: WindowsWay; label: string }[] = [
+    { way: 'sysprep', label: 'With Sysprep' },
+    { way: 'nosysprep', label: 'Without Sysprep' },
+];
+
 const active = ref<Os>('linux');
+const windowsWay = ref<WindowsWay>('sysprep');
 
 const openLinkedTab = () => {
+    const way = ways.find(
+        (item) =>
+            window.location.hash === `#template-guide-windows-${item.way}`,
+    );
+
+    if (way) {
+        active.value = 'windows';
+        windowsWay.value = way.way;
+
+        return;
+    }
+
     const linked = tabs.find(
         (tab) => window.location.hash === `#template-guide-${tab.os}`,
     );
@@ -32,58 +57,218 @@ onMounted(() => {
 });
 onBeforeUnmount(() => window.removeEventListener('hashchange', openLinkedTab));
 
-// Commands are typed on the template VM's console exactly as shown.
-const commands = {
-    debian: `apt update && apt full-upgrade -y
-apt install -y cloud-init cloud-guest-utils qemu-guest-agent openssh-server
-systemctl start qemu-guest-agent
+// The same facts for each distribution family; the steps refer to these rows.
+const familyColumns = [
+    'Debian, Ubuntu',
+    'AlmaLinux, Rocky, Fedora, RHEL',
+    'openSUSE, SLES',
+    'Arch',
+];
 
-# Network: let cloud-init own it
-rm -f /etc/netplan/*.yaml                                      # Ubuntu
-rm -f /etc/cloud/cloud.cfg.d/subiquity-disable-cloudinit-networking.cfg \\
-      /etc/cloud/cloud.cfg.d/99-installer.cfg \\
-      /etc/cloud/cloud.cfg.d/90-installer-network.cfg \\
-      /etc/cloud/cloud-init.disabled                           # Ubuntu installer leftovers
-printf 'auto lo\\niface lo inet loopback\\n\\nsource /etc/network/interfaces.d/*\\n' \\
-  > /etc/network/interfaces                                    # Debian only
-apt clean`,
-    rhel: `dnf upgrade -y
+const familyRows: { label: string; values: string[] }[] = [
+    { label: 'Package tool', values: ['apt', 'dnf', 'zypper', 'pacman'] },
+    {
+        label: 'Package with growpart',
+        values: [
+            'cloud-guest-utils',
+            'cloud-utils-growpart',
+            'growpart',
+            'cloud-guest-utils',
+        ],
+    },
+    {
+        label: 'Network files the installer leaves',
+        values: [
+            '/etc/netplan/ (Ubuntu), /etc/network/interfaces (Debian)',
+            '/etc/NetworkManager/system-connections/',
+            '/etc/sysconfig/network/ifcfg-eth0 (wicked), NetworkManager',
+            '/etc/systemd/network/ or NetworkManager',
+        ],
+    },
+    {
+        label: 'Agent restrictions',
+        values: [
+            '—',
+            '/etc/sysconfig/qemu-ga, SELinux',
+            'SELinux (Leap 16)',
+            '—',
+        ],
+    },
+    {
+        label: 'Default disk layout of the installer',
+        values: [
+            'LVM (Ubuntu), swap (Debian)',
+            'LVM + swap',
+            'Btrfs + swap',
+            '—',
+        ],
+    },
+];
+
+// What differs between Windows versions; the steps refer to these rows.
+// Values are shown through $t, so words among them are translated.
+const windowsColumns = [
+    'Server 2016',
+    'Server 2019',
+    'Server 2022',
+    'Server 2025',
+    'Windows 10',
+    'Windows 11',
+];
+
+const windowsRows: { label: string; values: string[] }[] = [
+    {
+        label: 'Proxmox OS type',
+        values: [
+            '10/2016/2019',
+            '10/2016/2019',
+            '11/2022/2025',
+            '11/2022/2025',
+            '10/2016/2019',
+            '11/2022/2025',
+        ],
+    },
+    {
+        label: 'VirtIO driver folder',
+        values: ['2k16', '2k19', '2k22', '2k25', 'w10', 'w11'],
+    },
+    {
+        label: 'Smallest template disk',
+        values: ['32 GiB', '32 GiB', '32 GiB', '32 GiB', '32 GiB', '64 GiB'],
+    },
+    {
+        label: 'TPM 2.0 and Secure Boot',
+        values: ['No', 'No', 'No', 'No', 'No', 'Required'],
+    },
+    {
+        label: 'Built-in Administrator',
+        values: [
+            'Enabled',
+            'Enabled',
+            'Enabled',
+            'Enabled',
+            'Disabled',
+            'Disabled',
+        ],
+    },
+    {
+        label: 'Without Sysprep',
+        values: ['Yes', 'Yes', 'Yes', 'No', 'Yes', 'No'],
+    },
+];
+
+// Commands and files, shown as examples of each step.
+const commands = {
+    cloudDump: `qm cloudinit dump <vmid> user      # password, SSH keys, hostname
+qm cloudinit dump <vmid> network   # addresses, gateway, DNS`,
+    lsblk: `lsblk
+# NAME   SIZE TYPE MOUNTPOINT
+# sda     10G disk
+# ├─sda1   1M part
+# └─sda2  10G part /`,
+    install: `# Debian, Ubuntu
+apt update && apt full-upgrade -y
+apt install -y cloud-init cloud-guest-utils qemu-guest-agent
+# AlmaLinux, Rocky, Oracle, CentOS Stream, Fedora, RHEL
+dnf upgrade -y
 dnf install -y cloud-init cloud-utils-growpart qemu-guest-agent
-# The agent blocks guest-exec and file access here by default; the panel needs them
-sed -i -e 's/^FILTER_RPC_ARGS=.*/FILTER_RPC_ARGS=""/' -e 's/^BLACKLIST_RPC=.*/BLACKLIST_RPC=/' \\
-  /etc/sysconfig/qemu-ga
-# SELinux confines the agent's commands (no directories under /var/lib, no installers):
-# make only the agent's domain permissive, the rest of SELinux stays enforcing
-dnf install -y policycoreutils-python-utils
-semanage permissive -a virt_qemu_ga_t
-systemctl enable qemu-guest-agent cloud-init cloud-init-local cloud-config cloud-final
-rm -f /etc/NetworkManager/system-connections/*                 # installer network profile
-dnf clean all`,
-    common: `# cloud-init: read the Proxmox drive, keep root login and password authentication
-cat > /etc/cloud/cloud.cfg.d/99-proxmotion.cfg <<'EOF'
+# openSUSE, SLES
+zypper refresh && zypper update -y
+zypper install -y cloud-init growpart qemu-guest-agent
+# Arch
+pacman -Syu cloud-init cloud-guest-utils qemu-guest-agent`,
+    cloudUnits: `systemctl list-unit-files 'cloud-*'     # enable any that are disabled`,
+    cloudConfig: `cat > /etc/cloud/cloud.cfg.d/99-proxmotion.cfg <<'EOF'
 datasource_list: [NoCloud, ConfigDrive, None]
 disable_root: false
 ssh_pwauth: true
-EOF
+EOF`,
+    cloudFind: `ls /etc/cloud/cloud.cfg.d/ /etc/cloud/cloud-init.disabled 2>/dev/null
+grep -rl -e 'config: disabled' -e 'datasource_list' /etc/cloud/
+cloud-init status --long          # must not say disabled`,
+    debianInterfaces: `auto lo
+iface lo inet loopback
 
-# SSH: allow root to log in (with password and keys)
-mkdir -p /etc/ssh/sshd_config.d
-printf 'PermitRootLogin yes\\nPasswordAuthentication yes\\n' > /etc/ssh/sshd_config.d/99-proxmotion.conf
-
-# Unique identity: regenerated on the clone's first boot
+source /etc/network/interfaces.d/*`,
+    agentRhel: `# RHEL family: allow guest-exec and file access
+sed -i -e 's/^FILTER_RPC_ARGS=.*/FILTER_RPC_ARGS=""/' -e 's/^BLACKLIST_RPC=.*/BLACKLIST_RPC=/' /etc/sysconfig/qemu-ga
+# SELinux enforcing: make only the agent's domain permissive
+dnf install -y policycoreutils-python-utils
+semanage permissive -a virt_qemu_ga_t`,
+    agentCheck: `qm guest cmd <vmid> ping
+qm guest exec <vmid> -- id
+qm guest exec <vmid> -- mkdir -p /var/lib/proxmotion/check
+qm guest exec <vmid> -- rmdir /var/lib/proxmotion/check /var/lib/proxmotion`,
+    sshd: `printf 'PermitRootLogin yes\\nPasswordAuthentication yes\\n' > /etc/ssh/sshd_config.d/10-proxmotion.conf
+sshd -T | grep -E '^(permitrootlogin|passwordauthentication) '`,
+    forget: `userdel -r setup                  # the temporary user, if you made one
+passwd -l root                    # cloud-init sets the real password
 cloud-init clean --logs --seed
 truncate -s 0 /etc/machine-id
 rm -f /var/lib/dbus/machine-id && ln -s /etc/machine-id /var/lib/dbus/machine-id 2>/dev/null || true
-rm -f /etc/ssh/ssh_host_*`,
-    ubuntuRoot: `passwd root          # Ubuntu only: temporary, cloud-init replaces it on every clone
-exit                 # leave sudo, then log out and log in as root on the console`,
-    finish: `userdel -r setup                  # Ubuntu and Debian
-passwd -l root                    # no installer password in the template
+rm -f /etc/ssh/ssh_host_* /var/lib/systemd/random-seed
 rm -rf /tmp/* /var/tmp/*
 journalctl --rotate && journalctl --vacuum-time=1s
-fstrim -av                        # free blocks: smaller, faster clones
+apt clean 2>/dev/null; dnf clean all 2>/dev/null; zypper clean -a 2>/dev/null
+fstrim -av
 history -c && rm -f /root/.bash_history
 poweroff`,
+    windowsPrepare: `# Remote Desktop (off by default) and its firewall rules
+Set-ItemProperty 'HKLM:\\System\\CurrentControlSet\\Control\\Terminal Server' -Name fDenyTSConnections -Value 0
+Enable-NetFirewallRule -Group '@FirewallAPI.dll,-28752'
+# Answer ping (IPv4 and IPv6)
+Enable-NetFirewallRule -Name FPS-ICMP4-ERQ-In, FPS-ICMP6-ERQ-In
+# No hibernation file and no Fast Startup, high-performance power plan
+powercfg /hibernate off
+powercfg /setactive SCHEME_MIN
+# Servers: no Server Manager at logon (no such task on Windows 10/11)
+Get-ScheduledTask -TaskName ServerManager -ErrorAction SilentlyContinue | Disable-ScheduledTask`,
+    windowsClient: `# Device encryption off (Sysprep refuses it, clones would share the key)
+manage-bde -status C:
+manage-bde -off C:      # only if the volume is encrypted; wait until it is decrypted
+# No promoted Store apps per user (Enterprise and Education honour it)
+New-Item 'HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\CloudContent' -Force | Out-Null
+Set-ItemProperty 'HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\CloudContent' -Name DisableWindowsConsumerFeatures -Value 1`,
+    adminCheck: `Get-LocalUser | Where-Object { $_.SID -like '*-500' } | Format-Table Name, Enabled
+# a localized name (Administrateur, Administrador…) must become Administrator
+Get-LocalUser | Where-Object { $_.SID -like '*-500' } | Rename-LocalUser -NewName Administrator`,
+    enableAdmin: `# C:\\Program Files\\Cloudbase Solutions\\Cloudbase-Init\\LocalScripts\\enable-administrator.ps1
+# Proxmotion: the panel logs customers in as the built-in Administrator
+Get-LocalUser | Where-Object { $_.SID -like '*-500' } | Enable-LocalUser`,
+    clientOobeXml: `<settings pass="oobeSystem">
+  <component name="Microsoft-Windows-International-Core" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+    <InputLocale>en-US</InputLocale>
+    <SystemLocale>en-US</SystemLocale>
+    <UILanguage>en-US</UILanguage>
+    <UserLocale>en-US</UserLocale>
+  </component>
+  <component name="Microsoft-Windows-Shell-Setup" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+    <OOBE>
+      <HideEULAPage>true</HideEULAPage>
+      <HideOEMRegistrationScreen>true</HideOEMRegistrationScreen>
+      <HideOnlineAccountScreens>true</HideOnlineAccountScreens>
+      <HideWirelessSetupInOOBE>true</HideWirelessSetupInOOBE>
+      <HideLocalAccountScreen>true</HideLocalAccountScreen>
+      <ProtectYourPC>3</ProtectYourPC>
+    </OOBE>
+    <UserAccounts>
+      <AdministratorPassword>
+        <Value>a-long-random-value-replaced-at-first-boot</Value>
+        <PlainText>true</PlainText>
+      </AdministratorPassword>
+    </UserAccounts>
+  </component>
+</settings>`,
+    clientAppx: `$provisioned = (Get-AppxProvisionedPackage -Online).PackageName
+Get-AppxPackage -AllUsers |
+    Where-Object { -not $_.NonRemovable -and $provisioned -notcontains $_.PackageFullName } |
+    ForEach-Object { Remove-AppxPackage -Package $_.PackageFullName -AllUsers -ErrorAction SilentlyContinue }`,
+    win10Account: `Get-LocalUser | Where-Object { $_.SID -like '*-500' } | Enable-LocalUser
+net user Administrator *          # a temporary password
+# sign out, sign in as Administrator, then:
+Remove-LocalUser -Name setup`,
+    windowsAgentCheck: `qm guest cmd <vmid> ping
+qm guest exec <vmid> -- powershell -NoProfile -Command '$PSVersionTable.PSVersion'`,
     unattend: `[DEFAULT]
 username=Administrator
 groups=Administrators
@@ -112,7 +297,26 @@ ntp_use_dhcp_config=false
 log_dir=C:\\Program Files\\Cloudbase Solutions\\Cloudbase-Init\\log\\
 log_file=cloudbase-init.log
 local_scripts_path=C:\\Program Files\\Cloudbase Solutions\\Cloudbase-Init\\LocalScripts\\
-plugins=cloudbaseinit.plugins.common.networkconfig.NetworkConfigPlugin,cloudbaseinit.plugins.common.sshpublickeys.SetUserSSHPublicKeysPlugin,cloudbaseinit.plugins.common.setuserpassword.SetUserPasswordPlugin,cloudbaseinit.plugins.common.localscripts.LocalScriptsPlugin
+plugins=cloudbaseinit.plugins.common.setuserpassword.SetUserPasswordPlugin,cloudbaseinit.plugins.common.networkconfig.NetworkConfigPlugin,cloudbaseinit.plugins.common.sshpublickeys.SetUserSSHPublicKeysPlugin,cloudbaseinit.plugins.common.localscripts.LocalScriptsPlugin
+allow_reboot=true
+stop_service_on_exit=true
+
+[config_drive]
+types=iso
+locations=cdrom`,
+    serviceNoSysprep: `[DEFAULT]
+username=Administrator
+groups=Administrators
+inject_user_password=true
+first_logon_behaviour=no
+metadata_services=cloudbaseinit.metadata.services.configdrive.ConfigDriveService
+check_latest_version=false
+mtu_use_dhcp_config=false
+ntp_use_dhcp_config=false
+log_dir=C:\\Program Files\\Cloudbase Solutions\\Cloudbase-Init\\log\\
+log_file=cloudbase-init.log
+local_scripts_path=C:\\Program Files\\Cloudbase Solutions\\Cloudbase-Init\\LocalScripts\\
+plugins=cloudbaseinit.plugins.common.setuserpassword.SetUserPasswordPlugin,cloudbaseinit.plugins.common.networkconfig.NetworkConfigPlugin,cloudbaseinit.plugins.windows.extendvolumes.ExtendVolumesPlugin,cloudbaseinit.plugins.common.sshpublickeys.SetUserSSHPublicKeysPlugin,cloudbaseinit.plugins.common.localscripts.LocalScriptsPlugin,cloudbaseinit.plugins.common.userdata.UserDataPlugin
 allow_reboot=true
 stop_service_on_exit=true
 
@@ -130,26 +334,65 @@ locations=cdrom`,
     <PersistAllDeviceInstalls>true</PersistAllDeviceInstalls>
   </component>
 </settings>`,
-    windowsPrepare: `# Remote Desktop and its firewall rules (any display language)
-Set-ItemProperty 'HKLM:\\System\\CurrentControlSet\\Control\\Terminal Server' -Name fDenyTSConnections -Value 0
-Enable-NetFirewallRule -Group '@FirewallAPI.dll,-28752'
-# Answer ping (IPv4 and IPv6)
-Enable-NetFirewallRule -Name FPS-ICMP4-ERQ-In, FPS-ICMP6-ERQ-In
-# No Server Manager at logon, no hibernation file, high-performance power plan
-Get-ScheduledTask -TaskName ServerManager | Disable-ScheduledTask
-powercfg /hibernate off
-powercfg /setactive SCHEME_MIN`,
-    windowsShrink: `# Edge's per-user package, or Sysprep stops (Edge itself stays installed)
-Get-AppxPackage -AllUsers *MicrosoftEdge.Stable* | Remove-AppxPackage -AllUsers
-# Superseded update files
+    edge: `Get-AppxPackage -AllUsers *MicrosoftEdge.Stable* | Remove-AppxPackage -AllUsers`,
+    windowsShrink: `# Superseded update files
 Dism.exe /Online /Cleanup-Image /StartComponentCleanup /ResetBase
 # Temporary files and the update download cache
 Remove-Item "$env:TEMP\\*", 'C:\\Windows\\Temp\\*' -Recurse -Force -ErrorAction SilentlyContinue
 Stop-Service wuauserv; Remove-Item 'C:\\Windows\\SoftwareDistribution\\Download\\*' -Recurse -Force -ErrorAction SilentlyContinue
 # Tell the storage which blocks are free (needs Discard on the disk)
 Optimize-Volume -DriveLetter C -ReTrim -Verbose`,
+    noSysprepClean: `# Remote Desktop certificate: a new one is made on each clone
+Remove-Item -Path 'Cert:\\LocalMachine\\Remote Desktop\\*' -Force
+# Windows Update client ID
+Stop-Service wuauserv
+Remove-ItemProperty 'HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\WindowsUpdate' -Name SusClientId, SusClientIdValidation -ErrorAction SilentlyContinue
+# Cloudbase-Init's memory of instances it has seen, and its logs
+Remove-Item 'HKLM:\\SOFTWARE\\Cloudbase Solutions\\Cloudbase-Init\\*' -Recurse -ErrorAction SilentlyContinue
+Remove-Item 'C:\\Program Files\\Cloudbase Solutions\\Cloudbase-Init\\log\\*' -ErrorAction SilentlyContinue
+# Event logs of the build
+wevtutil el | ForEach-Object { wevtutil cl "$_" 2>$null }`,
     sysprep: `C:\\Windows\\System32\\Sysprep\\sysprep.exe /generalize /oobe /shutdown /unattend:"C:\\Program Files\\Cloudbase Solutions\\Cloudbase-Init\\conf\\Unattend.xml"`,
+    restarts: `Get-WinEvent -FilterHashtable @{LogName='System'; Id=1074} -MaxEvents 5 | Format-List TimeCreated, Message`,
     checksum: `shasum -a 256 ~/Downloads/<file>.iso`,
+    freebsdGpart: `gpart show da0      # freebsd-ufs is the last partition, only free space after it
+swapinfo            # lists no swap device`,
+    freebsdUpdate: `PAGER=cat freebsd-update fetch install
+pkg bootstrap -y && pkg upgrade -y
+reboot`,
+    freebsdInstall: `pkg install -y net/cloud-init qemu-guest-agent
+sysrc cloudinit_enable=YES qemu_guest_agent_enable=YES
+sysrc qemu_guest_agent_env="PATH=/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/sbin:/usr/local/bin"
+sysrc growfs_swap_size=0
+sysrc -f /boot/loader.conf virtio_console_load=YES virtio_random_load=YES`,
+    freebsdCloudConfig: `cat > /usr/local/etc/cloud/cloud.cfg.d/99-proxmotion.cfg <<'EOF'
+datasource_list: [NoCloud, None]
+disable_root: false
+ssh_pwauth: true
+EOF`,
+    freebsdNetwork: `sysrc -ix ifconfig_vtnet0 ifconfig_vtnet0_ipv6 defaultrouter ipv6_defaultrouter rtsold_enable
+grep -E '^(ifconfig_|defaultrouter|ipv6_defaultrouter|rtsold)' /etc/rc.conf    # prints nothing`,
+    freebsdAgent: `kldload virtio_console
+service qemu-guest-agent start
+ls /dev/vtcon/                    # org.qemu.guest_agent.0`,
+    freebsdAgentCheck: `qm guest cmd <vmid> ping
+qm guest exec <vmid> -- id
+qm guest exec <vmid> -- sh -c 'command -v cloud-init'
+qm guest exec <vmid> -- mkdir -p /var/lib/proxmotion/check
+qm guest exec <vmid> -- rmdir /var/lib/proxmotion/check /var/lib/proxmotion`,
+    freebsdSshd: `printf 'PermitRootLogin yes\\nPasswordAuthentication yes\\n' >> /etc/ssh/sshd_config
+sshd -T | grep -E '^(permitrootlogin|passwordauthentication) '
+sysrc sshd_enable=YES`,
+    freebsdForget: `pw usershow freebsd > /dev/null 2>&1 && pw userdel -n freebsd -r
+pw usermod root -w no             # cloud-init sets the real password
+cloud-init clean --logs --seed
+rm -f /etc/hostid /etc/machine-id /etc/ssh/ssh_host_*
+rm -f /etc/resolv.conf /var/db/dhclient.leases.*
+rm -rf /tmp/* /var/tmp/*
+find /var/log -type f -exec truncate -s 0 {} +
+pkg clean -ay
+rm -f /root/.sh_history /root/.history
+poweroff`,
 };
 
 const virtioUrl =
@@ -170,7 +413,7 @@ const cloudbaseUrl = 'https://cloudbase.it/cloudbase-init/';
             <p class="text-muted-foreground">
                 {{
                     $t(
-                        "One guide for every operating system. Everything happens in the Proxmox web interface and in the VM's console; pick your operating system.",
+                        'This guide explains what a template must provide and why, and how to check each point yourself, so it also works for a distribution or version it does not name. Everything happens in the Proxmox web interface, the VM console and the node shell.',
                     )
                 }}
             </p>
@@ -199,40 +442,53 @@ const cloudbaseUrl = 'https://cloudbase.it/cloudbase-init/';
 
         <div
             role="tabpanel"
-            class="flex flex-col gap-5 text-muted-foreground [&_code]:rounded [&_code]:bg-muted [&_code]:px-1 [&_code]:font-mono [&_code]:text-xs [&_h4]:font-medium [&_h4]:text-foreground [&_h5]:mt-1 [&_h5]:font-medium [&_h5]:text-foreground [&_ol]:list-decimal [&_ol]:space-y-1 [&_ol]:pl-5 [&_pre]:overflow-x-auto [&_pre]:rounded-md [&_pre]:bg-muted [&_pre]:p-3 [&_pre]:font-mono [&_pre]:text-xs [&_pre]:text-foreground [&_section]:flex [&_section]:flex-col [&_section]:gap-2 [&_ul]:list-disc [&_ul]:space-y-1 [&_ul]:pl-5"
+            class="flex flex-col gap-5 text-muted-foreground [&_code]:rounded [&_code]:bg-muted [&_code]:px-1 [&_code]:font-mono [&_code]:text-xs [&_h4]:font-medium [&_h4]:text-foreground [&_h5]:mt-1 [&_h5]:font-medium [&_h5]:text-foreground [&_ol]:list-decimal [&_ol]:space-y-1 [&_ol]:pl-5 [&_pre]:overflow-x-auto [&_pre]:rounded-md [&_pre]:bg-muted [&_pre]:p-3 [&_pre]:font-mono [&_pre]:text-xs [&_pre]:text-foreground [&_section]:flex [&_section]:flex-col [&_section]:gap-2 [&_table]:w-full [&_table]:text-xs [&_td]:border-t [&_td]:px-2 [&_td]:py-1.5 [&_td]:align-top [&_th]:px-2 [&_th]:py-1.5 [&_th]:text-left [&_th]:font-medium [&_th]:text-foreground [&_ul]:list-disc [&_ul]:space-y-1 [&_ul]:pl-5"
             :data-test="`template-panel-${active}`"
         >
             <!-- Linux -->
             <template v-if="active === 'linux'">
-                <p>
-                    {{
-                        $t(
-                            'For Ubuntu, Debian, AlmaLinux and Rocky Linux. Other distributions work the same way if they have cloud-init and qemu-guest-agent.',
-                        )
-                    }}
-                </p>
-
                 <section>
-                    <h4>{{ $t('1. Download the ISO') }}</h4>
+                    <h4>{{ $t('How a server is born from a template') }}</h4>
+                    <p>
+                        {{
+                            $t(
+                                'Knowing what happens to a template explains every rule below. When the panel creates a server, it:',
+                            )
+                        }}
+                    </p>
                     <ol>
                         <li>
                             {{
                                 $t(
-                                    'In Proxmox, open the node, then the local storage (or another storage with the ISO image content type), then ISO Images.',
+                                    'clones the template and writes the VM settings: cores, memory, the network card, and the cloud-init fields (user root, root password, SSH keys, IP addresses, DNS, the VM name as hostname);',
                                 )
                             }}
                         </li>
                         <li>
                             {{
                                 $t(
-                                    "Click Download from URL and paste the address of the ISO from the distribution's download page. Click Query URL to fill in the file name.",
+                                    'grows the virtual disk to the package size: the partitions and file system inside are still the size of the template;',
                                 )
                             }}
                         </li>
                         <li>
                             {{
                                 $t(
-                                    'Paste the checksum from the same download page (usually SHA-256) into the checksum fields, so Proxmox checks the file. Then click Download.',
+                                    'starts the VM. Proxmox hands the cloud-init fields to it on a small CD, the CloudInit drive;',
+                                )
+                            }}
+                        </li>
+                        <li>
+                            {{
+                                $t(
+                                    'inside the VM, cloud-init reads that CD on the first boot: it grows the root partition and file system, writes the network configuration, sets the hostname, the password and the keys, and creates new SSH host keys;',
+                                )
+                            }}
+                        </li>
+                        <li>
+                            {{
+                                $t(
+                                    'the panel waits for the QEMU guest agent and for cloud-init to finish, then runs its own scripts through the agent (additional addresses) and checks the server from inside.',
                                 )
                             }}
                         </li>
@@ -240,18 +496,59 @@ const cloudbaseUrl = 'https://cloudbase.it/cloudbase-init/';
                     <p>
                         {{
                             $t(
-                                'Take the server or minimal ISO of a release that is still supported, e.g. Ubuntu Server LTS, Debian netinst or AlmaLinux/Rocky Linux minimal. If the node has no internet access, download the ISO on your computer and use Upload instead.',
+                                'So a template is an installed system that has been made to forget who it is, and that lets cloud-init and the guest agent tell it who it is now. On the node you can always see what a VM will receive:',
                             )
                         }}
                     </p>
+                    <pre>{{ commands.cloudDump }}</pre>
                 </section>
 
                 <section>
-                    <h4>{{ $t('2. Create the VM') }}</h4>
+                    <h4>{{ $t('Distribution families') }}</h4>
                     <p>
                         {{
                             $t(
-                                'Click Create VM (top right). Use a VMID outside the range of your servers (e.g. 9000 and up) and a name such as tpl-almalinux-9-20261016.',
+                                'Distributions inherit their tools from a few families; the steps below refer to these rows. When a package is not found, search the package index of your distribution for the program (growpart, cloud-init, qemu-ga).',
+                            )
+                        }}
+                    </p>
+                    <div class="overflow-x-auto">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th></th>
+                                    <th
+                                        v-for="column in familyColumns"
+                                        :key="column"
+                                    >
+                                        {{ column }}
+                                    </th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr v-for="row in familyRows" :key="row.label">
+                                    <th>{{ $t(row.label) }}</th>
+                                    <td
+                                        v-for="(value, index) in row.values"
+                                        :key="index"
+                                    >
+                                        <code v-if="value !== '—'">{{
+                                            value
+                                        }}</code>
+                                        <template v-else>—</template>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <section>
+                    <h4>{{ $t('1. Create the VM') }}</h4>
+                    <p>
+                        {{
+                            $t(
+                                'Upload the ISO under the node, a storage with the ISO image content type, ISO Images (Download from URL with the checksum of the vendor saves a trip through your computer). Then Create VM with a VMID outside the range of your servers (e.g. 9000 and up). Every setting has a reason:',
                             )
                         }}
                     </p>
@@ -259,45 +556,35 @@ const cloudbaseUrl = 'https://cloudbase.it/cloudbase-init/';
                         <li>
                             {{
                                 $t(
-                                    'General: the resource pool of the panel, if its API token is limited to one.',
-                                )
-                            }}
-                        </li>
-                        <li>
-                            {{ $t('OS: the ISO you downloaded; type Linux.') }}
-                        </li>
-                        <li>
-                            {{
-                                $t(
-                                    'System: SCSI controller VirtIO SCSI single, and tick QEMU Agent. Leave the rest at the defaults.',
+                                    'OS type Linux: Proxmox then writes the CloudInit drive in the NoCloud format every Linux cloud-init reads.',
                                 )
                             }}
                         </li>
                         <li>
                             {{
                                 $t(
-                                    'Disks: bus SCSI, 10 GiB (the panel grows it for each package), Discard and SSD emulation on, on the storage servers will use.',
+                                    'QEMU Agent ticked: without it the VM has no channel for the guest agent.',
                                 )
                             }}
                         </li>
                         <li>
                             {{
                                 $t(
-                                    'CPU: 2 cores with the default type. Avoid host, so clones run on every node.',
+                                    'A small disk (10 GiB) on SCSI with VirtIO SCSI single, Discard and SSD emulation on: a full clone copies every used block, the panel grows the disk anyway, and Discard lets freed blocks go back to the storage.',
                                 )
                             }}
                         </li>
                         <li>
                             {{
                                 $t(
-                                    'Memory: 2048 MiB for the installation; the panel sets the real value.',
+                                    'CPU type default, not host: host ties the template to one CPU model and clones may not start on other nodes.',
                                 )
                             }}
                         </li>
                         <li>
                             {{
                                 $t(
-                                    'Network: a bridge with internet access, model VirtIO.',
+                                    "Resource pool: the panel's pool, if its API token is limited to one, because the token can only clone what it can see. Memory and network only need to suit the installer; the panel sets each server's own.",
                                 )
                             }}
                         </li>
@@ -305,82 +592,47 @@ const cloudbaseUrl = 'https://cloudbase.it/cloudbase-init/';
                 </section>
 
                 <section>
-                    <h4>{{ $t('3. Install the operating system') }}</h4>
+                    <h4>{{ $t('2. Install: the root partition last') }}</h4>
                     <p>
                         {{
                             $t(
-                                'Start the VM and open its Console. Install a minimal system with one root partition (no swap, no LVM) and the OpenSSH server, nothing else.',
+                                'The rule: whatever the boot loader needs (a 1 MiB BIOS boot partition, or an EFI system partition with UEFI) comes first, and the root file system comes last, with no swap partition after it. Why: the panel adds free space at the end of the disk, and cloud-init can only grow the partition that touches it. LVM puts a volume in between that cloud-init does not grow reliably, so avoid it. Swap, if any, is a file inside root.',
                             )
                         }}
                     </p>
-                    <h5>Ubuntu Server</h5>
                     <ul>
                         <li>
                             {{
                                 $t(
-                                    'Storage: Use an entire disk, and untick Set up this disk as an LVM group.',
+                                    'Ubuntu: Use an entire disk, untick Set up this disk as an LVM group. Create a temporary user setup and tick Install OpenSSH server.',
                                 )
                             }}
                         </li>
                         <li>
                             {{
                                 $t(
-                                    'Profile: create a temporary user named setup; it is removed later.',
+                                    'Debian: Manual partitioning, one ext4 partition mounted at /, no swap. Set a root password, create the required user as setup; software: SSH server only.',
                                 )
                             }}
                         </li>
                         <li>
                             {{
                                 $t(
-                                    'Tick Install OpenSSH server and skip the snaps. Reboot when asked.',
-                                )
-                            }}
-                        </li>
-                    </ul>
-                    <h5>Debian</h5>
-                    <ul>
-                        <li>
-                            {{
-                                $t(
-                                    'Set a root password and create the required user as setup; it is removed later.',
+                                    'AlmaLinux, Rocky, RHEL, Fedora: Custom, Standard Partition, keep biosboot or /boot/efi if it adds one, then one / with all the space; delete swap. Minimal Install, a root password with Allow root SSH login with password.',
                                 )
                             }}
                         </li>
                         <li>
                             {{
                                 $t(
-                                    'Partitioning: Manual. One primary ext4 partition over the whole disk, mounted at /, bootable. No swap: confirm the warning.',
+                                    'openSUSE, SLES: Guided Setup without LVM, separate home or separate swap (Btrfs is fine); open the SSH port in the summary.',
                                 )
                             }}
                         </li>
                         <li>
                             {{
                                 $t(
-                                    'Software: only SSH server and standard system utilities. Install GRUB to the disk.',
-                                )
-                            }}
-                        </li>
-                    </ul>
-                    <h5>AlmaLinux / Rocky Linux</h5>
-                    <ul>
-                        <li>
-                            {{
-                                $t(
-                                    'Installation Destination: Custom, Standard Partition, one xfs partition mounted at / with all the space. If a 1 MiB biosboot partition is asked for, create it first. No swap.',
-                                )
-                            }}
-                        </li>
-                        <li>
-                            {{
-                                $t(
-                                    'Software Selection: Minimal Install. Root Password: set one and tick Allow root SSH login with password.',
-                                )
-                            }}
-                        </li>
-                        <li>
-                            {{
-                                $t(
-                                    'Network & Host Name: switch the interface on, then Begin Installation.',
+                                    'Any other installer: the same rule by hand.',
                                 )
                             }}
                         </li>
@@ -388,48 +640,183 @@ const cloudbaseUrl = 'https://cloudbase.it/cloudbase-init/';
                     <p>
                         {{
                             $t(
-                                'If the VM boots into the installer again, set the CD/DVD drive to Do not use any media under Hardware.',
+                                'Check after the first boot: root is the last partition and there is no swap partition.',
+                            )
+                        }}
+                    </p>
+                    <pre>{{ commands.lsblk }}</pre>
+                </section>
+
+                <section>
+                    <h4>{{ $t('3. cloud-init') }}</h4>
+                    <p>
+                        {{
+                            $t(
+                                'Log in on the console as root (Ubuntu: as setup, then sudo -i), update the system and install cloud-init, growpart and the guest agent with the names of your family:',
+                            )
+                        }}
+                    </p>
+                    <pre>{{ commands.install }}</pre>
+                    <p>
+                        {{
+                            $t(
+                                'It must run at boot: cloud-init is a few systemd units, and some distributions (SUSE, Arch) install them disabled.',
+                            )
+                        }}
+                    </p>
+                    <pre>{{ commands.cloudUnits }}</pre>
+                    <p>
+                        {{
+                            $t(
+                                'Tell it where to look: by default it probes many clouds, some over the network, which only times out on Proxmox. Files in /etc/cloud/cloud.cfg.d/ are read in name order and later ones win, so the panel settings go into a late file. disable_root and ssh_pwauth belong to step 6.',
+                            )
+                        }}
+                    </p>
+                    <pre>{{ commands.cloudConfig }}</pre>
+                    <p>
+                        {{
+                            $t(
+                                'Remove what disables it: installers that use cloud-init themselves leave files that switch it or its network part off (on Ubuntu subiquity-disable-cloudinit-networking.cfg, 99-installer.cfg, 90-installer-network.cfg, cloud-init.disabled). Find them:',
+                            )
+                        }}
+                    </p>
+                    <pre>{{ commands.cloudFind }}</pre>
+                </section>
+
+                <section>
+                    <h4>{{ $t('4. Hand the network to cloud-init') }}</h4>
+                    <p>
+                        {{
+                            $t(
+                                "Why: the installer wrote a configuration for the network it saw. On a clone, cloud-init writes its own for the server's address; if the installer's file stays, both claim the interface and the clone may keep the template's address or wait for DHCP. How: delete the installer's files (see the table), not the network stack. cloud-init writes its own file for the first stack it finds.",
+                            )
+                        }}
+                    </p>
+                    <ul>
+                        <li>
+                            {{
+                                $t(
+                                    'Ubuntu: delete the files in /etc/netplan/. NetworkManager: delete the profiles in /etc/NetworkManager/system-connections/. wicked: delete ifcfg-eth0. systemd-networkd: delete your .network files.',
+                                )
+                            }}
+                        </li>
+                        <li>
+                            {{
+                                $t(
+                                    'Debian: reduce /etc/network/interfaces to the loopback and the source line:',
+                                )
+                            }}
+                        </li>
+                    </ul>
+                    <pre>{{ commands.debianInterfaces }}</pre>
+                    <p>
+                        {{
+                            $t(
+                                'Check on a test server: grep -i "selected renderer" /var/log/cloud-init.log names the stack cloud-init used.',
                             )
                         }}
                     </p>
                 </section>
 
                 <section>
-                    <h4>{{ $t('4. Prepare the system for cloning') }}</h4>
+                    <h4>{{ $t('5. The QEMU guest agent') }}</h4>
                     <p>
                         {{
                             $t(
-                                'Log in on the console as root (Ubuntu: as setup, then sudo -i) and run the block for your OS.',
+                                'Why: the agent is the only way the panel gets into a server. It says the server has booted, sets passwords, writes files and runs scripts and apps; the panel never logs in over SSH. On many distributions the service is started by udev when its VirtIO port appears, which exists only with QEMU Guest Agent on in the Options of the VM: turn it on, stop and start the VM, then start the service.',
                             )
                         }}
                     </p>
-                    <h5>Ubuntu / Debian</h5>
-                    <pre>{{ commands.debian }}</pre>
-                    <h5>AlmaLinux / Rocky Linux</h5>
-                    <pre>{{ commands.rhel }}</pre>
-                    <h5>{{ $t('Then on every Linux') }}</h5>
-                    <pre>{{ commands.common }}</pre>
                     <p>
                         {{
                             $t(
-                                'Ubuntu only: give root a temporary password, log out and log in again as root, so the setup user can be removed.',
+                                'Some distributions restrict the agent. The RHEL family blocks commands and file access in /etc/sysconfig/qemu-ga, and SELinux keeps commands the agent runs from creating directories or running installers:',
                             )
                         }}
                     </p>
-                    <pre>{{ commands.ubuntuRoot }}</pre>
-                    <h5>{{ $t('Finally, as root') }}</h5>
-                    <pre>{{ commands.finish }}</pre>
+                    <pre>{{ commands.agentRhel }}</pre>
                     <p>
                         {{
                             $t(
-                                'For key-only logins use PermitRootLogin prohibit-password, PasswordAuthentication no and ssh_pwauth: false instead; customers then need an SSH key.',
+                                'Check from the node shell while the VM runs: every command must answer with exitcode 0. No answer to ping: the service or the VM option. exec refused: the RHEL filter. Permission denied: SELinux.',
+                            )
+                        }}
+                    </p>
+                    <pre>{{ commands.agentCheck }}</pre>
+                </section>
+
+                <section>
+                    <h4>{{ $t('6. Root login') }}</h4>
+                    <p>
+                        {{
+                            $t(
+                                "Why: Proxmox passes the user root, so cloud-init puts the customer's password and keys on root, which is useless while SSH refuses root or passwords. Two places decide it: cloud-init (disable_root: false, ssh_pwauth: true, in the file of step 3) and sshd. sshd keeps the first value it reads and reads sshd_config.d in name order, so files of cloud-init (50-…) or cloud images (60-…) win over a 99-… file: use a low number. Without an Include line in sshd_config (RHEL 8 and older), set both in sshd_config itself.",
+                            )
+                        }}
+                    </p>
+                    <pre>{{ commands.sshd }}</pre>
+                    <p>
+                        {{
+                            $t(
+                                'A firewall inside the template (firewalld, ufw) must allow SSH or be off; the panel filters with the Proxmox firewall. For key-only logins use PermitRootLogin prohibit-password, PasswordAuthentication no and ssh_pwauth: false; customers then need an SSH key.',
                             )
                         }}
                     </p>
                 </section>
 
                 <section>
-                    <h4>{{ $t('5. Turn the VM into a template') }}</h4>
+                    <h4>
+                        {{ $t('7. Forget the identity, shrink, shut down') }}
+                    </h4>
+                    <p>
+                        {{
+                            $t(
+                                'Everything that makes this VM this machine must go, so each clone creates its own:',
+                            )
+                        }}
+                    </p>
+                    <ul>
+                        <li>
+                            {{
+                                $t(
+                                    "The temporary user and root's password: they would work on every server until cloud-init sets the real one. On Ubuntu give root a temporary password first and log in as root.",
+                                )
+                            }}
+                        </li>
+                        <li>
+                            {{
+                                $t(
+                                    'The cloud-init state: otherwise cloud-init takes the clone for the same instance and skips its work.',
+                                )
+                            }}
+                        </li>
+                        <li>
+                            {{
+                                $t(
+                                    'The machine ID (emptied, not deleted: systemd fills an empty file at boot), the SSH host keys and the random seed: clones would share them.',
+                                )
+                            }}
+                        </li>
+                        <li>
+                            {{
+                                $t(
+                                    'Logs, temporary files, package caches, shell history and free blocks (fstrim): they only make every clone larger and slower to create.',
+                                )
+                            }}
+                        </li>
+                    </ul>
+                    <pre>{{ commands.forget }}</pre>
+                    <p>
+                        {{
+                            $t(
+                                'Do not start the VM again afterwards: its first boot would give it an identity again. If you must, repeat this step.',
+                            )
+                        }}
+                    </p>
+                </section>
+
+                <section>
+                    <h4>{{ $t('8. Turn the VM into a template') }}</h4>
                     <ol>
                         <li>{{ $t('Hardware: remove the CD/DVD drive.') }}</li>
                         <li>
@@ -448,10 +835,17 @@ const cloudbaseUrl = 'https://cloudbase.it/cloudbase-init/';
                         </li>
                         <li>{{ $t('More, Convert to template.') }}</li>
                     </ol>
+                    <p>
+                        {{
+                            $t(
+                                'With local storage the template must exist on every node that hosts servers (Clone with a target node, full clone, then convert); with shared storage one is enough.',
+                            )
+                        }}
+                    </p>
                 </section>
 
                 <section>
-                    <h4>{{ $t('6. Add it to the panel') }}</h4>
+                    <h4>{{ $t('9. Add it to the panel and test it') }}</h4>
                     <ol>
                         <li>
                             {{
@@ -477,11 +871,55 @@ const cloudbaseUrl = 'https://cloudbase.it/cloudbase-init/';
                         <li>
                             {{
                                 $t(
-                                    'Create a test server: check that it gets its IP address and hostname, that the root password and SSH key work, that the disk has the package size (df -h /), and that the server page shows the guest agent.',
+                                    'Create two test servers and check each condition on them:',
                                 )
                             }}
                         </li>
                     </ol>
+                    <ul>
+                        <li>
+                            {{
+                                $t(
+                                    'The task ends without notes and the server page shows the guest agent (cloud-init and the agent work).',
+                                )
+                            }}
+                        </li>
+                        <li>
+                            {{
+                                $t(
+                                    "SSH as root to the server's address works with the password and with a key (root login).",
+                                )
+                            }}
+                        </li>
+                        <li>
+                            {{
+                                $t(
+                                    "ip addr, hostname and /etc/resolv.conf show the panel's values (network).",
+                                )
+                            }}
+                        </li>
+                        <li>
+                            {{
+                                $t(
+                                    'df -h / shows the package size, and grows after Change resources without a restart (disk layout).',
+                                )
+                            }}
+                        </li>
+                        <li>
+                            {{
+                                $t(
+                                    '/etc/machine-id and the SSH host key fingerprints differ between the two servers (identity).',
+                                )
+                            }}
+                        </li>
+                    </ul>
+                    <p>
+                        {{
+                            $t(
+                                'Distributions without systemd (Alpine, Void) can be templates too, but the default scripts keep additional addresses and a changed hostname across restarts with systemd units: write your own under OS templates, Scripts, or offer them with one address only.',
+                            )
+                        }}
+                    </p>
                 </section>
             </template>
 
@@ -490,17 +928,132 @@ const cloudbaseUrl = 'https://cloudbase.it/cloudbase-init/';
                 <p>
                     {{
                         $t(
-                            'For Windows Server 2019, 2022 and 2025. Cloudbase-Init plays the part of cloud-init: it sets the Administrator password, the network and the computer name.',
+                            'For Windows Server 2016, 2019, 2022 and 2025 and for Windows 10 and 11. The steps are the same for every version; where a version differs, the step says so.',
                         )
                     }}
                 </p>
-                <p>
-                    {{
-                        $t(
-                            'Measured on Windows Server 2022 with 2 vCPUs: a full clone took 2 minutes and Windows setup with its one restart another 2. A linked clone (clone method of the OS template), a small template and more vCPUs make new servers ready sooner.',
-                        )
-                    }}
-                </p>
+
+                <section>
+                    <h4>
+                        {{ $t('How a Windows server is born from a template') }}
+                    </h4>
+                    <p>
+                        {{
+                            $t(
+                                'For a VM of OS type Microsoft Windows, Proxmox writes the cloud-init fields as a config drive: the password and an instance ID in meta_data.json, the network in network_data.json, the hostname in the user data. Cloudbase-Init, the Windows counterpart of cloud-init, applies them with plugins, and remembers per instance ID which plugins ran: a clone has a new ID, so each plugin runs once on it.',
+                            )
+                        }}
+                    </p>
+                    <p>
+                        {{
+                            $t(
+                                'The panel waits until the guest agent answers, Windows setup reports IMAGE_STATE_COMPLETE, Cloudbase-Init has recorded every plugin of its configuration for the server and stopped, and no new computer name waits for a restart; then the server is Active and its scripts run. Customers log in with Remote Desktop as Administrator, the account whose password the panel sets.',
+                            )
+                        }}
+                    </p>
+                </section>
+
+                <section>
+                    <h4>{{ $t('Windows versions') }}</h4>
+                    <p>
+                        {{
+                            $t(
+                                'What differs between versions; the steps below refer to these rows. Windows 11 also needs 4 GiB of memory and 2 cores, Server 2025 and Windows 11 a CPU type with x86-64-v2 (the default, never kvm64). Windows Home has no Remote Desktop host and cannot be used.',
+                            )
+                        }}
+                    </p>
+                    <div class="overflow-x-auto">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th></th>
+                                    <th
+                                        v-for="column in windowsColumns"
+                                        :key="column"
+                                    >
+                                        {{ column }}
+                                    </th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr v-for="row in windowsRows" :key="row.label">
+                                    <th>{{ $t(row.label) }}</th>
+                                    <td
+                                        v-for="(value, index) in row.values"
+                                        :key="index"
+                                    >
+                                        {{ $t(value) }}
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <p>
+                        {{
+                            $t(
+                                "Windows 10 and 11 are desktop systems: Microsoft's licence terms do not allow renting them through SPLA, and multi-tenant hosting needs Microsoft's QMTH program. Check your licensing before you sell them. Windows 10 support ended in October 2025.",
+                            )
+                        }}
+                    </p>
+                </section>
+
+                <section>
+                    <h4>
+                        {{
+                            $t('Making clones unique: with or without Sysprep')
+                        }}
+                    </h4>
+                    <p>
+                        {{
+                            $t(
+                                "A Windows installation carries values that should differ on every machine. Sysprep's generalize pass removes them, and each clone's first boot creates new ones in the specialize pass and OOBE, with one restart. Without Sysprep the clone starts as an exact copy, boots faster, and you remove what matters yourself.",
+                            )
+                        }}
+                    </p>
+                    <ul>
+                        <li>
+                            {{
+                                $t(
+                                    'With Sysprep: supported by Microsoft, a new machine SID, Remote Desktop certificate and KMS client ID on every clone. About 1.5 minutes from the first boot (measured on Server 2022).',
+                                )
+                            }}
+                        </li>
+                        <li>
+                            {{
+                                $t(
+                                    'Without Sysprep: not supported by Microsoft, every server shares the machine SID, and KMS sees all clones as one client. Since the September 2025 updates, Windows Server 2025 and Windows 11 refuse NTLM and Kerberos between machines with the same SID, so this way is only for Server 2016 to 2022 and Windows 10. Not measured yet.',
+                                )
+                            }}
+                        </li>
+                    </ul>
+                    <p>
+                        {{
+                            $t(
+                                'Choose With Sysprep for anything you sell broadly and always for Windows Server 2025 and Windows 11. The panel works the same with both.',
+                            )
+                        }}
+                    </p>
+                    <div role="tablist" class="flex flex-wrap gap-2">
+                        <button
+                            v-for="item in ways"
+                            :id="`template-guide-windows-${item.way}`"
+                            :key="item.way"
+                            type="button"
+                            role="tab"
+                            :aria-selected="windowsWay === item.way"
+                            class="scroll-mt-4 rounded-md border px-3 py-1.5"
+                            :class="
+                                windowsWay === item.way
+                                    ? 'border-primary bg-primary/5 font-medium text-foreground'
+                                    : 'hover:text-foreground'
+                            "
+                            :data-test="`template-way-${item.way}`"
+                            @click="windowsWay = item.way"
+                        >
+                            {{ $t(item.label) }}
+                        </button>
+                    </div>
+                </section>
 
                 <section>
                     <h4>{{ $t('1. Download the ISOs') }}</h4>
@@ -508,7 +1061,7 @@ const cloudbaseUrl = 'https://cloudbase.it/cloudbase-init/';
                         <li>
                             {{
                                 $t(
-                                    'The Windows Server ISO from Microsoft (evaluation or volume licensing): upload it under the node, the storage, ISO Images, Upload.',
+                                    'The Windows ISO of your version (volume licensing, evaluation or Media Creation Tool media): upload it under the node, the storage, ISO Images, Upload. For Windows 11, Enterprise or Education makes step 3 easier.',
                                 )
                             }}
                         </li>
@@ -525,39 +1078,25 @@ const cloudbaseUrl = 'https://cloudbase.it/cloudbase-init/';
 
                 <section>
                     <h4>{{ $t('2. Create the VM') }}</h4>
-                    <p>
-                        {{
-                            $t(
-                                'Click Create VM (top right). Use a VMID outside the range of your servers (e.g. 9000 and up) and a name such as tpl-windows-2022-20261016.',
-                            )
-                        }}
-                    </p>
                     <ul>
                         <li>
                             {{
                                 $t(
-                                    'General: the resource pool of the panel, if its API token is limited to one.',
+                                    'OS: type Microsoft Windows with the version from the table. This decides the config drive format and that the password reaches Cloudbase-Init. Tick Add additional drive for VirtIO drivers and choose virtio-win.iso.',
                                 )
                             }}
                         </li>
                         <li>
                             {{
                                 $t(
-                                    'OS: the Windows Server ISO; type Microsoft Windows with the matching version (Proxmox passes the password to Cloudbase-Init only for a Windows OS type). Tick Add additional drive for VirtIO drivers and choose virtio-win.iso.',
+                                    'System: machine q35, BIOS OVMF (UEFI), Add EFI Disk with pre-enrolled keys (Secure Boot on), SCSI controller VirtIO SCSI single, and tick QEMU Agent. Windows 11 also needs Add TPM, version v2.0; every clone then shares that virtual TPM, which is harmless for a VPS.',
                                 )
                             }}
                         </li>
                         <li>
                             {{
                                 $t(
-                                    'System: machine q35, BIOS OVMF (UEFI), Add EFI Disk with pre-enrolled keys, SCSI controller VirtIO SCSI single, and tick QEMU Agent. No TPM is needed for Windows Server.',
-                                )
-                            }}
-                        </li>
-                        <li>
-                            {{
-                                $t(
-                                    'Disks: bus SCSI, 40 GiB (Windows Server needs at least 32; the panel grows the disk per package), Discard and SSD emulation on.',
+                                    'Disks: bus SCSI, the smallest size from the table, Discard and SSD emulation on. The panel grows the disk but never shrinks it, so this is the smallest disk a package for the template can have.',
                                 )
                             }}
                         </li>
@@ -584,21 +1123,28 @@ const cloudbaseUrl = 'https://cloudbase.it/cloudbase-init/';
                         <li>
                             {{
                                 $t(
-                                    'Choose the edition you are licensed for (Desktop Experience or Core).',
+                                    'No disk is listed because Windows has no VirtIO SCSI driver: click Load driver and browse the VirtIO CD to vioscsi, the folder from the table, amd64. Then install Windows to the disk; it puts C: last, which lets C: grow later.',
                                 )
                             }}
                         </li>
                         <li>
                             {{
                                 $t(
-                                    'No disk is listed: click Load driver, browse the VirtIO CD to vioscsi, your Windows version, amd64, and install it. Then install Windows to the disk.',
+                                    'Windows Server: set a temporary Administrator password and log in.',
                                 )
                             }}
                         </li>
-                        <li>
+                        <li v-if="windowsWay === 'sysprep'">
                             {{
                                 $t(
-                                    'Set a temporary Administrator password and log in.',
+                                    'Windows 10 and 11: at the first OOBE screen press Ctrl+Shift+F3. Windows restarts into audit mode as the built-in Administrator, without any account and without asking for a Microsoft account. Close the System Preparation Tool window and do every following step in audit mode; each restart returns to it until Sysprep ends it.',
+                                )
+                            }}
+                        </li>
+                        <li v-else>
+                            {{
+                                $t(
+                                    'Windows 10: finish OOBE with a temporary local (offline) account named setup; it is removed in step 8.',
                                 )
                             }}
                         </li>
@@ -618,67 +1164,223 @@ const cloudbaseUrl = 'https://cloudbase.it/cloudbase-init/';
                         <li>
                             {{
                                 $t(
-                                    'Install all Windows updates and restart until none is pending: updates still pending when you generalize finish on every new server, with extra restarts.',
+                                    'Install all Windows updates and restart until none is pending: updates still pending in the template finish on every new server, with extra restarts.',
                                 )
                             }}
                         </li>
                         <li>
                             {{
                                 $t(
-                                    'In PowerShell as Administrator, turn on Remote Desktop (off by default on Windows Server) and ping, and turn off what only slows a server down:',
+                                    'In PowerShell as Administrator, turn on Remote Desktop and ping, and turn off hibernation, which also turns off Fast Startup on Windows 10 and 11 (otherwise a shutdown is really a hibernation):',
                                 )
                             }}
                         </li>
                     </ol>
                     <pre>{{ commands.windowsPrepare }}</pre>
-                    <ol start="4">
-                        <li>
-                            {{
-                                $t(
-                                    'Download and install Cloudbase-Init. In its installer use the user name Administrator and tick Run Cloudbase-Init service as LocalSystem. Do not click Finish yet.',
-                                )
-                            }}
-                            <code class="break-all">{{ cloudbaseUrl }}</code>
-                        </li>
-                        <li>
-                            {{
-                                $t(
-                                    'Replace both files in C:\\Program Files\\Cloudbase Solutions\\Cloudbase-Init\\conf\\ with the contents below. In Unattend.xml in the same folder, replace the Cloudbase-Init command of the specialize pass with the one below (keep &amp; as it is). With them a new server restarts only once and skips work it does not need. Optionally add the generalize pass too, a Windows Setup setting that keeps the installed drivers: Microsoft allows it only on identical hardware, so use it only while every server keeps the virtual hardware of the template (disk bus, network model, machine type).',
-                                )
-                            }}
-                        </li>
-                    </ol>
-                    <h5>cloudbase-init-unattend.conf</h5>
-                    <pre>{{ commands.unattend }}</pre>
-                    <h5>cloudbase-init.conf</h5>
-                    <pre>{{ commands.service }}</pre>
-                    <h5>Unattend.xml (specialize)</h5>
-                    <pre>{{ commands.unattendXml }}</pre>
-                    <h5>Unattend.xml (generalize, optional)</h5>
-                    <pre>{{ commands.generalizeXml }}</pre>
-                </section>
-
-                <section>
-                    <h4>{{ $t('5. Shrink and generalize') }}</h4>
                     <p>
                         {{
                             $t(
-                                'Every GB still used on the template disk is copied for every new server. In PowerShell as Administrator, remove the per-user package of Edge (Sysprep stops otherwise), superseded update files and temporary files, and tell the storage which blocks are free:',
+                                'Windows 10 and 11 only: device encryption must be off, because Sysprep refuses an encrypted drive, clones would share its key and the panel could not grow C:. Also stop Windows installing promoted Store apps for each user:',
                             )
                         }}
                     </p>
-                    <pre>{{ commands.windowsShrink }}</pre>
+                    <pre>{{ commands.windowsClient }}</pre>
                     <p>
                         {{
                             $t(
-                                'Back in the Cloudbase-Init installer, tick Run Sysprep to create a generalized image and Shutdown when Sysprep terminates, then click Finish. The VM generalizes itself and shuts down. Do not start it again.',
+                                'Check the agent from the node shell; the panel scripts need Windows PowerShell 5.1, which every version has:',
+                            )
+                        }}
+                    </p>
+                    <pre>{{ commands.windowsAgentCheck }}</pre>
+                </section>
+
+                <section>
+                    <h4>{{ $t('5. The Administrator account') }}</h4>
+                    <p>
+                        {{
+                            $t(
+                                'The panel, its password reset and Cloudbase-Init use the built-in account whose SID ends in -500, under the name Administrator. Some display languages name it differently (Administrateur, Administrador): rename it, or install from English media.',
+                            )
+                        }}
+                    </p>
+                    <pre>{{ commands.adminCheck }}</pre>
+                    <p>
+                        {{
+                            $t(
+                                'Windows Server enables it; Windows 10 and 11 disable it, and Sysprep disables it again when it ends audit mode. So every template enables it on the first boot of each clone with a local script of Cloudbase-Init, saved once Cloudbase-Init is installed (step 6). It is harmless on servers:',
+                            )
+                        }}
+                    </p>
+                    <pre>{{ commands.enableAdmin }}</pre>
+                </section>
+
+                <section>
+                    <h4>{{ $t('6. Install Cloudbase-Init') }}</h4>
+                    <p>
+                        {{
+                            $t(
+                                'Download and install Cloudbase-Init. In its installer use the user name Administrator and tick Run Cloudbase-Init service as LocalSystem. Then add the local script of step 5.',
+                            )
+                        }}
+                        <code class="break-all">{{ cloudbaseUrl }}</code>
+                    </p>
+                    <p>
+                        {{
+                            $t(
+                                'Its files are in C:\\Program Files\\Cloudbase Solutions\\Cloudbase-Init\\conf\\: cloudbase-init.conf is used by the service at every boot, cloudbase-init-unattend.conf and Unattend.xml only by Sysprep.',
                             )
                         }}
                     </p>
                 </section>
 
+                <!-- With Sysprep -->
+                <template v-if="windowsWay === 'sysprep'">
+                    <section data-test="template-way-panel-sysprep">
+                        <h4>
+                            {{ $t('7. Configure Cloudbase-Init for Sysprep') }}
+                        </h4>
+                        <p>
+                            {{
+                                $t(
+                                    'Do not click Finish in the installer yet. The aim: the computer name and the C: extension are set during the specialize pass, whose restart Windows does anyway, so no other restart is needed; the service then only sets the password (first, so the template password never works on the network) and the network. Replace both files with the contents below.',
+                                )
+                            }}
+                        </p>
+                        <h5>cloudbase-init-unattend.conf</h5>
+                        <pre>{{ commands.unattend }}</pre>
+                        <h5>cloudbase-init.conf</h5>
+                        <pre>{{ commands.service }}</pre>
+                        <p>
+                            {{
+                                $t(
+                                    "In Unattend.xml, Cloudbase-Init's command in the specialize pass ends with exit 1 and OnRequest, which asks Windows for an extra restart even on success. Replace it with the command below (keep &amp; as it is).",
+                                )
+                            }}
+                        </p>
+                        <h5>Unattend.xml (specialize)</h5>
+                        <pre>{{ commands.unattendXml }}</pre>
+                        <p>
+                            {{
+                                $t(
+                                    'Windows 10 and 11: their OOBE asks for region, keyboard, an account and privacy settings, and nobody answers on a VPS. Replace the oobeSystem pass with the one below: the locale values skip region and keyboard (use yours, e.g. tr-TR), and AdministratorPassword lets OOBE skip account creation; Cloudbase-Init replaces it at the first boot, so use a long random value.',
+                                )
+                            }}
+                        </p>
+                        <h5>Unattend.xml (oobeSystem, Windows 10 and 11)</h5>
+                        <pre>{{ commands.clientOobeXml }}</pre>
+                        <p>
+                            {{
+                                $t(
+                                    'Optional: the generalize pass below keeps the installed drivers, so the first boot does not detect every device again. Microsoft allows it only on identical hardware: use it only while every server keeps the virtual hardware of the template (disk bus, network model, machine type).',
+                                )
+                            }}
+                        </p>
+                        <h5>Unattend.xml (generalize, optional)</h5>
+                        <pre>{{ commands.generalizeXml }}</pre>
+                    </section>
+
+                    <section>
+                        <h4>{{ $t('8. Shrink and generalize') }}</h4>
+                        <p>
+                            {{
+                                $t(
+                                    'Sysprep refuses to generalize when a Store app was updated for one user only. On Server 2022 and 2025 that is Edge (Edge stays installed):',
+                                )
+                            }}
+                        </p>
+                        <pre>{{ commands.edge }}</pre>
+                        <p>
+                            {{
+                                $t(
+                                    'On Windows 10 and 11 many apps update themselves: remove every package that is installed but not provisioned (frameworks other apps need refuse to go, which is fine). C:\\Windows\\System32\\Sysprep\\Panther\\setuperr.log names any package that still stops Sysprep.',
+                                )
+                            }}
+                        </p>
+                        <pre>{{ commands.clientAppx }}</pre>
+                        <p>
+                            {{
+                                $t(
+                                    'Every GB still used on the template disk is copied for every new server. Remove superseded update files and temporary files, and tell the storage which blocks are free:',
+                                )
+                            }}
+                        </p>
+                        <pre>{{ commands.windowsShrink }}</pre>
+                        <p>
+                            {{
+                                $t(
+                                    'Back in the Cloudbase-Init installer, tick Run Sysprep to create a generalized image and Shutdown when Sysprep terminates, then click Finish. The VM generalizes itself and shuts down. Do not start it again.',
+                                )
+                            }}
+                        </p>
+                    </section>
+                </template>
+
+                <!-- Without Sysprep -->
+                <template v-else>
+                    <section data-test="template-way-panel-nosysprep">
+                        <h4>
+                            {{
+                                $t(
+                                    '7. Configure Cloudbase-Init without Sysprep',
+                                )
+                            }}
+                        </h4>
+                        <p>
+                            {{
+                                $t(
+                                    'Leave both boxes on the last page of the installer unticked and click Finish. Without a specialize pass the service does everything on the first boot: password first, network, C: extension, and the computer name last, because Windows needs a restart to apply a name (allow_reboot=true); after it the plugins already done are skipped and the service stops. Replace cloudbase-init.conf with the contents below; the other two files are not used.',
+                                )
+                            }}
+                        </p>
+                        <h5>cloudbase-init.conf</h5>
+                        <pre>{{ commands.serviceNoSysprep }}</pre>
+                        <p>
+                            {{
+                                $t(
+                                    'Keep the startup type of the cloudbase-init service Automatic, not delayed: the panel waits until the service has recorded its plugins for the new server, so a service that starts late only makes every server ready later.',
+                                )
+                            }}
+                        </p>
+                    </section>
+
+                    <section>
+                        <h4>
+                            {{
+                                $t(
+                                    '8. Remove what must differ, shrink, shut down',
+                                )
+                            }}
+                        </h4>
+                        <p>
+                            {{
+                                $t(
+                                    'Windows 10: the template must not keep the temporary account. Enable the built-in Administrator, give it a password, sign in as Administrator and remove the other account:',
+                                )
+                            }}
+                        </p>
+                        <pre>{{ commands.win10Account }}</pre>
+                        <p>
+                            {{
+                                $t(
+                                    'Remove what Sysprep would have reset and what matters for a VPS: the Remote Desktop certificate (else every server shows the same one), the Windows Update client ID, the instances Cloudbase-Init remembers, and the build logs:',
+                                )
+                            }}
+                        </p>
+                        <pre>{{ commands.noSysprepClean }}</pre>
+                        <p>
+                            {{
+                                $t(
+                                    'Then remove superseded update files and temporary files, tell the storage which blocks are free, and shut down normally with Stop-Computer. Do not start the VM again before converting it.',
+                                )
+                            }}
+                        </p>
+                        <pre>{{ commands.windowsShrink }}</pre>
+                    </section>
+                </template>
+
                 <section>
-                    <h4>{{ $t('6. Turn the VM into a template') }}</h4>
+                    <h4>{{ $t('9. Turn the VM into a template') }}</h4>
                     <ol>
                         <li>
                             {{ $t('Hardware: remove both CD/DVD drives.') }}
@@ -702,7 +1404,7 @@ const cloudbaseUrl = 'https://cloudbase.it/cloudbase-init/';
                 </section>
 
                 <section>
-                    <h4>{{ $t('7. Add it to the panel') }}</h4>
+                    <h4>{{ $t('10. Add it to the panel and test it') }}</h4>
                     <ol>
                         <li>
                             {{
@@ -735,27 +1437,520 @@ const cloudbaseUrl = 'https://cloudbase.it/cloudbase-init/';
                         <li>
                             {{
                                 $t(
-                                    'Create a test server: it should become Active about when the console shows the logon screen, restart only once, and accept a Remote Desktop login as Administrator with the password the panel shows. Check the IP address, the computer name and that the C: drive has the package size.',
+                                    'Give its packages at least the template disk size (Windows 11: also 4 GiB of memory and 2 cores), and tick the version only for apps that run on it: the bundled Windows apps were written for Windows Server.',
+                                )
+                            }}
+                        </li>
+                        <li>
+                            {{
+                                $t(
+                                    'Create two test servers: each should become Active about when the console shows the logon screen and accept a Remote Desktop login as Administrator with the password the panel shows, not the template password. Check the IP address, the computer name and that C: has the package size.',
                                 )
                             }}
                         </li>
                     </ol>
+                    <p>
+                        {{
+                            windowsWay === 'sysprep'
+                                ? $t(
+                                      'Restarts (event 1074 below): exactly one, by winlogon.exe. One by python.exe means UserDataPlugin is in the service file instead of the unattend file.',
+                                  )
+                                : $t(
+                                      'Restarts (event 1074 below): exactly one, by Cloudbase-Init for the computer name. If the name stays the template one, UserDataPlugin or allow_reboot=true is missing.',
+                                  )
+                        }}
+                    </p>
+                    <pre>{{ commands.restarts }}</pre>
                 </section>
 
                 <section>
                     <h4>{{ $t('Updating a Windows template') }}</h4>
-                    <p>
+                    <template v-if="windowsWay === 'sysprep'">
+                        <p>
+                            {{
+                                $t(
+                                    'Make a full clone of the template, start it, install the updates until none is pending, run the commands of step 8 and generalize it again with this command; then convert it to a template with a new name.',
+                                )
+                            }}
+                        </p>
+                        <pre>{{ commands.sysprep }}</pre>
+                    </template>
+                    <p v-else>
                         {{
                             $t(
-                                'Make a full clone of the template, start it, install the updates until none is pending, run the commands of step 5 and generalize it again with this command; then convert it to a template with a new name.',
+                                'Make a full clone of the template, set a temporary password in its Cloud-Init tab and start it. Install the updates until none is pending, run step 8 again (without the Windows 10 account part) and convert it to a template with a new name.',
                             )
                         }}
                     </p>
-                    <pre>{{ commands.sysprep }}</pre>
                     <p>
                         {{
                             $t(
                                 'Licensing and activation (SPLA, AVMA, KMS) are your responsibility; the template contains no product key unless you add one.',
+                            )
+                        }}
+                    </p>
+                </section>
+            </template>
+
+            <!-- FreeBSD -->
+            <template v-else-if="active === 'freebsd'">
+                <p>
+                    {{
+                        $t(
+                            'For FreeBSD 14 and 15 on amd64, with a UFS root file system. The panel treats a FreeBSD template like a Linux one (user root, sh scripts) and, when the operating system of the template has the slug freebsd, runs its own FreeBSD scripts for additional addresses, disk growth and hostname changes. This guide follows the documented behaviour of FreeBSD, cloud-init and Proxmox and has not been tried on a real server yet.',
+                        )
+                    }}
+                </p>
+
+                <section>
+                    <h4>
+                        {{ $t('How a FreeBSD server is born from a template') }}
+                    </h4>
+                    <p>
+                        {{
+                            $t(
+                                'As on Linux (see the Linux tab), with the tools of FreeBSD:',
+                            )
+                        }}
+                    </p>
+                    <ul>
+                        <li>
+                            {{
+                                $t(
+                                    'Proxmox writes the CloudInit drive in the NoCloud format for every OS type except Windows; cloud-init, installed from the FreeBSD packages, reads it on the first boot.',
+                                )
+                            }}
+                        </li>
+                        <li>
+                            {{
+                                $t(
+                                    "cloud-init grows the root partition and file system with FreeBSD's own growfs service, writes the network and the hostname into /etc/rc.conf and sets root's password and keys. It may rename the network interface to the name in Proxmox's network settings; the panel's scripts find it by its MAC address.",
+                                )
+                            }}
+                        </li>
+                        <li>
+                            {{
+                                $t(
+                                    'The panel waits for the guest agent and cloud-init, runs its FreeBSD scripts through the agent and checks the server from inside. A password reset sets the password through the agent, which uses pw on FreeBSD.',
+                                )
+                            }}
+                        </li>
+                    </ul>
+                </section>
+
+                <section>
+                    <h4>{{ $t('What does not work on FreeBSD') }}</h4>
+                    <ul>
+                        <li>
+                            {{
+                                $t(
+                                    'Apps: the app runner needs bash and systemd. Never tick a FreeBSD version for an app (Apps, Choose systems).',
+                                )
+                            }}
+                        </li>
+                        <li>
+                            {{
+                                $t(
+                                    'The Disk space card stays empty while the FreeBSD guest agent does not report file systems (guest-get-fsinfo).',
+                                )
+                            }}
+                        </li>
+                        <li>
+                            {{
+                                $t(
+                                    "Stop script in the task list ends the task but cannot stop the run inside a FreeBSD server: finding its processes needs Linux's /proc.",
+                                )
+                            }}
+                        </li>
+                        <li>
+                            {{
+                                $t(
+                                    'IPv6: once another IPv6 address is the primary, FreeBSD still picks the source of outgoing IPv6 connections by its own rules (RFC 6724). For IPv4 the default route sets it.',
+                                )
+                            }}
+                        </li>
+                    </ul>
+                </section>
+
+                <section>
+                    <h4>{{ $t('1. Create the VM') }}</h4>
+                    <p>
+                        {{
+                            $t(
+                                'Download the disc1 ISO of your version (e.g. FreeBSD-15.0-RELEASE-amd64-disc1.iso) from download.freebsd.org with Download from URL and the SHA256 checksum from the CHECKSUM.SHA256 file next to it. Then Create VM with a VMID outside the range of your servers (e.g. 9000 and up):',
+                            )
+                        }}
+                    </p>
+                    <ul>
+                        <li>
+                            {{
+                                $t(
+                                    'OS type Other: Proxmox writes the NoCloud format for every type except Windows, which cloud-init reads on FreeBSD too.',
+                                )
+                            }}
+                        </li>
+                        <li>
+                            {{
+                                $t(
+                                    'QEMU Agent ticked: without it the VM has no channel for the guest agent.',
+                                )
+                            }}
+                        </li>
+                        <li>
+                            {{
+                                $t(
+                                    'A small disk (10 GiB) on SCSI with VirtIO SCSI single, Discard and SSD emulation on: a full clone copies every used block, the panel grows the disk anyway, and Discard lets freed blocks go back to the storage.',
+                                )
+                            }}
+                        </li>
+                        <li>
+                            {{
+                                $t(
+                                    'CPU type default, not host: host ties the template to one CPU model and clones may not start on other nodes.',
+                                )
+                            }}
+                        </li>
+                        <li>
+                            {{
+                                $t(
+                                    "Resource pool: the panel's pool, if its API token is limited to one, because the token can only clone what it can see. Memory and network only need to suit the installer; the panel sets each server's own.",
+                                )
+                            }}
+                        </li>
+                        <li>
+                            {{
+                                $t(
+                                    'After creating it: Hardware, Add, VirtIO RNG. Every clone starts from the entropy file the template saved when it shut down; the RNG adds fresh randomness from the host at every boot.',
+                                )
+                            }}
+                        </li>
+                    </ul>
+                </section>
+
+                <section>
+                    <h4>
+                        {{ $t('2. Install: UFS, the root partition last') }}
+                    </h4>
+                    <p>
+                        {{
+                            $t(
+                                'The rule of the Linux tab: root last, no swap partition after it, because the panel adds free space at the end of the disk and growfs grows only the last partition. The FreeBSD installer puts swap after root, so remove it:',
+                            )
+                        }}
+                    </p>
+                    <ol>
+                        <li>
+                            {{
+                                $t(
+                                    'Boot the ISO, choose Install, a keymap and any hostname. Distribution Select: untick every optional component; the base system is always installed.',
+                                )
+                            }}
+                        </li>
+                        <li>
+                            {{
+                                $t(
+                                    'Partitioning: Auto (UFS), Entire Disk, GPT. In the partition editor select the freebsd-swap partition, Delete, then Finish and Commit.',
+                                )
+                            }}
+                        </li>
+                        <li>
+                            {{
+                                $t(
+                                    'Set a temporary root password. Network: configure vtnet0 for the build. Time zone: UTC.',
+                                )
+                            }}
+                        </li>
+                        <li>
+                            {{
+                                $t(
+                                    'System Configuration: sshd on, dumpdev off (crash dumps need swap). Hardening: the defaults. Add users: No. Exit and reboot.',
+                                )
+                            }}
+                        </li>
+                    </ol>
+                    <p>
+                        {{
+                            $t(
+                                'Check after the first boot. ZFS works with growfs as well, but needs more memory per server and its guided layout keeps a swap partition, so this guide uses UFS.',
+                            )
+                        }}
+                    </p>
+                    <pre>{{ commands.freebsdGpart }}</pre>
+                </section>
+
+                <section>
+                    <h4>
+                        {{ $t('3. Updates, cloud-init and the guest agent') }}
+                    </h4>
+                    <p>
+                        {{
+                            $t(
+                                'Log in on the console as root. Install the updates first and restart once: once cloud-init is enabled, the template should not boot again (without a CloudInit drive cloud-init would create its default user freebsd). FreeBSD 15 installed from base system packages is updated with pkg upgrade alone.',
+                            )
+                        }}
+                    </p>
+                    <pre>{{ commands.freebsdUpdate }}</pre>
+                    <p>
+                        {{
+                            $t(
+                                'Then install cloud-init and the guest agent from the packages and set them up in /etc/rc.conf and /boot/loader.conf:',
+                            )
+                        }}
+                    </p>
+                    <pre>{{ commands.freebsdInstall }}</pre>
+                    <ul>
+                        <li>
+                            {{
+                                $t(
+                                    'qemu_guest_agent_env: services start with a PATH without /usr/local, so the commands the panel runs through the agent would not find cloud-init and the panel would not wait for it.',
+                                )
+                            }}
+                        </li>
+                        <li>
+                            {{
+                                $t(
+                                    'growfs_swap_size=0: otherwise growfs, which cloud-init runs on the first boot, can add a swap partition after root on disks over 15 GB, and root could never grow again.',
+                                )
+                            }}
+                        </li>
+                        <li>
+                            {{
+                                $t(
+                                    'virtio_console: the device of the guest agent, not part of the GENERIC kernel. virtio_random: the VirtIO RNG of step 1.',
+                                )
+                            }}
+                        </li>
+                    </ul>
+                    <p>
+                        {{
+                            $t(
+                                "Tell cloud-init where to look; on FreeBSD its configuration is under /usr/local/etc/cloud/. With a single data source (and None) in the list, cloud-init's ds-identify uses it without having to recognise the CD. disable_root and ssh_pwauth belong to step 6.",
+                            )
+                        }}
+                    </p>
+                    <pre>{{ commands.freebsdCloudConfig }}</pre>
+                </section>
+
+                <section>
+                    <h4>{{ $t('4. Hand the network to cloud-init') }}</h4>
+                    <p>
+                        {{
+                            $t(
+                                "Why: as on Linux, the installer's settings would fight with the ones cloud-init writes on each clone. They are lines in /etc/rc.conf, and /etc/resolv.conf, which step 7 removes because cloud-init only adds to it. Remove the lines now; the network keeps working until the next boot:",
+                            )
+                        }}
+                    </p>
+                    <pre>{{ commands.freebsdNetwork }}</pre>
+                </section>
+
+                <section>
+                    <h4>{{ $t('5. The QEMU guest agent') }}</h4>
+                    <p>
+                        {{
+                            $t(
+                                'Why: as on Linux, the agent is the only way the panel gets into a server. Load the VirtIO console driver and start the agent without a restart; from the next boot loader.conf loads the driver:',
+                            )
+                        }}
+                    </p>
+                    <pre>{{ commands.freebsdAgent }}</pre>
+                    <p>
+                        {{
+                            $t(
+                                'Check from the node shell while the VM runs: every command must answer with exitcode 0, and the third must print /usr/local/bin/cloud-init (otherwise qemu_guest_agent_env of step 3 is missing; restart the service after setting it).',
+                            )
+                        }}
+                    </p>
+                    <pre>{{ commands.freebsdAgentCheck }}</pre>
+                </section>
+
+                <section>
+                    <h4>{{ $t('6. Root login') }}</h4>
+                    <p>
+                        {{
+                            $t(
+                                "Why: as on Linux, customers get root's password and keys, and FreeBSD's sshd refuses root by default. cloud-init keeps root enabled on FreeBSD, and ssh_pwauth: true from step 3 lets it allow passwords. sshd keeps the first value it reads and FreeBSD's sshd_config has these only as comments, so append them:",
+                            )
+                        }}
+                    </p>
+                    <pre>{{ commands.freebsdSshd }}</pre>
+                    <p>
+                        {{
+                            $t(
+                                'For key-only logins use PermitRootLogin prohibit-password, PasswordAuthentication no, KbdInteractiveAuthentication no (FreeBSD also asks for passwords through PAM) and ssh_pwauth: false; customers then need an SSH key.',
+                            )
+                        }}
+                    </p>
+                </section>
+
+                <section>
+                    <h4>
+                        {{ $t('7. Forget the identity, shrink, shut down') }}
+                    </h4>
+                    <p>
+                        {{
+                            $t(
+                                'Everything that makes this VM this machine must go, so each clone creates its own:',
+                            )
+                        }}
+                    </p>
+                    <ul>
+                        <li>
+                            {{
+                                $t(
+                                    "root's password (cloud-init sets the real one), and the user freebsd, which cloud-init creates if the template ever booted with it enabled.",
+                                )
+                            }}
+                        </li>
+                        <li>
+                            {{
+                                $t(
+                                    'The cloud-init state: otherwise cloud-init takes the clone for the same instance and skips its work.',
+                                )
+                            }}
+                        </li>
+                        <li>
+                            {{
+                                $t(
+                                    "The host ID and machine ID (FreeBSD creates both at boot, from the clone's new SMBIOS UUID), the SSH host keys, the resolver settings and the DHCP leases: clones would share them.",
+                                )
+                            }}
+                        </li>
+                        <li>
+                            {{
+                                $t(
+                                    'Logs, temporary files, the package cache and shell history: they only make every clone larger and slower to create.',
+                                )
+                            }}
+                        </li>
+                    </ul>
+                    <pre>{{ commands.freebsdForget }}</pre>
+                    <p>
+                        {{
+                            $t(
+                                'Do not start the VM again afterwards: its first boot would give it an identity again. If you must, repeat this step.',
+                            )
+                        }}
+                    </p>
+                </section>
+
+                <section>
+                    <h4>{{ $t('8. Turn the VM into a template') }}</h4>
+                    <ol>
+                        <li>{{ $t('Hardware: remove the CD/DVD drive.') }}</li>
+                        <li>
+                            {{
+                                $t(
+                                    'Hardware, Add, CloudInit Drive: on the same storage as the disk. Leave the Cloud-Init tab empty; the panel fills it in for every server.',
+                                )
+                            }}
+                        </li>
+                        <li>
+                            {{
+                                $t(
+                                    'Options: Boot Order only the disk (scsi0), QEMU Guest Agent enabled.',
+                                )
+                            }}
+                        </li>
+                        <li>{{ $t('More, Convert to template.') }}</li>
+                    </ol>
+                    <p>
+                        {{
+                            $t(
+                                'With local storage the template must exist on every node that hosts servers (Clone with a target node, full clone, then convert); with shared storage one is enough.',
+                            )
+                        }}
+                    </p>
+                </section>
+
+                <section>
+                    <h4>{{ $t('9. Add it to the panel and test it') }}</h4>
+                    <ol>
+                        <li>
+                            {{
+                                $t(
+                                    "In Proxmox, add the template to the panel's resource pool: Datacenter, Permissions, Pools, the pool, Members, Add, Virtual Machine.",
+                                )
+                            }}
+                        </li>
+                        <li>
+                            {{
+                                $t(
+                                    'On the Clusters page, open the cluster and run a sync.',
+                                )
+                            }}
+                        </li>
+                        <li>
+                            {{
+                                $t(
+                                    'On the OS templates page the template is listed under Found on Proxmox; with freebsd in its name the panel suggests FreeBSD and the version. The operating system FreeBSD has the platform Linux and the slug freebsd, which makes the panel use its FreeBSD scripts. Check them and click Add.',
+                                )
+                            }}
+                        </li>
+                        <li>
+                            {{
+                                $t('Leave its version unticked for every app.')
+                            }}
+                        </li>
+                        <li>
+                            {{
+                                $t(
+                                    'Create two test servers and check each condition on them:',
+                                )
+                            }}
+                        </li>
+                    </ol>
+                    <ul>
+                        <li>
+                            {{
+                                $t(
+                                    'The task ends without notes and the server page shows the guest agent (cloud-init and the agent work).',
+                                )
+                            }}
+                        </li>
+                        <li>
+                            {{
+                                $t(
+                                    "SSH as root to the server's address works with the password and with a key (root login).",
+                                )
+                            }}
+                        </li>
+                        <li>
+                            {{
+                                $t(
+                                    "ifconfig, netstat -rn, hostname and /etc/resolv.conf show the panel's values (network).",
+                                )
+                            }}
+                        </li>
+                        <li>
+                            {{
+                                $t(
+                                    'df -h / shows the package size, and grows after Change resources without a restart (disk layout).',
+                                )
+                            }}
+                        </li>
+                        <li>
+                            {{
+                                $t(
+                                    '/etc/hostid and the SSH host key fingerprints differ between the two servers (identity).',
+                                )
+                            }}
+                        </li>
+                        <li>
+                            {{
+                                $t(
+                                    "Edit IP addresses adds an address and a restart keeps it; a changed hostname stays after a restart too (the panel's FreeBSD scripts).",
+                                )
+                            }}
+                        </li>
+                    </ul>
+                </section>
+
+                <section>
+                    <h4>{{ $t('Updating a FreeBSD template') }}</h4>
+                    <p>
+                        {{
+                            $t(
+                                'Make a full clone of the template, set the user root and a temporary password in its Cloud-Init tab, start it and log in on the console. Install the updates (freebsd-update fetch install, pkg upgrade) and restart, check that steps 3 to 6 still hold, run step 7 again and clear the Cloud-Init user and password. Then convert it to a template with a new name.',
                             )
                         }}
                     </p>
@@ -769,7 +1964,7 @@ const cloudbaseUrl = 'https://cloudbase.it/cloudbase-init/';
                     <p>
                         {{
                             $t(
-                                "No. Apple's licence allows macOS virtual machines only on Apple hardware, and Proxmox nodes are not Apple machines. The panel therefore supports Linux and Windows templates only.",
+                                "No. Apple's licence allows macOS virtual machines only on Apple hardware, and Proxmox nodes are not Apple machines. The panel therefore supports Linux, Windows and FreeBSD templates only.",
                             )
                         }}
                     </p>
@@ -782,7 +1977,7 @@ const cloudbaseUrl = 'https://cloudbase.it/cloudbase-init/';
                     <p>
                         {{
                             $t(
-                                "Yes. Every step of the Linux and Windows tabs happens in the Proxmox web interface and the VM's console in your browser, so your own computer does not matter. Use Download from URL so the ISO goes straight to the node instead of through your Mac.",
+                                "Yes. Every step of the Linux, Windows and FreeBSD tabs happens in the Proxmox web interface and the VM's console in your browser, so your own computer does not matter. Use Download from URL so the ISO goes straight to the node instead of through your Mac.",
                             )
                         }}
                     </p>

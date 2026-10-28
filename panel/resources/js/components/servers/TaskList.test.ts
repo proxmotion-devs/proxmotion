@@ -83,6 +83,33 @@ describe('TaskList', () => {
         ]);
     });
 
+    it('names custom script steps by the script, with or without their event', () => {
+        const rows = render([
+            task({
+                type: 'create',
+                planned_steps: [
+                    'guest_addresses',
+                    'script:addresses_changed:Monitoring agent',
+                    'script:provisioned:Monitoring agent',
+                ],
+                steps: [],
+            }),
+            task({
+                uuid: 'task-2',
+                type: 'guest_script',
+                planned_steps: [],
+                steps: [done('script:Clear cache')],
+            }),
+        ]).findAll('li');
+
+        expect(rows.map((row) => row.text())).toEqual([
+            'Configure additional IP addresses in the server',
+            'Run the script Monitoring agent in the server',
+            'Run the script Monitoring agent in the server',
+            'Run the script Clear cache in the server',
+        ]);
+    });
+
     it('shows how long finished steps took', () => {
         const durations = render([
             task({
@@ -129,5 +156,28 @@ describe('TaskList', () => {
                 .find('[data-test="task-estimate"]')
                 .exists(),
         ).toBe(false);
+    });
+
+    it('offers to stop a script run instead of marking it as failed', () => {
+        const buttons = (overrides: Partial<TaskProgress>) => {
+            const wrapper = render([task(overrides)]);
+
+            return {
+                stop: wrapper.find('[data-test="task-cancel"]').exists(),
+                fail: wrapper.find('[data-test="task-mark-failed"]').exists(),
+            };
+        };
+
+        expect(
+            buttons({ type: 'guest_script', can_cancel: true, can_fail: true }),
+        ).toEqual({ stop: true, fail: false });
+        expect(buttons({ can_fail: true })).toEqual({
+            stop: false,
+            fail: true,
+        });
+        expect(buttons({ status: 'failed' })).toEqual({
+            stop: false,
+            fail: false,
+        });
     });
 });

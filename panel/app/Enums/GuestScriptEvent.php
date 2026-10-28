@@ -50,7 +50,7 @@ enum GuestScriptEvent: string
     public function inputKeys(): array
     {
         return match ($this) {
-            self::Provisioned => ['addresses'],
+            self::Provisioned => ['reason', 'addresses'],
             self::AddressesChanged => ['addresses', 'primary_ipv4', 'gateway_ipv4', 'cloudinit_ipv4', 'primary_ipv6', 'gateway_ipv6', 'cloudinit_ipv6'],
             self::DiskResized => ['disk_mib'],
             self::PasswordReset => ['username'],
@@ -67,6 +67,15 @@ enum GuestScriptEvent: string
     public function isCritical(): bool
     {
         return $this === self::PasswordReset;
+    }
+
+    /**
+     * How long one run may take before the agent's exec gives up on it. The
+     * task waits for the script, so longer work belongs in the background.
+     */
+    public function timeoutSeconds(): int
+    {
+        return $this->isCritical() ? 60 : 300;
     }
 
     /** Whether an administrator may run it once on a server to try it. */

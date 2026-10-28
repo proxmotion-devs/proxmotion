@@ -15,6 +15,12 @@ use App\Enums\OsFamily;
 final class Distributions
 {
     /**
+     * FreeBSD's os-release ID. Its templates have the Linux platform (root,
+     * sh scripts) and default guest scripts of their own (docs/adr/0048).
+     */
+    public const string FREEBSD = 'freebsd';
+
+    /**
      * By os-release ID.
      *
      * @var array<string, array{name: string, family: OsFamily}>
@@ -34,6 +40,7 @@ final class Distributions
         'opensuse-leap' => ['name' => 'openSUSE Leap', 'family' => OsFamily::Suse],
         'opensuse-tumbleweed' => ['name' => 'openSUSE Tumbleweed', 'family' => OsFamily::Suse],
         'arch' => ['name' => 'Arch Linux', 'family' => OsFamily::Arch],
+        self::FREEBSD => ['name' => 'FreeBSD', 'family' => OsFamily::Other],
         'windows' => ['name' => 'Windows', 'family' => OsFamily::Windows],
     ];
 

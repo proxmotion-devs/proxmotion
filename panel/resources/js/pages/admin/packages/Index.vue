@@ -11,6 +11,7 @@ import NativeSelect from '@/components/admin/NativeSelect.vue';
 import StatusBadge from '@/components/admin/StatusBadge.vue';
 import Heading from '@/components/Heading.vue';
 import LimitFields from '@/components/servers/LimitFields.vue';
+import ReinstallLimitFields from '@/components/servers/ReinstallLimitFields.vue';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
@@ -28,10 +29,13 @@ defineOptions({
 });
 
 type Choice = { id: number; name: string; location: string };
+type TemplateChoice = { id: number; name: string; active: boolean };
 
 const props = defineProps<{
     packages: Package[];
     placementGroups: Choice[];
+    /** Inactive templates are listed too: a package may name one to try it (docs/adr/0040). */
+    osTemplates: TemplateChoice[];
     /** docs/adr/0035 §3 */
     firewallRulesets: Option[];
 }>();
@@ -57,7 +61,7 @@ const byLocation = (choices: Choice[]) => {
 
 const groupsByLocation = computed(() => byLocation(props.placementGroups));
 
-const names = (choices: Choice[], ids: number[]) =>
+const names = (choices: { id: number; name: string }[], ids: number[]) =>
     choices
         .filter((choice) => ids.includes(choice.id))
         .map((choice) => choice.name)
@@ -74,6 +78,10 @@ const toggleGroup = (id: number, value: boolean | 'indeterminate') => {
     form.placement_group_ids = toggled(form.placement_group_ids, id, value);
 };
 
+const toggleTemplate = (id: number, value: boolean | 'indeterminate') => {
+    form.os_template_ids = toggled(form.os_template_ids, id, value);
+};
+
 const dialogOpen = ref(false);
 const editing = ref<Package | null>(null);
 
@@ -88,6 +96,8 @@ const form = useForm({
     cpu_units: '' as OptionalNumber,
     disk_mb_s: '' as OptionalNumber,
     disk_iops: '' as OptionalNumber,
+    reinstall_limit: '' as OptionalNumber,
+    reinstall_period_days: 30 as OptionalNumber,
     ipv4_count: 1,
     ipv6_count: 1,
     snapshot_slots: 1,
@@ -96,6 +106,7 @@ const form = useForm({
     is_active: true,
     sort_order: 0,
     placement_group_ids: [] as number[],
+    os_template_ids: [] as number[],
     firewall_ruleset: '' as string | null,
 });
 
@@ -118,6 +129,8 @@ const openForm = (pkg: Package | null) => {
                   cpu_units: pkg.cpu_units ?? '',
                   disk_mb_s: pkg.disk_mb_s ?? '',
                   disk_iops: pkg.disk_iops ?? '',
+                  reinstall_limit: pkg.reinstall_limit ?? '',
+                  reinstall_period_days: pkg.reinstall_period_days ?? 30,
                   ipv4_count: pkg.ipv4_count,
                   ipv6_count: pkg.ipv6_count,
                   snapshot_slots: pkg.snapshot_slots,
@@ -126,6 +139,7 @@ const openForm = (pkg: Package | null) => {
                   is_active: pkg.is_active,
                   sort_order: pkg.sort_order,
                   placement_group_ids: [...pkg.placement_group_ids],
+                  os_template_ids: [...pkg.os_template_ids],
                   firewall_ruleset: pkg.firewall_ruleset ?? '',
               }
             : {
@@ -139,6 +153,8 @@ const openForm = (pkg: Package | null) => {
                   cpu_units: '',
                   disk_mb_s: '',
                   disk_iops: '',
+                  reinstall_limit: '',
+                  reinstall_period_days: 30,
                   ipv4_count: 1,
                   ipv6_count: 1,
                   snapshot_slots: 1,
@@ -147,6 +163,7 @@ const openForm = (pkg: Package | null) => {
                   is_active: true,
                   sort_order: 0,
                   placement_group_ids: [],
+                  os_template_ids: [],
                   firewall_ruleset: '',
               },
     );
@@ -177,6 +194,11 @@ const submit = () => {
         cpu_units: optionalNumber(data.cpu_units),
         disk_mb_s: optionalNumber(data.disk_mb_s),
         disk_iops: optionalNumber(data.disk_iops),
+        reinstall_limit: optionalNumber(data.reinstall_limit),
+        reinstall_period_days:
+            data.reinstall_limit === ''
+                ? null
+                : optionalNumber(data.reinstall_period_days),
     })).submit(editing.value ? update(editing.value.uuid) : store(), {
         preserveScroll: true,
         onSuccess: () => (dialogOpen.value = false),
@@ -225,6 +247,13 @@ const modelLabel = (value: string) =>
                 <li>
                     {{
                         $t(
+                            "The reinstall limit is the exception: it applies to the package's servers at once, unless a server has its own.",
+                        )
+                    }}
+                </li>
+                <li>
+                    {{
+                        $t(
                             'Apps are only offered when the package has the resources they need.',
                         )
                     }}
@@ -251,6 +280,9 @@ const modelLabel = (value: string) =>
                         </th>
                         <th class="px-4 py-3 font-medium">
                             {{ $t('Placement groups') }}
+                        </th>
+                        <th class="px-4 py-3 font-medium">
+                            {{ $t('OS templates') }}
                         </th>
                         <th class="px-4 py-3" />
                     </tr>
@@ -313,6 +345,16 @@ const modelLabel = (value: string) =>
                                           pkg.placement_group_ids,
                                       )
                                     : $t('Any node')
+                            }}
+                        </td>
+                        <td
+                            class="px-4 py-3 text-xs"
+                            data-test="package-os-templates"
+                        >
+                            {{
+                                pkg.os_template_ids.length
+                                    ? names(osTemplates, pkg.os_template_ids)
+                                    : $t('Any template')
                             }}
                         </td>
                         <td class="px-4 py-3">
@@ -433,6 +475,11 @@ const modelLabel = (value: string) =>
             v-model:disk-iops="form.disk_iops"
             :errors="form.errors"
         />
+        <ReinstallLimitFields
+            v-model:limit="form.reinstall_limit"
+            v-model:days="form.reinstall_period_days"
+            :errors="form.errors"
+        />
         <FormField
             label="Firewall rule set"
             for="firewall_ruleset"
@@ -521,6 +568,45 @@ const modelLabel = (value: string) =>
                 class="text-sm text-red-600 dark:text-red-500"
             >
                 {{ networkModelErrors }}
+            </p>
+        </div>
+        <div class="grid gap-2" data-test="package-os-templates-field">
+            <Label>{{ $t('OS templates') }}</Label>
+            <p class="text-xs text-muted-foreground">
+                {{
+                    $t(
+                        'Servers of this package may use only the OS templates you tick. Tick none to allow any template.',
+                    )
+                }}
+            </p>
+            <div class="flex flex-wrap gap-x-4 gap-y-1 rounded-lg border p-3">
+                <Label
+                    v-for="template in osTemplates"
+                    :key="template.id"
+                    class="flex items-center gap-2 font-normal"
+                >
+                    <Checkbox
+                        :model-value="
+                            form.os_template_ids.includes(template.id)
+                        "
+                        @update:model-value="
+                            (value) => toggleTemplate(template.id, value)
+                        "
+                    />
+                    {{ template.name }}
+                    <span
+                        v-if="!template.active"
+                        class="text-xs text-muted-foreground"
+                    >
+                        ({{ $t('inactive') }})
+                    </span>
+                </Label>
+            </div>
+            <p
+                v-if="form.errors.os_template_ids"
+                class="text-sm text-red-600 dark:text-red-500"
+            >
+                {{ form.errors.os_template_ids }}
             </p>
         </div>
         <div class="grid gap-2" data-test="package-placement-groups-field">

@@ -102,9 +102,9 @@ The admin panel is for staff. **Every panel user is an administrator**; there ar
 | Page | What it does |
 |---|---|
 | **Dashboard** | Overview of the installation |
-| **Help** | Setup order with what is already done, the OS template guide (Linux / Windows / why not macOS, with every command), questions and answers; links to the full guides when a documentation address is set (*Panel settings*) |
+| **Help** | Setup order with what is already done, the OS template guide (Linux / Windows / FreeBSD / why not macOS, with every command), questions and answers; links to the full guides when a documentation address is set (*Panel settings*) |
 | **Locations** | Create and edit locations |
-| **Clusters** | Connect clusters and standalone nodes, test the connection, check permissions, sync now; edit node and storage settings |
+| **Clusters** | Connect clusters and standalone nodes, test the connection, check permissions, sync now; edit node and storage settings; storage and disk health (ADR 0047) |
 | **Placement groups** | Named node sets per location |
 | **IP pools** | Pools, addresses (generate, bulk edit, reserve, per-IP MAC, notes), rDNS export |
 | **DNS providers** | rDNS drivers (`none`, `powerdns`) with a connection test |
@@ -113,9 +113,10 @@ The admin panel is for staff. **Every panel user is an administrator**; there ar
 | **Apps** | App Marketplace catalog and the recipe editor |
 | **Servers** | List, create wizard, adopt existing VMs, server page with every operation |
 | **Drifts** | Differences between the panel and Proxmox |
+| **Reports** | Capacity (nodes, storages, IP pools after over-commit), traffic and usage of a monthly period (per server, location, package, billing system; usage violations), server inventory (by status, location, package, OS template, billing system; created and deleted per month), operations (tasks and app installations of the last 7–365 days with failure rates and median durations, failed tasks); every table as CSV (ADR 0046) |
 | **Billing systems** | Billing systems, API tokens, webhook endpoints and delivery log |
 | **Users** | Administrators |
-| **Panel settings** | Panel-wide settings: cross-cluster moves, deadlines, lowest VMID, DNS check name, protected networks, drift grace period, console limits, documentation address (ADR 0038); shows the `.env`-only security settings read-only |
+| **Panel settings** | Panel-wide settings: cross-cluster moves, deadlines, lowest VMID, DNS check name, protected networks, drift grace period, storage health thresholds, console limits, documentation address, format of generated root passwords (ADR 0038); shows the `.env`-only security settings read-only |
 
 Pages that need explaining start with a **guide box**: a short how-to that administrators can hide (remembered per browser) with a link into *Help*.
 
@@ -148,6 +149,7 @@ On save the panel **tests the connection** and **detects automatically** whether
 
 - nodes with their online state and capacity,
 - storages (type, shared flag, content types, size),
+- storage health: ZFS pool states, LVM thin pool metadata, the Ceph cluster Proxmox manages, and each node's physical disks with their SMART result and SSD wear ([ADR 0047](../adr/0047-storage-health.md)),
 - network bridges,
 - QEMU templates (offered when adding OS templates, with a name guess for distribution and version),
 - running VMs (used for adoption and drift reports).
@@ -167,6 +169,10 @@ Per node, administrators set:
 
 - **Use for servers**: whether automatic placement may put disks on it.
 - **Shared vs. local**: on local storage (LVM-thin, ZFS, dir) the template must exist on the target node; on shared storage (Ceph RBD, NFS, iSCSI) any node of the cluster can use it.
+
+### 4.5 Storage health
+
+Each sync judges every storage and disk as healthy, warning or critical ([ADR 0047](../adr/0047-storage-health.md)): space used and LVM thin pool metadata used against the thresholds on *Panel settings → General* (85 % and 95 % by default), the state of a ZFS pool (`DEGRADED` is a warning, `FAULTED` and the like critical), the health of the Ceph cluster Proxmox manages, a failed SMART check, SSD wear, and disks Proxmox stopped reporting. The cluster page shows the result per storage and per disk with what is wrong, plus Ceph's own checks; the cluster list and the dashboard point at clusters that need attention. Administrators get an email (event *A storage or disk is in worse health*) when something gets worse. A disk that disappeared stays listed until an administrator deletes it.
 
 ---
 
@@ -301,6 +307,7 @@ Requirements of every template: **cloud-init** and the **QEMU guest agent** inst
 - [OS templates](../guides/os-templates.md) — from cloud images, with `deploy/proxmox/prepare-images.sh` (build images off-node, natively or in Docker) and `build-templates.sh` (create templates on the node with `qm`/`pvesh`).
 - [ISO templates](../guides/iso-templates.md) — building a Linux template by hand from an ISO.
 - [Windows templates](../guides/windows-templates.md).
+- [FreeBSD templates](../guides/freebsd-templates.md) — FreeBSD 14 and 15 with UFS; the panel runs FreeBSD versions of its default scripts on them ([ADR 0048](../adr/0048-freebsd-templates.md)); apps are not offered.
 
 Operating systems are the administrators' own list ([ADR 0026](../adr/0026-operating-systems-of-administrators.md)): in the *Operating systems* section of the page they add a system (a name such as "Ubuntu", and Linux or Windows) and its versions (26.04, 24.04, …). The list starts empty. Each template is of one of those versions, picked from a single list; its system, version and platform (which picks the guest scripts) come from it.
 
@@ -326,12 +333,16 @@ After certain events, the panel runs a script inside the server through the gues
 | `password_reset` | Changes the root (Windows: `Administrator`) password; failing fails the reset |
 | `hostname_changed` | Renames the host, keeps `/etc/hosts` across reboots (Windows: rename at next restart) |
 
-Defaults ship for Linux (`resources/guest/linux`) and Windows (`resources/guest/windows`). Under *OS templates → Scripts* administrators can:
+Defaults ship for Linux (`resources/guest/linux`), Windows (`resources/guest/windows`) and FreeBSD (`resources/guest/freebsd`, for templates whose operating system has the slug `freebsd`, ADR 0048). Under *OS templates → Scripts* administrators can:
 
 - write an **override** per template and event (audited),
 - keep it as a **draft** and **try it** on a server (optionally with an `sh -x` trace),
 - **publish** or discard the draft,
 - read the **log of every run** (source default / published / draft, exit code, inputs, encrypted stdout/stderr; nothing for password scripts), kept for 90 days.
+
+The page opens with a timeline of when each script runs during a create or reinstall and on later changes, and shows each script's inputs and time limit (5 minutes; 1 for the password script).
+
+**Custom scripts** ([ADR 0043](../adr/0043-custom-guest-scripts.md)): besides the five fixed scripts, administrators add their own scripts to a template, as many as they need. Each has a name and its triggers: **run by hand** (then it is offered under *Run script* on the server page of the template's servers) and/or **after** any of the five events, where it runs after the fixed script (also when the event has none), in the order of the list. Drafts, trials and run logs work as above; a failing custom script only leaves a note on the operation, while a run by hand fails its task. Custom scripts get `server`, `hostname`, `mac`, `trigger` (the event, `manual` or `trial`), `addresses` and the event's inputs, never a password. Billing systems can neither see nor run them.
 
 Only these scripts and recipe scripts ever run inside a VPS. Free-form commands from customers or the API are never executed.
 
@@ -351,7 +362,9 @@ A **package** (plan) defines:
 - number of IPv4 and IPv6 addresses,
 - backup quota,
 - allowed **network models**,
-- optional **placement groups**.
+- optional **placement groups**,
+- optional **OS templates** ([ADR 0040](../adr/0040-package-os-templates.md)): the templates its servers may be created or reinstalled with; none means any. A server keeps its template when its package changes; the new package applies on the next create or reinstall,
+- optional **reinstall limit** ([ADR 0045](../adr/0045-reinstall-limits.md)): how often the billing system may reinstall a server within the last N days (0: never; empty: unlimited). Unlike resources it is not copied: editing the package changes it for all its servers at once, unless a server has its own limit (*Reinstall limit* on the server page, which also resets the count). Only reinstalls through the billing API count, failed ones do not, and administrators are never limited. Over the limit the API answers `409` with `error: reinstall_limit_reached` and `available_at`; `GET /servers/{id}` returns `reinstalls`, and the WHMCS client area shows how many are left.
 
 Units are consistent everywhere: disk and memory in **MiB**, traffic in **bytes**, port speed in **Mbps**.
 
@@ -440,7 +453,7 @@ Destructive operations (terminate, reinstall, node/cluster removal) ask for extr
 
 Moves to other clusters need *Allow moves to other clusters and locations* on *Panel settings*, an *incoming move token* on the target cluster (*Servers from other clusters* on the cluster page: a separate token with `Sys.Incoming`, used for nothing else) and the hostname typed to confirm. Proxmox deletes the old VM once its copy succeeded. Servers with addresses of a routed pool need a tick that the provider routes them to the new node. If a step after the copy fails, *Finish the move* runs the rest again. The server keeps its history of moves; billing systems get `server.moved`. Tested with a faked Proxmox only.
 
-**Live usage** ([ADR 0036](../adr/0036-live-server-stats.md)): the *Overview* tab of an active or suspended server starts with cards for CPU, memory, network (in and out, against the port speed) and disk I/O, each with the last hour as a small line chart, plus the uptime. With Reverb running, `servers:stats` pushes new figures every 10 seconds to every open page of that server; without it the page asks every 10 seconds. Only servers whose page is open are asked for. Admin panel only; not tested against a real Proxmox or Reverb yet.
+**Live usage** ([ADR 0036](../adr/0036-live-server-stats.md)): the *Overview* tab of an active or suspended server starts with cards for CPU, memory, network (in and out, against the port speed) and disk I/O, each with the last hour as a small line chart, plus the uptime. With Reverb running, `servers:stats` pushes new figures every 10 seconds to every open page of that server; without it the page asks every 10 seconds. Only servers whose page is open are asked for. Under them, a *Disk space* card shows how full a running server's file systems are (the root one first, with a bar per file system), read from its guest agent at most once a minute, since Proxmox reports no disk usage for VMs. Admin panel only; not tested against a real Proxmox or Reverb yet.
 
 **Traffic quotas and usage limits** ([ADR 0039](../adr/0039-usage-limits.md)): `usage:collect` reads `/cluster/resources` of every cluster every 5 minutes and adds each server's traffic since the previous run to its month (from the *traffic reset day* of *Panel settings* on; counted in + out, out or in). A server over its quota gets a violation and, when *When a server is over its quota* is *Suspend the server*, is suspended with the reason; the panel unsuspends it again when the next month starts or its quota is raised, and an administrator or billing system that unsuspends it earlier lets it run for the rest of the month. Optional **usage limits** (CPU and memory in per cent, disk I/O in MB/s, network in Mbps) apply to the average over a time window (15–1440 minutes): over one, the server is only recorded, stopped (the customer may start it again) or suspended (until someone unsuspends it). The server page shows the month's traffic against the quota, the latest violations and why the panel suspended it, with *Exempt from usage limits* (recorded, never acted on); the dashboard lists servers over their limits. Billing systems get `server.usage_exceeded`, the usual `server.suspended` / `server.unsuspended`, and the month's traffic and `suspension_cause` on every server; a billing system that suspends a server the panel suspended takes the suspension over. Everything is off until set on *Panel settings*. Tested with a faked Proxmox only.
 
@@ -544,7 +557,7 @@ Uninstalls, upgrades and actions run as **runs** with their own status; the API 
 
 ### 11.6 Recipe format
 
-Each app is a directory under `panel/recipes/<slug>/` with `recipe.yaml`, `install.sh`, optional `uninstall.sh`, `upgrade.sh`, `actions/*.sh` and a `README.md`. **Format 2** declares:
+Each app is a directory `<slug>/` in the recipes repository [`proxmotion-recipes`](https://github.com/proxmotion-devs/proxmotion-recipes) with
 
 - identity, category, localized description, maintainers, homepage,
 - `requires`: platform, OS families and distributions, `min_versions` / `max_versions` per distribution,
@@ -555,7 +568,7 @@ Each app is a directory under `panel/recipes/<slug>/` with `recipe.yaml`, `insta
 - `lifecycle` (install / uninstall / upgrade scripts with timeouts, `upgrade.from` range),
 - `actions` with their own inputs and outputs.
 
-Scripts start with `set -euo pipefail`, are idempotent, use the `_lib/proxmotion.sh` helpers for inputs, status and outputs, and pass shellcheck. `php artisan apps:make <slug>` creates a skeleton; `apps:validate` checks every recipe against the JSON Schema.
+Scripts start with `set -euo pipefail`, are idempotent, use the `_lib/proxmotion.sh` helpers for inputs, status and outputs, and pass shellcheck. `php artisan apps:make <slug> --path=<sources>` creates a skeleton; `apps:pack --path=<sources> --out=<repo>` checks recipes against the JSON Schema and packs each into `<repo>/<slug>/<slug>.proxapp`, and `apps:validate --path=<repo>` checks the packages of a recipes repository, which holds nothing else.
 
 **Versions are immutable.** Every version is stored and installations keep theirs; a changed bundled recipe needs a higher `version` (`apps:check-versions` enforces this in CI).
 
@@ -598,7 +611,7 @@ Every change is audited with a version diff. A custom recipe can never override 
 
 | Area | Endpoints |
 |---|---|
-| **Catalog** | `GET /packages`, `/locations`, `/os-templates`, `GET /apps?os_template=&package=&server=&mode=` |
+| **Catalog** | `GET /packages`, `/locations`, `/os-templates` (`?package=` or `?server=` for the templates a package or server may use, ADR 0040), `GET /apps?os_template=&package=&server=&mode=` |
 | **Servers** | `POST /servers`, `GET /servers?external_id=&external_client_id=&status=`, `GET /servers/{id}`, `DELETE /servers/{id}` |
 | **Lifecycle** | `POST /servers/{id}/suspend`, `/unsuspend`, `/power`, `/reinstall`, `/package` |
 | **Identity & network** | `POST /servers/{id}/hostname`, `/primary-address`, `/rdns` |
@@ -695,7 +708,7 @@ The panel manages customer infrastructure and is internet-facing. Key properties
 - **Console**: browsers never reach Proxmox; single-use tickets, signed single-use customer links (≤ 60 s).
 - **Anti-spoofing** (`ipfilter`, `macfilter`) on every VPS, and **isolation**: servers of one pool cannot reach each other, and no server can open connections to the Proxmox nodes or other protected networks.
 - **Strict input validation** for hostnames, rDNS names, SSH keys, cloud-init data and app inputs; nothing raw goes into Proxmox parameters or a shell.
-- **Only reviewed scripts run in guests**: recipe scripts, default guest scripts and audited overrides. Never free-form commands.
+- **Only reviewed scripts run in guests**: recipe scripts, default guest scripts, and audited overrides and custom scripts of OS templates. Never free-form commands.
 - **Mandatory 2FA** for administrators; audit log for every sensitive action; extra confirmation for destructive operations.
 - **No SSH to hypervisors**; least-privilege, pool-limited Proxmox tokens with an excess-privilege warning.
 - Vulnerabilities are reported per [`SECURITY.md`](../../SECURITY.md), never in public issues.
@@ -720,9 +733,10 @@ All features are covered by automated tests with faked HTTP (an in-memory Proxmo
 |---|---|
 | `php artisan infra:sync` | Sync clusters (scheduled every 5 minutes) |
 | `php artisan apps:poll` | Follow running app installs, uninstalls, upgrades and actions; copy logs (every minute) |
-| `php artisan apps:sync` | Store bundled recipes in the database as new versions (after an update) |
-| `php artisan apps:validate` | Validate every recipe against the JSON Schema |
-| `php artisan apps:check-versions` | Require a higher version for changed bundled recipes (CI) |
+| *Apps → Install package* | Install an app from its `.proxapp` package (`proxmotion-recipes/packages`); an update shows its changes first (ADR 0042) |
+| `php artisan apps:validate --path=<repo>` | Validate the `<slug>/<slug>.proxapp` packages of a recipes repository |
+| `php artisan apps:check-versions --base-path=<repo> --path=<repo>` | Require a higher version for changed packages (CI of `proxmotion-recipes`) |
+| `php artisan apps:pack --path=<sources> --out=<repo>` | Validate recipe sources and pack them into a recipes repository (ADR 0042) |
 | `php artisan apps:make <slug>` | Create a format 2 recipe skeleton |
 | `php artisan servers:stats` | Send live figures of the servers whose page is open (every 10 seconds; only with `BROADCAST_CONNECTION=reverb`) |
 | `php artisan reverb:start` | WebSocket server for live figures |
@@ -744,6 +758,7 @@ The **scheduler** and a **queue worker** must run; `composer dev` starts both lo
 | Report stopped servers after | `PROXMOTION_DRIFT_STOPPED_GRACE_MINUTES` | How long a VM may be unexpectedly stopped before it is reported as drift (default 60) |
 | Console session limits | `CONSOLE_MAX_MINUTES`, `CONSOLE_IDLE_MINUTES` | Default 60 and 15 minutes |
 | Documentation address | `PROXMOTION_DOCS_URL` | Base URL of the published guides; *Help* links to them when set |
+| Generated root passwords | `PROXMOTION_PASSWORD_LENGTH`, `PROXMOTION_PASSWORD_CHARACTERS`, `PROXMOTION_PASSWORD_PREFIX`, `PROXMOTION_PASSWORD_SUFFIX` | Format of the root passwords the panel makes up for new servers, reinstalls and resets: a random part of 20 mixed characters by default, with an optional prefix and suffix; at least three kinds of characters, as Windows requires |
 
 **Only in `.env`** (they protect the panel or depend on the installation):
 

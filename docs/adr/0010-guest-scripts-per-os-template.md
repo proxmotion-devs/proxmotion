@@ -20,7 +20,7 @@ Providers build their own templates (`deploy/proxmox`, `docs/guides/iso-template
 
    | Event | When | Default | On failure |
    |---|---|---|---|
-   | `provisioned` | After creation and after a reinstall, once the agent answers | none | note on the task step |
+   | `provisioned` | After creation and after a reinstall, once the agent answers (after `addresses_changed`, before the checks from inside and before the server becomes active) | none | note on the task step |
    | `addresses_changed` | After creation and reinstall, and after a resource change, when the server has additional addresses (or the change released some) | `resources/guest/{linux,windows}/addresses.*` (replaces the ADR 0009 script) | note |
    | `disk_resized` | Right after a resource change grew the disk, if the agent answers | `resources/guest/{linux,windows}/disk.*` | note |
    | `password_reset` | Instead of the agent's `set-user-password` | none: `set-user-password` for `root` (Linux) or `Administrator` (Windows) | **the task fails** and no new password is stored or shown |
@@ -38,6 +38,12 @@ Providers build their own templates (`deploy/proxmox`, `docs/guides/iso-template
    - its inputs, next to the script's configuration: `/etc/proxmotion/<name>.json` and a line-based `/etc/proxmotion/<name>.vars` (`key=value`, list values repeat the key) for shell scripts without `jq`; on Windows only `C:\ProgramData\Proxmotion\<name>.json`.
 
    Then it runs `sh <script>` or `powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File <script>` with `exec`. Inputs come only from the panel's database (server uuid, hostname, MAC of `net0`, addresses, disk size, user name), are validated there and are **never interpolated into the script**. The password of `password_reset` is never written to a file: it is passed on standard input (`input-data`).
+
+   `provisioned` also gets `reason`: `create` (also a rebuild from scratch), `reinstall`, or `trial` for an administrator's trial run, so one script can skip work that must happen once per server (added 2026-10-27).
+
+   Administrators' own scripts, run by hand or after these events, are in ADR 0043.
+
+   The task waits for the script: a run may take at most 5 minutes (`password_reset`: 1 minute, `GuestScriptEvent::timeoutSeconds()`). Longer work is started in the background (`systemd-run --collect`, a scheduled task on Windows) and the script returns. The *Scripts* page shows this limit and when each script runs during a create or reinstall.
 
 5. Scripts run as root (Linux) or SYSTEM (Windows) inside the customer's server. This is a deliberate exception to "only recipe scripts run inside a VPS" (AGENTS §7.9): the other source is an override written by an administrator, recorded in the audit log. Customers and API tokens can never supply or choose a script.
 

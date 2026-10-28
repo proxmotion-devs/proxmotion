@@ -7,6 +7,7 @@ namespace App\Provisioning\Pipelines;
 use App\Domain\Apps\AppStarter;
 use App\Domain\Firewall\ServerFirewalls;
 use App\Domain\Servers\GuestScripts;
+use App\Domain\Servers\PasswordGenerator;
 use App\Domain\Servers\ServerVerifier;
 use App\Enums\CloneMode;
 use App\Enums\GuestScriptEvent;
@@ -26,6 +27,8 @@ use App\Provisioning\Stages\StageRunner;
 use App\Provisioning\VmLabels;
 use App\Proxmox\Data\BootDisk;
 use App\Proxmox\Data\Upid;
+use App\Proxmox\Exceptions\GuestAgentException;
+use App\Proxmox\Exceptions\ProxmoxException;
 use App\Proxmox\Exceptions\ProxmoxRequestFailed;
 use App\Proxmox\ProxmoxClientFactory;
 use RuntimeException;
@@ -55,6 +58,7 @@ final readonly class CreateServerPipeline implements StagedPipeline
         private StageRunner $stages,
         private ServerVerifier $verifier,
         private ServerFirewall $firewallRules,
+        private PasswordGenerator $passwords,
     ) {}
 
     public function stages(): array
@@ -202,6 +206,7 @@ final readonly class CreateServerPipeline implements StagedPipeline
 
     private function afterInstall(Task $task, Server $server): null
     {
+        $this->setChosenPassword($task, $server);
         $this->guestScripts->afterInstall($task, $server);
 
         return null;
@@ -303,7 +308,7 @@ final readonly class CreateServerPipeline implements StagedPipeline
         ];
 
         if ($server->root_password !== null) {
-            $params['cipassword'] = $server->root_password;
+            $params['cipassword'] = $this->cloudInitPassword($task, $server, $server->root_password);
         }
 
         if ($server->ssh_keys !== null && trim($server->ssh_keys) !== '') {
@@ -321,6 +326,64 @@ final readonly class CreateServerPipeline implements StagedPipeline
         $task->completeStep('configure', VmLabels::applyTags($qemu, $server));
 
         return null;
+    }
+
+    /**
+     * The password Proxmox puts into cloud-init. Linux VMs get it hashed,
+     * which always fits; Windows VMs unhashed in the user data, which
+     * Cloudbase-Init cannot read when the password does not fit YAML
+     * (PasswordGenerator::fitsCloudInit()): it then fails its UserDataPlugin
+     * at every boot. Those get a temporary password, kept as the task's
+     * secret, and setChosenPassword() sets the server's own through the guest
+     * agent once setup has finished.
+     */
+    private function cloudInitPassword(Task $task, Server $server, string $password): string
+    {
+        if ($this->guestScripts->platform($server) !== OsPlatform::Windows || PasswordGenerator::fitsCloudInit($password)) {
+            return $password;
+        }
+
+        if ($task->secret === null) {
+            $task->forceFill(['secret' => $this->passwords->temporary()])->save();
+        }
+
+        return (string) $task->secret;
+    }
+
+    /**
+     * The server's password in place of the temporary one cloudInitPassword()
+     * gave Proxmox, set like a password reset: by the template's password
+     * script, or else by the agent. If that fails, the server keeps the
+     * temporary password, which the billing system may then fetch once.
+     */
+    private function setChosenPassword(Task $task, Server $server): void
+    {
+        $temporary = $task->secret;
+
+        if ($temporary === null || $server->root_password === null) {
+            return;
+        }
+
+        try {
+            if ($this->guestScripts->has($server, GuestScriptEvent::PasswordReset)) {
+                $this->guestScripts->run($task, $server, GuestScriptEvent::PasswordReset, input: $server->root_password."\n");
+            } else {
+                $agent = $this->clients->forCluster($server->cluster)->guestAgent($server->node->name);
+
+                if (! $agent->ping($server->vmid)) {
+                    throw GuestAgentException::notReachable($server->vmid);
+                }
+
+                $agent->setUserPassword($server->vmid, $this->guestScripts->platform($server)->administrator(), $server->root_password);
+            }
+
+            $task->completeStep('set_password', 'The password cannot go into Cloudbase-Init\'s user data: set through the guest agent.');
+        } catch (ProxmoxException $e) {
+            $server->forceFill(['root_password' => $temporary, 'root_password_unrevealed' => true])->save();
+            $task->completeStep('set_password', "Could not set the password through the guest agent ({$e->getMessage()}): the server keeps a generated one, which the billing system can fetch once.");
+        } finally {
+            $task->forceFill(['secret' => null])->save();
+        }
     }
 
     private function growDisk(Task $task, Server $server): ?int
@@ -394,7 +457,10 @@ final readonly class CreateServerPipeline implements StagedPipeline
      * sets the real one. Every other VM is named after the hostname, which
      * cloud-init and Cloudbase-Init set themselves, so this does nothing. Windows
      * applies it at its next restart, done here; the next stage waits for its
-     * agent again. A failing script leaves a note.
+     * agent again. A failing script leaves a note. Custom scripts bound to
+     * hostname changes do not run: the hostname is the one the server was
+     * ordered with (on Windows not even in use before the restart), and those
+     * bound to the post-install script run later (docs/adr/0043).
      */
     private function nameGuest(Task $task, Server $server): null
     {
@@ -404,7 +470,7 @@ final readonly class CreateServerPipeline implements StagedPipeline
             return null;
         }
 
-        if (! $this->guestScripts->run($task, $server, GuestScriptEvent::HostnameChanged)
+        if (! $this->guestScripts->run($task, $server, GuestScriptEvent::HostnameChanged, custom: false)
             || $this->guestScripts->platform($server) !== OsPlatform::Windows) {
             return null;
         }

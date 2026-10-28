@@ -2,7 +2,7 @@
 
 namespace Tests\Feature\Servers;
 
-use App\Domain\Apps\RecipeSynchronizer;
+use App\Domain\Settings\PanelSettings;
 use App\Enums\AppInstallationStatus;
 use App\Enums\AppInstallMode;
 use App\Enums\CloneMode;
@@ -78,6 +78,16 @@ class ReinstallTest extends TestCase
                 'confirm_hostname' => $this->server->hostname,
                 ...$overrides,
             ]);
+    }
+
+    public function test_a_reinstall_password_follows_the_saved_format()
+    {
+        PanelSettings::save(['password_length' => 16, 'password_characters' => 'lower', 'password_prefix' => null, 'password_suffix' => '.example!']);
+
+        $this->reinstall(['ssh_keys' => PublicKeyTest::ED25519, 'confirm_hostname' => strtoupper($this->server->hostname)])
+            ->assertSessionHasNoErrors();
+
+        $this->assertMatchesRegularExpression('/^[a-z0-9]{16}\.example!$/', (string) $this->server->refresh()->root_password);
     }
 
     public function test_admins_can_reinstall_with_another_os_and_new_keys()
@@ -249,7 +259,7 @@ class ReinstallTest extends TestCase
 
     public function test_an_app_can_come_with_the_new_system()
     {
-        app(RecipeSynchronizer::class)->sync();
+        $this->syncRecipes();
         $this->offerApps();
 
         $this->actingAs($this->admin)
@@ -267,7 +277,7 @@ class ReinstallTest extends TestCase
 
     public function test_an_app_that_does_not_fit_refuses_the_reinstall()
     {
-        app(RecipeSynchronizer::class)->sync();
+        $this->syncRecipes();
         $this->offerApps();
         AppRecipe::query()->where('slug', 'docker')->update(['is_active' => false]);
 

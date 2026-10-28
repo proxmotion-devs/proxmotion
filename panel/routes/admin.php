@@ -1,13 +1,17 @@
 <?php
 
+use App\Domain\Reports\Reports;
+use App\Domain\Settings\PanelSettings;
 use App\Http\Controllers\Admin\AdoptionController;
 use App\Http\Controllers\Admin\ApiTokenController;
 use App\Http\Controllers\Admin\AppController;
 use App\Http\Controllers\Admin\AppEntitlementController;
 use App\Http\Controllers\Admin\AppLogController;
+use App\Http\Controllers\Admin\AppPackageController;
 use App\Http\Controllers\Admin\AppRecipeController;
 use App\Http\Controllers\Admin\BillingSystemController;
 use App\Http\Controllers\Admin\ClusterController;
+use App\Http\Controllers\Admin\CustomScriptController;
 use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Admin\DnsProviderController;
 use App\Http\Controllers\Admin\DriftController;
@@ -19,14 +23,17 @@ use App\Http\Controllers\Admin\IpPoolController;
 use App\Http\Controllers\Admin\IpPoolRdnsController;
 use App\Http\Controllers\Admin\LocationController;
 use App\Http\Controllers\Admin\NodeController;
+use App\Http\Controllers\Admin\NodeDiskController;
 use App\Http\Controllers\Admin\OperatingSystemController;
 use App\Http\Controllers\Admin\OsTemplateController;
 use App\Http\Controllers\Admin\PackageController;
 use App\Http\Controllers\Admin\PanelSettingsController;
 use App\Http\Controllers\Admin\PlacementGroupController;
+use App\Http\Controllers\Admin\ReportController;
 use App\Http\Controllers\Admin\ServerController;
 use App\Http\Controllers\Admin\ServerFirewallController;
 use App\Http\Controllers\Admin\ServerMoveController;
+use App\Http\Controllers\Admin\ServerReinstallLimitController;
 use App\Http\Controllers\Admin\ServerStatsController;
 use App\Http\Controllers\Admin\StorageController;
 use App\Http\Controllers\Admin\TaskController;
@@ -43,8 +50,21 @@ use Illuminate\Support\Facades\Route;
 
 Route::get('/', DashboardController::class)->name('dashboard');
 Route::get('help', HelpController::class)->name('help');
-Route::get('settings', [PanelSettingsController::class, 'edit'])->name('settings.edit');
-Route::put('settings', [PanelSettingsController::class, 'update'])->name('settings.update');
+Route::get('settings', [PanelSettingsController::class, 'index'])->name('settings.index');
+Route::post('settings/notifications/test', [PanelSettingsController::class, 'test'])->name('settings.test-email')
+    ->middleware('throttle:3,1');
+Route::get('settings/{category}', [PanelSettingsController::class, 'edit'])->name('settings.edit')
+    ->whereIn('category', array_keys(PanelSettings::CATEGORIES));
+Route::put('settings/{category}', [PanelSettingsController::class, 'update'])->name('settings.update')
+    ->whereIn('category', array_keys(array_filter(PanelSettings::CATEGORIES)));
+
+// Reports (docs/adr/0046): each table also as CSV.
+Route::get('reports', [ReportController::class, 'index'])->name('reports.index');
+Route::get('reports/{report}', [ReportController::class, 'show'])->name('reports.show')
+    ->whereIn('report', array_keys(Reports::PAGES));
+Route::get('reports/{report}/{table}.csv', [ReportController::class, 'csv'])->name('reports.csv')
+    ->whereIn('report', array_keys(Reports::PAGES))
+    ->where('table', '[a-z_]+');
 
 Route::get('drifts', [DriftController::class, 'index'])->name('drifts.index');
 Route::post('drifts/{drift}/accept', [DriftController::class, 'accept'])->name('drifts.accept');
@@ -62,6 +82,7 @@ Route::put('clusters/{cluster}/incoming', [ClusterController::class, 'updateInco
 Route::post('clusters/{cluster}/incoming/permissions', [ClusterController::class, 'checkIncomingPermissions'])->name('clusters.incoming.permissions');
 Route::patch('nodes/{node}', [NodeController::class, 'update'])->name('nodes.update');
 Route::patch('storages/{storage}', [StorageController::class, 'update'])->name('storages.update');
+Route::delete('node-disks/{disk}', [NodeDiskController::class, 'destroy'])->name('node-disks.destroy');
 
 Route::resource('ip-pools', IpPoolController::class)->only(['index', 'store', 'show', 'update', 'destroy'])
     ->parameters(['ip-pools' => 'ipPool']);
@@ -93,6 +114,17 @@ Route::post('os-templates/{osTemplate}/scripts/{event}/publish', [GuestScriptCon
 Route::delete('os-templates/{osTemplate}/scripts/{event}/draft', [GuestScriptController::class, 'discard'])->name('os-templates.scripts.discard');
 Route::post('os-templates/{osTemplate}/scripts/{event}/run', [GuestScriptController::class, 'run'])->middleware('throttle:10,1')->name('os-templates.scripts.run');
 Route::get('guest-script-logs/{guestScriptLog}', [GuestScriptController::class, 'log'])->name('guest-script-logs.show');
+// Administrators' own scripts, run by hand or at events (docs/adr/0043).
+Route::scopeBindings()->group(function () {
+    Route::post('os-templates/{osTemplate}/custom-scripts', [CustomScriptController::class, 'store'])->name('os-templates.custom-scripts.store');
+    Route::patch('os-templates/{osTemplate}/custom-scripts/{customScript}', [CustomScriptController::class, 'update'])->name('os-templates.custom-scripts.update');
+    Route::delete('os-templates/{osTemplate}/custom-scripts/{customScript}', [CustomScriptController::class, 'destroy'])->name('os-templates.custom-scripts.destroy');
+    Route::put('os-templates/{osTemplate}/custom-scripts/{customScript}/draft', [CustomScriptController::class, 'saveDraft'])->name('os-templates.custom-scripts.draft');
+    Route::delete('os-templates/{osTemplate}/custom-scripts/{customScript}/draft', [CustomScriptController::class, 'discard'])->name('os-templates.custom-scripts.discard');
+    Route::post('os-templates/{osTemplate}/custom-scripts/{customScript}/publish', [CustomScriptController::class, 'publish'])->name('os-templates.custom-scripts.publish');
+    Route::post('os-templates/{osTemplate}/custom-scripts/{customScript}/move', [CustomScriptController::class, 'move'])->name('os-templates.custom-scripts.move');
+    Route::post('os-templates/{osTemplate}/custom-scripts/{customScript}/run', [CustomScriptController::class, 'run'])->middleware('throttle:10,1')->name('os-templates.custom-scripts.run');
+});
 
 Route::resource('packages', PackageController::class)->only(['index', 'store', 'update', 'destroy']);
 Route::resource('placement-groups', PlacementGroupController::class)->only(['index', 'store', 'update', 'destroy'])
@@ -102,6 +134,11 @@ Route::resource('firewall-rulesets', FirewallRulesetController::class)->only(['i
     ->parameters(['firewall-rulesets' => 'firewallRuleset']);
 
 Route::get('apps', [AppController::class, 'index'])->name('apps.index');
+// App packages (docs/adr/0042): upload a .proxapp, look at what it changes, install it.
+Route::post('apps/packages', [AppPackageController::class, 'store'])->middleware('throttle:20,1')->name('apps.packages.store');
+Route::get('apps/packages/{package}', [AppPackageController::class, 'show'])->whereUuid('package')->name('apps.packages.show');
+Route::post('apps/packages/{package}', [AppPackageController::class, 'install'])->whereUuid('package')->middleware('throttle:20,1')->name('apps.packages.install');
+Route::delete('apps/{appRecipe}/package', [AppPackageController::class, 'remove'])->middleware('throttle:20,1')->name('apps.packages.remove');
 Route::patch('apps/{appRecipe}', [AppController::class, 'update'])->name('apps.update');
 Route::put('apps/{appRecipe}/systems', [AppController::class, 'systems'])->name('apps.systems');
 // Recipe editor (docs/adr/0018).
@@ -152,10 +189,13 @@ Route::get('servers/{server}/stats', ServerStatsController::class)->middleware('
 Route::post('servers/{server}/retry', [ServerController::class, 'retry'])->name('servers.retry');
 Route::post('servers/{server}/rebuild', [ServerController::class, 'rebuild'])->middleware('throttle:10,1')->name('servers.rebuild');
 Route::post('servers/{server}/verify', [ServerController::class, 'verify'])->middleware('throttle:10,1')->name('servers.verify');
+// A manual custom script of the server's OS template (docs/adr/0043).
+Route::post('servers/{server}/scripts/{customScript}/run', [CustomScriptController::class, 'runOnServer'])->middleware('throttle:10,1')->name('servers.scripts.run');
 Route::put('servers/{server}/firewall', [ServerFirewallController::class, 'update'])->middleware('throttle:20,1')->name('servers.firewall');
 Route::post('servers/{server}/firewall/ruleset', [ServerFirewallController::class, 'ruleset'])->middleware('throttle:20,1')->name('servers.firewall.ruleset');
 Route::post('servers/{server}/anti-spoofing', [ServerController::class, 'enableAntiSpoofing'])->middleware('throttle:10,1')->name('servers.enable-anti-spoofing');
 Route::post('tasks/{task}/fail', [TaskController::class, 'fail'])->name('tasks.fail');
+Route::post('tasks/{task}/cancel', [TaskController::class, 'cancel'])->name('tasks.cancel');
 Route::post('servers/{server}/password', [ServerController::class, 'revealPassword'])->middleware('throttle:20,1')->name('servers.password');
 Route::post('servers/{server}/rdns', RdnsController::class)->middleware('throttle:30,1')->name('servers.rdns');
 Route::post('servers/{server}/reinstall', [ServerController::class, 'reinstall'])->middleware('throttle:10,1')->name('servers.reinstall');
@@ -170,6 +210,8 @@ Route::post('servers/{server}/moves/{move}/finish', [ServerMoveController::class
 Route::put('servers/{server}/test', [AppController::class, 'testServer'])->name('servers.test');
 // Violations of traffic quotas and usage limits are recorded but never acted on (docs/adr/0039).
 Route::put('servers/{server}/usage-exempt', [ServerController::class, 'usageExempt'])->name('servers.usage-exempt');
+Route::put('servers/{server}/reinstall-limit', [ServerReinstallLimitController::class, 'update'])->name('servers.reinstall-limit');
+Route::post('servers/{server}/reinstall-limit/reset', [ServerReinstallLimitController::class, 'reset'])->name('servers.reinstall-limit.reset');
 Route::post('servers/{server}/trial-reset', [AppController::class, 'resetTestServer'])->middleware('throttle:10,1')->name('servers.trial-reset');
 Route::post('servers/{server}/apps', [AppController::class, 'install'])->middleware('throttle:10,1')->name('servers.apps');
 Route::post('servers/{server}/app-entitlements', [AppEntitlementController::class, 'store'])->middleware('throttle:20,1')->name('servers.app-entitlements');

@@ -31,6 +31,8 @@ final class PanelSettings
         'verify_dns_name' => 'provisioning.verify_dns_name',
         'protected_networks' => 'protected_networks',
         'drift_stopped_grace_minutes' => 'drift.stopped_grace_minutes',
+        'storage_warning_percent' => 'storage.warning_percent',
+        'storage_critical_percent' => 'storage.critical_percent',
         'console_max_minutes' => 'console.max_minutes',
         'console_idle_minutes' => 'console.idle_minutes',
         'docs_url' => 'docs_url',
@@ -43,6 +45,47 @@ final class PanelSettings
         'usage_network_mbps' => 'usage.network_mbps',
         'usage_window_minutes' => 'usage.window_minutes',
         'usage_action' => 'usage.action',
+        'password_length' => 'passwords.length',
+        'password_characters' => 'passwords.characters',
+        'password_prefix' => 'passwords.prefix',
+        'password_suffix' => 'passwords.suffix',
+        'notifications_enabled' => 'notifications.enabled',
+        'notification_recipients' => 'notifications.recipients',
+        'notification_throttle_minutes' => 'notifications.throttle_minutes',
+    ];
+
+    /**
+     * The pages of Panel settings, listed under it in the menu, and the
+     * settings each one saves. The last one only shows the .env settings.
+     */
+    public const array CATEGORIES = [
+        'servers' => [
+            'min_vmid',
+            'provisioning_deadline_minutes',
+            'verify_dns_name',
+            'password_length',
+            'password_characters',
+            'password_prefix',
+            'password_suffix',
+            'cross_cluster_moves',
+            'move_deadline_minutes',
+            'move_bwlimit_kib',
+        ],
+        'network' => ['protected_networks'],
+        'usage' => [
+            'traffic_reset_day',
+            'traffic_counted',
+            'traffic_action',
+            'usage_cpu_percent',
+            'usage_memory_percent',
+            'usage_disk_mb_s',
+            'usage_network_mbps',
+            'usage_window_minutes',
+            'usage_action',
+        ],
+        'general' => ['console_max_minutes', 'console_idle_minutes', 'drift_stopped_grace_minutes', 'storage_warning_percent', 'storage_critical_percent', 'docs_url'],
+        'notifications' => ['notifications_enabled', 'notification_recipients', 'notification_throttle_minutes'],
+        'environment' => [],
     ];
 
     private const string CACHE_KEY = 'panel-settings';

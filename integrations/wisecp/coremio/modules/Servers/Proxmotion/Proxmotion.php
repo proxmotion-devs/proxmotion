@@ -542,7 +542,7 @@ class Proxmotion extends ServerModule
                     'slug' => (string) $template['id'],
                     'name' => (string) ($template['name'] ?? $template['id']),
                     'category' => (string) ($template['family'] ?? 'other'),
-                ], $this->api->osTemplates()),
+                ], $this->api->osTemplates((string) $server['id'])),
                 'current_os' => (string) ($server['os_template']['name'] ?? ''),
                 // Proxmotion makes the new root password; it appears on the service afterwards.
                 'password_supported' => false,
@@ -631,7 +631,7 @@ class Proxmotion extends ServerModule
      */
     private function reinstall(string $id, string $osTemplate, ?string $app): array
     {
-        $allowed = array_map(static fn (array $template): string => (string) $template['id'], $this->api->osTemplates());
+        $allowed = array_map(static fn (array $template): string => (string) $template['id'], $this->api->osTemplates($id));
 
         if (! in_array($osTemplate, $allowed, true)) {
             throw new Exception($this->text('unknown_os_template'));
@@ -705,7 +705,7 @@ class Proxmotion extends ServerModule
      */
     private function reinstallOptions(string $id): array
     {
-        $templates = array_map(static fn (array $template): array => ['id' => (string) $template['id'], 'name' => (string) ($template['name'] ?? $template['id'])], $this->api->osTemplates());
+        $templates = array_map(static fn (array $template): array => ['id' => (string) $template['id'], 'name' => (string) ($template['name'] ?? $template['id'])], $this->api->osTemplates($id));
 
         try {
             $listed = $this->api->orderApps(null, $id);

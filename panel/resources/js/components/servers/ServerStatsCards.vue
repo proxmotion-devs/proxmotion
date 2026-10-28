@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { trans } from 'laravel-vue-i18n';
 import { computed, onMounted, onUnmounted, ref } from 'vue';
+import DiskSpaceCard from '@/components/servers/DiskSpaceCard.vue';
 import Sparkline from '@/components/servers/Sparkline.vue';
 import { useServerStats } from '@/composables/useServerStats';
 import {
@@ -19,7 +20,7 @@ const props = defineProps<{
     portSpeedMbps: number | null;
 }>();
 
-const { stats, history, live, loaded, failed } = useServerStats(
+const { stats, disk, history, live, loaded, failed } = useServerStats(
     props.serverUuid,
 );
 
@@ -307,5 +308,11 @@ const portShare = computed(() => {
                 />
             </div>
         </div>
+
+        <DiskSpaceCard
+            v-if="stats && running"
+            :disk="disk"
+            :class="{ 'opacity-60': stale }"
+        />
     </section>
 </template>

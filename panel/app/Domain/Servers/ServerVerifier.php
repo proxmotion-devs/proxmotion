@@ -36,14 +36,17 @@ final readonly class ServerVerifier
     /**
      * Prints hostname=, disk= (bytes of /), one gateway=<address> ok|fail per
      * gateway and dns=ok|fail. Arguments: IPv4 gateway, IPv6 gateway and DNS
-     * name, "-" for none.
+     * name, "-" for none. POSIX df (the size is the fifth field from the
+     * end: the device may contain spaces) and ping, so it also runs on
+     * FreeBSD (docs/adr/0048), whose ping waits -W milliseconds, not seconds.
      */
     public const LINUX_SCRIPT = <<<'SH'
         echo "hostname=$(hostname 2> /dev/null)"
-        echo "disk=$(df -B1 --output=size / 2> /dev/null | tail -n 1 | tr -d ' ')"
+        echo "disk=$(df -P -k / 2> /dev/null | awk 'NR == 2 { printf "%.0f", $(NF - 4) * 1024 }')"
+        case "$(uname -s)" in *BSD) wait=2000 ;; *) wait=2 ;; esac
         for gateway in "$1" "$2"; do
             [ "$gateway" = - ] && continue
-            if ping -c 3 -W 2 "$gateway" > /dev/null 2>&1; then echo "gateway=$gateway ok"; else echo "gateway=$gateway fail"; fi
+            if ping -c 3 -W "$wait" "$gateway" > /dev/null 2>&1; then echo "gateway=$gateway ok"; else echo "gateway=$gateway fail"; fi
         done
         if [ "$3" != - ]; then
             if getent hosts "$3" > /dev/null 2>&1; then echo "dns=ok"; else echo "dns=fail"; fi

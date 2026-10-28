@@ -8,7 +8,12 @@ import {
     vi,
 } from 'vite-plus/test';
 import ServerStatsCards from '@/components/servers/ServerStatsCards.vue';
-import { POLL_MS, WATCH_MS } from '@/composables/useServerStats';
+import {
+    DISK_WAIT_MS,
+    DISK_WAITS,
+    POLL_MS,
+    WATCH_MS,
+} from '@/composables/useServerStats';
 import type { ServerStats } from '@/types/admin';
 
 const socket = vi.hoisted(() => ({
@@ -62,10 +67,17 @@ const sample = (overrides: Partial<ServerStats> = {}): ServerStats => ({
 
 const fetchMock = vi.fn();
 
-const answer = (stats: ServerStats | null, history: unknown[] = []) =>
+const noAgent = { time: 1, available: false, file_systems: [] };
+
+// A running server's disk space is known unless the test says otherwise.
+const answer = (
+    stats: ServerStats | null,
+    history: unknown[] = [],
+    disk: unknown = stats?.status === 'running' ? noAgent : null,
+) =>
     fetchMock.mockResolvedValueOnce({
         ok: true,
-        json: async () => ({ stats, history }),
+        json: async () => ({ stats, disk, history }),
     });
 
 const mountCards = (portSpeedMbps: number | null = 100) =>
@@ -195,6 +207,128 @@ describe('ServerStatsCards', () => {
 
         expect(wrapper.find('[data-test="stats-unavailable"]').exists()).toBe(
             true,
+        );
+    });
+
+    it('shows the disk space of a running server, the root file system first', async () => {
+        fetchMock.mockResolvedValueOnce({
+            ok: true,
+            json: async () => ({
+                stats: sample(),
+                disk: {
+                    time: 1_790_000_000_000,
+                    available: true,
+                    file_systems: [
+                        {
+                            mountpoint: '/',
+                            type: 'ext4',
+                            used_bytes: 9 * 1024 ** 3,
+                            total_bytes: 10 * 1024 ** 3,
+                        },
+                        {
+                            mountpoint: '/boot',
+                            type: 'ext4',
+                            used_bytes: 100 * 1024 ** 2,
+                            total_bytes: 1024 ** 3,
+                        },
+                    ],
+                },
+                history: [],
+            }),
+        });
+        const wrapper = mountCards();
+        await flushPromises();
+
+        const rows = wrapper.findAll('[data-test="disk-space-file-system"]');
+        expect(rows).toHaveLength(2);
+        // Each file system in a card of its own, inside the section's border.
+        expect(rows.every((row) => row.classes('border'))).toBe(true);
+        expect(
+            wrapper.get('[data-test="stats-disk-space"]').classes('border'),
+        ).toBe(true);
+        expect(rows[0].text()).toContain('/');
+        expect(rows[0].text()).toContain('9 GiB');
+        expect(
+            rows[0].get('[role="progressbar"]').attributes('aria-valuenow'),
+        ).toBe('90');
+        expect(rows[0].find('.bg-destructive').exists()).toBe(true);
+        expect(rows[0].get('.text-destructive').text()).toBe('90 %');
+        expect(rows[1].text()).toContain('/boot');
+        expect(rows[1].text()).toContain('10 %');
+        expect(rows[1].find('.bg-primary').exists()).toBe(true);
+        expect(rows[1].find('.text-destructive').exists()).toBe(false);
+    });
+
+    it('says when the guest agent did not answer for the disk space', async () => {
+        answer(sample(), [], noAgent);
+        const wrapper = mountCards();
+        await flushPromises();
+
+        expect(
+            wrapper.find('[data-test="disk-space-unavailable"]').exists(),
+        ).toBe(true);
+    });
+
+    it('asks again soon while the disk space is not known yet', async () => {
+        socket.enabled = true;
+        socket.connected = true;
+        // The panel asks the guest agent only after its first answer.
+        answer(sample(), [], null);
+        const wrapper = mountCards();
+        await flushPromises();
+
+        expect(wrapper.find('[data-test="disk-space-loading"]').exists()).toBe(
+            true,
+        );
+
+        answer(sample());
+        await vi.advanceTimersByTimeAsync(DISK_WAIT_MS);
+
+        expect(fetchMock).toHaveBeenCalledTimes(2);
+        expect(
+            wrapper.find('[data-test="disk-space-unavailable"]').exists(),
+        ).toBe(true);
+
+        // Known now: back to asking only to stay watched.
+        await vi.advanceTimersByTimeAsync(WATCH_MS - 1);
+        expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+
+    it('stops asking quickly when the disk space never comes', async () => {
+        fetchMock.mockResolvedValue({
+            ok: true,
+            json: async () => ({ stats: sample(), disk: null, history: [] }),
+        });
+        mountCards();
+        await flushPromises();
+
+        await vi.advanceTimersByTimeAsync(DISK_WAIT_MS * DISK_WAITS);
+        expect(fetchMock).toHaveBeenCalledTimes(DISK_WAITS + 1);
+
+        await vi.advanceTimersByTimeAsync(POLL_MS - 1);
+        expect(fetchMock).toHaveBeenCalledTimes(DISK_WAITS + 1);
+    });
+
+    it('keeps the disk space when Proxmox gives no figures once', async () => {
+        answer(sample());
+        const wrapper = mountCards();
+        await flushPromises();
+
+        answer(null);
+        await vi.advanceTimersByTimeAsync(POLL_MS);
+
+        expect(
+            wrapper.find('[data-test="disk-space-unavailable"]').exists(),
+        ).toBe(true);
+    });
+
+    it('shows no disk space while the server is not running', async () => {
+        answer(sample({ status: 'stopped' }));
+        const wrapper = mountCards();
+        await flushPromises();
+
+        expect(wrapper.find('[data-test="stats-disk-space"]').exists()).toBe(
+            false,
         );
     });
 

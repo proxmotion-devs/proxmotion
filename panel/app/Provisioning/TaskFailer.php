@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Provisioning;
 
+use App\Domain\Notifications\AdminNotifier;
 use App\Domain\Webhooks\Webhooks;
 use App\Enums\ServerStatus;
 use App\Enums\TaskStatus;
@@ -19,7 +20,10 @@ use Throwable;
  */
 final class TaskFailer
 {
-    public function __construct(private readonly Webhooks $webhooks) {}
+    public function __construct(
+        private readonly Webhooks $webhooks,
+        private readonly AdminNotifier $notifier,
+    ) {}
 
     public function fail(Task $task, string $message): void
     {
@@ -46,6 +50,33 @@ final class TaskFailer
         }
 
         $this->notify($task);
+        $this->notifier->taskFailed($task);
+    }
+
+    /**
+     * Cancel an administrator's run of a script (see canCancel()). The task
+     * ends only if it is still queued or running in the database, so a run
+     * that has just finished, or a job that has just started it, keeps its
+     * outcome. No "task failed" email: an administrator ended it on purpose.
+     *
+     * @return bool whether it was cancelled
+     */
+    public function cancel(Task $task, string $message): bool
+    {
+        $cancelled = Task::query()
+            ->whereKey($task->id)
+            ->where('type', TaskType::GuestScript)
+            ->whereIn('status', [TaskStatus::Queued, TaskStatus::Running])
+            ->update(['status' => TaskStatus::Failed, 'error' => $message, 'finished_at' => now()]);
+
+        if ($cancelled === 0) {
+            return false;
+        }
+
+        $task->refresh();
+        $this->notify($task);
+
+        return true;
     }
 
     /**
@@ -82,5 +113,16 @@ final class TaskFailer
         return $progress === null
             || $progress->lt(now()->subSeconds(RunServerTask::TIMEOUT))
             || ($task->deadline_at !== null && $task->deadline_at->isPast());
+    }
+
+    /**
+     * An administrator may cancel their run of a script (a guest_script task)
+     * while it is queued or running: the task ends at once, and the job
+     * running it stops the script inside the server (GuestScripts).
+     */
+    public function canCancel(Task $task): bool
+    {
+        return $task->type === TaskType::GuestScript
+            && in_array($task->status, [TaskStatus::Queued, TaskStatus::Running], true);
     }
 }

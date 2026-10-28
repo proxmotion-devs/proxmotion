@@ -20,7 +20,6 @@ use App\Provisioning\TaskRunner;
 use App\Support\Ssh\PublicKey;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use SensitiveParameter;
 
@@ -33,6 +32,8 @@ final readonly class ServerReinstaller
     public function __construct(
         private TaskRunner $tasks,
         private AppInstaller $apps,
+        private PasswordGenerator $passwords,
+        private ReinstallLimits $limits,
     ) {}
 
     /**
@@ -45,9 +46,16 @@ final readonly class ServerReinstaller
      */
     public function eligibleTemplates(Server $server): Collection
     {
-        return OsTemplate::query()
+        $query = OsTemplate::query()
             ->when($server->billing_system_id !== null, fn ($query) => $query->where('is_active', true))
-            ->whereHas('proxmoxTemplates', fn ($query) => $query->where('cluster_id', $server->cluster_id))
+            ->whereHas('proxmoxTemplates', fn ($query) => $query->where('cluster_id', $server->cluster_id));
+
+        // The server's package may name the templates it uses; none means any (docs/adr/0040).
+        if ($server->package !== null) {
+            $query->allowedBy($server->package);
+        }
+
+        return $query
             ->orderByDesc('is_active')
             ->orderBy('sort_order')
             ->orderBy('name')
@@ -57,27 +65,38 @@ final readonly class ServerReinstaller
     /**
      * Record the new system (OS, a fresh root password, the given SSH
      * keys, optionally an app installed once it has booted) and queue the
-     * reinstall. Nothing changes if another task runs.
+     * reinstall. Nothing changes if another task runs, or when a billing
+     * system has used up the server's reinstalls (docs/adr/0045).
      *
      * @param  list<PublicKey>  $sshKeys
      * @param  array<array-key, mixed>  $appInputs  the app's inputs, not validated yet
      *
      * @throws ProvisioningException when another task is still running for the server
+     * @throws ReinstallLimitReached when an API token asks beyond the server's reinstall limit
      * @throws AppNotEligible when the app does not fit the new system
      * @throws ValidationException for invalid app inputs
      */
     public function request(Server $server, OsTemplate $osTemplate, array $sshKeys, User|ApiToken $actor, ?string $ipAddress, ?AppRecipe $app = null, #[SensitiveParameter] array $appInputs = []): Task
     {
+        // Administrators are never limited (docs/adr/0045 §4).
+        if ($actor instanceof ApiToken) {
+            $this->limits->check($server);
+        }
+
         $appValues = $app === null ? [] : $this->apps->validateOrdered($app, $appInputs, $osTemplate, $server->cpu_cores, $server->memory_mib, $server->disk_mib, $server->network_model, $server);
 
         if (! $osTemplate->is_active && $server->billing_system_id !== null) {
             throw new ProvisioningException(ServerCreator::INACTIVE_TEMPLATE);
         }
 
+        if ($server->package !== null && ! $server->package->allowsOsTemplate($osTemplate)) {
+            throw ProvisioningException::templateNotAllowed();
+        }
+
         return DB::transaction(function () use ($server, $osTemplate, $sshKeys, $actor, $ipAddress, $app, $appValues) {
             $server->forceFill([
                 'os_template_id' => $osTemplate->id,
-                'root_password' => Str::password(20, symbols: false),
+                'root_password' => $this->passwords->generate(),
                 'root_password_unrevealed' => true,
                 'ssh_keys' => PublicKey::implode($sshKeys),
                 // The new VM is named after the hostname, which cloud-init then sets (docs/adr/0031 §2a).

@@ -4,8 +4,12 @@ declare(strict_types=1);
 
 namespace App\Domain\Servers;
 
+use App\Domain\Infrastructure\Distributions;
 use App\Enums\GuestScriptEvent;
 use App\Enums\OsPlatform;
+use App\Enums\TaskStatus;
+use App\Enums\TaskType;
+use App\Models\CustomScript;
 use App\Models\GuestScript;
 use App\Models\GuestScriptLog;
 use App\Models\OsTemplate;
@@ -13,6 +17,7 @@ use App\Models\Server;
 use App\Models\Task;
 use App\Proxmox\Data\GuestExecStatus;
 use App\Proxmox\Exceptions\GuestAgentException;
+use App\Proxmox\Exceptions\GuestCommandCancelled;
 use App\Proxmox\Exceptions\GuestCommandDisabled;
 use App\Proxmox\Exceptions\ProxmoxException;
 use App\Proxmox\ProxmoxClientFactory;
@@ -25,7 +30,8 @@ use Throwable;
 /**
  * Runs the script of an event inside a server through the QEMU guest agent
  * (docs/adr/0010): the OS template's own script, or the default from
- * resources/guest for its platform. The script and its inputs (from the
+ * resources/guest for its platform (FreeBSD templates have their own,
+ * docs/adr/0048). The script and its inputs (from the
  * panel's database only, never interpolated into the script) are written with
  * file-write, then the script runs with exec.
  *
@@ -47,16 +53,70 @@ final readonly class GuestScripts
     public const WINDOWS_SETUP_TIMEOUT_SECONDS = 900;
 
     /**
-     * Prints Windows' image state and the state of the Cloudbase-Init service
-     * (empty when there is none), one per line. A fixed command: nothing in
-     * it comes from the server or a customer.
+     * Prints key=value lines: image= (Windows' image state), name= and
+     * active_name= (the computer name after the next restart and the one in
+     * use), and with a cloudbase-init service service= (its state), restart=
+     * (1 when Cloudbase-Init asked for a restart since the last boot: an event
+     * 1074 of its process in the System log; others are left out, as the
+     * "power off" of Fast Startup on Windows 10/11, after which the boot time
+     * stays the same), plugins= and unattend= (the plugins its
+     * configuration file and cloudbase-init-unattend.conf beside it list),
+     * failed= (the plugins its log, logdir and logfile of its configuration,
+     * says failed since the last boot: "plugin '<name>' failed with error",
+     * lines stamped in local time), done= and later= (the plugins it recorded
+     * as done, or to run at the next boot, for the instance ID on the config
+     * drive). A fixed command: nothing in it comes from the server or a
+     * customer.
+     *
+     * Cloudbase-Init keeps a plugin's state under
+     * HKLM\SOFTWARE\Cloudbase Solutions\Cloudbase-Init\<instance ID>\Plugins
+     * (1 done, 2 at the next boot); the instance ID is the uuid of
+     * openstack\latest\meta_data.json on the config drive (label config-2).
      */
-    public const WINDOWS_SETUP_COMMAND = [
-        'powershell.exe', '-NoProfile', '-NonInteractive', '-Command',
-        "\$state = Get-ItemProperty -Path 'HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Setup\\State' -Name ImageState -ErrorAction SilentlyContinue; "
-        .'$service = Get-Service -Name cloudbase-init -ErrorAction SilentlyContinue; '
-        .'Write-Output ([string]$state.ImageState); Write-Output ([string]$service.Status)',
-    ];
+    public const WINDOWS_SETUP_SCRIPT = <<<'PS'
+        $ErrorActionPreference = 'SilentlyContinue'
+        Write-Output ('image=' + (Get-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Setup\State').ImageState)
+        $names = 'HKLM:\SYSTEM\CurrentControlSet\Control\ComputerName'
+        Write-Output ('name=' + (Get-ItemProperty -Path ($names + '\ComputerName')).ComputerName)
+        Write-Output ('active_name=' + (Get-ItemProperty -Path ($names + '\ActiveComputerName')).ComputerName)
+        $service = Get-Service -Name cloudbase-init
+        if ($service) {
+            Write-Output ('service=' + $service.Status)
+            $boot = (Get-CimInstance -ClassName Win32_OperatingSystem).LastBootUpTime
+            $restart = if ($boot) { Get-WinEvent -FilterHashtable @{ LogName = 'System'; Id = 1074; StartTime = $boot } | Where-Object { [string]$_.Properties[0].Value -match 'cloudbase' } | Select-Object -First 1 } else { $null }
+            Write-Output ('restart=' + [int][bool]$restart)
+            $conf = Join-Path $env:ProgramFiles 'Cloudbase Solutions\Cloudbase-Init\conf\cloudbase-init.conf'
+            if ((Get-CimInstance -ClassName Win32_Service -Filter 'Name=''cloudbase-init''').PathName -match '--config-file\s+\W?([a-z]:\\.+?\.conf)') { $conf = $Matches[1] }
+            $pluginsOf = { param($path) $line = Get-Content -Path $path | Where-Object { $_ -match '^\s*plugins\s*=' } | Select-Object -First 1; if ($line) { (($line -split '=', 2)[1] -split ',' | ForEach-Object { ($_.Trim() -split '\.')[-1] } | Where-Object { $_ }) -join ',' } }
+            $plugins = & $pluginsOf $conf
+            if ($plugins) { Write-Output ('plugins=' + $plugins) }
+            $unattend = & $pluginsOf (Join-Path (Split-Path -Path $conf) 'cloudbase-init-unattend.conf')
+            if ($unattend) { Write-Output ('unattend=' + $unattend) }
+            $option = { param($name) $line = Get-Content -Path $conf | Where-Object { $_ -match ('^\s*' + $name + '\s*=') } | Select-Object -First 1; if ($line) { ($line -split '=', 2)[1].Trim() } }
+            $logdir = & $option 'logdir'
+            if (-not $logdir) { $logdir = Join-Path (Split-Path -Path (Split-Path -Path $conf)) 'log' }
+            $logfile = & $option 'logfile'
+            if (-not $logfile) { $logfile = 'cloudbase-init.log' }
+            if ($boot) {
+                $since = $boot.ToString('yyyy-MM-dd HH:mm:ss')
+                $failed = Get-Content -Path (Join-Path $logdir $logfile) | ForEach-Object { if ($_.Length -ge 19 -and [string]::CompareOrdinal($_.Substring(0, 19), $since) -ge 0 -and $_ -match "plugin '(\w+)' failed with error") { $Matches[1] } } | Select-Object -Unique
+                Write-Output ('failed=' + ($failed -join ','))
+            }
+            $drive = Get-CimInstance -ClassName Win32_LogicalDisk -Filter 'DriveType=5' | Where-Object { $_.VolumeName -eq 'config-2' } | Select-Object -First 1
+            $instance = if ($drive) { (Get-Content -Raw -Path ($drive.DeviceID + '\openstack\latest\meta_data.json') | ConvertFrom-Json).uuid } else { '' }
+            foreach ($root in 'HKLM:\SOFTWARE\Cloudbase Solutions\Cloudbase-Init', 'HKLM:\SOFTWARE\WOW6432Node\Cloudbase Solutions\Cloudbase-Init') {
+                $key = if ($instance) { Get-Item -Path (Join-Path $root ($instance + '\Plugins')) } else { $null }
+                if ($key) {
+                    Write-Output ('done=' + (($key.Property | Where-Object { $key.GetValue($_) -eq 1 }) -join ','))
+                    Write-Output ('later=' + (($key.Property | Where-Object { $key.GetValue($_) -ne 1 }) -join ','))
+                    break
+                }
+            }
+        }
+        exit 0
+        PS;
+
+    public const WINDOWS_SETUP_COMMAND = ['powershell.exe', '-NoProfile', '-NonInteractive', '-Command', self::WINDOWS_SETUP_SCRIPT];
 
     /**
      * How long cloud-init of a new Linux system may still run once its guest
@@ -72,6 +132,17 @@ final readonly class GuestScripts
      */
     public const CLOUD_INIT_STATUS_COMMAND = ['sh', '-c', 'command -v cloud-init > /dev/null 2>&1 || exit 0; cloud-init status 2> /dev/null || true'];
 
+    /**
+     * Statuses of a cloud-init that has not finished yet. Before 24.1 one that
+     * has not started says "not run" (24.1: "not started") and one running
+     * after a recoverable error "degraded running" (24.1: "running"); EL8 and
+     * Debian 12 ship such versions.
+     */
+    private const CLOUD_INIT_WAITING = ['not started', 'not run', 'running', 'degraded running'];
+
+    /** Statuses of a cloud-init that has finished with errors (before 24.1 also "degraded done"). */
+    private const CLOUD_INIT_FAILED = ['error', 'degraded', 'degraded done'];
+
     /** Runs of a script when the guest restarts while it runs. */
     private const ATTEMPTS = 3;
 
@@ -81,6 +152,73 @@ final readonly class GuestScripts
     private const LINUX_CONFIG_DIR = '/etc/proxmotion';
 
     private const WINDOWS_DIR = 'C:\\ProgramData\\Proxmotion';
+
+    /**
+     * An administrator's run on Linux carries this variable with its log id,
+     * and so do the processes it starts, also those that outlive it.
+     */
+    private const RUN_MARKER = 'PROXMOTION_SCRIPT_RUN';
+
+    /** The error of a run an administrator cancelled, on its task and log. */
+    public const CANCELLED = 'Cancelled by an administrator.';
+
+    /** Seconds a cancelled run may take to be reported as exited after it was stopped. */
+    private const STOP_CHECKS = 5;
+
+    /**
+     * Stops every process of a cancelled Linux run ($1: its log id), found by
+     * RUN_MARKER in its environment: first all are stopped, so none starts
+     * another, then killed. A fixed script: the log id comes from the panel.
+     */
+    public const LINUX_STOP_SCRIPT = <<<'SH'
+        marker="PROXMOTION_SCRIPT_RUN=$1"
+        for signal in STOP KILL; do
+            for environ in /proc/[0-9]*/environ; do
+                pid=${environ#/proc/}
+                pid=${pid%/environ}
+                [ "$pid" = "$$" ] && continue
+                tr '\0' '\n' < "$environ" 2> /dev/null | grep -qxF "$marker" && kill -"$signal" "$pid" 2> /dev/null
+            done
+        done
+        exit 0
+        SH;
+
+    /**
+     * LINUX_STOP_SCRIPT for FreeBSD templates (docs/adr/0048), which have no
+     * /proc by default: procstat -e -a lists every process with its
+     * environment (PID, COMM, then one word per variable).
+     */
+    public const FREEBSD_STOP_SCRIPT = <<<'SH'
+        marker="PROXMOTION_SCRIPT_RUN=$1"
+        for signal in STOP KILL; do
+            procstat -e -a 2> /dev/null \
+                | awk -v marker="$marker" -v self="$$" 'NR > 1 && $1 != self { for (i = 3; i <= NF; i++) if ($i == marker) { print $1; break } }' \
+                | while read -r pid; do kill -"$signal" "$pid" 2> /dev/null; done
+        done
+        exit 0
+        SH;
+
+    /**
+     * Stops a cancelled Windows run: the process the agent started ({pid})
+     * and every process below it. Children keep their parent's id after it
+     * exited, and the agent holds the run's process until it reports it as
+     * exited, so the id is not reused meanwhile.
+     */
+    public const WINDOWS_STOP_SCRIPT = <<<'PS'
+        $ErrorActionPreference = 'SilentlyContinue'
+        $all = @(Get-CimInstance Win32_Process | Select-Object ProcessId, ParentProcessId)
+        $tree = [System.Collections.Generic.List[int]]::new()
+        $tree.Add({pid})
+        for ($i = 0; $i -lt $tree.Count; $i++) {
+            foreach ($process in $all) {
+                if ($process.ParentProcessId -eq $tree[$i] -and -not $tree.Contains([int] $process.ProcessId)) {
+                    $tree.Add([int] $process.ProcessId)
+                }
+            }
+        }
+        foreach ($id in $tree) { Stop-Process -Id $id -Force }
+        exit 0
+        PS;
 
     public function __construct(
         private ProxmoxClientFactory $clients,
@@ -121,18 +259,24 @@ final readonly class GuestScripts
             return [$own->content, GuestScriptLog::SOURCE_PUBLISHED];
         }
 
-        $default = self::defaultScript($platform, $event);
+        $default = self::defaultScript($platform, $event, $template?->distribution);
 
         return $default === null ? null : [$default, GuestScriptLog::SOURCE_DEFAULT];
     }
 
-    public static function defaultScript(OsPlatform $platform, GuestScriptEvent $event): ?string
+    /**
+     * The panel's own script of the event: resources/guest/<platform>, or
+     * resources/guest/freebsd for a FreeBSD template, whose platform is
+     * Linux (root, sh scripts) but whose tools are not (docs/adr/0048).
+     */
+    public static function defaultScript(OsPlatform $platform, GuestScriptEvent $event, ?string $distribution = null): ?string
     {
         if (! $event->hasDefault()) {
             return null;
         }
 
-        $file = resource_path('guest/'.$platform->value.'/'.$event->name().($platform === OsPlatform::Windows ? '.ps1' : '.sh'));
+        $directory = $platform === OsPlatform::Linux && $distribution === Distributions::FREEBSD ? Distributions::FREEBSD : $platform->value;
+        $file = resource_path('guest/'.$directory.'/'.$event->name().($platform === OsPlatform::Windows ? '.ps1' : '.sh'));
 
         return is_file($file) ? (string) file_get_contents($file) : null;
     }
@@ -143,100 +287,200 @@ final readonly class GuestScripts
     }
 
     /**
-     * Run the event's script, if there is one. With $waitForAgent, wait for
-     * the agent of a freshly booted server first; otherwise one ping decides.
-     * Critical events throw instead of leaving a note, and leave completing
-     * their step to the caller. Every run is logged (GuestScriptLog). Only
-     * trials pass $draft (the template's saved draft instead of its script)
-     * and $trace (sh -x on Linux).
+     * Run the event's script, if there is one, then the custom scripts bound
+     * to the event (docs/adr/0043; not in trials, and after a password reset
+     * the pipeline runs them once the password is stored). With
+     * $waitForAgent, wait for the agent of a freshly booted server first;
+     * otherwise one ping decides. Critical events throw instead of leaving a
+     * note, and leave completing their step to the caller. Every run is
+     * logged (GuestScriptLog). Only trials pass $draft (the template's saved
+     * draft instead of its script) and $trace (sh -x on Linux). Without
+     * $custom only the event's own script runs.
      *
-     * @return bool whether the script ran and succeeded
+     * @return bool whether the event's own script ran and succeeded
      */
-    public function run(Task $task, Server $server, GuestScriptEvent $event, bool $waitForAgent = false, ?string $input = null, bool $draft = false, bool $trace = false): bool
+    public function run(Task $task, Server $server, GuestScriptEvent $event, bool $waitForAgent = false, ?string $input = null, bool $draft = false, bool $trace = false, bool $custom = true): bool
     {
-        $platform = $this->platform($server);
-        [$script, $source] = $this->resolve($server->osTemplate, $platform, $event, $draft) ?? [null, null];
+        $resolved = $this->resolve($server->osTemplate, $this->platform($server), $event, $draft);
+        $succeeded = $resolved !== null
+            && $this->execute($task, $server, ScriptSlot::event($event), $resolved[0], $resolved[1], $waitForAgent, $input, $trace);
 
-        if ($script === null || $source === null) {
-            return false;
+        if ($custom && $task->type !== TaskType::GuestScript && ! $event->isCritical()) {
+            $this->runCustom($task, $server, $event, waitForAgent: $waitForAgent && $resolved === null);
         }
 
+        return $succeeded;
+    }
+
+    /**
+     * The published custom scripts bound to the event, in their order. Each
+     * leaves a note when it fails; when the agent does not answer, each run
+     * notes that after one ping instead of waiting again.
+     */
+    public function runCustom(Task $task, Server $server, GuestScriptEvent $event, bool $waitForAgent = false): void
+    {
+        $scripts = $this->customScripts($server, $event);
+
+        if ($scripts !== [] && $waitForAgent) {
+            $this->waitForAgent($server);
+        }
+
+        foreach ($scripts as $script) {
+            $this->execute($task, $server, ScriptSlot::custom($script, $event, $event->value), (string) $script->content, GuestScriptLog::SOURCE_PUBLISHED);
+        }
+    }
+
+    /**
+     * The published custom scripts of the server's template bound to the event.
+     *
+     * @return list<CustomScript>
+     */
+    public function customScripts(Server $server, GuestScriptEvent $event): array
+    {
+        if ($server->os_template_id === null) {
+            return [];
+        }
+
+        return array_values(CustomScript::query()
+            ->where('os_template_id', $server->os_template_id)
+            ->whereNotNull('content')
+            ->orderBy('position')
+            ->orderBy('id')
+            ->get()
+            ->filter(fn (CustomScript $script) => $script->runsAt($event))
+            ->all());
+    }
+
+    /**
+     * The task steps of the custom scripts bound to the event (TaskPlan).
+     *
+     * @return list<string>
+     */
+    public function customSteps(Server $server, GuestScriptEvent $event): array
+    {
+        return array_map(fn (CustomScript $script) => $script->step($event), $this->customScripts($server, $event));
+    }
+
+    /**
+     * Write one script and its inputs into the guest, run it and log the run.
+     *
+     * @return bool whether it ran and succeeded
+     */
+    private function execute(Task $task, Server $server, ScriptSlot $slot, string $script, string $source, bool $waitForAgent = false, ?string $input = null, bool $trace = false): bool
+    {
+        $platform = $this->platform($server);
         $trace = $trace && $platform === OsPlatform::Linux;
-        $task->startStep($event->step());
-        $log = $this->startLog($task, $server, $event, $script, $source, $trace);
+        $task->startStep($slot->step);
+        $log = $this->startLog($task, $server, $slot, $script, $source, $trace);
         $client = $this->clients->forCluster($server->cluster);
         $agent = $client->guestAgent($server->node->name);
 
         if (! ($waitForAgent ? $this->waitForAgent($server) : $agent->ping($server->vmid))) {
-            return $this->failed($task, $log, $event, GuestAgentException::notReachable($server->vmid), self::unreachableNote($event));
+            return $this->failed($task, $log, $slot, GuestAgentException::notReachable($server->vmid), $slot->unreachableNote());
         }
 
         $config = $client->qemu($server->node->name)->config($server->vmid) ?? [];
         $mac = self::macOf($config);
 
-        if ($mac === null && $event === GuestScriptEvent::AddressesChanged) {
-            return $this->failed($task, $log, $event, new GuestScriptFailed('The MAC address of the network interface is unknown.'), 'The MAC address of the network interface is unknown: configure the additional addresses inside the server.');
+        if ($mac === null && $slot->custom === null && $slot->event === GuestScriptEvent::AddressesChanged) {
+            return $this->failed($task, $log, $slot, new GuestScriptFailed('The MAC address of the network interface is unknown.'), 'The MAC address of the network interface is unknown: configure the additional addresses inside the server.');
         }
 
-        $inputs = ['server' => $server->uuid, 'hostname' => $server->hostname, 'mac' => $mac] + $this->inputs($server, $platform, $event, $config, $task);
+        $inputs = ['server' => $server->uuid, 'hostname' => $server->hostname, 'mac' => $mac] + $this->slotInputs($server, $platform, $slot, $config, $task);
         $log->forceFill(['inputs' => $inputs])->save();
-        $name = $event->name().($source === GuestScriptLog::SOURCE_DRAFT ? '-draft' : '');
+        $name = $slot->file.($source === GuestScriptLog::SOURCE_DRAFT ? '-draft' : '');
+        // An administrator's run (a guest_script task) stops once they cancel its task (TaskController::cancel()).
+        $cancelled = $task->type === TaskType::GuestScript
+            ? fn (): bool => ! Task::query()->whereKey($task->id)->where('status', TaskStatus::Running)->exists()
+            : null;
 
         for ($attempt = 1; ; $attempt++) {
             try {
                 $result = $platform === OsPlatform::Windows
-                    ? $this->runOnWindows($agent, $server->vmid, $event, $name, $script, $inputs, $input)
-                    : $this->runOnLinux($agent, $server->vmid, $event, $name, $script, $inputs, $input, $trace);
+                    ? $this->runOnWindows($agent, $server->vmid, $slot, $name, $script, $inputs, $input, $cancelled)
+                    : $this->runOnLinux($agent, $server->vmid, $slot, $name, $script, $inputs, $input, $trace, $cancelled, $log->id);
 
                 break;
+            } catch (GuestCommandCancelled $e) {
+                $this->stopCancelled($agent, $server->vmid, $platform, $server->osTemplate?->distribution, $slot, $log, $e->pid);
+
+                throw new GuestScriptFailed(self::CANCELLED);
             } catch (ProxmoxException $e) {
                 // The agent went away mid-run: the guest restarted, as Windows does
                 // during its first-boot setup (sysprep, cloudbase-init). Run the
                 // script again once it is back; a critical script is never repeated.
-                $lost = ! $event->isCritical() && $attempt < self::ATTEMPTS && ! $agent->ping($server->vmid);
+                $lost = ! $slot->isCritical() && $attempt < self::ATTEMPTS && ! $agent->ping($server->vmid);
 
                 if (! $lost || ! $this->waitForAgent($server)) {
-                    return $this->failed($task, $log, $event, $e, self::failedNote($event).$e->getMessage());
+                    return $this->failed($task, $log, $slot, $e, $slot->failedNote().$e->getMessage());
                 }
             }
         }
 
-        $this->finishLog($log, $event, $result);
+        $this->finishLog($log, $slot, $result);
 
         if (! $result->succeeded()) {
             $reason = self::reason($result, $trace);
 
-            return $this->failed($task, $log, $event, new GuestScriptFailed(self::failedNote($event).$reason), self::failedNote($event).$reason);
+            return $this->failed($task, $log, $slot, new GuestScriptFailed($slot->failedNote().$reason), $slot->failedNote().$reason);
         }
 
-        if (! $event->isCritical()) {
-            $task->completeStep($event->step());
+        if (! $slot->isCritical()) {
+            $task->completeStep($slot->step);
         }
 
         return true;
     }
 
     /**
-     * An administrator's trial run of one event's script on a server (a
-     * guest_script task, input: event, draft, trace). Unlike during
-     * operations, a failure fails the task.
+     * An administrator's run of one script on a server (a guest_script task):
+     * a trial of an event's script (input: event, draft, trace), or a custom
+     * script (input: script, draft, trace, manual for a run from the server
+     * page). Unlike during operations, a failure fails the task.
      */
     public function runOnce(Task $task): void
     {
+        $server = $task->server;
+        $draft = ($task->input['draft'] ?? false) === true;
+        $trace = ($task->input['trace'] ?? false) === true;
+
+        if (is_string($task->input['script'] ?? null)) {
+            $custom = CustomScript::query()
+                ->where('uuid', $task->input['script'])
+                ->where('os_template_id', $server->os_template_id)
+                ->first() ?? throw new GuestScriptFailed('The script no longer exists.');
+            $content = $draft ? $custom->draft_content : $custom->content;
+
+            if ($content === null) {
+                throw new GuestScriptFailed($draft ? 'The script has no draft.' : 'The script is not published.');
+            }
+
+            $slot = ScriptSlot::custom($custom, null, ($task->input['manual'] ?? false) === true ? 'manual' : 'trial');
+            $this->runOrThrow($task, $slot, fn () => $this->execute($task, $server, $slot, $content, $draft ? GuestScriptLog::SOURCE_DRAFT : GuestScriptLog::SOURCE_PUBLISHED, trace: $trace));
+
+            return;
+        }
+
         $event = GuestScriptEvent::tryFrom(is_string($task->input['event'] ?? null) ? $task->input['event'] : '');
 
         if ($event === null || ! $event->canBeTried()) {
             throw new GuestScriptFailed('This script cannot be run on its own.');
         }
 
-        $draft = ($task->input['draft'] ?? false) === true;
-
-        if ($this->resolve($task->server->osTemplate, $this->platform($task->server), $event, $draft) === null) {
+        if ($this->resolve($server->osTemplate, $this->platform($server), $event, $draft) === null) {
             throw new GuestScriptFailed($draft ? 'The server\'s OS template has no draft for this event.' : 'The server\'s OS template has no script for this event.');
         }
 
-        if (! $this->run($task, $task->server, $event, draft: $draft, trace: ($task->input['trace'] ?? false) === true)) {
-            $step = collect($task->steps)->firstWhere('key', $event->step());
+        $this->runOrThrow($task, ScriptSlot::event($event), fn () => $this->run($task, $server, $event, draft: $draft, trace: $trace));
+    }
+
+    /**
+     * @param  Closure(): bool  $run
+     */
+    private function runOrThrow(Task $task, ScriptSlot $slot, Closure $run): void
+    {
+        if (! $run()) {
+            $step = collect($task->steps)->firstWhere('key', $slot->step);
 
             throw new GuestScriptFailed(is_string($step['message'] ?? null) ? $step['message'] : 'The script failed.');
         }
@@ -244,24 +488,17 @@ final readonly class GuestScripts
 
     /**
      * After creating or reinstalling a server: its additional addresses, then
-     * the template's own post-install script. The pipeline has waited for the
-     * agent of the new system already (waitForAgentStep()).
+     * the template's own post-install script, each followed by the custom
+     * scripts bound to it. The pipeline has waited for the agent of the new
+     * system already (waitForAgentStep()).
      */
     public function afterInstall(Task $task, Server $server): void
     {
-        $events = [];
-
         if ($this->addresses->additional($server) !== []) {
-            $events[] = GuestScriptEvent::AddressesChanged;
+            $this->run($task, $server, GuestScriptEvent::AddressesChanged);
         }
 
-        if ($this->has($server, GuestScriptEvent::Provisioned)) {
-            $events[] = GuestScriptEvent::Provisioned;
-        }
-
-        foreach ($events as $event) {
-            $this->run($task, $server, $event);
-        }
+        $this->run($task, $server, GuestScriptEvent::Provisioned);
     }
 
     /**
@@ -342,24 +579,28 @@ final readonly class GuestScripts
     }
 
     /**
-     * One check whether cloud-init still runs (done, error, disabled, or not
-     * installed end the wait). The agent going away meanwhile (cloud-init
-     * restarting the guest) counts as a check that has not passed yet.
+     * One check whether cloud-init still runs or has yet to start
+     * (CLOUD_INIT_WAITING; done, an error, disabled, or not installed end the
+     * wait). The agent going away meanwhile (cloud-init restarting the guest)
+     * counts as a check that has not passed yet. The last status seen is kept
+     * in $state['cloud_init_status'] for the note of a wait that times out.
      *
      * @param  array<string, mixed>  $state
      * @param  Closure(?string): null  $done
      */
-    private function checkCloudInit(GuestAgentResource $agent, Server $server, array $state, Closure $done): ?int
+    private function checkCloudInit(GuestAgentResource $agent, Server $server, array &$state, Closure $done): ?int
     {
         try {
             $result = $agent->run($server->vmid, self::CLOUD_INIT_STATUS_COMMAND, timeoutSeconds: 60);
             $status = preg_match('/^status:\s*(.+)$/m', $result->stdout, $match) === 1 ? trim($match[1]) : '';
 
-            if (! in_array($status, ['running', 'not started'], true)) {
-                return $done(in_array($status, ['error', 'degraded', 'degraded done'], true)
+            if (! in_array($status, self::CLOUD_INIT_WAITING, true)) {
+                return $done(in_array($status, self::CLOUD_INIT_FAILED, true)
                     ? "cloud-init finished with status {$status}: check /var/log/cloud-init.log inside the server."
                     : null);
             }
+
+            $state['cloud_init_status'] = $status;
         } catch (GuestCommandDisabled $e) {
             return $done('Could not check whether cloud-init has finished: '.$e->getMessage());
         } catch (ProxmoxException) {
@@ -369,18 +610,23 @@ final readonly class GuestScripts
         $since = is_int($state['cloud_init_since'] ?? null) ? $state['cloud_init_since'] : $state['since'];
 
         if (Carbon::now()->getTimestamp() >= $since + self::CLOUD_INIT_TIMEOUT_SECONDS) {
-            return $done('cloud-init was still running after '.intdiv(self::CLOUD_INIT_TIMEOUT_SECONDS, 60).' minutes: the server may still be setting itself up.');
+            $minutes = intdiv(self::CLOUD_INIT_TIMEOUT_SECONDS, 60);
+
+            return $done(in_array($state['cloud_init_status'] ?? null, ['not started', 'not run'], true)
+                ? "cloud-init had not started after {$minutes} minutes: check that the template's cloud-init is enabled and finds the CloudInit drive."
+                : "cloud-init was still running after {$minutes} minutes: the server may still be setting itself up.");
         }
 
         return 5;
     }
 
     /**
-     * One check whether Windows reports IMAGE_STATE_COMPLETE and
-     * Cloudbase-Init no longer runs. The agent goes away while Windows
-     * restarts during setup: that counts as a check that has not passed yet.
-     * The agent must still answer for the first time within $agentTimeoutSeconds
-     * (a template without one).
+     * One check whether Windows setup and Cloudbase-Init have finished
+     * (windowsSetupPending()). The agent goes away while Windows restarts
+     * during setup: that counts as a check that has not passed yet. The agent
+     * must still answer for the first time within $agentTimeoutSeconds (a
+     * template without one). What the last check still waited for is kept in
+     * $state['waiting_for'] for the note of a wait that times out.
      *
      * @param  array<string, mixed>  $state
      * @param  Closure(?string): null  $done
@@ -392,9 +638,22 @@ final readonly class GuestScripts
         if ($agent->ping($server->vmid)) {
             $state['answered'] = true;
 
-            if ($this->windowsSetupFinished($agent, $server->vmid)) {
-                return $done(null);
+            $failed = [];
+
+            try {
+                $result = $agent->run($server->vmid, self::WINDOWS_SETUP_COMMAND, timeoutSeconds: 60);
+                $pending = $result->succeeded() ? self::windowsSetupPending($result->stdout) : 'the setup check did not succeed';
+                $failed = $result->succeeded() ? self::windowsSetupFailures($result->stdout) : [];
+            } catch (ProxmoxException) {
+                // Windows restarted while the check ran.
+                $pending = is_string($state['waiting_for'] ?? null) ? $state['waiting_for'] : 'Windows restarted during the check';
             }
+
+            if ($pending === null) {
+                return $done($failed === [] ? null : 'Cloudbase-Init could not run '.implode(', ', $failed).': see cloudbase-init.log inside the server.');
+            }
+
+            $state['waiting_for'] = $pending;
         }
 
         $now = Carbon::now()->getTimestamp();
@@ -404,30 +663,118 @@ final readonly class GuestScripts
         }
 
         if ($now >= $state['since'] + $timeoutSeconds) {
-            return $done('Windows setup did not finish within '.intdiv($timeoutSeconds, 60).' minutes: the server may still be setting itself up.');
+            $waitingFor = is_string($state['waiting_for'] ?? null) ? " ({$state['waiting_for']})" : '';
+
+            return $done('Windows setup did not finish within '.intdiv($timeoutSeconds, 60)." minutes{$waitingFor}: the server may still be setting itself up.");
         }
 
         return 5;
     }
 
-    private function windowsSetupFinished(GuestAgentResource $agent, int $vmid): bool
+    /**
+     * What a Windows server is still waiting for, from the output of
+     * WINDOWS_SETUP_COMMAND, or null once it is ready: Windows setup reports
+     * IMAGE_STATE_COMPLETE (no image state: a template that was never
+     * generalized), no new computer name waits for a restart, and, when
+     * Cloudbase-Init is installed, its service has stopped, has not asked for
+     * a restart since the last boot, and has recorded every plugin of its
+     * configuration for this server's instance ID. A stopped service alone
+     * proves nothing: it looks the same before it has started and while the
+     * restart it asked for is still to come.
+     *
+     * A recorded plugin has run during this boot whatever its state: plugins
+     * that run at every boot (ExtendVolumesPlugin, LocalScriptsPlugin,
+     * MTUPlugin) always record 2, never 1. A plugin that records 2 to run
+     * again after a restart (a local script exiting 1003) also has
+     * Cloudbase-Init restart Windows, which the restart check waits for. One
+     * that failed records nothing (Cloudbase-Init logs the error and goes on,
+     * and tries it again at the next boot), so its failure in the log since
+     * the last boot counts as its run (windowsSetupFailures()): waiting for it
+     * would only wait for the timeout. Without a plugins line the service
+     * runs its default plugins: then any plugin it recorded besides those of
+     * the specialize pass (cloudbase-init-unattend.conf, same instance ID),
+     * or one that failed, proves it has run.
+     */
+    public static function windowsSetupPending(string $output): ?string
     {
-        try {
-            $result = $agent->run($vmid, self::WINDOWS_SETUP_COMMAND, timeoutSeconds: 60);
-        } catch (ProxmoxException) {
-            // Windows restarted while the check ran.
-            return false;
+        $values = self::windowsSetupValues($output);
+        $list = fn (string $key) => self::windowsSetupList($values, $key);
+        $image = $values['image'] ?? '';
+        $service = $values['service'] ?? '';
+        $name = $values['name'] ?? '';
+        $active = $values['active_name'] ?? '';
+
+        if (! in_array($image, ['', 'IMAGE_STATE_COMPLETE'], true)) {
+            return "Windows setup reports {$image}";
         }
 
-        if (! $result->succeeded()) {
-            return false;
+        if ($name !== '' && $active !== '' && strcasecmp($name, $active) !== 0) {
+            return "the computer name {$name} takes effect at the next restart";
         }
 
-        $lines = array_map(trim(...), explode("\n", $result->stdout));
+        if ($service === '') {
+            return null;
+        }
 
-        // No image state: a template that was never generalized, so no setup to wait for.
-        return in_array($lines[0], ['', 'IMAGE_STATE_COMPLETE'], true)
-            && in_array($lines[1] ?? '', ['', 'Stopped'], true);
+        if ($service !== 'Stopped') {
+            return "the cloudbase-init service is {$service}";
+        }
+
+        if (($values['restart'] ?? '') === '1') {
+            return 'Cloudbase-Init has asked for a restart';
+        }
+
+        $recorded = array_map(strtolower(...), [...$list('done'), ...$list('later')]);
+        $failed = array_map(strtolower(...), $list('failed'));
+        $required = $list('plugins');
+
+        if ($required === []) {
+            $specialize = array_map(strtolower(...), $list('unattend'));
+
+            return array_diff($recorded, $specialize) === [] && $failed === [] ? 'Cloudbase-Init has not run for this server yet' : null;
+        }
+
+        $missing = array_values(array_filter($required, fn (string $plugin) => ! in_array(strtolower($plugin), [...$recorded, ...$failed], true)));
+
+        return $missing === [] ? null : 'Cloudbase-Init has not finished '.implode(', ', $missing);
+    }
+
+    /**
+     * The Cloudbase-Init plugins that failed since the last boot, from the
+     * output of WINDOWS_SETUP_COMMAND (failed=). A plugin that failed did not
+     * do its part, e.g. UserDataPlugin on user data that is not valid YAML.
+     *
+     * @return list<string>
+     */
+    public static function windowsSetupFailures(string $output): array
+    {
+        return self::windowsSetupList(self::windowsSetupValues($output), 'failed');
+    }
+
+    /**
+     * @return array<string, string> the key=value lines of WINDOWS_SETUP_COMMAND's output
+     */
+    private static function windowsSetupValues(string $output): array
+    {
+        $values = [];
+
+        foreach (preg_split('/\R/', $output) ?: [] as $line) {
+            if (str_contains($line, '=')) {
+                [$key, $value] = explode('=', $line, 2);
+                $values[trim($key)] = trim($value);
+            }
+        }
+
+        return $values;
+    }
+
+    /**
+     * @param  array<string, string>  $values
+     * @return list<string>
+     */
+    private static function windowsSetupList(array $values, string $key): array
+    {
+        return array_values(array_filter(array_map(trim(...), explode(',', $values[$key] ?? '')), fn (string $name) => $name !== ''));
     }
 
     private static function agentTimeoutNote(int $timeoutSeconds): string
@@ -465,7 +812,7 @@ final readonly class GuestScripts
     public function inputs(Server $server, OsPlatform $platform, GuestScriptEvent $event, array $config = [], ?Task $task = null): array
     {
         return match ($event) {
-            GuestScriptEvent::Provisioned => ['addresses' => $this->addresses->all($server)],
+            GuestScriptEvent::Provisioned => ['reason' => self::provisionedReason($task), 'addresses' => $this->addresses->all($server)],
             // The primary may differ from the one cloud-init configured (docs/adr/0011).
             GuestScriptEvent::AddressesChanged => ['addresses' => $this->addresses->additional($server)]
                 + $this->addresses->primaries($server)
@@ -477,46 +824,130 @@ final readonly class GuestScripts
     }
 
     /**
-     * @param  array<string, string|int|list<string>|null>  $inputs
+     * A custom script gets what triggered it and all addresses, and at an
+     * event also that event's inputs (docs/adr/0043); never a password.
+     *
+     * @param  array<string, mixed>  $config  the VM's configuration
+     * @return array<string, string|int|list<string>|null>
      */
-    private function runOnLinux(GuestAgentResource $agent, int $vmid, GuestScriptEvent $event, string $name, string $script, array $inputs, ?string $input, bool $trace): GuestExecStatus
+    private function slotInputs(Server $server, OsPlatform $platform, ScriptSlot $slot, array $config, Task $task): array
+    {
+        if ($slot->custom === null) {
+            return $slot->event === null ? [] : $this->inputs($server, $platform, $slot->event, $config, $task);
+        }
+
+        return ['trigger' => $slot->trigger, 'addresses' => $this->addresses->all($server)]
+            + ($slot->event === null ? [] : $this->inputs($server, $platform, $slot->event, $config, $task));
+    }
+
+    /**
+     * Why the post-install script runs: "create" (also a rebuild from
+     * scratch), "reinstall", or "trial" for an administrator's trial run, so
+     * one script can skip work that must happen only once per server.
+     */
+    private static function provisionedReason(?Task $task): string
+    {
+        return match ($task?->type) {
+            TaskType::Reinstall => 'reinstall',
+            TaskType::GuestScript => 'trial',
+            default => 'create',
+        };
+    }
+
+    /**
+     * @param  array<string, string|int|list<string>|null>  $inputs
+     * @param  (Closure(): bool)|null  $cancelled
+     * @param  int|null  $run  the log id of a run that can be cancelled, set as RUN_MARKER
+     */
+    private function runOnLinux(GuestAgentResource $agent, int $vmid, ScriptSlot $slot, string $name, string $script, array $inputs, ?string $input, bool $trace, ?Closure $cancelled = null, ?int $run = null): GuestExecStatus
     {
         // A draft has its own path ($name ends in -draft), so boot units that
         // run the published script never pick it up; the inputs are the same.
         $path = '/usr/local/sbin/proxmotion-'.$name;
-        $config = self::LINUX_CONFIG_DIR.'/'.$event->name();
+        $config = self::LINUX_CONFIG_DIR.'/'.$slot->file;
 
         $agent->runOrFail($vmid, ['mkdir', '-p', self::LINUX_CONFIG_DIR, '/usr/local/sbin']);
         $agent->writeFile($vmid, $config.'.json', self::json($inputs));
         $agent->writeFile($vmid, $config.'.vars', self::vars($inputs));
         $agent->writeFile($vmid, $path, $script);
 
-        return $agent->run($vmid, $trace ? ['sh', '-x', $path] : ['sh', $path], $input, timeoutSeconds: $event->isCritical() ? 60 : 300);
+        $command = $trace ? ['sh', '-x', $path] : ['sh', $path];
+
+        if ($cancelled === null || $run === null) {
+            return $agent->run($vmid, $command, $input, timeoutSeconds: $slot->timeoutSeconds());
+        }
+
+        return $agent->run($vmid, ['env', self::RUN_MARKER.'='.$run, ...$command], $input, timeoutSeconds: $slot->timeoutSeconds(), cancelled: $cancelled);
     }
 
     /**
      * @param  array<string, string|int|list<string>|null>  $inputs
+     * @param  (Closure(): bool)|null  $cancelled
      */
-    private function runOnWindows(GuestAgentResource $agent, int $vmid, GuestScriptEvent $event, string $name, string $script, array $inputs, ?string $input): GuestExecStatus
+    private function runOnWindows(GuestAgentResource $agent, int $vmid, ScriptSlot $slot, string $name, string $script, array $inputs, ?string $input, ?Closure $cancelled = null): GuestExecStatus
     {
         $path = self::WINDOWS_DIR.'\\'.$name.'.ps1';
 
         // cmd starts much faster than PowerShell; "already exists" fails harmlessly.
         $agent->run($vmid, ['cmd.exe', '/c', 'mkdir', self::WINDOWS_DIR]);
-        $agent->writeFile($vmid, self::WINDOWS_DIR.'\\'.$event->name().'.json', self::json($inputs));
+        $agent->writeFile($vmid, self::WINDOWS_DIR.'\\'.$slot->file.'.json', self::json($inputs));
         $agent->writeFile($vmid, $path, $script);
 
-        return $agent->run($vmid, ['powershell.exe', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', $path], $input, timeoutSeconds: $event->isCritical() ? 60 : 300);
+        return $agent->run($vmid, ['powershell.exe', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', $path], $input, timeoutSeconds: $slot->timeoutSeconds(), cancelled: $cancelled);
     }
 
-    private function startLog(Task $task, Server $server, GuestScriptEvent $event, string $script, string $source, bool $trace): GuestScriptLog
+    /**
+     * Stop a cancelled run inside the guest and log what it printed until
+     * then. The task has already ended (TaskController::cancel()); a run that
+     * cannot be stopped is noted on its log.
+     */
+    private function stopCancelled(GuestAgentResource $agent, int $vmid, OsPlatform $platform, ?string $distribution, ScriptSlot $slot, GuestScriptLog $log, int $pid): void
+    {
+        $command = match (true) {
+            $platform === OsPlatform::Windows => ['powershell.exe', '-NoProfile', '-NonInteractive', '-Command', str_replace('{pid}', (string) $pid, self::WINDOWS_STOP_SCRIPT)],
+            $distribution === Distributions::FREEBSD => ['sh', '-c', self::FREEBSD_STOP_SCRIPT, 'proxmotion-stop', (string) $log->id],
+            default => ['sh', '-c', self::LINUX_STOP_SCRIPT, 'proxmotion-stop', (string) $log->id],
+        };
+        $message = self::CANCELLED;
+        $result = null;
+
+        try {
+            $agent->run($vmid, $command);
+
+            // The agent reports the run as exited once its output is closed.
+            for ($check = 1; ! ($result = $agent->execStatus($vmid, $pid))->exited && $check < self::STOP_CHECKS; $check++) {
+                Sleep::for(1)->seconds();
+            }
+
+            if (! $result->exited) {
+                $result = null;
+                $message .= ' It may still be running inside the server.';
+            }
+        } catch (ProxmoxException $e) {
+            $message .= ' It could not be stopped inside the server: '.$e->getMessage();
+        }
+
+        $keep = $result !== null && $slot->keepsOutput();
+        $log->forceFill([
+            'status' => 'failed',
+            'exit_code' => $result?->exitCode,
+            'message' => $message,
+            'stdout' => $keep ? self::tail($result->stdout) : null,
+            'stderr' => $keep ? self::tail($result->stderr) : null,
+            'finished_at' => now(),
+        ])->save();
+    }
+
+    private function startLog(Task $task, Server $server, ScriptSlot $slot, string $script, string $source, bool $trace): GuestScriptLog
     {
         $log = new GuestScriptLog;
         $log->forceFill([
             'server_id' => $server->id,
             'os_template_id' => $server->os_template_id,
             'task_id' => $task->id,
-            'event' => $event,
+            'custom_script_id' => $slot->custom?->id,
+            'script_name' => $slot->custom?->name,
+            'event' => $slot->event,
             'source' => $source,
             'trace' => $trace,
             'status' => 'running',
@@ -530,9 +961,9 @@ final readonly class GuestScripts
     /**
      * Record the exit code and output; a password script's output is left out.
      */
-    private function finishLog(GuestScriptLog $log, GuestScriptEvent $event, GuestExecStatus $result): void
+    private function finishLog(GuestScriptLog $log, ScriptSlot $slot, GuestExecStatus $result): void
     {
-        $keep = $event !== GuestScriptEvent::PasswordReset;
+        $keep = $slot->keepsOutput();
         $truncated = $result->stdoutTruncated || $result->stderrTruncated
             || strlen($result->stdout) > GuestScriptLog::MAX_OUTPUT_BYTES
             || strlen($result->stderr) > GuestScriptLog::MAX_OUTPUT_BYTES;
@@ -571,40 +1002,19 @@ final readonly class GuestScripts
         return reset($lines) ?: 'exit code '.$result->exitCode;
     }
 
-    private function failed(Task $task, GuestScriptLog $log, GuestScriptEvent $event, Throwable $error, string $note): bool
+    private function failed(Task $task, GuestScriptLog $log, ScriptSlot $slot, Throwable $error, string $note): bool
     {
         if ($log->status === 'running') {
             $log->forceFill(['status' => 'failed', 'message' => $note, 'finished_at' => now()])->save();
         }
 
-        if ($event->isCritical()) {
+        if ($slot->isCritical()) {
             throw $error instanceof GuestScriptFailed || $error instanceof ProxmoxException ? $error : new GuestScriptFailed($note);
         }
 
-        $task->completeStep($event->step(), $note);
+        $task->completeStep($slot->step, $note);
 
         return false;
-    }
-
-    private static function unreachableNote(GuestScriptEvent $event): string
-    {
-        return match ($event) {
-            GuestScriptEvent::AddressesChanged => 'The guest agent did not answer: configure the additional addresses inside the server.',
-            GuestScriptEvent::DiskResized => 'The guest agent did not answer: grow the file system inside the server (Linux templates with cloud-init grow it at the next boot).',
-            GuestScriptEvent::HostnameChanged => 'The guest agent did not answer: change the hostname inside the server.',
-            default => 'The guest agent did not answer: the template\'s script did not run.',
-        };
-    }
-
-    private static function failedNote(GuestScriptEvent $event): string
-    {
-        return match ($event) {
-            GuestScriptEvent::AddressesChanged => 'The additional addresses could not be configured inside the server: ',
-            GuestScriptEvent::DiskResized => 'The file system could not be grown inside the server: ',
-            GuestScriptEvent::PasswordReset => 'The password reset script failed: ',
-            GuestScriptEvent::Provisioned => 'The template\'s script failed: ',
-            GuestScriptEvent::HostnameChanged => 'The hostname could not be changed inside the server: ',
-        };
     }
 
     /**

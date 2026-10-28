@@ -68,10 +68,21 @@ class RunServerTask implements ShouldQueue
         }
 
         if ($this->dispatch === 0) {
-            $task->forceFill(['status' => TaskStatus::Running, 'started_at' => now()]);
-        }
+            // Claimed only while still queued: an administrator may have cancelled
+            // or failed it since this job read it (TaskFailer::cancel()).
+            $claimed = Task::query()
+                ->whereKey($task->id)
+                ->where('status', TaskStatus::Queued)
+                ->update(['status' => TaskStatus::Running, 'started_at' => now(), 'heartbeat_at' => now()]);
 
-        $task->forceFill(['heartbeat_at' => now()])->save();
+            if ($claimed === 0) {
+                return;
+            }
+
+            $task->refresh();
+        } else {
+            $task->forceFill(['heartbeat_at' => now()])->save();
+        }
 
         try {
             $staged = match ($task->type) {

@@ -75,12 +75,15 @@ const actions: {
     },
 ];
 
-// Unknown state: offer everything; every action is safe to repeat.
+// Unknown state (also one Proxmox has no name for here): offer everything;
+// every action is safe to repeat.
+const known = computed(
+    () => props.power === 'running' || props.power === 'stopped',
+);
 const visible = computed(() =>
     actions.filter(
         (item) =>
-            props.power === undefined ||
-            props.power === null ||
+            !known.value ||
             (item.when === 'running') === (props.power === 'running'),
     ),
 );

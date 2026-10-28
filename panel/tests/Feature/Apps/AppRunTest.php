@@ -7,7 +7,6 @@ use App\Domain\Apps\AppInstaller;
 use App\Domain\Apps\AppNotEligible;
 use App\Domain\Apps\AppRunner;
 use App\Domain\Apps\InstallationPoller;
-use App\Domain\Apps\RecipeSynchronizer;
 use App\Domain\Apps\RunPoller;
 use App\Enums\AppInstallationStatus;
 use App\Enums\AppRunKind;
@@ -54,7 +53,7 @@ class AppRunTest extends TestCase
         $this->proxmox = (new FakeProxmoxCluster)->addTemplate(9000)->install();
         $this->server = app(ServerCreator::class)->create($this->order())->refresh();
         $this->admin = User::factory()->create();
-        app(RecipeSynchronizer::class)->sync();
+        $this->syncRecipes();
         $this->offerApps();
     }
 
@@ -104,9 +103,9 @@ class AppRunTest extends TestCase
         $this->assertSame(AppInstallationStatus::Uninstalling, $installation->refresh()->status);
         $this->assertSame($app.'/runs/'.$run->uuid, $directory);
 
-        $this->assertSame(file_get_contents(base_path('recipes/wireguard/uninstall.sh')), $files[$app.'/uninstall.sh']);
-        $this->assertSame(file_get_contents(base_path('recipes/wireguard/lib.sh')), $files[$app.'/lib.sh'], 'Includes are written too.');
-        $this->assertSame(file_get_contents(base_path('recipes/wireguard/actions/add-client.sh')), $files[$app.'/actions/add-client.sh']);
+        $this->assertSame(file_get_contents(base_path('tests/Fixtures/recipes/wireguard/uninstall.sh')), $files[$app.'/uninstall.sh']);
+        $this->assertSame(file_get_contents(base_path('tests/Fixtures/recipes/wireguard/lib.sh')), $files[$app.'/lib.sh'], 'Includes are written too.');
+        $this->assertSame(file_get_contents(base_path('tests/Fixtures/recipes/wireguard/actions/add-client.sh')), $files[$app.'/actions/add-client.sh']);
         $this->assertSame('{}', trim($files[$directory.'/inputs.json']));
         $this->assertSame('installing', json_decode($files[$directory.'/status.json'], true)['status']);
 

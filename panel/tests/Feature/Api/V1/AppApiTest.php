@@ -5,7 +5,6 @@ namespace Tests\Feature\Api\V1;
 use App\Domain\Apps\AppEntitlements;
 use App\Domain\Apps\AppInstallations;
 use App\Domain\Apps\InstallationPoller;
-use App\Domain\Apps\RecipeSynchronizer;
 use App\Domain\Apps\RunPoller;
 use App\Enums\ApiScope;
 use App\Enums\AppEntitlementSource;
@@ -39,7 +38,7 @@ class AppApiTest extends ApiTestCase
     {
         parent::setUp();
 
-        app(RecipeSynchronizer::class)->sync();
+        $this->syncRecipes();
 
         $this->offerApps();
         $this->server = $this->provisionedServer();
@@ -62,7 +61,7 @@ class AppApiTest extends ApiTestCase
 
     public function test_the_catalog_lists_active_apps_with_their_inputs()
     {
-        AppRecipe::query()->whereIn('slug', ['aapanel', 'chocolatey', 'coolify', 'cpanel', 'cyberpanel', 'docker', 'fastpanel', 'hestiacp', 'iis', 'lamp', 'lemp', 'nodejs', 'plesk', 'portainer', 'pterodactyl', 'sqlserver-express', 'whmcs', 'wordpress'])->update(['is_active' => false]);
+        AppRecipe::query()->whereIn('slug', ['docker', 'sqlserver-express'])->update(['is_active' => false]);
 
         $response = $this->api('GET', '/api/v1/apps')->assertOk();
 
@@ -97,8 +96,8 @@ class AppApiTest extends ApiTestCase
         $small = Package::factory()->create(['memory_mib' => 768]);
 
         $this->assertSame([], $this->api('GET', '/api/v1/apps?os_template='.$windows->uuid)->assertOk()->json('data'));
-        $this->assertSame(['nodejs', 'openvpn', 'wireguard'], array_column($this->api('GET', '/api/v1/apps?package='.$small->uuid)->json('data'), 'id'));
-        $this->assertSame(['coolify', 'cyberpanel', 'docker', 'portainer', 'fastpanel', 'hestiacp', 'lamp', 'lemp', 'nodejs', 'openvpn', 'plesk', 'pterodactyl', 'whmcs', 'wireguard', 'wordpress', 'aapanel', 'cpanel'], array_column($this->api('GET', '/api/v1/apps?os_template='.$this->osTemplate->uuid.'&server='.$this->server->uuid)->json('data'), 'id'));
+        $this->assertSame(['openvpn', 'wireguard'], array_column($this->api('GET', '/api/v1/apps?package='.$small->uuid)->json('data'), 'id'));
+        $this->assertSame(['docker', 'openvpn', 'wireguard'], array_column($this->api('GET', '/api/v1/apps?os_template='.$this->osTemplate->uuid.'&server='.$this->server->uuid)->json('data'), 'id'));
     }
 
     public function test_paid_apps_are_listed_and_say_whether_the_server_is_entitled()
@@ -203,6 +202,23 @@ class AppApiTest extends ApiTestCase
         app(AppInstallations::class)->installed($trial->load('server'), []);
 
         $this->assertSame(0, WebhookDelivery::query()->count());
+    }
+
+    public function test_an_uninstall_ended_by_a_wiped_server_is_reported_as_its_runs_outcome()
+    {
+        Queue::fake([DeliverWebhook::class]);
+        WebhookEndpoint::factory()->for($this->billingSystem)->create();
+        $installation = $this->installed();
+        $this->api('DELETE', "/api/v1/servers/{$this->server->uuid}/apps/{$installation->uuid}")->assertAccepted();
+        WebhookDelivery::query()->delete();
+
+        app(AppInstallations::class)->serverWiped($this->server->refresh(), 'The server was terminated.');
+
+        $delivery = WebhookDelivery::query()->sole();
+        $payload = json_decode($delivery->payload, true);
+        $this->assertSame('app.uninstall_failed', $delivery->event, 'Not app.failed: the app was installed.');
+        $this->assertSame('The server was terminated.', $payload['data']['run']['error']);
+        $this->assertSame(AppInstallationStatus::Removed, $installation->refresh()->status);
     }
 
     public function test_password_inputs_are_never_shown()

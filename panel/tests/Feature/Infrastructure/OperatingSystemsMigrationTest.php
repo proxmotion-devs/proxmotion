@@ -2,7 +2,6 @@
 
 namespace Tests\Feature\Infrastructure;
 
-use App\Domain\Apps\RecipeSynchronizer;
 use App\Models\AppRecipe;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -24,7 +23,7 @@ class OperatingSystemsMigrationTest extends TestCase
     {
         parent::setUp();
 
-        app(RecipeSynchronizer::class)->sync();
+        $this->syncRecipes();
         $this->migration = require database_path('migrations/2026_11_16_000000_create_operating_systems_tables.php');
         $this->migration->down();
     }

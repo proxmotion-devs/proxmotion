@@ -24,7 +24,9 @@ class CatalogTest extends ApiTestCase
                 'ipv6_count' => 0,
                 'port_speed_mbps' => 1000,
                 'traffic_bytes' => $this->package->traffic_bytes,
+                'reinstall_limit' => null,
                 'network_models' => ['bridged', 'routed'],
+                'os_templates' => [],
             ]]]);
     }
 

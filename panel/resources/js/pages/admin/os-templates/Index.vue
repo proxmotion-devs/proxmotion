@@ -235,7 +235,7 @@ const submit = () => {
                 <li>
                     {{
                         $t(
-                            'Install cloud-init (Windows: Cloudbase-Init) and the guest agent, add a CloudInit drive and convert the VM to a template. The guide in Help has every step for Linux and Windows.',
+                            'Install cloud-init (Windows: Cloudbase-Init) and the guest agent, add a CloudInit drive and convert the VM to a template. The guide in Help has every step for Linux, Windows and FreeBSD.',
                         )
                     }}
                 </li>

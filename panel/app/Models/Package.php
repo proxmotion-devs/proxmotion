@@ -32,6 +32,8 @@ use Illuminate\Support\Collection;
  * @property int|null $cpu_units relative CPU weight on a busy node
  * @property int|null $disk_mb_s read and write throughput of the boot disk, MB/s each
  * @property int|null $disk_iops read and write operations per second of the boot disk, each
+ * @property int|null $reinstall_limit how often billing systems may reinstall a server within reinstall_period_days (docs/adr/0045); null: unlimited
+ * @property int|null $reinstall_period_days the rolling window of reinstall_limit, in days
  * @property int|null $firewall_ruleset_id new servers start with these rules and its default policy (docs/adr/0035 §3)
  * @property int $ipv4_count
  * @property int $ipv6_count
@@ -43,9 +45,10 @@ use Illuminate\Support\Collection;
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  * @property-read \Illuminate\Database\Eloquent\Collection<int, PlacementGroup> $placementGroups
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, OsTemplate> $osTemplates
  */
 #[Fillable([
-    'name', 'cpu_cores', 'memory_mib', 'disk_mib', 'traffic_bytes', 'port_speed_mbps', 'cpu_limit', 'cpu_units', 'disk_mb_s', 'disk_iops', 'firewall_ruleset_id',
+    'name', 'cpu_cores', 'memory_mib', 'disk_mib', 'traffic_bytes', 'port_speed_mbps', 'cpu_limit', 'cpu_units', 'disk_mb_s', 'disk_iops', 'reinstall_limit', 'reinstall_period_days', 'firewall_ruleset_id',
     'ipv4_count', 'ipv6_count', 'snapshot_slots', 'backup_slots', 'network_models', 'is_active', 'sort_order',
 ])]
 class Package extends Model
@@ -68,6 +71,8 @@ class Package extends Model
             'cpu_units' => 'integer',
             'disk_mb_s' => 'integer',
             'disk_iops' => 'integer',
+            'reinstall_limit' => 'integer',
+            'reinstall_period_days' => 'integer',
             'ipv4_count' => 'integer',
             'ipv6_count' => 'integer',
             'snapshot_slots' => 'integer',
@@ -88,6 +93,27 @@ class Package extends Model
     public function placementGroups(): BelongsToMany
     {
         return $this->belongsToMany(PlacementGroup::class);
+    }
+
+    /**
+     * The OS templates the package's servers may be created or reinstalled
+     * with; none means any (docs/adr/0040).
+     *
+     * @return BelongsToMany<OsTemplate, $this>
+     */
+    public function osTemplates(): BelongsToMany
+    {
+        return $this->belongsToMany(OsTemplate::class);
+    }
+
+    /** Whether the package's servers may use the template: always when it names none. */
+    public function allowsOsTemplate(OsTemplate $template): bool
+    {
+        if (! $this->relationLoaded('osTemplates')) {
+            return ! $this->osTemplates()->exists() || $this->osTemplates()->whereKey($template->id)->exists();
+        }
+
+        return $this->osTemplates->isEmpty() || $this->osTemplates->contains('id', $template->id);
     }
 
     /**

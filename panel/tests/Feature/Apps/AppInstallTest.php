@@ -8,7 +8,6 @@ use App\Domain\Apps\AppInstaller;
 use App\Domain\Apps\AppNotEligible;
 use App\Domain\Apps\AppSystems;
 use App\Domain\Apps\InstallationPoller;
-use App\Domain\Apps\RecipeSynchronizer;
 use App\Enums\AppInstallationStatus;
 use App\Enums\TaskStatus;
 use App\Enums\TaskType;
@@ -53,7 +52,7 @@ class AppInstallTest extends TestCase
         $this->proxmox = (new FakeProxmoxCluster)->addTemplate(9000)->install();
         $this->server = app(ServerCreator::class)->create($this->order())->refresh();
         $this->admin = User::factory()->create();
-        app(RecipeSynchronizer::class)->sync();
+        $this->syncRecipes();
         $this->offerApps();
     }
 
@@ -97,7 +96,7 @@ class AppInstallTest extends TestCase
         $this->assertSame(TaskStatus::Succeeded, $installation->task?->status);
         $this->assertSame(TaskType::InstallApp, $installation->task->type);
 
-        $this->assertSame(file_get_contents(base_path('recipes/wireguard/install.sh')), $files[$directory.'/install.sh']);
+        $this->assertSame(file_get_contents(base_path('tests/Fixtures/recipes/wireguard/install.sh')), $files[$directory.'/install.sh']);
         $this->assertSame(file_get_contents(base_path('recipes/_lib/run.sh')), $files[$directory.'/run.sh']);
         $this->assertSame(file_get_contents(base_path('recipes/_lib/proxmotion.sh')), $files[$directory.'/proxmotion.sh']);
         $this->assertSame(['port' => 51900], json_decode($files[$directory.'/inputs.json'], true));
@@ -355,6 +354,38 @@ class AppInstallTest extends TestCase
 
         $this->expectExceptionOnInstall('wireguard', 'This app is already installed on the server.');
         $this->assertSame(AppInstallationStatus::Installing, $this->install('docker')->status);
+    }
+
+    public function test_an_app_whose_uninstall_or_upgrade_failed_is_still_installed()
+    {
+        $wireguard = $this->install();
+        $this->guestWrites($wireguard, 'status.json', ['status' => 'installed']);
+        $this->poll($wireguard);
+
+        foreach ([AppInstallationStatus::UninstallFailed, AppInstallationStatus::UpgradeFailed] as $status) {
+            $wireguard->forceFill(['status' => $status])->save();
+
+            $this->expectExceptionOnInstall('wireguard', 'This app is already installed on the server.');
+        }
+    }
+
+    public function test_a_failed_installation_is_not_retried_once_the_app_was_installed_again()
+    {
+        $failed = $this->install();
+        $this->guestWrites($failed, 'status.json', ['status' => 'failed', 'message' => 'boom']);
+        $this->poll($failed);
+        $again = $this->install();
+        $this->guestWrites($again, 'status.json', ['status' => 'installed']);
+        $this->poll($again);
+
+        try {
+            app(AppInstaller::class)->retry($failed->refresh(), $this->admin, '127.0.0.1');
+            $this->fail('The failed installation was retried.');
+        } catch (AppInstallConflict $e) {
+            $this->assertSame('This app is already installed on the server.', $e->getMessage());
+        }
+
+        $this->assertSame(AppInstallationStatus::Failed, $failed->refresh()->status);
     }
 
     private function expectExceptionOnInstall(string $slug, string $message): void

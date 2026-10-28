@@ -11,6 +11,7 @@ use App\Enums\OsPlatform;
 use App\Models\Concerns\HasPublicUuid;
 use Database\Factories\OsTemplateFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -117,6 +118,41 @@ class OsTemplate extends Model
     public function guestScripts(): HasMany
     {
         return $this->hasMany(GuestScript::class);
+    }
+
+    /**
+     * Administrators' own scripts, run by hand or at events (docs/adr/0043).
+     *
+     * @return HasMany<CustomScript, $this>
+     */
+    public function customScripts(): HasMany
+    {
+        return $this->hasMany(CustomScript::class)->orderBy('position')->orderBy('id');
+    }
+
+    /**
+     * The packages that name this template among the ones they allow (docs/adr/0040).
+     *
+     * @return BelongsToMany<Package, $this>
+     */
+    public function packages(): BelongsToMany
+    {
+        return $this->belongsToMany(Package::class);
+    }
+
+    /**
+     * The templates a package's servers may use: the ones it names, or every
+     * template when it names none (docs/adr/0040).
+     *
+     * @param  Builder<OsTemplate>  $query
+     * @return Builder<OsTemplate>
+     */
+    public function scopeAllowedBy(Builder $query, Package $package): Builder
+    {
+        return $query->when(
+            $package->osTemplates()->exists(),
+            fn (Builder $query) => $query->whereHas('packages', fn (Builder $query) => $query->whereKey($package->id)),
+        );
     }
 
     /**

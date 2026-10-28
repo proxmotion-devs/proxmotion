@@ -1,0 +1,31 @@
+{
+    "data": [
+        {
+            "devpath": "/dev/nvme0n1",
+            "type": "nvme",
+            "model": "Example NVMe 1TB",
+            "serial": "EXAMPLE0001",
+            "vendor": "unknown",
+            "size": 1000204886016,
+            "used": "LVM",
+            "health": "PASSED",
+            "wearout": 97,
+            "gpt": 1,
+            "rpm": 0,
+            "osdid": -1
+        },
+        {
+            "devpath": "/dev/sda",
+            "type": "hdd",
+            "model": "Example HDD 4TB",
+            "serial": "EXAMPLE0002",
+            "vendor": "ATA",
+            "size": 4000787030016,
+            "health": "PASSED",
+            "wearout": "N/A",
+            "gpt": 0,
+            "rpm": 7200,
+            "osdid": 0
+        }
+    ]
+}

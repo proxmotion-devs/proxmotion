@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Domain\Apps;
 
 use App\Domain\Firewall\ServerFirewalls;
+use App\Domain\Notifications\AdminNotifier;
 use App\Domain\Webhooks\Webhooks;
 use App\Enums\AppInstallationStatus;
 use App\Enums\AppRunKind;
@@ -29,6 +30,7 @@ final readonly class AppRuns
     public function __construct(
         private Webhooks $webhooks,
         private ServerFirewalls $firewalls,
+        private AdminNotifier $notifier,
     ) {}
 
     /**
@@ -97,6 +99,7 @@ final readonly class AppRuns
         });
 
         $this->notify($run);
+        $this->notifier->appRunFailed($run);
     }
 
     /**

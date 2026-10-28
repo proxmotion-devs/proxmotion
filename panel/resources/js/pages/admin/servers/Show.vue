@@ -7,9 +7,9 @@ import {
     useHttp,
     usePoll,
 } from '@inertiajs/vue3';
-import { Eye, Monitor, Pause, Play, RotateCcw } from '@lucide/vue';
+import { Eye, Monitor, RotateCcw } from '@lucide/vue';
 import { trans } from 'laravel-vue-i18n';
-import { computed, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import ConfirmDelete from '@/components/admin/ConfirmDelete.vue';
 import DriftList from '@/components/admin/DriftList.vue';
 import ServerStatusBadge from '@/components/admin/ServerStatusBadge.vue';
@@ -28,12 +28,16 @@ import AntiSpoofingButton from '@/components/servers/AntiSpoofingButton.vue';
 import FirewallSection from '@/components/servers/FirewallSection.vue';
 import ReapplyAddressesButton from '@/components/servers/ReapplyAddressesButton.vue';
 import ReinstallDialog from '@/components/servers/ReinstallDialog.vue';
+import ReinstallLimitSection from '@/components/servers/ReinstallLimitSection.vue';
 import RemoveAddressButton from '@/components/servers/RemoveAddressButton.vue';
 import ResourcesDialog from '@/components/servers/ResourcesDialog.vue';
 import ResetPasswordButton from '@/components/servers/ResetPasswordButton.vue';
 import ServerChecks from '@/components/servers/ServerChecks.vue';
+import ServerScripts from '@/components/servers/ServerScripts.vue';
 import ServerStatsCards from '@/components/servers/ServerStatsCards.vue';
+import SuspendDialog from '@/components/servers/SuspendDialog.vue';
 import TaskList from '@/components/servers/TaskList.vue';
+import UnsuspendDialog from '@/components/servers/UnsuspendDialog.vue';
 import UsageSection from '@/components/servers/UsageSection.vue';
 import { Button } from '@/components/ui/button';
 import { useDateTime } from '@/composables/useDateTime';
@@ -56,6 +60,7 @@ import {
     reapplyAddresses,
     rebuild,
     reinstall,
+    reinstallLimit as updateReinstallLimit,
     resetPassword,
     resources,
     retry,
@@ -68,6 +73,7 @@ import {
     verify,
 } from '@/routes/admin/servers';
 import { finish as finishMove } from '@/routes/admin/servers/moves';
+import { reset as resetReinstalls } from '@/routes/admin/servers/reinstall-limit';
 import { NETWORK_MODELS } from '@/types/admin';
 import type {
     AddressPoolOption,
@@ -81,6 +87,8 @@ import type {
     PowerAction,
     ServerVerification,
     Drift,
+    GuestScriptRun,
+    ReinstallLimitState,
     ReinstallOptions,
     ResourceOptions,
     ServerFirewall,
@@ -140,6 +148,8 @@ const props = withDefaults(
         tasks: Task[];
         revealedAppOutputs: RevealedAppOutputs | null;
         reinstallOptions: ReinstallOptions;
+        /** docs/adr/0045 */
+        reinstallLimit: ReinstallLimitState;
         resourceOptions: ResourceOptions;
         /** docs/adr/0037 */
         moveOptions: MoveOptions;
@@ -150,9 +160,14 @@ const props = withDefaults(
         drifts: Drift[];
         /** docs/adr/0039 */
         usage: ServerUsage;
-        /** Deferred: undefined until loaded, null when unknown. */
+        /** Deferred: undefined until loaded, null when unknown or the VM is not where the panel recorded it. */
         power?: string | null;
-        /** Deferred: whether the guest agent answers; undefined until loaded, null when unknown. */
+        /** Deferred: whether the VM is where the panel recorded it; node: where Proxmox has it when elsewhere. */
+        vm?: {
+            state: 'present' | 'missing' | 'elsewhere' | 'moving';
+            node: string | null;
+        };
+        /** Deferred: whether the guest agent answers; undefined until loaded, null when unknown or not asked (VM not running). */
         agent?: boolean | null;
         apps: AppInstallation[];
         appOptions: AppOption[];
@@ -160,6 +175,9 @@ const props = withDefaults(
         unavailableApps: UnavailableApp[];
         entitlements: AppEntitlement[];
         entitlementOptions: Option[];
+        /** The template's manual scripts and the latest custom script runs here (docs/adr/0043). */
+        scripts: { uuid: string; name: string }[];
+        scriptRuns: GuestScriptRun[];
     }>(),
     // Vue turns a missing Boolean prop into false, which showed the agent as
     // unreachable while the deferred prop was still loading.
@@ -188,10 +206,12 @@ const { start, stop } = usePoll(
             'server',
             'tasks',
             'power',
+            'vm',
             'agent',
             'apps',
             'drifts',
             'moveOptions',
+            'scriptRuns',
         ],
     },
     { autoStart: false },
@@ -216,6 +236,67 @@ const busy = computed(
 );
 
 watch(busy, (value) => (value ? start() : stop()), { immediate: true });
+
+// Otherwise follow Proxmox and the server more slowly, so a VM stopped,
+// started, deleted or moved there, a task a billing system started and a drift
+// the sync recorded show up without a reload. The guest agent (one more request
+// to Proxmox) is asked only every fourth time, or once the power state changed,
+// and nothing is asked while the page is hidden.
+const WATCH_INTERVAL = 15000;
+const AGENT_EVERY = 4;
+let watchTimer: ReturnType<typeof setInterval> | null = null;
+let watchTicks = 0;
+/** The power state when the agent was last asked: a VM just started gets its agent checked at once. */
+let agentAskedAt: string | null | undefined = undefined;
+
+const watchTick = () => {
+    if (document.visibilityState === 'hidden') {
+        return;
+    }
+
+    watchTicks++;
+    const askAgent =
+        watchTicks % AGENT_EVERY === 0 || props.power !== agentAskedAt;
+
+    if (askAgent) {
+        agentAskedAt = props.power;
+    }
+
+    router.reload({
+        only: [
+            'server',
+            'tasks',
+            'apps',
+            'power',
+            'vm',
+            'drifts',
+            ...(askAgent ? ['agent'] : []),
+        ],
+        async: true,
+    });
+};
+
+const stopWatching = () => {
+    if (watchTimer !== null) {
+        clearInterval(watchTimer);
+        watchTimer = null;
+    }
+};
+
+watch(
+    () => !busy.value && props.server.status !== 'terminated',
+    (value) => {
+        stopWatching();
+
+        if (value) {
+            watchTicks = 0;
+            watchTimer = setInterval(watchTick, WATCH_INTERVAL);
+        }
+    },
+    { immediate: true },
+);
+
+onBeforeUnmount(stopWatching);
 
 const powerAction = (action: PowerAction) =>
     powerRoute({ server: props.server.uuid, action });
@@ -327,6 +408,31 @@ const runningTasks = computed(() =>
 );
 
 const active = computed(() => props.server.status === 'active');
+// Where the VM is, as Proxmox says (only asked for active servers).
+const vmState = computed(() =>
+    active.value ? (props.vm?.state ?? 'present') : 'present',
+);
+// Not on the node the panel recorded: most operations would fail there.
+const vmAway = computed(() => vmState.value !== 'present');
+const vmStopped = computed(
+    () => active.value && !vmAway.value && props.power === 'stopped',
+);
+// Operations on the VM are refused while a task runs or the VM is not where the panel recorded it.
+const vmBlocked = computed(() => busy.value || vmAway.value);
+// English keys, translated by StatusBadge.
+const vmBadge = computed(
+    () =>
+        ({
+            present: '',
+            missing: 'Not found in Proxmox',
+            elsewhere: 'On another node',
+            moving: 'Move not finished',
+        })[vmState.value],
+);
+// Password reset, apps and scripts need the agent; a VM not running cannot have one.
+const agentDown = computed(
+    () => vmAway.value || vmStopped.value || props.agent === false,
+);
 // A firewall drift says it was changed in Proxmox; an adopted VM not compared yet may never have had it (docs/adr/0033).
 const firewallDrift = computed(() =>
     props.drifts.some((drift) => drift.type === 'firewall_mismatch'),
@@ -396,13 +502,19 @@ const resetAfterTrial = () => {
                 </div>
             </div>
             <div class="flex flex-wrap items-center gap-2">
+                <StatusBadge
+                    v-if="active && vmAway"
+                    :tone="vmState === 'moving' ? 'warning' : 'danger'"
+                    :label="vmBadge"
+                    data-test="vm-away"
+                />
                 <PowerControls
-                    v-if="active"
+                    v-else-if="active"
                     :power="power"
                     :busy="busy"
                     :action="powerAction"
                 />
-                <Button v-if="active" size="sm" as-child>
+                <Button v-if="active && !vmAway" size="sm" as-child>
                     <a
                         :href="openConsole(server.uuid).url"
                         target="_blank"
@@ -466,7 +578,62 @@ const resetAfterTrial = () => {
         </p>
 
         <p
-            v-if="active && agent === false"
+            v-if="vmState === 'missing'"
+            class="rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm"
+            data-test="vm-missing"
+        >
+            {{
+                $t(
+                    'Proxmox has no VM :vmid in this cluster: it was deleted outside the panel. The next sync records it under drift, where you can mark the server as failed. Reinstall builds it again.',
+                    { vmid: String(server.vmid) },
+                )
+            }}
+        </p>
+
+        <p
+            v-else-if="vmState === 'elsewhere'"
+            class="rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm"
+            data-test="vm-elsewhere"
+        >
+            {{
+                $t(
+                    'Proxmox has VM :vmid on node :actual, not on :node: it was migrated outside the panel. The next sync records it under drift, where Accept Proxmox values takes the new node over.',
+                    {
+                        vmid: String(server.vmid),
+                        actual: vm?.node ?? '—',
+                        node: server.node,
+                    },
+                )
+            }}
+        </p>
+
+        <p
+            v-else-if="vmState === 'moving'"
+            class="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm"
+            data-test="vm-moving"
+        >
+            {{
+                $t(
+                    'A move of this server has not finished: its VM is no longer on :node. If the move failed, Finish the move under Placement and billing completes it.',
+                    { node: server.node },
+                )
+            }}
+        </p>
+
+        <p
+            v-else-if="vmStopped"
+            class="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm"
+            data-test="vm-stopped"
+        >
+            {{
+                $t(
+                    'The server is not running in Proxmox. Start it to reset its password or install apps.',
+                )
+            }}
+        </p>
+
+        <p
+            v-else-if="active && agent === false"
             class="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm"
             data-test="agent-unreachable"
         >
@@ -513,7 +680,9 @@ const resetAfterTrial = () => {
 
             <!-- Live figures from Proxmox while its VM exists (docs/adr/0036). -->
             <ServerStatsCards
-                v-if="['active', 'suspended'].includes(server.status)"
+                v-if="
+                    ['active', 'suspended'].includes(server.status) && !vmAway
+                "
                 :server-uuid="server.uuid"
                 :port-speed-mbps="server.port_speed_mbps"
             />
@@ -526,7 +695,7 @@ const resetAfterTrial = () => {
                             v-if="active"
                             :action="resources(server.uuid)"
                             :options="resourceOptions"
-                            :disabled="busy"
+                            :disabled="vmBlocked"
                         />
                     </div>
                     <dl class="grid gap-2 text-sm">
@@ -606,7 +775,10 @@ const resetAfterTrial = () => {
                                 {{ $t('Guest agent') }}
                             </dt>
                             <dd class="font-medium">
-                                <template v-if="agent === undefined">{{
+                                <template v-if="vmAway || vmStopped">{{
+                                    $t('Server not running')
+                                }}</template>
+                                <template v-else-if="agent === undefined">{{
                                     $t('Checking…')
                                 }}</template>
                                 <template v-else-if="agent === true">{{
@@ -622,13 +794,13 @@ const resetAfterTrial = () => {
                     <div v-if="active" class="mt-auto flex flex-wrap gap-2">
                         <ResetPasswordButton
                             :action="resetPassword(server.uuid)"
-                            :disabled="busy || agent === false"
+                            :disabled="busy || agentDown"
                         />
                         <HostnameDialog
                             :action="changeHostname(server.uuid)"
                             :hostname="server.hostname"
                             :platform="server.platform"
-                            :disabled="busy"
+                            :disabled="vmBlocked"
                         />
                     </div>
                 </section>
@@ -709,7 +881,7 @@ const resetAfterTrial = () => {
                             :action="moveServer(server.uuid)"
                             :options="moveOptions"
                             :hostname="server.hostname"
-                            :disabled="busy"
+                            :disabled="vmBlocked"
                         />
                     </div>
                 </section>
@@ -759,14 +931,16 @@ const resetAfterTrial = () => {
                         <ReapplyAddressesButton
                             v-if="active"
                             :action="reapplyAddresses(server.uuid)"
-                            :disabled="busy || server.addresses.length === 0"
+                            :disabled="
+                                vmBlocked || server.addresses.length === 0
+                            "
                         />
                         <AddressesDialog
                             v-if="active"
                             :action="changeAddresses(server.uuid)"
                             :addresses="server.addresses"
                             :pools="addressPools"
-                            :disabled="busy"
+                            :disabled="vmBlocked"
                         />
                     </div>
                 </div>
@@ -806,7 +980,7 @@ const resetAfterTrial = () => {
                             v-if="active && !address.primary"
                             :action="changeAddresses(server.uuid)"
                             :address="address.address"
-                            :disabled="busy"
+                            :disabled="vmBlocked"
                         />
                     </li>
                     <li v-if="server.addresses.length === 0">—</li>
@@ -820,11 +994,31 @@ const resetAfterTrial = () => {
                 :exempt-action="usageExempt(server.uuid)"
             />
 
+            <!-- Only the billing system's reinstalls are limited (docs/adr/0045). -->
+            <ReinstallLimitSection
+                v-if="
+                    server.billing_system &&
+                    ['active', 'suspended'].includes(server.status)
+                "
+                :limit="reinstallLimit"
+                :action="updateReinstallLimit(server.uuid)"
+                :reset-action="resetReinstalls(server.uuid)"
+            />
+
             <ServerChecks
                 v-if="active || server.verification"
                 :verification="server.verification"
                 :action="active ? verify(server.uuid) : undefined"
-                :disabled="busy"
+                :disabled="vmBlocked"
+            />
+
+            <ServerScripts
+                v-if="scripts.length || scriptRuns.length"
+                :server-uuid="server.uuid"
+                :hostname="server.hostname"
+                :scripts="scripts"
+                :runs="scriptRuns"
+                :disabled="!active || vmBlocked || agentDown"
             />
 
             <!-- Operations that interrupt or remove the server. -->
@@ -846,34 +1040,36 @@ const resetAfterTrial = () => {
                     </p>
                 </div>
                 <div class="flex flex-wrap gap-2">
-                    <Button
+                    <SuspendDialog
                         v-if="active"
-                        variant="outline"
-                        size="sm"
+                        :action="suspend(server.uuid)"
+                        :disabled="vmBlocked"
+                    />
+                    <!-- Suspended by the panel itself: an administrator may make it theirs (docs/adr/0039 §8). -->
+                    <SuspendDialog
+                        v-if="
+                            server.status === 'suspended' &&
+                            server.suspension_cause
+                        "
+                        take-over
+                        :action="suspend(server.uuid)"
                         :disabled="busy"
-                        @click="post(suspend(server.uuid))"
-                    >
-                        <Pause class="h-4 w-4" />
-                        {{ $t('Suspend') }}
-                    </Button>
-                    <Button
+                    />
+                    <UnsuspendDialog
                         v-if="server.status === 'suspended'"
-                        variant="outline"
-                        size="sm"
+                        :action="unsuspend(server.uuid)"
                         :disabled="busy"
-                        @click="post(unsuspend(server.uuid))"
-                    >
-                        <Play class="h-4 w-4" />
-                        {{ $t('Unsuspend') }}
-                    </Button>
+                    />
                     <ReinstallDialog
                         v-if="active"
                         :action="reinstall(server.uuid)"
                         :hostname="server.hostname"
                         :options="reinstallOptions"
-                        :disabled="busy"
+                        :disabled="busy || (vmAway && vmState !== 'missing')"
                     />
+                    <!-- Deleting would leave a VM moved to another node running there. -->
                     <ConfirmDelete
+                        v-if="!['elsewhere', 'moving'].includes(vmState)"
                         with-label
                         :action="destroy(server.uuid)"
                         :name="server.hostname"
@@ -889,7 +1085,7 @@ const resetAfterTrial = () => {
                 :options="appOptions"
                 :unavailable="unavailableApps"
                 :action="installApp(server.uuid)"
-                :disabled="!active || agent === false"
+                :disabled="!active || agentDown"
                 :revealed="revealedAppOutputs"
             />
 
@@ -927,7 +1123,7 @@ const resetAfterTrial = () => {
                         v-if="server.is_test && active"
                         variant="destructive"
                         size="sm"
-                        :disabled="busy"
+                        :disabled="vmBlocked"
                         data-test="trial-reset"
                         @click="resetAfterTrial"
                     >
@@ -953,7 +1149,7 @@ const resetAfterTrial = () => {
             v-else-if="tab === 'firewall'"
             :server="server.uuid"
             :firewall="firewall"
-            :disabled="busy"
+            :disabled="vmBlocked"
         />
 
         <TaskList v-else :tasks="tasks" />

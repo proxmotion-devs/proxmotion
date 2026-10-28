@@ -40,6 +40,8 @@ use Illuminate\Support\Carbon;
  * @property Carbon|null $updated_at
  * @property-read Server $server
  * @property-read ServerMove|null $move
+ * @property-read User|null $user
+ * @property-read ApiToken|null $apiToken
  */
 class Task extends Model
 {
@@ -161,6 +163,26 @@ class Task extends Model
     public function server(): BelongsTo
     {
         return $this->belongsTo(Server::class);
+    }
+
+    /**
+     * The administrator who started the task, if one did.
+     *
+     * @return BelongsTo<User, $this>
+     */
+    public function user(): BelongsTo
+    {
+        return $this->belongsTo(User::class);
+    }
+
+    /**
+     * The billing system's API token that started the task, if one did.
+     *
+     * @return BelongsTo<ApiToken, $this>
+     */
+    public function apiToken(): BelongsTo
+    {
+        return $this->belongsTo(ApiToken::class);
     }
 
     /**

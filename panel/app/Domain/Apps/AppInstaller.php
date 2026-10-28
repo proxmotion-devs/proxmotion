@@ -106,10 +106,7 @@ final readonly class AppInstaller
     private function queue(Server $server, AppRecipe $app, AppRecipeVersion $version, array $values, User|ApiToken $actor, bool $trial): AppInstallation
     {
         $this->ensureNothingRunning($server);
-
-        if ($server->appInstallations()->where('app_recipe_id', $app->id)->whereIn('status', [AppInstallationStatus::Installed, AppInstallationStatus::UninstallFailed])->exists()) {
-            throw new AppInstallConflict('This app is already installed on the server.');
-        }
+        $this->ensureNotInstalled($server, $app);
 
         return DB::transaction(function () use ($server, $app, $version, $values, $actor, $trial) {
             $installation = new AppInstallation;
@@ -226,6 +223,8 @@ final readonly class AppInstaller
         }
 
         $this->ensureNothingRunning($server);
+        // Another installation of the app may have succeeded since this one failed.
+        $this->ensureNotInstalled($server, $installation->recipe);
 
         $installation = DB::transaction(function () use ($installation, $actor) {
             $installation->forceFill([
@@ -275,6 +274,16 @@ final readonly class AppInstaller
 
         if ($busy) {
             throw new AppInstallConflict('Another app is still being installed on this server.');
+        }
+    }
+
+    /**
+     * @throws AppInstallConflict
+     */
+    private function ensureNotInstalled(Server $server, AppRecipe $app): void
+    {
+        if ($server->appInstallations()->where('app_recipe_id', $app->id)->whereIn('status', AppInstallationStatus::onServer())->exists()) {
+            throw new AppInstallConflict('This app is already installed on the server.');
         }
     }
 }

@@ -165,6 +165,28 @@ class CatalogManagementTest extends AdminTestCase
             ->assertInertia(fn (Assert $page) => $page->where('packages.0.cpu_limit', 1.25)->where('packages.0.disk_mb_s', 200));
     }
 
+    public function test_packages_store_a_reinstall_limit()
+    {
+        // docs/adr/0045
+        $payload = [
+            'name' => 'VPS S', 'cpu_cores' => 2, 'memory_mib' => 2048, 'disk_gib' => 40,
+            'ipv4_count' => 1, 'ipv6_count' => 0, 'snapshot_slots' => 0, 'backup_slots' => 0,
+            'network_models' => ['bridged'], 'is_active' => true, 'sort_order' => 0,
+        ];
+
+        $this->post(route('admin.packages.store'), [...$payload, 'reinstall_limit' => 3])->assertSessionHasErrors(['reinstall_period_days']);
+        $this->post(route('admin.packages.store'), [...$payload, 'reinstall_limit' => 3, 'reinstall_period_days' => 30])->assertSessionHasNoErrors();
+
+        $package = Package::query()->sole();
+        $this->assertSame([3, 30], [$package->reinstall_limit, $package->reinstall_period_days]);
+        $this->get(route('admin.packages.index'))
+            ->assertInertia(fn (Assert $page) => $page->where('packages.0.reinstall_limit', 3)->where('packages.0.reinstall_period_days', 30));
+
+        // Unlimited drops the window too.
+        $this->put(route('admin.packages.update', $package), [...$payload, 'reinstall_limit' => null, 'reinstall_period_days' => 30])->assertSessionHasNoErrors();
+        $this->assertSame([null, null], [$package->refresh()->reinstall_limit, $package->reinstall_period_days]);
+    }
+
     public function test_unlimited_traffic_is_stored_as_null()
     {
         $package = Package::factory()->create();

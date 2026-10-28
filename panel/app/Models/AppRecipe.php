@@ -24,7 +24,7 @@ use LogicException;
  *
  * @property int $id
  * @property string $slug
- * @property string $source bundled (panel/recipes; editable in place) or custom (admin editor, docs/adr/0018); catalogs: docs/adr/0017
+ * @property string $source bundled (installed from a .proxapp package, docs/adr/0042; editable in place) or custom (admin editor, docs/adr/0018); catalogs: docs/adr/0017
  * @property int|null $latest_version_id the published version
  * @property int|null $copied_from_version_id the version a custom app was copied from
  * @property string $name of the latest version
@@ -101,7 +101,7 @@ class AppRecipe extends Model
 
     /**
      * A bundled app whose published version an administrator edited
-     * (docs/adr/0018 §2): apps:sync no longer replaces it.
+     * (docs/adr/0018 §2): a package no longer replaces it.
      */
     public function isModified(): bool
     {
@@ -109,7 +109,7 @@ class AppRecipe extends Model
     }
 
     /**
-     * The newest version shipped in panel/recipes (bundled apps), whatever its status.
+     * The newest version installed from a package (bundled apps), whatever its status.
      */
     public function latestUpstream(): ?AppRecipeVersion
     {
@@ -154,6 +154,28 @@ class AppRecipe extends Model
     public function installations(): HasMany
     {
         return $this->hasMany(AppInstallation::class);
+    }
+
+    /**
+     * @return HasMany<AppEntitlement, $this>
+     */
+    public function entitlements(): HasMany
+    {
+        return $this->hasMany(AppEntitlement::class);
+    }
+
+    /**
+     * Delete the app with its versions, its removed installations and its
+     * revoked entitlements (callers refuse apps in use or with active
+     * entitlements first). Call inside a transaction.
+     */
+    public function deleteWithHistory(): void
+    {
+        $this->installations()->delete();
+        $this->entitlements()->delete();
+        $this->forceFill(['latest_version_id' => null])->save();
+        $this->versions()->delete();
+        $this->delete();
     }
 
     /**

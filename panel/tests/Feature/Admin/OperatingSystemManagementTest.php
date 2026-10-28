@@ -2,7 +2,6 @@
 
 namespace Tests\Feature\Admin;
 
-use App\Domain\Apps\RecipeSynchronizer;
 use App\Enums\OsPlatform;
 use App\Models\AppRecipe;
 use App\Models\AuditLog;
@@ -59,7 +58,7 @@ class OperatingSystemManagementTest extends AdminTestCase
 
     public function test_admins_tick_the_versions_an_app_is_offered_on()
     {
-        app(RecipeSynchronizer::class)->sync();
+        $this->syncRecipes();
         $wireguard = AppRecipe::query()->where('slug', 'wireguard')->sole();
         $ubuntu = OperatingSystem::query()->create(['name' => 'Ubuntu', 'platform' => 'linux']);
         $noble = $ubuntu->versions()->create(['version' => '24.04']);

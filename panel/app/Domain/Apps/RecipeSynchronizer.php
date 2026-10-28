@@ -7,99 +7,73 @@ namespace App\Domain\Apps;
 use App\Enums\AppRecipeVersionStatus;
 use App\Models\AppRecipe;
 use App\Models\AppRecipeVersion;
-use Illuminate\Support\Facades\DB;
 
 /**
- * Copies the bundled recipes with their scripts into the database
- * (docs/adr/0015, 0016 §2). Each new version is stored next to the earlier
- * ones and approved (bundled recipes ship with the panel); installations
- * keep the version they were installed with. New apps are active; an
- * administrator's choice to deactivate one is kept. Recipes no longer in
- * panel/recipes are deactivated, never deleted.
+ * Stores a downloaded recipe as an app's upstream version (docs/adr/0015,
+ * 0016 section 2, 0042). Each new version is kept next to the earlier ones and
+ * published; installations keep the version they were installed with. An app
+ * an administrator edited in place keeps its edits: the new version is stored
+ * but not offered.
  */
-final readonly class RecipeSynchronizer
+final class RecipeSynchronizer
 {
-    public function __construct(private RecipeLoader $loader) {}
-
     /**
-     * @return array{created: list<string>, updated: list<string>, held: list<string>, deactivated: list<string>, skipped: list<string>}
+     * @param  array<string, string>  $files  the scripts and includes the recipe uses
+     * @return ?string created, updated or held (edited in place), or null when that version is stored already
      *
-     * @throws RecipeInvalid before anything is written, also when a version
-     *                       in use changed without a new version number
+     * @throws PackageRefused when a custom app has the slug, or a version in use changed
      */
-    public function sync(): array
+    public function store(string $slug, Recipe $recipe, array $files): ?string
     {
-        $recipes = $this->loader->all();
-        $result = ['created' => [], 'updated' => [], 'held' => [], 'deactivated' => [], 'skipped' => []];
+        $checksum = self::checksum($recipe, $files);
+        $app = AppRecipe::query()->with('latestVersion')->where('slug', $slug)->first();
 
-        DB::transaction(function () use ($recipes, &$result) {
-            foreach ($recipes as $slug => ['recipe' => $recipe, 'files' => $files]) {
-                $checksum = self::checksum($recipe, $files);
-                $app = AppRecipe::query()->with('latestVersion')->where('slug', $slug)->where('source', AppRecipe::SOURCE_BUNDLED)->first();
+        // An administrator's custom app took the slug first (docs/adr/0018, section 2): it is never replaced.
+        if ($app !== null && $app->isCustom()) {
+            throw new PackageRefused('A custom app has this slug.');
+        }
 
-                // An administrator's custom app took the slug first (docs/adr/0018 §2): it is never replaced.
-                if ($app === null && AppRecipe::query()->where('slug', $slug)->exists()) {
-                    $result['skipped'][] = $slug;
+        $created = $app === null;
+        $app ??= (new AppRecipe)->forceFill(['slug' => $slug, 'source' => AppRecipe::SOURCE_BUNDLED, 'is_active' => true]);
+        // An administrator edited the app in place (docs/adr/0018, section 2): new versions are kept, not offered.
+        $modified = $app->isModified();
+        $version = $created ? null : $app->versions()->where('origin', AppRecipeVersion::ORIGIN_UPSTREAM)->where('version', $recipe->version)->first();
 
-                    continue;
-                }
+        if ($version !== null && $version->checksum === $checksum) {
+            return null;
+        }
 
-                $created = $app === null;
-                $app ??= (new AppRecipe)->forceFill(['slug' => $slug, 'source' => AppRecipe::SOURCE_BUNDLED, 'is_active' => true]);
-                // An administrator edited the app in place (docs/adr/0018 §2): new versions are kept, not offered.
-                $modified = $app->isModified();
-                $version = $created ? null : $app->versions()->where('origin', AppRecipeVersion::ORIGIN_UPSTREAM)->where('version', $recipe->version)->first();
+        if ($version !== null && $version->inUse()) {
+            throw new PackageRefused('This version is used by installations; raise the version number to change it.');
+        }
 
-                if ($version !== null && $version->checksum === $checksum) {
-                    continue;
-                }
+        if (! $modified) {
+            $app->forceFill(['name' => $recipe->name, 'category' => $recipe->category]);
+        }
 
-                if ($version !== null && $version->inUse()) {
-                    throw new RecipeInvalid($slug, ["Version {$recipe->version} changed but is used by installations: raise the version."]);
-                }
+        $app->save();
+        $version ??= (new AppRecipeVersion)->forceFill(['app_recipe_id' => $app->id, 'version' => $recipe->version, 'origin' => AppRecipeVersion::ORIGIN_UPSTREAM]);
+        $version->forceFill([
+            'format' => $recipe->format,
+            'definition' => $recipe->definition,
+            'files' => $files,
+            'checksum' => $checksum,
+            'reviewed_at' => now(),
+        ]);
 
-                if (! $modified) {
-                    $app->forceFill(['name' => $recipe->name, 'category' => $recipe->category]);
-                }
+        // An older version (a downgrade) is stored but not offered.
+        $latest = ! $modified && ($app->latestVersion === null || version_compare($recipe->version, $app->latestVersion->version, '>='));
+        $version->forceFill(['status' => $latest ? AppRecipeVersionStatus::Published : AppRecipeVersionStatus::Archived])->save();
 
-                $app->save();
-                $version ??= (new AppRecipeVersion)->forceFill(['app_recipe_id' => $app->id, 'version' => $recipe->version, 'origin' => AppRecipeVersion::ORIGIN_UPSTREAM]);
-                $version->forceFill([
-                    'format' => $recipe->format,
-                    'definition' => $recipe->definition,
-                    'files' => $files,
-                    'checksum' => $checksum,
-                    'reviewed_at' => now(),
-                ]);
-
-                // An older version in the repository (a downgrade) is stored but not offered.
-                $latest = ! $modified && ($app->latestVersion === null || version_compare($recipe->version, $app->latestVersion->version, '>='));
-                $version->forceFill(['status' => $latest ? AppRecipeVersionStatus::Published : AppRecipeVersionStatus::Archived])->save();
-
-                if ($latest) {
-                    if ($app->latestVersion !== null && ! $app->latestVersion->is($version)) {
-                        $app->latestVersion->forceFill(['status' => AppRecipeVersionStatus::Archived])->save();
-                    }
-
-                    $app->forceFill(['latest_version_id' => $version->id])->save();
-                }
-
-                $result[$modified ? 'held' : ($created ? 'created' : 'updated')][] = $slug;
+        if ($latest) {
+            if ($app->latestVersion !== null && ! $app->latestVersion->is($version)) {
+                $app->latestVersion->forceFill(['status' => AppRecipeVersionStatus::Archived])->save();
             }
 
-            $gone = AppRecipe::query()
-                ->where('source', AppRecipe::SOURCE_BUNDLED)
-                ->where('is_active', true)
-                ->whereNotIn('slug', array_keys($recipes))
-                ->get();
+            $app->forceFill(['latest_version_id' => $version->id])->save();
+        }
 
-            foreach ($gone as $model) {
-                $model->forceFill(['is_active' => false])->save();
-                $result['deactivated'][] = $model->slug;
-            }
-        });
-
-        return $result;
+        return $modified ? 'held' : ($created ? 'created' : 'updated');
     }
 
     /**

@@ -2,13 +2,14 @@
 
 namespace Tests\Feature\Admin;
 
-use App\Domain\Apps\RecipeSynchronizer;
 use App\Domain\Networking\GenerateIpAddresses;
+use App\Domain\Settings\PanelSettings;
 use App\Enums\AppEntitlementSource;
 use App\Enums\AppInstallationStatus;
 use App\Enums\AppInstallMode;
 use App\Enums\ServerOrigin;
 use App\Enums\ServerStatus;
+use App\Enums\SuspensionCause;
 use App\Enums\TaskStatus;
 use App\Enums\TaskType;
 use App\Models\AppRecipe;
@@ -82,6 +83,15 @@ class ServerManagementTest extends AdminTestCase
             'placement_group' => $this->group->uuid,
             ...$overrides,
         ]);
+    }
+
+    public function test_a_generated_password_follows_the_saved_format()
+    {
+        PanelSettings::save(['password_length' => 12, 'password_characters' => 'lower', 'password_prefix' => 'ACME-', 'password_suffix' => null]);
+
+        $this->post(route('admin.servers.store'), $this->payload())->assertSessionHasNoErrors();
+
+        $this->assertMatchesRegularExpression('/^ACME-[a-z0-9]{12}$/', (string) Server::query()->sole()->root_password);
     }
 
     public function test_an_admin_can_create_a_server()
@@ -499,7 +509,7 @@ class ServerManagementTest extends AdminTestCase
 
     public function test_the_create_form_offers_the_apps_each_template_fits()
     {
-        app(RecipeSynchronizer::class)->sync();
+        $this->syncRecipes();
         $this->offerApps();
         $windows = OsTemplate::factory()->windows()->create();
 
@@ -513,7 +523,7 @@ class ServerManagementTest extends AdminTestCase
 
     public function test_a_server_can_be_created_with_an_app()
     {
-        app(RecipeSynchronizer::class)->sync();
+        $this->syncRecipes();
         $this->offerApps();
 
         $this->post(route('admin.servers.store'), $this->payload(['app' => 'openvpn', 'app_inputs' => ['port' => 1195]]))
@@ -528,7 +538,7 @@ class ServerManagementTest extends AdminTestCase
 
     public function test_apps_that_do_not_fit_and_invalid_app_inputs_are_shown_on_the_form()
     {
-        app(RecipeSynchronizer::class)->sync();
+        $this->syncRecipes();
         $this->offerApps();
         AppRecipe::query()->where('slug', 'docker')->update(['is_active' => false]);
 
@@ -541,7 +551,7 @@ class ServerManagementTest extends AdminTestCase
 
     public function test_admins_can_grant_and_revoke_paid_apps()
     {
-        app(RecipeSynchronizer::class)->sync();
+        $this->syncRecipes();
         $this->offerApps();
         $openvpn = AppRecipe::query()->with('latestVersion')->where('slug', 'openvpn')->firstOrFail();
         $version = $openvpn->latestVersion;
@@ -586,11 +596,23 @@ class ServerManagementTest extends AdminTestCase
         $this->post(route('admin.servers.store'), $this->payload());
         $server = Server::query()->sole();
 
-        $this->post(route('admin.servers.suspend', $server));
+        $this->post(route('admin.servers.suspend', $server), ['reason' => '  Overdue invoice  ']);
         $this->assertSame(ServerStatus::Suspended, $server->refresh()->status);
+        $this->assertSame('Overdue invoice', $server->suspension_reason);
+        $suspended = AuditLog::query()->where('action', 'server.suspended')->sole();
+        $this->assertSame($this->admin->id, $suspended->user_id);
+        $this->assertSame('Overdue invoice', $suspended->properties['reason'] ?? null);
 
         $this->post(route('admin.servers.unsuspend', $server));
         $this->assertSame(ServerStatus::Active, $server->refresh()->status);
+        $this->assertNull($server->suspension_reason);
+        $this->assertSame($this->admin->id, AuditLog::query()->where('action', 'server.unsuspended')->sole()->user_id);
+
+        // Without a reason.
+        $this->post(route('admin.servers.suspend', $server))->assertSessionHasNoErrors();
+        $this->assertSame(ServerStatus::Suspended, $server->refresh()->status);
+        $this->assertNull($server->suspension_reason);
+        $this->post(route('admin.servers.unsuspend', $server));
 
         $this->delete(route('admin.servers.destroy', $server));
         $this->assertSame(ServerStatus::Terminated, $server->refresh()->status);
@@ -608,6 +630,52 @@ class ServerManagementTest extends AdminTestCase
 
         $this->assertSame([], $this->proxmox->writes);
         $this->assertSame(0, $server->tasks()->count());
+        $this->assertSame(0, AuditLog::query()->count());
+
+        $active = Server::factory()->for($this->node)->status(ServerStatus::Active)->create();
+        $this->post(route('admin.servers.unsuspend', $active));
+        $this->post(route('admin.servers.suspend', $active), ['reason' => str_repeat('x', 256)])->assertSessionHasErrors('reason');
+
+        $this->assertSame(0, $active->tasks()->count());
+        $this->assertSame(0, AuditLog::query()->count());
+    }
+
+    public function test_a_suspension_by_the_panel_can_be_taken_over()
+    {
+        $server = Server::factory()->for($this->node)->status(ServerStatus::Suspended)->create();
+        $server->forceFill([
+            'suspension_cause' => SuspensionCause::Traffic,
+            'suspension_reason' => 'Traffic quota exceeded: 11 GB of 10 GB.',
+        ])->save();
+
+        $this->post(route('admin.servers.suspend', $server))->assertSessionHasNoErrors();
+
+        $server->refresh();
+        $this->assertSame(ServerStatus::Suspended, $server->status);
+        $this->assertNull($server->suspension_cause);
+        // Without a new reason, the panel's stays.
+        $this->assertSame('Traffic quota exceeded: 11 GB of 10 GB.', $server->suspension_reason);
+        $this->assertSame(0, $server->tasks()->count());
+        $this->assertSame([], $this->proxmox->writes);
+        $this->assertTrue(AuditLog::query()->where('action', 'server.suspended')->sole()->properties['taken_over'] ?? false);
+    }
+
+    public function test_servers_can_be_listed_by_status()
+    {
+        Server::factory()->for($this->node)->status(ServerStatus::Active)->create();
+        $suspended = Server::factory()->for($this->node)->status(ServerStatus::Suspended)->create();
+        Server::factory()->for($this->node)->status(ServerStatus::Terminated)->create();
+
+        $this->get(route('admin.servers.index', ['status' => 'suspended']))->assertInertia(fn (Assert $page) => $page
+            ->where('status', 'suspended')
+            ->has('servers.data', 1)
+            ->where('servers.data.0.uuid', $suspended->uuid));
+
+        // Deleted servers can be chosen as a status too; unknown statuses list every server still in use.
+        $this->get(route('admin.servers.index', ['status' => 'terminated']))->assertInertia(fn (Assert $page) => $page->has('servers.data', 1));
+        $this->get(route('admin.servers.index', ['status' => 'bogus']))->assertInertia(fn (Assert $page) => $page
+            ->where('status', null)
+            ->has('servers.data', 2));
     }
 
     public function test_resources_in_use_cannot_be_deleted()

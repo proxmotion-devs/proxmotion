@@ -31,6 +31,16 @@ class VersionRangeTest extends TestCase
         $this->assertSame('1.1.0', VersionRange::base('1.1.0-local.3'));
     }
 
+    public function test_an_administrators_edit_is_newer_than_the_version_it_was_made_from()
+    {
+        $this->assertTrue(VersionRange::isNewer('1.1.0-local.1', '1.1.0'));
+        $this->assertTrue(VersionRange::isNewer('1.1.0-local.2', '1.1.0-local.1'));
+        $this->assertTrue(VersionRange::isNewer('1.2.0', '1.1.0-local.3'), 'A newer bundled release.');
+        $this->assertFalse(VersionRange::isNewer('1.1.0-local.1', '1.2.0'), 'An edit of an older version.');
+        $this->assertFalse(VersionRange::isNewer('1.1.0-local.1', '1.1.0-local.1'));
+        $this->assertFalse(VersionRange::isNewer('1.1.0', '1.1.0'));
+    }
+
     public function test_anything_else_is_not_a_range()
     {
         foreach (['', '1.0.0', '>=1.0', '>= 1.0.0', '^1.0.0', '>=1.0.0 || <2.0.0', '>=1.0.0;rm'] as $range) {

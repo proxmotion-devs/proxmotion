@@ -116,6 +116,21 @@ return [
         'stopped_grace_minutes' => (int) env('PROXMOTION_DRIFT_STOPPED_GRACE_MINUTES', 60),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Storage health (docs/adr/0047)
+    |--------------------------------------------------------------------------
+    |
+    | A storage, an LVM thin pool's metadata or a disk's rated life used at or
+    | above these per cents is a warning, then critical.
+    |
+    */
+
+    'storage' => [
+        'warning_percent' => (int) env('PROXMOTION_STORAGE_WARNING_PERCENT', 85),
+        'critical_percent' => (int) env('PROXMOTION_STORAGE_CRITICAL_PERCENT', 95),
+    ],
+
     'console' => [
         'proxy_secret' => env('CONSOLE_PROXY_SECRET'),
         'websocket_url' => env('CONSOLE_WEBSOCKET_URL'),
@@ -149,6 +164,45 @@ return [
         'network_mbps' => env('PROXMOTION_USAGE_NETWORK_MBPS') !== null && env('PROXMOTION_USAGE_NETWORK_MBPS') !== '' ? (int) env('PROXMOTION_USAGE_NETWORK_MBPS') : null,
         'window_minutes' => (int) env('PROXMOTION_USAGE_WINDOW_MINUTES', 60),
         'action' => (string) env('PROXMOTION_USAGE_ACTION', 'none'),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Generated root passwords
+    |--------------------------------------------------------------------------
+    |
+    | Used when the panel makes up a root password: a new server ordered
+    | without one, a reinstall, a reset without a chosen password. length is
+    | the random part (12–64); characters is lower (letters and digits),
+    | mixed (also capitals) or symbols (also !@#%+=.-_). prefix and suffix
+    | surround the random part.
+    |
+    */
+
+    'passwords' => [
+        'length' => (int) env('PROXMOTION_PASSWORD_LENGTH', 20),
+        'characters' => (string) env('PROXMOTION_PASSWORD_CHARACTERS', 'mixed'),
+        'prefix' => (string) env('PROXMOTION_PASSWORD_PREFIX', '') === '' ? null : (string) env('PROXMOTION_PASSWORD_PREFIX'),
+        'suffix' => (string) env('PROXMOTION_PASSWORD_SUFFIX', '') === '' ? null : (string) env('PROXMOTION_PASSWORD_SUFFIX'),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Email notifications (docs/adr/0044)
+    |--------------------------------------------------------------------------
+    |
+    | Administrators get email about failures and other events they choose
+    | under Settings > Notifications; recipients also get every event. Events
+    | a scheduled command may raise again (drift, unreachable clusters, failed
+    | webhooks) are sent once per throttle_minutes. The mail transport is
+    | Laravel's own (MAIL_* in .env) and is never set on Panel settings.
+    |
+    */
+
+    'notifications' => [
+        'enabled' => (bool) env('PROXMOTION_NOTIFICATIONS', false),
+        'recipients' => array_values(array_filter(array_map('trim', explode(',', (string) env('PROXMOTION_NOTIFICATION_RECIPIENTS', ''))))),
+        'throttle_minutes' => (int) env('PROXMOTION_NOTIFICATION_THROTTLE_MINUTES', 60),
     ],
 
 ];

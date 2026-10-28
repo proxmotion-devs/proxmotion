@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Servers;
 
+use App\Domain\Servers\ServerReinstaller;
 use App\Enums\GuestScriptEvent;
 use App\Enums\TaskStatus;
 use App\Enums\TaskType;
@@ -171,6 +172,28 @@ class GuestScriptsTest extends TestCase
         );
     }
 
+    public function test_freebsd_templates_run_their_own_default_scripts()
+    {
+        $this->osTemplate->forceFill(['distribution' => 'freebsd', 'version' => '14.3'])->save();
+
+        $task = $this->grow(ipv4: 2);
+        $files = $this->proxmox->guestFiles[$this->server->vmid];
+
+        $this->assertSame(TaskStatus::Succeeded, $task->status, (string) $task->error);
+        $this->assertSame('linux', $this->osTemplate->refresh()->platform->value, 'Root and sh scripts, like Linux.');
+        $this->assertSame(file_get_contents(resource_path('guest/freebsd/disk.sh')), $files['/usr/local/sbin/proxmotion-disk']);
+        $this->assertSame(file_get_contents(resource_path('guest/freebsd/addresses.sh')), $files['/usr/local/sbin/proxmotion-addresses']);
+        $this->assertStringContainsString("disk_mib=61440\n", $files['/etc/proxmotion/disk.vars']);
+        $this->assertContains(['sh', '/usr/local/sbin/proxmotion-disk'], $this->commands());
+
+        $this->actingAs($this->admin)
+            ->get(route('admin.os-templates.scripts', $this->osTemplate))
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('scripts.1.default', file_get_contents(resource_path('guest/freebsd/addresses.sh')))
+                ->where('scripts.2.default', file_get_contents(resource_path('guest/freebsd/disk.sh')))
+                ->where('scripts.4.default', file_get_contents(resource_path('guest/freebsd/hostname.sh'))));
+    }
+
     public function test_a_script_runs_again_when_the_guest_restarts_while_it_runs()
     {
         $this->osTemplate->forceFill(['distribution' => 'windows'])->save();
@@ -223,9 +246,28 @@ class GuestScriptsTest extends TestCase
         $this->assertSame("#!/bin/sh\napt-get install -y htop\n", $files['/usr/local/sbin/proxmotion-provisioned']);
         $inputs = json_decode($files['/etc/proxmotion/provisioned.json'], true);
         $this->assertSame('web2.example.com', $inputs['hostname']);
+        $this->assertSame('create', $inputs['reason']);
+        $this->assertStringContainsString("reason=create\n", $files['/etc/proxmotion/provisioned.vars']);
         $this->assertCount(1, $inputs['addresses'], 'All addresses, the primary one included.');
         $this->assertNotNull($step = $this->step($server->tasks()->sole(), 'guest_provisioned'), 'The script step did not run.');
         $this->assertNull($step['message']);
+    }
+
+    public function test_the_post_install_script_is_told_about_a_reinstall_and_a_trial_run()
+    {
+        $this->override(GuestScriptEvent::Provisioned, "#!/bin/sh\necho hi\n");
+        $reason = fn () => json_decode($this->proxmox->guestFiles[$this->server->vmid]['/etc/proxmotion/provisioned.json'], true)['reason'];
+
+        $task = app(ServerReinstaller::class)->request($this->server, $this->osTemplate, [], $this->admin, null)->refresh();
+
+        $this->assertSame(TaskStatus::Succeeded, $task->status, (string) $task->error);
+        $this->assertSame('reinstall', $reason());
+
+        $this->actingAs($this->admin)
+            ->post(route('admin.os-templates.scripts.run', [$this->osTemplate, 'provisioned']), ['server' => $this->server->uuid])
+            ->assertSessionHasNoErrors();
+
+        $this->assertSame('trial', $reason());
     }
 
     public function test_a_password_script_gets_the_password_on_standard_input()
@@ -284,6 +326,9 @@ class GuestScriptsTest extends TestCase
                 ->where('scripts.0.event', 'provisioned')
                 ->where('scripts.0.content', 'echo hi')
                 ->where('scripts.0.default', null)
+                ->where('scripts.0.inputs', ['server', 'hostname', 'mac', 'reason', 'addresses'])
+                ->where('scripts.0.timeout_seconds', 300)
+                ->where('scripts.3.timeout_seconds', 60)
                 ->where('scripts.1.default', file_get_contents(resource_path('guest/linux/addresses.sh')))
                 ->where('scripts.2.inputs', ['server', 'hostname', 'mac', 'disk_mib'])
                 ->where('scripts.3.can_be_tried', false)
@@ -358,7 +403,8 @@ class GuestScriptsTest extends TestCase
     {
         $this->override(GuestScriptEvent::DiskResized, "echo live\n");
         GuestScript::query()->sole()->forceFill(['draft_content' => "#!/bin/sh\nset -e\necho growing\nfalse\n"])->save();
-        $this->proxmox->execHandler = fn (array $command) => $command === ['sh', '-x', '/usr/local/sbin/proxmotion-disk-draft']
+        // Runs an administrator can stop start with their marker (env PROXMOTION_SCRIPT_RUN=…).
+        $this->proxmox->execHandler = fn (array $command) => array_slice($command, -3) === ['sh', '-x', '/usr/local/sbin/proxmotion-disk-draft']
             ? [1, "growing\n", "+ set -e\n+ echo growing\n+ false\n"]
             : [0, '', ''];
 
@@ -389,7 +435,7 @@ class GuestScriptsTest extends TestCase
                 ->where('canTrace', true)
                 ->has('logs.disk_resized', 1)
                 ->where('logs.disk_resized.0.uuid', $log->uuid)
-                ->where('logs.disk_resized.0.trial', true)
+                ->where('logs.disk_resized.0.kind', 'trial')
                 ->where('logs.disk_resized.0.status', 'failed')
                 ->missing('logs.disk_resized.0.stdout'));
 
@@ -463,13 +509,14 @@ class GuestScriptsTest extends TestCase
 
         $task = $this->server->tasks()->where('type', TaskType::GuestScript)->sole();
         $this->assertSame(TaskStatus::Succeeded, $task->status, (string) $task->error);
-        $this->assertContains(['sh', '/usr/local/sbin/proxmotion-disk'], $this->commands());
+        $marker = 'PROXMOTION_SCRIPT_RUN='.GuestScriptLog::query()->latest('id')->firstOrFail()->id;
+        $this->assertContains(['env', $marker, 'sh', '/usr/local/sbin/proxmotion-disk'], $this->commands(), 'A run an administrator can stop carries its marker.');
         $this->assertSame('disk_resized', AuditLog::query()->where('action', 'guest_script.run')->sole()->properties['event']);
     }
 
     public function test_a_failing_trial_fails_its_task()
     {
-        $this->proxmox->execHandler = fn (array $command) => $command === ['sh', '/usr/local/sbin/proxmotion-disk']
+        $this->proxmox->execHandler = fn (array $command) => array_slice($command, -2) === ['sh', '/usr/local/sbin/proxmotion-disk']
             ? [3, '', "growpart is not installed.\n"]
             : [0, '', ''];
 

@@ -7,9 +7,57 @@ import {
     makesTestServer,
     nodeProblems,
     nodeStorages,
+    packageAllowing,
+    templatesFor,
     WIZARD_STEPS,
 } from '@/lib/serverWizard';
 import type { PlacementGroupOption, PlacementNode } from '@/types/admin';
+
+describe('packageAllowing', () => {
+    const packages = [
+        { value: 'small', os_templates: ['debian'] },
+        { value: 'big', os_templates: [] },
+        { value: 'win', os_templates: ['windows'] },
+    ];
+
+    it('returns the first package that names the template', () => {
+        expect(packageAllowing(packages, 'windows')).toBe('big');
+    });
+
+    it('skips packages that name other templates', () => {
+        expect(
+            packageAllowing(packages.slice(0, 1), 'windows'),
+        ).toBeUndefined();
+    });
+
+    it('takes a package naming no template', () => {
+        expect(
+            packageAllowing([{ value: 'any', os_templates: [] }], 'debian'),
+        ).toBe('any');
+    });
+});
+
+describe('templatesFor', () => {
+    const templates = [
+        { value: 'ubuntu', label: 'Ubuntu', active: true },
+        { value: 'debian', label: 'Debian', active: true },
+    ];
+
+    it('lists the templates a package names', () => {
+        expect(
+            templatesFor(templates, { os_templates: ['debian'] }).map(
+                (option) => option.value,
+            ),
+        ).toEqual(['debian']);
+    });
+
+    it('lists every template when the package names none or there is no package', () => {
+        expect(templatesFor(templates, { os_templates: [] })).toEqual(
+            templates,
+        );
+        expect(templatesFor(templates, undefined)).toEqual(templates);
+    });
+});
 
 const storage = (name: string, freeMib: number, useForServers = true) => ({
     name,

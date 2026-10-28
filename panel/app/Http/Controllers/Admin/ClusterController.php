@@ -14,6 +14,7 @@ use App\Models\Cluster;
 use App\Models\Location;
 use App\Models\NetworkBridge;
 use App\Models\Node;
+use App\Models\NodeDisk;
 use App\Models\Storage;
 use App\Proxmox\Exceptions\ProxmoxException;
 use App\Proxmox\Exceptions\ProxmoxRequestFailed;
@@ -35,7 +36,7 @@ class ClusterController extends Controller
         return Inertia::render('admin/clusters/Index', [
             'clusters' => Cluster::query()
                 ->with('location:id,uuid,name')
-                ->withCount('nodes')
+                ->withCount(['nodes', ...Cluster::storageHealthCounts()])
                 ->orderBy('name')
                 ->get()
                 ->map(fn (Cluster $cluster) => $this->clusterProps($cluster)),
@@ -62,6 +63,7 @@ class ClusterController extends Controller
             'location:id,uuid,name',
             'nodes' => fn ($query) => $query->orderBy('name'),
             'nodes.storages' => fn ($query) => $query->orderBy('name'),
+            'nodes.disks' => fn ($query) => $query->orderBy('devpath'),
             'nodes.bridges' => fn ($query) => $query->orderBy('name'),
             'proxmoxTemplates' => fn ($query) => $query->with('node:id,name')->orderBy('vmid'),
         ]);
@@ -94,7 +96,28 @@ class ClusterController extends Controller
                     'supports_vm_disks' => $storage->supportsVmDisks(),
                     'total_bytes' => $storage->total_bytes,
                     'used_bytes' => $storage->used_bytes,
+                    // Storage health (docs/adr/0047).
+                    'health' => $storage->health,
+                    'health_problems' => $storage->health_problems ?? [],
+                    'pool_state' => $storage->pool_state,
+                    'metadata_used_bytes' => $storage->metadata_used_bytes,
+                    'metadata_total_bytes' => $storage->metadata_total_bytes,
                 ]),
+                'disks' => $node->disks->map(fn (NodeDisk $disk) => [
+                    'id' => $disk->id,
+                    'devpath' => $disk->devpath,
+                    'model' => $disk->model,
+                    'serial' => $disk->serial,
+                    'type' => $disk->type,
+                    'size_bytes' => $disk->size_bytes,
+                    'used' => $disk->used,
+                    'smart' => $disk->smart,
+                    'wearout' => $disk->wearout,
+                    'health' => $disk->health,
+                    'health_problems' => $disk->health_problems ?? [],
+                    'is_present' => $disk->is_present,
+                ]),
+                'disk_health_error' => $node->disk_health_error,
                 'bridges' => $node->bridges->map(fn (NetworkBridge $bridge) => [
                     'name' => $bridge->name,
                     'is_active' => $bridge->is_active,
@@ -298,6 +321,10 @@ class ClusterController extends Controller
             'last_synced_at' => $cluster->last_synced_at?->toIso8601String(),
             'last_sync_error' => $cluster->last_sync_error,
             'firewall_problem' => $cluster->guestFirewallProblem(),
+            // Storage health (docs/adr/0047); Ceph's checks are in Ceph's own English.
+            'storage_health' => $cluster->storageHealth(),
+            'ceph_health' => $cluster->ceph_health,
+            'ceph_checks' => $cluster->ceph_checks ?? [],
         ];
     }
 

@@ -8,7 +8,6 @@ use App\Domain\Apps\AppTrials;
 use App\Domain\Apps\AppUpgrades;
 use App\Domain\Apps\InstallationPoller;
 use App\Domain\Apps\RecipeEditor;
-use App\Domain\Apps\RecipeSynchronizer;
 use App\Enums\AppInstallationStatus;
 use App\Enums\AppRecipeVersionStatus;
 use App\Enums\TaskType;
@@ -53,7 +52,7 @@ class AppTrialTest extends TestCase
         $this->server = app(ServerCreator::class)->create($this->order())->refresh();
         $this->admin = User::factory()->withTwoFactor()->create();
         $this->actingAs($this->admin);
-        app(RecipeSynchronizer::class)->sync();
+        $this->syncRecipes();
 
         $wireguard = AppRecipe::query()->where('slug', 'wireguard')->sole();
         $this->recipe = app(RecipeEditor::class)->copy($wireguard->current(), 'my-vpn', 'My VPN', $this->admin, null);

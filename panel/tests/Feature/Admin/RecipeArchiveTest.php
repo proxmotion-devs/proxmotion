@@ -3,7 +3,6 @@
 namespace Tests\Feature\Admin;
 
 use App\Domain\Apps\AppTrials;
-use App\Domain\Apps\RecipeSynchronizer;
 use App\Enums\AppRecipeVersionStatus;
 use App\Models\AppRecipe;
 use App\Models\AuditLog;
@@ -26,7 +25,7 @@ class RecipeArchiveTest extends AdminTestCase
     {
         parent::setUp();
 
-        app(RecipeSynchronizer::class)->sync();
+        $this->syncRecipes();
     }
 
     protected function tearDown(): void
@@ -108,17 +107,17 @@ class RecipeArchiveTest extends AdminTestCase
         return $entries;
     }
 
-    public function test_a_version_is_exported_as_a_zip_of_its_recipe_directory_and_audited()
+    public function test_a_version_is_exported_as_a_proxapp_package_of_its_recipe_directory_and_audited()
     {
         $wireguard = $this->app('wireguard');
 
         $response = $this->get(route('admin.apps.export', $wireguard))
             ->assertOk()
             ->assertHeader('Content-Type', 'application/zip')
-            ->assertDownload('wireguard-1.3.1.zip');
+            ->assertDownload('wireguard-1.3.1.proxapp');
         $entries = $this->entries($response);
 
-        $this->assertSame(file_get_contents(base_path('recipes/wireguard/install.sh')), $entries['wireguard/install.sh']);
+        $this->assertSame(file_get_contents(base_path('tests/Fixtures/recipes/wireguard/install.sh')), $entries['wireguard/install.sh']);
         $this->assertSame($wireguard->current()->definition, Yaml::parse($entries['wireguard/recipe.yaml']));
         $this->assertSame(['app' => 'wireguard', 'version' => '1.3.1', 'draft' => false], AuditLog::query()->where('action', 'app.exported')->sole()->properties);
     }
@@ -129,8 +128,8 @@ class RecipeArchiveTest extends AdminTestCase
         $app = $this->app('my-docker');
         $trial = app(AppTrials::class)->freeze($app->draft());
 
-        $this->get(route('admin.apps.export', [$app, 'version' => 'draft']))->assertOk()->assertDownload('my-docker-draft.zip');
-        $this->get(route('admin.apps.export', $app))->assertOk()->assertDownload('my-docker-draft.zip');
+        $this->get(route('admin.apps.export', [$app, 'version' => 'draft']))->assertOk()->assertDownload('my-docker-draft.proxapp');
+        $this->get(route('admin.apps.export', $app))->assertOk()->assertDownload('my-docker-draft.proxapp');
         $this->get(route('admin.apps.export', [$app, 'version' => $trial->version]))->assertNotFound();
         $this->get(route('admin.apps.export', [$this->app('docker'), 'version' => '9.9.9']))->assertNotFound();
     }

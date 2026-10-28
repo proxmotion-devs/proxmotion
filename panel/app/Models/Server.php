@@ -68,6 +68,10 @@ use Illuminate\Support\Carbon;
  * @property string $firewall_policy what happens to incoming traffic no firewall rule matches: accept or drop (docs/adr/0035)
  * @property array{time: int, uptime: int|null, net_in: int|null, net_out: int|null, disk_read: int|null, disk_write: int|null}|null $usage_counters Proxmox's counters at the previous collection (UsageCollector)
  * @property bool $usage_exempt usage violations are recorded but never acted on (docs/adr/0039)
+ * @property bool $reinstall_limit_custom reinstall_limit and reinstall_period_days apply instead of the package's (docs/adr/0045)
+ * @property int|null $reinstall_limit the server's own limit of reinstalls by its billing system; null: unlimited
+ * @property int|null $reinstall_period_days the rolling window of reinstall_limit, in days
+ * @property Carbon|null $reinstalls_reset_at only reinstalls after it count towards the limit
  * @property Carbon|null $terminated_at
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
@@ -114,6 +118,10 @@ class Server extends Model
             'suspension_cause' => SuspensionCause::class,
             'usage_counters' => 'array',
             'usage_exempt' => 'boolean',
+            'reinstall_limit_custom' => 'boolean',
+            'reinstall_limit' => 'integer',
+            'reinstall_period_days' => 'integer',
+            'reinstalls_reset_at' => 'datetime',
             'terminated_at' => 'datetime',
         ];
     }

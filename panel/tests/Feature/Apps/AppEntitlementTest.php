@@ -7,7 +7,6 @@ use App\Domain\Apps\AppInstaller;
 use App\Domain\Apps\AppNotEligible;
 use App\Domain\Apps\AppNotEntitled;
 use App\Domain\Apps\InstallationPoller;
-use App\Domain\Apps\RecipeSynchronizer;
 use App\Domain\Servers\ServerReinstaller;
 use App\Enums\AppEntitlementSource;
 use App\Enums\AppInstallationStatus;
@@ -44,7 +43,7 @@ class AppEntitlementTest extends TestCase
         $this->buildInfrastructure();
         $this->proxmox = (new FakeProxmoxCluster)->addTemplate(9000)->install();
         $this->admin = User::factory()->create();
-        app(RecipeSynchronizer::class)->sync();
+        $this->syncRecipes();
         $this->offerApps();
 
         // WireGuard stands in for a paid app.

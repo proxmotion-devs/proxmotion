@@ -40,6 +40,7 @@ final class TemplateNameGuess
         'suse' => 'opensuse-leap',
         'archlinux' => 'arch',
         'arch' => 'arch',
+        'freebsd' => Distributions::FREEBSD,
         'windows' => 'windows',
         'win' => 'windows',
     ];

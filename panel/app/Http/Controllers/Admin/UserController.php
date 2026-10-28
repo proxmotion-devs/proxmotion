@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Admin;
 
+use App\Domain\Notifications\AdminNotifier;
 use App\Http\Controllers\Controller;
 use App\Models\AuditLog;
 use App\Models\User;
@@ -36,7 +37,7 @@ class UserController extends Controller
         ]);
     }
 
-    public function store(Request $request, #[CurrentUser] User $admin): RedirectResponse
+    public function store(Request $request, #[CurrentUser] User $admin, AdminNotifier $notifier): RedirectResponse
     {
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:255'],
@@ -52,6 +53,7 @@ class UserController extends Controller
         ])->save();
 
         AuditLog::record('user.created', $admin, $user, ['email' => $user->email], $request->ip());
+        $notifier->adminCreated($user, $admin);
 
         $this->toast('success', 'Administrator :name created.', ['name' => $user->name]);
 

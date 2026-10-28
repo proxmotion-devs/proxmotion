@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { Head, Link, router } from '@inertiajs/vue3';
 import { Download, Plus } from '@lucide/vue';
+import { trans } from 'laravel-vue-i18n';
+import { computed } from 'vue';
+import NativeSelect from '@/components/admin/NativeSelect.vue';
 import ServerStatusBadge from '@/components/admin/ServerStatusBadge.vue';
 import StatusBadge from '@/components/admin/StatusBadge.vue';
 import Heading from '@/components/Heading.vue';
@@ -8,22 +11,56 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { adopt, create, index, show } from '@/routes/admin/servers';
-import type { Paginated, ServerListItem } from '@/types/admin';
+import type { Paginated, ServerListItem, ServerStatus } from '@/types/admin';
 
 defineOptions({
     layout: { breadcrumbs: [{ title: 'Servers', href: index() }] },
 });
 
-defineProps<{
+const props = defineProps<{
     servers: Paginated<ServerListItem>;
     showTerminated: boolean;
+    /** Only servers with this status, e.g. the suspended ones. */
+    status: ServerStatus | null;
 }>();
 
-const toggleTerminated = (value: boolean | 'indeterminate') => {
-    router.visit(index({ query: value === true ? { terminated: 1 } : {} }), {
-        preserveScroll: true,
-    });
+const statusOptions = computed(() =>
+    (
+        [
+            { value: '', label: 'All statuses' },
+            { value: 'active', label: 'Active' },
+            { value: 'suspended', label: 'Suspended' },
+            { value: 'error', label: 'Error' },
+            { value: 'pending', label: 'Pending' },
+            { value: 'provisioning', label: 'Provisioning' },
+            { value: 'reinstalling', label: 'Reinstalling' },
+            { value: 'terminating', label: 'Deleting' },
+            { value: 'terminated', label: 'Deleted' },
+        ] satisfies { value: ServerStatus | ''; label: string }[]
+    ).map((option) => ({ ...option, label: trans(option.label) })),
+);
+
+// A chosen status lists only its servers; "Show deleted servers" applies to all statuses.
+const visit = (status: ServerStatus | null, terminated: boolean) => {
+    const query: Record<string, string | number> = {};
+
+    if (status) {
+        query.status = status;
+    } else if (terminated) {
+        query.terminated = 1;
+    }
+
+    router.visit(index({ query }), { preserveScroll: true });
 };
+
+const statusFilter = computed({
+    get: (): ServerStatus | '' => props.status ?? '',
+    set: (value: ServerStatus | '') =>
+        visit(value === '' ? null : value, props.showTerminated),
+});
+
+const toggleTerminated = (value: boolean | 'indeterminate') =>
+    visit(null, value === true);
 </script>
 
 <template>
@@ -51,13 +88,23 @@ const toggleTerminated = (value: boolean | 'indeterminate') => {
             </div>
         </div>
 
-        <Label class="flex items-center gap-2 font-normal">
-            <Checkbox
-                :model-value="showTerminated"
-                @update:model-value="toggleTerminated"
+        <div class="flex flex-wrap items-center gap-4">
+            <NativeSelect
+                v-model="statusFilter"
+                :options="statusOptions"
+                class="w-48"
+                :aria-label="$t('Status')"
+                data-test="status-filter"
             />
-            {{ $t('Show deleted servers') }}
-        </Label>
+            <!-- A chosen status already says which servers are listed. -->
+            <Label v-if="!status" class="flex items-center gap-2 font-normal">
+                <Checkbox
+                    :model-value="showTerminated"
+                    @update:model-value="toggleTerminated"
+                />
+                {{ $t('Show deleted servers') }}
+            </Label>
+        </div>
 
         <div class="overflow-x-auto rounded-xl border">
             <table class="w-full text-sm">
@@ -145,7 +192,11 @@ const toggleTerminated = (value: boolean | 'indeterminate') => {
                             colspan="6"
                             class="px-4 py-10 text-center text-muted-foreground"
                         >
-                            {{ $t('No servers yet.') }}
+                            {{
+                                status
+                                    ? $t('No servers with this status.')
+                                    : $t('No servers yet.')
+                            }}
                         </td>
                     </tr>
                 </tbody>

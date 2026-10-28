@@ -1,6 +1,12 @@
 <script setup lang="ts">
 import { router } from '@inertiajs/vue3';
-import { CircleCheck, CircleDashed, CircleX, LoaderCircle } from '@lucide/vue';
+import {
+    CircleCheck,
+    CircleDashed,
+    CircleStop,
+    CircleX,
+    LoaderCircle,
+} from '@lucide/vue';
 import { trans } from 'laravel-vue-i18n';
 import { ref } from 'vue';
 import StatusBadge from '@/components/admin/StatusBadge.vue';
@@ -15,18 +21,21 @@ import {
 } from '@/components/ui/dialog';
 import { Spinner } from '@/components/ui/spinner';
 import { useDateTime } from '@/composables/useDateTime';
-import { fail } from '@/routes/admin/tasks';
-import type { TaskProgress, TaskStatus, TaskType } from '@/types/admin';
+import { TASK_TYPE_LABELS } from '@/lib/taskTypes';
+import { cancel, fail } from '@/routes/admin/tasks';
+import type { TaskProgress, TaskStatus } from '@/types/admin';
 
 /**
  * Tasks of one server with their steps, step messages and errors. A stuck
- * task (can_fail) can be marked as failed so the server takes operations again.
+ * task (can_fail) can be marked as failed so the server takes operations
+ * again; an administrator's script run (can_cancel) can be stopped.
  */
 defineProps<{ tasks: TaskProgress[] }>();
 
 const { formatDateTime } = useDateTime();
 
 const failing = ref<TaskProgress | null>(null);
+const cancelling = ref<TaskProgress | null>(null);
 const processing = ref(false);
 
 const markFailed = () => {
@@ -44,31 +53,21 @@ const markFailed = () => {
     });
 };
 
-// English keys, translated in the template.
-const taskTypeLabels: Record<TaskType, string> = {
-    create: 'Create',
-    suspend: 'Suspend',
-    unsuspend: 'Unsuspend',
-    terminate: 'Delete',
-    adopt: 'Adopt',
-    start: 'Start',
-    shutdown: 'Shut down',
-    stop: 'Stop',
-    reboot: 'Reboot',
-    reset_password: 'Reset root password',
-    reinstall: 'Reinstall',
-    change_resources: 'Change resources',
-    guest_script: 'Run template script',
-    change_primary_address: 'Change primary address',
-    change_addresses: 'Update IP addresses',
-    change_hostname: 'Change hostname',
-    install_app: 'Install app',
-    app_run: 'App action or uninstall',
-    verify: 'Check the server',
-    enable_anti_spoofing: 'Enable anti-spoofing',
-    apply_firewall: 'Apply firewall',
-    move: 'Move server',
+const stopScript = () => {
+    if (cancelling.value === null) {
+        return;
+    }
+
+    router.visit(cancel(cancelling.value.uuid), {
+        preserveScroll: true,
+        onStart: () => (processing.value = true),
+        onFinish: () => {
+            processing.value = false;
+            cancelling.value = null;
+        },
+    });
 };
+
 const taskStatusTone: Record<
     TaskStatus,
     'success' | 'warning' | 'danger' | 'neutral'
@@ -113,6 +112,15 @@ const stepLabels: Record<string, string> = {
     record: 'Record the new place',
     configure_network: 'Set up the network for the new addresses',
 };
+// Custom scripts record their steps as "script:<event>:<name>" at an event and
+// "script:<name>" otherwise; names cannot contain ":" (docs/adr/0043).
+const stepLabel = (key: string): string =>
+    key.startsWith('script:')
+        ? trans('Run the script :name in the server', {
+              name: key.slice(7).replace(/^[a-z_]+:/, ''),
+          })
+        : trans(stepLabels[key] ?? key);
+
 // "1 min 52 s", from whole seconds.
 const formatDuration = (seconds: number): string => {
     const total = Math.max(0, Math.round(seconds));
@@ -200,7 +208,7 @@ const stepRows = (task: TaskProgress) => {
             <div class="flex flex-wrap items-center justify-between gap-2">
                 <div class="flex items-center gap-2">
                     <span class="font-medium">{{
-                        $t(taskTypeLabels[task.type])
+                        $t(TASK_TYPE_LABELS[task.type])
                     }}</span>
                     <StatusBadge
                         :tone="taskStatusTone[task.status]"
@@ -221,7 +229,17 @@ const stepRows = (task: TaskProgress) => {
                         >{{ remaining(task) }}</span
                     >
                     <Button
-                        v-if="task.can_fail"
+                        v-if="task.can_cancel"
+                        variant="outline"
+                        size="sm"
+                        data-test="task-cancel"
+                        @click="cancelling = task"
+                    >
+                        <CircleStop class="h-4 w-4" />
+                        {{ $t('Stop script') }}
+                    </Button>
+                    <Button
+                        v-else-if="task.can_fail"
                         variant="outline"
                         size="sm"
                         data-test="task-mark-failed"
@@ -264,7 +282,7 @@ const stepRows = (task: TaskProgress) => {
                                 row.step?.status !== 'done' && !row.active,
                         }"
                     >
-                        {{ $t(stepLabels[row.key] ?? row.key) }}
+                        {{ stepLabel(row.key) }}
                     </span>
                     <span
                         v-if="row.duration"
@@ -316,6 +334,36 @@ const stepRows = (task: TaskProgress) => {
                     >
                         <Spinner v-if="processing" />
                         {{ $t('Mark as failed') }}
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+
+        <Dialog
+            :open="cancelling !== null"
+            @update:open="(open) => !open && (cancelling = null)"
+        >
+            <DialogContent>
+                <DialogTitle>{{ $t('Stop this script?') }}</DialogTitle>
+                <DialogDescription>
+                    {{
+                        $t(
+                            'The task fails at once and the script and the programs it started are stopped inside the server within a few seconds. Nothing it has done so far is undone.',
+                        )
+                    }}
+                </DialogDescription>
+                <DialogFooter class="gap-2">
+                    <DialogClose as-child>
+                        <Button variant="secondary">{{ $t('Cancel') }}</Button>
+                    </DialogClose>
+                    <Button
+                        variant="destructive"
+                        :disabled="processing"
+                        data-test="task-cancel-confirm"
+                        @click="stopScript"
+                    >
+                        <Spinner v-if="processing" />
+                        {{ $t('Stop script') }}
                     </Button>
                 </DialogFooter>
             </DialogContent>

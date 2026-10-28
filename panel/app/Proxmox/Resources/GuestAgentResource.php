@@ -6,10 +6,13 @@ namespace App\Proxmox\Resources;
 
 use App\Proxmox\Data\GuestExecStatus;
 use App\Proxmox\Data\GuestFile;
+use App\Proxmox\Data\GuestFileSystem;
 use App\Proxmox\Data\GuestNetworkInterface;
 use App\Proxmox\Exceptions\GuestAgentException;
+use App\Proxmox\Exceptions\GuestCommandCancelled;
 use App\Proxmox\Exceptions\ProxmoxRequestFailed;
 use App\Proxmox\ProxmoxClient;
+use Closure;
 use Illuminate\Support\Sleep;
 
 /**
@@ -115,10 +118,12 @@ final readonly class GuestAgentResource
      * installs) is started detached instead and tracked through a status file.
      *
      * @param  non-empty-list<string>  $command
+     * @param  (Closure(): bool)|null  $cancelled  asked while the command runs; true stops waiting (the command is left running)
      *
      * @throws GuestAgentException when the command is still running after the timeout
+     * @throws GuestCommandCancelled when $cancelled said so
      */
-    public function run(int $vmid, array $command, ?string $input = null, int $timeoutSeconds = 60, int $pollSeconds = 1): GuestExecStatus
+    public function run(int $vmid, array $command, ?string $input = null, int $timeoutSeconds = 60, int $pollSeconds = 1, ?Closure $cancelled = null): GuestExecStatus
     {
         $pid = $this->exec($vmid, $command, $input);
         $deadline = now()->addSeconds($timeoutSeconds);
@@ -128,6 +133,10 @@ final readonly class GuestAgentResource
 
             if ($status->exited) {
                 return $status;
+            }
+
+            if ($cancelled !== null && $cancelled()) {
+                throw new GuestCommandCancelled($pid);
             }
 
             if (now()->greaterThanOrEqualTo($deadline)) {
@@ -172,6 +181,23 @@ final readonly class GuestAgentResource
         return array_values(array_map(
             fn (array $interface) => GuestNetworkInterface::fromApi($interface),
             array_filter($interfaces, is_array(...)),
+        ));
+    }
+
+    /**
+     * The guest's mounted file systems with their sizes, as the agent reports
+     * them (guest-get-fsinfo).
+     *
+     * @return list<GuestFileSystem>
+     */
+    public function fileSystems(int $vmid): array
+    {
+        $data = $this->get($vmid, 'get-fsinfo', []);
+        $fileSystems = is_array($data) && is_array($data['result'] ?? null) ? $data['result'] : [];
+
+        return array_values(array_map(
+            fn (array $fileSystem) => GuestFileSystem::fromApi($fileSystem),
+            array_filter($fileSystems, is_array(...)),
         ));
     }
 

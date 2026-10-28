@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Requests\Api\V1;
 
+use App\Domain\Servers\PasswordGenerator;
 use App\Enums\NetworkModel;
 use App\Models\ApiToken;
 use App\Models\AppRecipe;
@@ -19,7 +20,6 @@ use App\Rules\SshPublicKeys;
 use App\Support\Ssh\PublicKey;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
-use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator;
 
@@ -96,6 +96,13 @@ class CreateServerRequest extends FormRequest
             if ($spec->ipv4Count + $spec->ipv6Count === 0) {
                 $validator->errors()->add('resources.ipv4_count', __('A server needs at least one IP address.'));
             }
+
+            // docs/adr/0040: a package may name the OS templates its servers use.
+            $template = $package === null ? null : OsTemplate::query()->where('uuid', $this->string('os_template'))->first();
+
+            if ($template !== null && ! $package->allowsOsTemplate($template)) {
+                $validator->errors()->add('os_template', __('This package may not use the chosen OS template.'));
+            }
         }];
     }
 
@@ -107,7 +114,7 @@ class CreateServerRequest extends FormRequest
             osTemplate: OsTemplate::query()->where('uuid', $this->string('os_template'))->firstOrFail(),
             networkModel: $this->networkModel(),
             hostname: $this->filled('hostname') ? $this->string('hostname')->lower()->toString() : null,
-            rootPassword: $this->filled('root_password') ? $this->string('root_password')->toString() : Str::password(20, symbols: false),
+            rootPassword: $this->filled('root_password') ? $this->string('root_password')->toString() : app(PasswordGenerator::class)->generate(),
             package: $this->package(),
             sshKeys: PublicKey::implode($this->sshKeys()),
             externalId: $this->string('external_id')->trim()->toString(),

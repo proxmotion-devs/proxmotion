@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Controllers\Admin;
 
 use App\Domain\Apps\AppInstallConflict;
+use App\Domain\Apps\AppPackages;
 use App\Domain\Apps\AppSystems;
 use App\Domain\Apps\AppTrials;
 use App\Domain\Apps\LiveAppPolls;
@@ -159,7 +160,7 @@ class AppRecipeController extends Controller
 
         AuditLog::record('app.exported', $admin, $appRecipe, ['app' => $appRecipe->slug, 'version' => $version->version, 'draft' => $version->status === AppRecipeVersionStatus::Draft], $request->ip());
 
-        $filename = $appRecipe->slug.'-'.($version->status === AppRecipeVersionStatus::Draft ? 'draft' : $version->version).'.zip';
+        $filename = $appRecipe->slug.'-'.($version->status === AppRecipeVersionStatus::Draft ? 'draft' : $version->version).'.'.AppPackages::EXTENSION;
 
         return response($archive->export($version), 200, [
             'Content-Type' => 'application/zip',

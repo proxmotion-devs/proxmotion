@@ -2,6 +2,7 @@
 
 - **Status:** Accepted
 - **Date:** 2026-10-17
+- **Revised 2026-10-27 (ADR 0041, 0042):** the recipes live in `proxmotion-recipes` and are installed from `.proxapp` packages; where this ADR says `panel/recipes` or `apps:sync`, read the recipe repository and *Install package* (`panel/recipes` keeps only `_lib` and `_schema`).
 
 ## Context
 

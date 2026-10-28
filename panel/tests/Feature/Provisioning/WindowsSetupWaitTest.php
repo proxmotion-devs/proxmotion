@@ -19,10 +19,12 @@ use Tests\Support\FakeProxmoxCluster;
 use Tests\TestCase;
 
 /**
- * A new or reinstalled Windows server is ready once Windows setup has
- * finished, not when its guest agent first answers (during sysprep's
- * specialize pass). Linux servers wait for cloud-init instead (CloudInitWaitTest);
- * unsuspends only wait for the agent.
+ * A new or reinstalled Windows server is ready once Windows setup and
+ * Cloudbase-Init have finished, not when its guest agent first answers
+ * (during sysprep's specialize pass) nor when the cloudbase-init service
+ * merely looks stopped. Linux servers wait for cloud-init instead
+ * (CloudInitWaitTest); unsuspends only wait for the agent.
+ * GuestScripts::windowsSetupPending() itself: WindowsSetupPendingTest.
  */
 class WindowsSetupWaitTest extends TestCase
 {
@@ -47,11 +49,32 @@ class WindowsSetupWaitTest extends TestCase
                 return [0, '', ''];
             }
 
-            $answer = $this->answers[min($this->checks, count($this->answers) - 1)] ?? "IMAGE_STATE_COMPLETE\r\nStopped\r\n";
+            $answer = $this->answers[min($this->checks, count($this->answers) - 1)] ?? self::checkOutput();
             $this->checks++;
 
             return [0, $answer, ''];
         };
+    }
+
+    /**
+     * What WINDOWS_SETUP_COMMAND prints; $service null without Cloudbase-Init.
+     */
+    private static function checkOutput(
+        string $image = 'IMAGE_STATE_COMPLETE',
+        ?string $service = 'Stopped',
+        string $done = 'SetUserPasswordPlugin,NetworkConfigPlugin,UserDataPlugin',
+        string $name = 'WEB1',
+        string $activeName = 'WEB1',
+        string $plugins = 'SetUserPasswordPlugin,NetworkConfigPlugin,UserDataPlugin',
+        string $later = '',
+    ): string {
+        $lines = ["image={$image}", "name={$name}", "active_name={$activeName}"];
+
+        if ($service !== null) {
+            $lines = [...$lines, "service={$service}", "plugins={$plugins}", "done={$done}", "later={$later}"];
+        }
+
+        return implode("\r\n", $lines)."\r\n";
     }
 
     private function waitStep(Task $task): array
@@ -62,9 +85,9 @@ class WindowsSetupWaitTest extends TestCase
     public function test_a_windows_server_is_active_only_once_setup_has_finished()
     {
         $this->answers = [
-            "IMAGE_STATE_SPECIALIZE_RESEAL_TO_OOBE\r\n\r\n",
-            "IMAGE_STATE_COMPLETE\r\nRunning\r\n",
-            "IMAGE_STATE_COMPLETE\r\nStopped\r\n",
+            self::checkOutput(image: 'IMAGE_STATE_SPECIALIZE_RESEAL_TO_OOBE', done: ''),
+            self::checkOutput(service: 'Running', done: ''),
+            self::checkOutput(),
         ];
         Sleep::fake();
 
@@ -78,9 +101,65 @@ class WindowsSetupWaitTest extends TestCase
         $this->assertNull($step['message']);
     }
 
+    public function test_a_cloudbase_init_service_that_has_not_started_yet_is_waited_for()
+    {
+        // Before the service starts it looks stopped, but has recorded nothing for this server.
+        $this->answers = [self::checkOutput(done: ''), self::checkOutput(done: 'SetUserPasswordPlugin'), self::checkOutput()];
+        Sleep::fake();
+
+        $server = app(ServerCreator::class)->create($this->order())->refresh();
+
+        $this->assertSame(3, $this->checks);
+        $this->assertSame(ServerStatus::Active, $server->status);
+        $this->assertNull($this->waitStep($server->tasks()->sole())['message']);
+    }
+
+    public function test_a_computer_name_waiting_for_the_restart_cloudbase_init_asked_for_is_waited_for()
+    {
+        // Cloudbase-Init has finished and stopped, but Windows has not restarted into the new name yet.
+        $this->answers = [self::checkOutput(name: 'WEB1', activeName: 'WIN-KC2E3BTDPBV'), self::checkOutput()];
+        Sleep::fake();
+
+        $server = app(ServerCreator::class)->create($this->order())->refresh();
+
+        $this->assertSame(2, $this->checks);
+        $this->assertSame(ServerStatus::Active, $server->status);
+    }
+
+    public function test_plugins_cloudbase_init_runs_at_every_boot_do_not_hold_the_wait()
+    {
+        // ExtendVolumesPlugin and LocalScriptsPlugin record "run at the next boot" (2) even after they ran.
+        $this->answers = [self::checkOutput(
+            plugins: 'SetUserPasswordPlugin,ExtendVolumesPlugin,LocalScriptsPlugin',
+            done: 'SetUserPasswordPlugin',
+            later: 'ExtendVolumesPlugin,LocalScriptsPlugin',
+        )];
+        Sleep::fake();
+
+        $server = app(ServerCreator::class)->create($this->order())->refresh();
+
+        $this->assertSame(1, $this->checks);
+        Sleep::assertNeverSlept();
+        $this->assertSame(ServerStatus::Active, $server->status);
+        $this->assertNull($this->waitStep($server->tasks()->sole())['message']);
+    }
+
+    public function test_a_restart_cloudbase_init_asked_for_is_waited_for()
+    {
+        // The service has stopped and recorded every plugin, but a local script asked for a restart (exit 1003).
+        $this->answers = [self::checkOutput()."restart=1\r\n", self::checkOutput()];
+        Sleep::fake();
+
+        $server = app(ServerCreator::class)->create($this->order())->refresh();
+
+        $this->assertSame(2, $this->checks);
+        $this->assertSame(ServerStatus::Active, $server->status);
+        $this->assertNull($this->waitStep($server->tasks()->sole())['message']);
+    }
+
     public function test_a_finished_windows_setup_without_cloudbase_init_counts_as_finished()
     {
-        $this->answers = ["IMAGE_STATE_COMPLETE\r\n\r\n"];
+        $this->answers = [self::checkOutput(service: null)];
         Sleep::fake();
 
         $server = app(ServerCreator::class)->create($this->order())->refresh();
@@ -104,10 +183,10 @@ class WindowsSetupWaitTest extends TestCase
                 $vmid = array_key_last($this->proxmox->vms);
                 $this->proxmox->agentDown[$vmid] = true;
 
-                return [0, "IMAGE_STATE_SPECIALIZE_RESEAL_TO_OOBE\r\n\r\n", ''];
+                return [0, self::checkOutput(image: 'IMAGE_STATE_SPECIALIZE_RESEAL_TO_OOBE', done: ''), ''];
             }
 
-            return [0, "IMAGE_STATE_COMPLETE\r\nStopped\r\n", ''];
+            return [0, self::checkOutput(), ''];
         };
         Sleep::fake();
         Sleep::whenFakingSleep(function () use (&$vmid, &$sleeps) {
@@ -128,7 +207,7 @@ class WindowsSetupWaitTest extends TestCase
 
     public function test_a_setup_that_does_not_finish_in_time_leaves_a_note_and_the_server_goes_on()
     {
-        $this->answers = ["IMAGE_STATE_UNDEPLOYABLE\r\n\r\n"];
+        $this->answers = [self::checkOutput(image: 'IMAGE_STATE_UNDEPLOYABLE', done: '')];
         Sleep::fake(syncWithCarbon: true);
 
         $server = app(ServerCreator::class)->create($this->order())->refresh();
@@ -137,9 +216,37 @@ class WindowsSetupWaitTest extends TestCase
         $task = $server->tasks()->sole();
         $this->assertSame(TaskStatus::Succeeded, $task->status);
         $this->assertSame(
-            'Windows setup did not finish within '.intdiv(GuestScripts::WINDOWS_SETUP_TIMEOUT_SECONDS, 60).' minutes: the server may still be setting itself up.',
+            'Windows setup did not finish within '.intdiv(GuestScripts::WINDOWS_SETUP_TIMEOUT_SECONDS, 60).' minutes (Windows setup reports IMAGE_STATE_UNDEPLOYABLE): the server may still be setting itself up.',
             $this->waitStep($task)['message'],
         );
+    }
+
+    public function test_the_note_of_a_wait_that_times_out_names_the_plugins_cloudbase_init_did_not_finish()
+    {
+        // A plugin that fails is never recorded as done: Cloudbase-Init tries it again at the next boot.
+        $this->answers = [self::checkOutput(done: 'SetUserPasswordPlugin')];
+        Sleep::fake(syncWithCarbon: true);
+
+        $server = app(ServerCreator::class)->create($this->order())->refresh();
+
+        $this->assertSame(ServerStatus::Active, $server->status);
+        $this->assertSame(
+            'Windows setup did not finish within '.intdiv(GuestScripts::WINDOWS_SETUP_TIMEOUT_SECONDS, 60).' minutes (Cloudbase-Init has not finished NetworkConfigPlugin, UserDataPlugin): the server may still be setting itself up.',
+            $this->waitStep($server->tasks()->sole())['message'],
+        );
+    }
+
+    public function test_a_plugin_that_failed_ends_the_wait_with_a_note_instead_of_the_timeout()
+    {
+        $this->answers = [self::checkOutput(done: 'SetUserPasswordPlugin,NetworkConfigPlugin')."failed=UserDataPlugin\r\n"];
+        Sleep::fake();
+
+        $server = app(ServerCreator::class)->create($this->order())->refresh();
+
+        $this->assertSame(1, $this->checks);
+        Sleep::assertNeverSlept();
+        $this->assertSame(ServerStatus::Active, $server->status);
+        $this->assertSame('Cloudbase-Init could not run UserDataPlugin: see cloudbase-init.log inside the server.', $this->waitStep($server->tasks()->sole())['message']);
     }
 
     public function test_a_windows_agent_that_never_answers_still_times_out_after_ten_minutes()
@@ -158,13 +265,13 @@ class WindowsSetupWaitTest extends TestCase
     {
         $server = app(ServerCreator::class)->create($this->order())->refresh();
         $this->checks = 0;
-        $this->answers = ["IMAGE_STATE_SPECIALIZE_RESEAL_TO_OOBE\r\n\r\n", "IMAGE_STATE_COMPLETE\r\nStopped\r\n"];
+        $this->answers = [self::checkOutput(done: ''), self::checkOutput(name: 'WEB1', activeName: 'WIN-KC2E3BTDPBV'), self::checkOutput()];
         Sleep::fake();
 
         $task = app(ServerReinstaller::class)->request($server, $server->osTemplate, [], User::factory()->create(), null)->refresh();
 
         $this->assertSame(TaskStatus::Succeeded, $task->status);
-        $this->assertSame(2, $this->checks);
+        $this->assertSame(3, $this->checks);
         $this->assertNull($this->waitStep($task)['message']);
     }
 
@@ -183,7 +290,7 @@ class WindowsSetupWaitTest extends TestCase
     public function test_linux_servers_wait_for_cloud_init_instead()
     {
         $this->osTemplate->forceFill(['distribution' => 'ubuntu'])->save();
-        $this->answers = ["IMAGE_STATE_UNDEPLOYABLE\r\n\r\n"];
+        $this->answers = [self::checkOutput(image: 'IMAGE_STATE_UNDEPLOYABLE')];
         Sleep::fake();
 
         $server = app(ServerCreator::class)->create($this->order())->refresh();

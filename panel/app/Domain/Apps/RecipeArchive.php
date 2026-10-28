@@ -15,7 +15,7 @@ use ZipArchive;
 
 /**
  * A recipe as a zip of its format 2 directory (docs/adr/0018 §5): the same
- * layout as panel/recipes/<slug> (recipe.yaml and its scripts), inside a
+ * layout as a recipe directory named <slug> (recipe.yaml and its scripts), inside a
  * folder named after the slug. Imports are read entry by entry in memory,
  * never extracted to disk, and refused when anything looks off: paths
  * outside the recipe, links, unknown files, too many or too large files.
@@ -189,8 +189,9 @@ final readonly class RecipeArchive
             throw self::refused('The file :path is not UTF-8 text.', ['path' => $path]);
         }
 
-        // Scripts written on Windows; bash needs LF.
-        return str_replace("\r\n", "\n", $content);
+        // Scripts written on Windows; bash needs LF. PowerShell scripts keep theirs, as in a recipes
+        // repository (*.ps1 eol=crlf), so a package holds the same version as its recipe (docs/adr/0042).
+        return str_ends_with($path, '.ps1') ? $content : str_replace("\r\n", "\n", $content);
     }
 
     /**

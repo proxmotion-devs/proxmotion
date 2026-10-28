@@ -16,7 +16,7 @@ class ClientAreaTest extends ModuleTestCase
     {
         $this->serviceHas($this->server($overrides));
         $this->api->on('GET /servers/' . self::SERVER_ID, 200, ['data' => $this->server($overrides)]);
-        $this->api->on('GET /os-templates', 200, ['data' => [['id' => 'os-uuid', 'name' => 'Ubuntu 24.04', 'family' => 'ubuntu', 'version' => '24.04']]]);
+        $this->api->on('GET /os-templates?server=9b2f2c1e-0000-4000-8000-000000000001', 200, ['data' => [['id' => 'os-uuid', 'name' => 'Ubuntu 24.04', 'family' => 'ubuntu', 'version' => '24.04']]]);
         $this->api->on('GET /servers/' . self::SERVER_ID . '/apps', 200, ['data' => []]);
         $this->api->on('GET /apps?server=' . self::SERVER_ID, 200, ['data' => [self::wireguard()]]);
         $this->api->on('GET /apps?mode=order&server=' . self::SERVER_ID, 200, ['data' => [self::wireguard()]]);
@@ -86,7 +86,7 @@ class ClientAreaTest extends ModuleTestCase
         $this->freshApi();
         $this->serviceHas($this->server());
         $this->api->on('GET /servers/' . self::SERVER_ID, 200, ['data' => $this->server()]);
-        $this->api->on('GET /os-templates', 200, ['data' => []]);
+        $this->api->on('GET /os-templates?server=9b2f2c1e-0000-4000-8000-000000000001', 200, ['data' => []]);
         $this->api->on('GET /servers/' . self::SERVER_ID . '/apps', 200, ['data' => [self::installation()]]);
         $this->api->on('GET /servers/' . self::SERVER_ID . '/apps/installation-uuid/runs', 200, ['data' => [self::appRun(), self::appRun(['id' => 'uninstall-uuid', 'kind' => 'uninstall', 'action' => null, 'status' => 'failed', 'error' => 'systemctl failed', 'outputs' => []])]]);
         $this->api->on('GET /apps?server=' . self::SERVER_ID, 200, ['data' => []]);
@@ -125,7 +125,7 @@ class ClientAreaTest extends ModuleTestCase
         $upgrade = ['version' => '1.4.0', 'inputs' => [['key' => 'dns', 'type' => 'domain', 'label' => ['en' => 'DNS server', 'tr' => 'DNS sunucusu'], 'required' => true, 'default' => null, 'options' => null, 'min' => null, 'max' => null, 'max_length' => null]]];
         $this->serviceHas($this->server());
         $this->api->on('GET /servers/' . self::SERVER_ID, 200, ['data' => $this->server()]);
-        $this->api->on('GET /os-templates', 200, ['data' => []]);
+        $this->api->on('GET /os-templates?server=9b2f2c1e-0000-4000-8000-000000000001', 200, ['data' => []]);
         $this->api->on('GET /servers/' . self::SERVER_ID . '/apps', 200, ['data' => [self::installation(['upgrade' => $upgrade]), self::installation(['id' => 'failed-uuid', 'status' => 'upgrade_failed', 'error' => 'apt failed', 'upgrade' => null])]]);
         $this->api->on('GET /servers/' . self::SERVER_ID . '/apps/installation-uuid/runs', 200, ['data' => [self::appRun(['kind' => 'upgrade', 'action' => null, 'target_version' => '1.4.0', 'outputs' => []])]]);
         $this->api->on('GET /servers/' . self::SERVER_ID . '/apps/failed-uuid/runs', 200, ['data' => []]);
@@ -166,7 +166,7 @@ class ClientAreaTest extends ModuleTestCase
         $this->freshApi();
         $this->serviceHas($this->server());
         $this->api->on('GET /servers/' . self::SERVER_ID, 200, ['data' => $this->server()]);
-        $this->api->on('GET /os-templates', 200, ['data' => []]);
+        $this->api->on('GET /os-templates?server=9b2f2c1e-0000-4000-8000-000000000001', 200, ['data' => []]);
         $this->api->on('GET /servers/' . self::SERVER_ID . '/apps', 200, ['data' => [self::installation()]]);
         $this->api->on('GET /servers/' . self::SERVER_ID . '/apps/installation-uuid/runs', 200, ['data' => []]);
         $this->api->on('GET /apps?server=' . self::SERVER_ID, 200, ['data' => [self::wireguard()]]);
@@ -369,6 +369,69 @@ class ClientAreaTest extends ModuleTestCase
         $this->assertSame(['os_template' => 'os-uuid', 'ssh_keys' => ['ssh-ed25519 AAAA user@example.com']], $this->api->last('POST /servers/' . self::SERVER_ID . '/reinstall')['body']);
     }
 
+    public function test_the_reinstall_form_says_how_many_reinstalls_are_left()
+    {
+        // docs/adr/0045
+        $this->showsServer(['reinstalls' => ['limit' => 3, 'period_days' => 30, 'used' => 1, 'remaining' => 2, 'available_at' => null]]);
+
+        $this->assertSame(
+            ['allowed' => true, 'message' => 'Reinstalls left: 2 of 3 in 30 days.'],
+            $this->module()->clientArea()['templateVariables']['pmx']['server']['reinstalls']
+        );
+    }
+
+    public function test_the_reinstall_form_is_replaced_once_no_reinstalls_are_left()
+    {
+        $this->showsServer(['reinstalls' => ['limit' => 2, 'period_days' => 30, 'used' => 2, 'remaining' => 0, 'available_at' => '2026-11-26T12:00:00+03:00']]);
+
+        $this->assertSame(
+            ['allowed' => false, 'message' => 'You have used all 2 reinstalls of the last 30 days. The next reinstall is possible after 2026-11-26 12:00.'],
+            $this->module()->clientArea()['templateVariables']['pmx']['server']['reinstalls']
+        );
+    }
+
+    public function test_reinstalls_that_are_not_allowed()
+    {
+        $this->showsServer(['reinstalls' => ['limit' => 0, 'period_days' => 30, 'used' => 0, 'remaining' => 0, 'available_at' => null]]);
+
+        $this->assertSame(
+            ['allowed' => false, 'message' => 'This server cannot be reinstalled here. Please contact support.'],
+            $this->module()->clientArea()['templateVariables']['pmx']['server']['reinstalls']
+        );
+    }
+
+    public function test_unlimited_reinstalls_show_no_note()
+    {
+        $this->showsServer(['reinstalls' => ['limit' => null, 'period_days' => null, 'used' => null, 'remaining' => null, 'available_at' => null]]);
+
+        $this->assertNull($this->module()->clientArea()['templateVariables']['pmx']['server']['reinstalls']);
+    }
+
+    public function test_an_older_panel_without_reinstall_limits_shows_no_note()
+    {
+        $this->showsServer();
+
+        $this->assertNull($this->module()->clientArea()['templateVariables']['pmx']['server']['reinstalls']);
+    }
+
+    public function test_a_refused_reinstall_shows_proxmotions_reason()
+    {
+        $this->serviceHas($this->server());
+        $this->api->on('POST /servers/' . self::SERVER_ID . '/reinstall', 409, [
+            'message' => 'The reinstall limit of this server (2 in 30 days) has been reached. It can be reinstalled again after 2026-11-26 09:00 UTC.',
+            'error' => 'reinstall_limit_reached',
+            'available_at' => '2026-11-26T12:00:00+03:00',
+        ]);
+
+        try {
+            $this->module()->reinstall(['os_template' => 'os-uuid', 'confirm' => '1']);
+            $this->fail('The reinstall was refused.');
+        } catch (ApiException $e) {
+            $this->assertSame(409, $e->status());
+            $this->assertStringContainsString('The reinstall limit of this server (2 in 30 days) has been reached.', $e->describe());
+        }
+    }
+
     public function test_a_reinstall_can_bring_an_app()
     {
         $this->serviceHas($this->server());
@@ -385,7 +448,7 @@ class ClientAreaTest extends ModuleTestCase
         $this->freshApi();
         $this->serviceHas($this->server());
         $this->api->on('GET /servers/' . self::SERVER_ID, 200, ['data' => $this->server()]);
-        $this->api->on('GET /os-templates', 200, ['data' => [['id' => 'os-uuid', 'name' => 'Ubuntu 24.04']]]);
+        $this->api->on('GET /os-templates?server=9b2f2c1e-0000-4000-8000-000000000001', 200, ['data' => [['id' => 'os-uuid', 'name' => 'Ubuntu 24.04']]]);
         $this->api->on('GET /servers/' . self::SERVER_ID . '/apps', 200, ['data' => []]);
         $this->api->on('GET /apps?server=' . self::SERVER_ID, 200, ['data' => []]);
         $required = ['key' => 'domain', 'type' => 'domain', 'label' => null, 'required' => true, 'default' => null];
@@ -406,7 +469,7 @@ class ClientAreaTest extends ModuleTestCase
         $this->freshApi();
         $this->serviceHas($this->server());
         $this->api->on('GET /servers/' . self::SERVER_ID, 200, ['data' => $this->server()]);
-        $this->api->on('GET /os-templates', 200, ['data' => []]);
+        $this->api->on('GET /os-templates?server=9b2f2c1e-0000-4000-8000-000000000001', 200, ['data' => []]);
         $this->api->on('GET /servers/' . self::SERVER_ID . '/apps', 200, ['data' => []]);
         $this->api->on('GET /apps?server=' . self::SERVER_ID, 200, ['data' => [
             ['id' => 'cpanel', 'name' => 'cPanel', 'inputs' => [], 'billing' => 'paid', 'license' => 'external', 'entitled' => false],

@@ -16,8 +16,10 @@ use App\Domain\Firewall\ServerFirewalls;
 use App\Domain\Servers\GuestAgentProbe;
 use App\Domain\Servers\HostnameChanger;
 use App\Domain\Servers\MoveOptions;
+use App\Domain\Servers\ReinstallLimits;
 use App\Domain\Servers\ReinstallOptions;
 use App\Domain\Servers\ResourceOptions;
+use App\Domain\Servers\ServerLiveState;
 use App\Domain\Servers\ServerPasswords;
 use App\Domain\Servers\ServerPower;
 use App\Domain\Servers\ServerReinstaller;
@@ -36,6 +38,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\AddressChangeRequest;
 use App\Http\Requests\Admin\ChangeResourcesRequest;
 use App\Http\Requests\Admin\ServerRequest;
+use App\Http\Requests\Admin\SuspendServerRequest;
 use App\Http\Requests\HostnameRequest;
 use App\Http\Requests\RebuildRequest;
 use App\Http\Requests\ReinstallRequest;
@@ -46,7 +49,9 @@ use App\Models\AppRecipe;
 use App\Models\AppRun;
 use App\Models\AuditLog;
 use App\Models\BillingSystem;
+use App\Models\CustomScript;
 use App\Models\FirewallRuleset;
+use App\Models\GuestScriptLog;
 use App\Models\IpAddress;
 use App\Models\IpPool;
 use App\Models\Location;
@@ -97,10 +102,13 @@ class ServerController extends Controller
     public function index(Request $request): Response
     {
         $showTerminated = $request->boolean('terminated');
+        // One status only, e.g. the suspended servers; unknown values list them all.
+        $status = ServerStatus::tryFrom($request->string('status')->value());
 
         return Inertia::render('admin/servers/Index', [
             'servers' => Server::query()
-                ->when(! $showTerminated, fn ($query) => $query->occupying())
+                ->when($status !== null, fn ($query) => $query->where('status', $status))
+                ->when($status === null && ! $showTerminated, fn ($query) => $query->occupying())
                 ->with(['node:id,name', 'location:id,name', 'package:id,name', 'billingSystem:id,name', 'ipAddresses:id,server_id,address'])
                 ->withExists(['drifts as firewall_drift' => fn ($query) => $query->where('type', DriftType::FirewallMismatch)->whereNull('resolved_at')->whereNull('dismissed_at')])
                 ->latest()
@@ -124,6 +132,7 @@ class ServerController extends Controller
                     'unprotected' => (bool) $server->getAttribute('firewall_drift'),
                 ]),
             'showTerminated' => $showTerminated,
+            'status' => $status,
         ]);
     }
 
@@ -137,7 +146,7 @@ class ServerController extends Controller
             'locations' => Location::query()->orderBy('name')->get(['uuid', 'name', 'code', 'hostname_template'])
                 // With a template, the hostname may stay empty (docs/adr/0031).
                 ->map(fn (Location $location) => ['value' => $location->uuid, 'label' => $location->name, 'code' => $location->code, 'hostname_template' => $location->hostname_template]),
-            'packages' => Package::query()->where('is_active', true)->with('placementGroups:id,uuid')->orderBy('sort_order')->orderBy('name')->get()
+            'packages' => Package::query()->where('is_active', true)->with(['placementGroups:id,uuid', 'osTemplates:id,uuid'])->orderBy('sort_order')->orderBy('name')->get()
                 ->map(fn (Package $package) => [
                     'value' => $package->uuid,
                     'label' => $package->name,
@@ -146,6 +155,8 @@ class ServerController extends Controller
                     ...ResourceOptions::packageValues($package),
                     // The placement groups its servers may be placed on; empty for any.
                     'placement_groups' => $package->placementGroups->pluck('uuid')->values(),
+                    // The OS templates its servers may use; empty for any (docs/adr/0040).
+                    'os_templates' => $package->osTemplates->pluck('uuid')->values(),
                 ]),
             // Active IPv4 pools with their free addresses, for choosing the addresses by hand.
             'ipv4Pools' => fn () => IpPool::query()
@@ -227,14 +238,24 @@ class ServerController extends Controller
         return to_route('admin.servers.show', $server);
     }
 
-    public function show(Request $request, Server $server, MoveOptions $moves, GuestAgentProbe $agent, AppEligibility $eligibility, AppUpgrades $upgrades, TaskFailer $failer, LiveAppPolls $live, IpAllocator $ips, TaskPlan $plan, TaskEstimates $estimates): Response
+    public function show(Request $request, Server $server, MoveOptions $moves, GuestAgentProbe $agent, ServerLiveState $state, AppEligibility $eligibility, AppUpgrades $upgrades, TaskFailer $failer, LiveAppPolls $live, IpAllocator $ips, TaskPlan $plan, TaskEstimates $estimates): Response
     {
-        $server->load(['node:id,uuid,name', 'cluster:id,uuid,name', 'location:id,name', 'package:id,name', 'billingSystem:id,name', 'osTemplate:id,operating_system_version_id,name,distribution,version,family,platform', 'storage:id,name', 'ipAddresses.pool:id,uuid,name,version,bridge,vlan_tag']);
+        $server->load(['node:id,uuid,name', 'cluster:id,uuid,name', 'location:id,name', 'package:id,name,reinstall_limit,reinstall_period_days', 'billingSystem:id,name', 'osTemplate:id,operating_system_version_id,name,distribution,version,family,platform', 'storage:id,name', 'ipAddresses.pool:id,uuid,name,version,bridge,vlan_tag']);
 
         // The page's refreshes while an app script runs ask the guest, so step and progress show live (docs/adr/0021).
         if (in_array('apps', explode(',', (string) $request->header('X-Inertia-Partial-Data')), true)) {
             $live->server($server);
         }
+
+        // Asked once per request for the deferred props below: the agent is pinged
+        // only while the VM runs, so a VM stopped, deleted or moved in Proxmox is
+        // not shown as a guest agent problem.
+        $read = null;
+        $liveState = function () use ($server, $state, &$read): array {
+            return $read ??= $server->status === ServerStatus::Active
+                ? $state->read($server)
+                : ['power' => null, 'vm' => ServerLiveState::PRESENT, 'node' => null];
+        };
 
         return Inertia::render('admin/servers/Show', [
             'server' => [
@@ -306,13 +327,26 @@ class ServerController extends Controller
                     'started_at' => $task->started_at?->toIso8601String(),
                     'finished_at' => $task->finished_at?->toIso8601String(),
                     'can_fail' => $failer->canAbandon($task),
+                    'can_cancel' => $failer->canCancel($task),
                 ];
             }),
             // Outputs of one installed app, after Show details (AppController::outputs()).
             'revealedAppOutputs' => session('revealed_app_outputs'),
             // Asked from Proxmox after the page has loaded, so a slow cluster does not block it.
-            'power' => Inertia::defer(fn () => $server->status === ServerStatus::Active ? $this->power->state($server) : null),
+            'power' => Inertia::defer(fn () => $liveState()['power']),
+            // Whether the VM is where the panel recorded it (ServerLiveState).
+            'vm' => Inertia::defer(fn () => ['state' => $liveState()['vm'], 'node' => $liveState()['node']]),
             'reinstallOptions' => fn () => ReinstallOptions::for($server),
+            // How often its billing system may reinstall it (docs/adr/0045).
+            'reinstallLimit' => fn () => [
+                ...app(ReinstallLimits::class)->usage($server),
+                'server_limit' => $server->reinstall_limit,
+                'server_period_days' => $server->reinstall_period_days,
+                'package_limit' => $server->package?->reinstall_limit,
+                'package_period_days' => $server->package?->reinstall_period_days,
+                'has_package' => $server->package !== null,
+                'reset_at' => $server->reinstalls_reset_at?->toIso8601String(),
+            ],
             'resourceOptions' => fn () => ResourceOptions::for($server),
             // Moving the server (docs/adr/0037).
             'moveOptions' => fn () => $moves->for($server),
@@ -340,9 +374,24 @@ class ServerController extends Controller
                 'violations' => $server->usageViolations()->latest('id')->limit(10)->get()
                     ->map(fn (UsageViolation $violation) => [...$violation->toPayload(), 'label' => $violation->kind->label()]),
             ],
+            // The template's published manual scripts and the latest custom script runs here (docs/adr/0043).
+            'scripts' => fn () => $server->osTemplate === null ? [] : $server->osTemplate->customScripts()
+                ->where('manual', true)
+                ->whereNotNull('content')
+                ->get(['uuid', 'name'])
+                ->map(fn (CustomScript $script) => ['uuid' => $script->uuid, 'name' => $script->name]),
+            'scriptRuns' => fn () => GuestScriptLog::query()
+                ->where('server_id', $server->id)
+                ->whereNotNull('script_name')
+                ->with(['server:id,uuid,hostname', 'task:id,status,type,input'])
+                ->latest('id')
+                ->limit(5)
+                ->get()
+                ->map(GuestScriptController::summary(...)),
             'drifts' => $server->drifts()->visible()->with(['cluster:id,uuid,name', 'server:id,uuid,hostname,status'])->get()
                 ->map(fn (ServerDrift $drift) => DriftController::present($drift)),
-            'agent' => Inertia::defer(fn () => $server->status === ServerStatus::Active ? $agent->reachable($server) : null),
+            // Null (not asked) unless Proxmox says the VM runs.
+            'agent' => Inertia::defer(fn () => $liveState()['power'] === 'running' ? $agent->reachable($server) : null),
             'apps' => $server->appInstallations()
                 ->with([
                     'recipe:id,slug,name,is_active,latest_version_id', 'recipe.latestVersion', 'version',
@@ -426,14 +475,32 @@ class ServerController extends Controller
         ]);
     }
 
-    public function suspend(Server $server, #[CurrentUser] User $admin): RedirectResponse
+    public function suspend(SuspendServerRequest $request, Server $server, #[CurrentUser] User $admin): RedirectResponse
     {
-        return $this->startTask($server, TaskType::Suspend, $admin, [ServerStatus::Active], 'Suspending the server…');
+        $reason = $request->reason();
+
+        // Suspended by the panel over its traffic quota or a usage limit: the suspension becomes
+        // the administrator's, so the panel never unsuspends it by itself (docs/adr/0039 §8).
+        if ($server->status === ServerStatus::Suspended && $server->suspension_cause !== null) {
+            $server->forceFill(['suspension_cause' => null, 'suspension_reason' => $reason ?? $server->suspension_reason])->save();
+            AuditLog::record('server.suspended', $admin, $server, ['hostname' => $server->hostname, 'reason' => $reason, 'taken_over' => true], $request->ip());
+            $this->toast('success', 'The server stays suspended until you or the billing system unsuspend it.');
+
+            return back();
+        }
+
+        return $this->startTask($server, TaskType::Suspend, $admin, [ServerStatus::Active], 'Suspending the server…', function () use ($server, $admin, $request, $reason): void {
+            // Shown on the server page; cleared again when the server is unsuspended.
+            $server->forceFill(['suspension_reason' => $reason])->save();
+            AuditLog::record('server.suspended', $admin, $server, ['hostname' => $server->hostname, 'reason' => $reason], $request->ip());
+        });
     }
 
-    public function unsuspend(Server $server, #[CurrentUser] User $admin): RedirectResponse
+    public function unsuspend(Request $request, Server $server, #[CurrentUser] User $admin): RedirectResponse
     {
-        return $this->startTask($server, TaskType::Unsuspend, $admin, [ServerStatus::Suspended], 'Starting the server…');
+        return $this->startTask($server, TaskType::Unsuspend, $admin, [ServerStatus::Suspended], 'Starting the server…', function () use ($server, $admin, $request): void {
+            AuditLog::record('server.unsuspended', $admin, $server, ['hostname' => $server->hostname], $request->ip());
+        });
     }
 
     /**
@@ -685,8 +752,9 @@ class ServerController extends Controller
 
     /**
      * @param  list<ServerStatus>  $allowedFrom
+     * @param  (callable(): void)|null  $queued  run once the task is queued, e.g. to audit it
      */
-    private function startTask(Server $server, TaskType $type, User $admin, array $allowedFrom, string $message): RedirectResponse
+    private function startTask(Server $server, TaskType $type, User $admin, array $allowedFrom, string $message, ?callable $queued = null): RedirectResponse
     {
         if (! in_array($server->status, $allowedFrom, true)) {
             $this->toast('error', 'This action is not possible while the server is :status.', ['status' => __(ucfirst($server->status->value))]);
@@ -700,6 +768,10 @@ class ServerController extends Controller
             $this->toast('error', $e->getMessage());
 
             return back();
+        }
+
+        if ($queued !== null) {
+            $queued();
         }
 
         $this->toast('info', $message);

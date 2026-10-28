@@ -19,7 +19,7 @@ use Symfony\Component\Yaml\Yaml;
  * The admin recipe editor (docs/adr/0018): custom apps, copies, one draft
  * per app and publishing it as a new version. Bundled apps are edited in
  * place: their versions are numbered after the bundled one they started
- * from (1.2.1-local.1), apps:sync keeps new bundled versions for later, and
+ * from (1.2.1-local.1), a later package keeps new bundled versions for later, and
  * revert() goes back to the bundled recipe.
  * Published and archived versions never change; installations keep theirs.
  * Every change is audited with a diff against the published version.
@@ -274,12 +274,12 @@ final readonly class RecipeEditor
             throw new RecipeEditRefused('This app has installations; deactivate it instead.');
         }
 
-        DB::transaction(function () use ($app) {
-            $app->installations()->delete();
-            $app->forceFill(['latest_version_id' => null])->save();
-            $app->versions()->delete();
-            $app->delete();
-        });
+        // Billing systems still sell the right to install it (docs/adr/0019).
+        if ($app->entitlements()->active()->exists()) {
+            throw new RecipeEditRefused('Servers have the right to install this app; revoke it or deactivate the app instead.');
+        }
+
+        DB::transaction(fn () => $app->deleteWithHistory());
 
         AuditLog::record('app.deleted', $admin, null, ['app' => $app->slug], $ipAddress);
     }
@@ -446,7 +446,7 @@ final readonly class RecipeEditor
     /**
      * The diff between two stored versions (either may be the draft), for the editor's history.
      */
-    public function diffBetween(AppRecipeVersion $from, AppRecipeVersion $to): string
+    public function diffBetween(?AppRecipeVersion $from, AppRecipeVersion $to): string
     {
         return $this->diff($from, $to->definition, $to->files);
     }
