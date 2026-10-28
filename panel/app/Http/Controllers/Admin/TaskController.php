@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Admin;
 
+use App\Domain\Servers\GuestScripts;
 use App\Http\Controllers\Controller;
 use App\Models\AuditLog;
 use App\Models\Task;
@@ -37,6 +38,33 @@ class TaskController extends Controller
         ], $request->ip());
 
         $this->toast('success', 'The task is marked as failed.');
+
+        return back();
+    }
+
+    /**
+     * Cancel an administrator's run of a script: the task fails at once and
+     * the server takes operations again; the job running it stops the
+     * script inside the server within a few seconds (GuestScripts).
+     */
+    public function cancel(Request $request, Task $task, #[CurrentUser] User $admin, TaskFailer $failer): RedirectResponse
+    {
+        if (! $failer->canCancel($task)) {
+            $this->toast('error', 'This task can no longer be cancelled.');
+
+            return back();
+        }
+
+        $status = $task->status->value;
+        $failer->fail($task, GuestScripts::CANCELLED, alert: false);
+
+        AuditLog::record('task.cancelled', $admin, $task->server, [
+            'task' => $task->uuid,
+            'type' => $task->type->value,
+            'status' => $status,
+        ], $request->ip());
+
+        $this->toast('success', 'The script was cancelled and is being stopped inside the server.');
 
         return back();
     }

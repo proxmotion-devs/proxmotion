@@ -25,6 +25,12 @@ ADR 0010 gives every OS template five fixed script slots, one per event (`provis
 
 6. **Audit.** `custom_script.created`, `.updated` (name and triggers), `.draft_saved`, `.published`, `.draft_discarded`, `.deleted`, `.moved`; `custom_script.run` for manual runs and trials.
 
+7. **Stopping a run** (added 2026-10-28). A script that never ends (`slmgr` under `wscript.exe` waiting on a message box nobody sees, a prompt for input) used to hold its server for the whole time limit. An administrator's run, a `guest_script` task (manual runs and trials of custom and fixed scripts), now has *Stop script* in the server's task list while it is queued or running (`POST /admin/tasks/{task}/cancel`, `TaskFailer::canCancel()`, audited as `task.cancelled`). The task fails at once with *Cancelled by an administrator.*, without the "task failed" email, and the server takes operations again. The job running it checks the task's status on every poll of `exec-status` (`GuestAgentResource::run()` with `cancelled`). Once the task is no longer running, the job stops the script inside the server and logs what it printed until then (`GuestScripts::stopCancelled()`):
+   - **Linux:** such runs start as `env PROXMOTION_SCRIPT_RUN=<log id> sh <script>`. The processes they start inherit the variable, also those that outlive the script, which then belong to init. `GuestScripts::LINUX_STOP_SCRIPT` finds them through `/proc/*/environ`, stops them all with `SIGSTOP`, then kills them with `SIGKILL`. A process that cleared its environment or left through systemd (a service it started) is not found.
+   - **Windows:** `GuestScripts::WINDOWS_STOP_SCRIPT` stops the process the agent started and everything below it by `ParentProcessId`, also children whose parent has exited. The agent keeps the run's process until it reports it as exited, so its id is not reused meanwhile.
+
+   Nothing the script did is undone. Scripts at events, inside other operations, are neither marked nor cancellable. When no worker runs the job, cancelling only ends the task, and the script keeps running inside the server.
+
 ## Consequences
 
 - Administrators add and remove template-specific work without touching the defaults the panel relies on.

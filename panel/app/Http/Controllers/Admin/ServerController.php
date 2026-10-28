@@ -327,6 +327,7 @@ class ServerController extends Controller
                     'started_at' => $task->started_at?->toIso8601String(),
                     'finished_at' => $task->finished_at?->toIso8601String(),
                     'can_fail' => $failer->canAbandon($task),
+                    'can_cancel' => $failer->canCancel($task),
                 ];
             }),
             // Outputs of one installed app, after Show details (AppController::outputs()).

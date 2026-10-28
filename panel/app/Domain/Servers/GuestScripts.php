@@ -6,6 +6,7 @@ namespace App\Domain\Servers;
 
 use App\Enums\GuestScriptEvent;
 use App\Enums\OsPlatform;
+use App\Enums\TaskStatus;
 use App\Enums\TaskType;
 use App\Models\CustomScript;
 use App\Models\GuestScript;
@@ -15,6 +16,7 @@ use App\Models\Server;
 use App\Models\Task;
 use App\Proxmox\Data\GuestExecStatus;
 use App\Proxmox\Exceptions\GuestAgentException;
+use App\Proxmox\Exceptions\GuestCommandCancelled;
 use App\Proxmox\Exceptions\GuestCommandDisabled;
 use App\Proxmox\Exceptions\ProxmoxException;
 use App\Proxmox\ProxmoxClientFactory;
@@ -148,6 +150,58 @@ final readonly class GuestScripts
     private const LINUX_CONFIG_DIR = '/etc/proxmotion';
 
     private const WINDOWS_DIR = 'C:\\ProgramData\\Proxmotion';
+
+    /**
+     * An administrator's run on Linux carries this variable with its log id,
+     * and so do the processes it starts, also those that outlive it.
+     */
+    private const RUN_MARKER = 'PROXMOTION_SCRIPT_RUN';
+
+    /** The error of a run an administrator cancelled, on its task and log. */
+    public const CANCELLED = 'Cancelled by an administrator.';
+
+    /** Seconds a cancelled run may take to be reported as exited after it was stopped. */
+    private const STOP_CHECKS = 5;
+
+    /**
+     * Stops every process of a cancelled Linux run ($1: its log id), found by
+     * RUN_MARKER in its environment: first all are stopped, so none starts
+     * another, then killed. A fixed script: the log id comes from the panel.
+     */
+    public const LINUX_STOP_SCRIPT = <<<'SH'
+        marker="PROXMOTION_SCRIPT_RUN=$1"
+        for signal in STOP KILL; do
+            for environ in /proc/[0-9]*/environ; do
+                pid=${environ#/proc/}
+                pid=${pid%/environ}
+                [ "$pid" = "$$" ] && continue
+                tr '\0' '\n' < "$environ" 2> /dev/null | grep -qxF "$marker" && kill -"$signal" "$pid" 2> /dev/null
+            done
+        done
+        exit 0
+        SH;
+
+    /**
+     * Stops a cancelled Windows run: the process the agent started ({pid})
+     * and every process below it. Children keep their parent's id after it
+     * exited, and the agent holds the run's process until it reports it as
+     * exited, so the id is not reused meanwhile.
+     */
+    public const WINDOWS_STOP_SCRIPT = <<<'PS'
+        $ErrorActionPreference = 'SilentlyContinue'
+        $all = @(Get-CimInstance Win32_Process | Select-Object ProcessId, ParentProcessId)
+        $tree = [System.Collections.Generic.List[int]]::new()
+        $tree.Add({pid})
+        for ($i = 0; $i -lt $tree.Count; $i++) {
+            foreach ($process in $all) {
+                if ($process.ParentProcessId -eq $tree[$i] -and -not $tree.Contains([int] $process.ProcessId)) {
+                    $tree.Add([int] $process.ProcessId)
+                }
+            }
+        }
+        foreach ($id in $tree) { Stop-Process -Id $id -Force }
+        exit 0
+        PS;
 
     public function __construct(
         private ProxmoxClientFactory $clients,
@@ -312,14 +366,22 @@ final readonly class GuestScripts
         $inputs = ['server' => $server->uuid, 'hostname' => $server->hostname, 'mac' => $mac] + $this->slotInputs($server, $platform, $slot, $config, $task);
         $log->forceFill(['inputs' => $inputs])->save();
         $name = $slot->file.($source === GuestScriptLog::SOURCE_DRAFT ? '-draft' : '');
+        // An administrator's run (a guest_script task) stops once they cancel its task (TaskController::cancel()).
+        $cancelled = $task->type === TaskType::GuestScript
+            ? fn (): bool => ! Task::query()->whereKey($task->id)->where('status', TaskStatus::Running)->exists()
+            : null;
 
         for ($attempt = 1; ; $attempt++) {
             try {
                 $result = $platform === OsPlatform::Windows
-                    ? $this->runOnWindows($agent, $server->vmid, $slot, $name, $script, $inputs, $input)
-                    : $this->runOnLinux($agent, $server->vmid, $slot, $name, $script, $inputs, $input, $trace);
+                    ? $this->runOnWindows($agent, $server->vmid, $slot, $name, $script, $inputs, $input, $cancelled)
+                    : $this->runOnLinux($agent, $server->vmid, $slot, $name, $script, $inputs, $input, $trace, $cancelled, $log->id);
 
                 break;
+            } catch (GuestCommandCancelled $e) {
+                $this->stopCancelled($agent, $server->vmid, $platform, $slot, $log, $e->pid);
+
+                throw new GuestScriptFailed(self::CANCELLED);
             } catch (ProxmoxException $e) {
                 // The agent went away mid-run: the guest restarted, as Windows does
                 // during its first-boot setup (sysprep, cloudbase-init). Run the
@@ -771,8 +833,10 @@ final readonly class GuestScripts
 
     /**
      * @param  array<string, string|int|list<string>|null>  $inputs
+     * @param  (Closure(): bool)|null  $cancelled
+     * @param  int|null  $run  the log id of a run that can be cancelled, set as RUN_MARKER
      */
-    private function runOnLinux(GuestAgentResource $agent, int $vmid, ScriptSlot $slot, string $name, string $script, array $inputs, ?string $input, bool $trace): GuestExecStatus
+    private function runOnLinux(GuestAgentResource $agent, int $vmid, ScriptSlot $slot, string $name, string $script, array $inputs, ?string $input, bool $trace, ?Closure $cancelled = null, ?int $run = null): GuestExecStatus
     {
         // A draft has its own path ($name ends in -draft), so boot units that
         // run the published script never pick it up; the inputs are the same.
@@ -784,13 +848,20 @@ final readonly class GuestScripts
         $agent->writeFile($vmid, $config.'.vars', self::vars($inputs));
         $agent->writeFile($vmid, $path, $script);
 
-        return $agent->run($vmid, $trace ? ['sh', '-x', $path] : ['sh', $path], $input, timeoutSeconds: $slot->timeoutSeconds());
+        $command = $trace ? ['sh', '-x', $path] : ['sh', $path];
+
+        if ($cancelled === null || $run === null) {
+            return $agent->run($vmid, $command, $input, timeoutSeconds: $slot->timeoutSeconds());
+        }
+
+        return $agent->run($vmid, ['env', self::RUN_MARKER.'='.$run, ...$command], $input, timeoutSeconds: $slot->timeoutSeconds(), cancelled: $cancelled);
     }
 
     /**
      * @param  array<string, string|int|list<string>|null>  $inputs
+     * @param  (Closure(): bool)|null  $cancelled
      */
-    private function runOnWindows(GuestAgentResource $agent, int $vmid, ScriptSlot $slot, string $name, string $script, array $inputs, ?string $input): GuestExecStatus
+    private function runOnWindows(GuestAgentResource $agent, int $vmid, ScriptSlot $slot, string $name, string $script, array $inputs, ?string $input, ?Closure $cancelled = null): GuestExecStatus
     {
         $path = self::WINDOWS_DIR.'\\'.$name.'.ps1';
 
@@ -799,7 +870,47 @@ final readonly class GuestScripts
         $agent->writeFile($vmid, self::WINDOWS_DIR.'\\'.$slot->file.'.json', self::json($inputs));
         $agent->writeFile($vmid, $path, $script);
 
-        return $agent->run($vmid, ['powershell.exe', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', $path], $input, timeoutSeconds: $slot->timeoutSeconds());
+        return $agent->run($vmid, ['powershell.exe', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', $path], $input, timeoutSeconds: $slot->timeoutSeconds(), cancelled: $cancelled);
+    }
+
+    /**
+     * Stop a cancelled run inside the guest and log what it printed until
+     * then. The task has already ended (TaskController::cancel()); a run that
+     * cannot be stopped is noted on its log.
+     */
+    private function stopCancelled(GuestAgentResource $agent, int $vmid, OsPlatform $platform, ScriptSlot $slot, GuestScriptLog $log, int $pid): void
+    {
+        $command = $platform === OsPlatform::Windows
+            ? ['powershell.exe', '-NoProfile', '-NonInteractive', '-Command', str_replace('{pid}', (string) $pid, self::WINDOWS_STOP_SCRIPT)]
+            : ['sh', '-c', self::LINUX_STOP_SCRIPT, 'proxmotion-stop', (string) $log->id];
+        $message = self::CANCELLED;
+        $result = null;
+
+        try {
+            $agent->run($vmid, $command);
+
+            // The agent reports the run as exited once its output is closed.
+            for ($check = 1; ! ($result = $agent->execStatus($vmid, $pid))->exited && $check < self::STOP_CHECKS; $check++) {
+                Sleep::for(1)->seconds();
+            }
+
+            if (! $result->exited) {
+                $result = null;
+                $message .= ' It may still be running inside the server.';
+            }
+        } catch (ProxmoxException $e) {
+            $message .= ' It could not be stopped inside the server: '.$e->getMessage();
+        }
+
+        $keep = $result !== null && $slot->keepsOutput();
+        $log->forceFill([
+            'status' => 'failed',
+            'exit_code' => $result?->exitCode,
+            'message' => $message,
+            'stdout' => $keep ? self::tail($result->stdout) : null,
+            'stderr' => $keep ? self::tail($result->stderr) : null,
+            'finished_at' => now(),
+        ])->save();
     }
 
     private function startLog(Task $task, Server $server, ScriptSlot $slot, string $script, string $source, bool $trace): GuestScriptLog

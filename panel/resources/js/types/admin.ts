@@ -645,6 +645,8 @@ export type TaskProgress = {
     created_at: string | null;
     /** Stuck (queued, or running past its time limit): an administrator may end it. */
     can_fail?: boolean;
+    /** An administrator's script run, queued or running: it may be cancelled. */
+    can_cancel?: boolean;
 };
 
 export type PermissionCheck = {

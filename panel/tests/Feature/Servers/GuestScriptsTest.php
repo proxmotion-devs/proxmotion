@@ -381,7 +381,8 @@ class GuestScriptsTest extends TestCase
     {
         $this->override(GuestScriptEvent::DiskResized, "echo live\n");
         GuestScript::query()->sole()->forceFill(['draft_content' => "#!/bin/sh\nset -e\necho growing\nfalse\n"])->save();
-        $this->proxmox->execHandler = fn (array $command) => $command === ['sh', '-x', '/usr/local/sbin/proxmotion-disk-draft']
+        // Runs an administrator can stop start with their marker (env PROXMOTION_SCRIPT_RUN=…).
+        $this->proxmox->execHandler = fn (array $command) => array_slice($command, -3) === ['sh', '-x', '/usr/local/sbin/proxmotion-disk-draft']
             ? [1, "growing\n", "+ set -e\n+ echo growing\n+ false\n"]
             : [0, '', ''];
 
@@ -486,13 +487,14 @@ class GuestScriptsTest extends TestCase
 
         $task = $this->server->tasks()->where('type', TaskType::GuestScript)->sole();
         $this->assertSame(TaskStatus::Succeeded, $task->status, (string) $task->error);
-        $this->assertContains(['sh', '/usr/local/sbin/proxmotion-disk'], $this->commands());
+        $marker = 'PROXMOTION_SCRIPT_RUN='.GuestScriptLog::query()->latest('id')->firstOrFail()->id;
+        $this->assertContains(['env', $marker, 'sh', '/usr/local/sbin/proxmotion-disk'], $this->commands(), 'A run an administrator can stop carries its marker.');
         $this->assertSame('disk_resized', AuditLog::query()->where('action', 'guest_script.run')->sole()->properties['event']);
     }
 
     public function test_a_failing_trial_fails_its_task()
     {
-        $this->proxmox->execHandler = fn (array $command) => $command === ['sh', '/usr/local/sbin/proxmotion-disk']
+        $this->proxmox->execHandler = fn (array $command) => array_slice($command, -2) === ['sh', '/usr/local/sbin/proxmotion-disk']
             ? [3, '', "growpart is not installed.\n"]
             : [0, '', ''];
 

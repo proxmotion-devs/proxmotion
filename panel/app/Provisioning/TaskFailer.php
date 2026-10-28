@@ -25,7 +25,10 @@ final class TaskFailer
         private readonly AdminNotifier $notifier,
     ) {}
 
-    public function fail(Task $task, string $message): void
+    /**
+     * @param  bool  $alert  whether administrators get the "task failed" email (not when one of them ended it on purpose)
+     */
+    public function fail(Task $task, string $message, bool $alert = true): void
     {
         // The pipeline may have failed while saving these models: drop what it
         // left unsaved, or the same error would stop the task from ending.
@@ -50,7 +53,10 @@ final class TaskFailer
         }
 
         $this->notify($task);
-        $this->notifier->taskFailed($task);
+
+        if ($alert) {
+            $this->notifier->taskFailed($task);
+        }
     }
 
     /**
@@ -87,5 +93,16 @@ final class TaskFailer
         return $progress === null
             || $progress->lt(now()->subSeconds(RunServerTask::TIMEOUT))
             || ($task->deadline_at !== null && $task->deadline_at->isPast());
+    }
+
+    /**
+     * An administrator may cancel their run of a script (a guest_script task)
+     * while it is queued or running: the task ends at once, and the job
+     * running it stops the script inside the server (GuestScripts).
+     */
+    public function canCancel(Task $task): bool
+    {
+        return $task->type === TaskType::GuestScript
+            && in_array($task->status, [TaskStatus::Queued, TaskStatus::Running], true);
     }
 }

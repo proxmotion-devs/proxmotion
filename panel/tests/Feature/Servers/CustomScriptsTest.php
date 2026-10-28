@@ -224,7 +224,7 @@ class CustomScriptsTest extends TestCase
     public function test_administrators_run_a_manual_script_from_the_server_page()
     {
         $script = $this->custom('Clear cache', "#!/bin/sh\necho cleared\n", manual: true);
-        $this->proxmox->execHandler = fn (array $command) => $command === ['sh', "/usr/local/sbin/proxmotion-script-{$script->id}"] ? [0, "cleared\n", ''] : [0, '', ''];
+        $this->proxmox->execHandler = fn (array $command) => array_slice($command, -2) === ['sh', "/usr/local/sbin/proxmotion-script-{$script->id}"] ? [0, "cleared\n", ''] : [0, '', ''];
 
         $this->actingAs($this->admin)
             ->post(route('admin.servers.scripts.run', [$this->server, $script]))
@@ -253,7 +253,7 @@ class CustomScriptsTest extends TestCase
     public function test_a_failing_manual_script_fails_its_task()
     {
         $script = $this->custom('Clear cache', "exit 2\n", manual: true);
-        $this->proxmox->execHandler = fn (array $command) => $command === ['sh', "/usr/local/sbin/proxmotion-script-{$script->id}"] ? [2, '', "no cache\n"] : [0, '', ''];
+        $this->proxmox->execHandler = fn (array $command) => array_slice($command, -2) === ['sh', "/usr/local/sbin/proxmotion-script-{$script->id}"] ? [2, '', "no cache\n"] : [0, '', ''];
 
         $this->actingAs($this->admin)->post(route('admin.servers.scripts.run', [$this->server, $script]));
 

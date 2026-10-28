@@ -157,4 +157,27 @@ describe('TaskList', () => {
                 .exists(),
         ).toBe(false);
     });
+
+    it('offers to stop a script run instead of marking it as failed', () => {
+        const buttons = (overrides: Partial<TaskProgress>) => {
+            const wrapper = render([task(overrides)]);
+
+            return {
+                stop: wrapper.find('[data-test="task-cancel"]').exists(),
+                fail: wrapper.find('[data-test="task-mark-failed"]').exists(),
+            };
+        };
+
+        expect(
+            buttons({ type: 'guest_script', can_cancel: true, can_fail: true }),
+        ).toEqual({ stop: true, fail: false });
+        expect(buttons({ can_fail: true })).toEqual({
+            stop: false,
+            fail: true,
+        });
+        expect(buttons({ status: 'failed' })).toEqual({
+            stop: false,
+            fail: false,
+        });
+    });
 });

@@ -195,6 +195,7 @@ Route::put('servers/{server}/firewall', [ServerFirewallController::class, 'updat
 Route::post('servers/{server}/firewall/ruleset', [ServerFirewallController::class, 'ruleset'])->middleware('throttle:20,1')->name('servers.firewall.ruleset');
 Route::post('servers/{server}/anti-spoofing', [ServerController::class, 'enableAntiSpoofing'])->middleware('throttle:10,1')->name('servers.enable-anti-spoofing');
 Route::post('tasks/{task}/fail', [TaskController::class, 'fail'])->name('tasks.fail');
+Route::post('tasks/{task}/cancel', [TaskController::class, 'cancel'])->name('tasks.cancel');
 Route::post('servers/{server}/password', [ServerController::class, 'revealPassword'])->middleware('throttle:20,1')->name('servers.password');
 Route::post('servers/{server}/rdns', RdnsController::class)->middleware('throttle:30,1')->name('servers.rdns');
 Route::post('servers/{server}/reinstall', [ServerController::class, 'reinstall'])->middleware('throttle:10,1')->name('servers.reinstall');
