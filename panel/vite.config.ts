@@ -40,6 +40,12 @@ export default defineConfig({
             formVariants: true,
         }),
     ]),
+    // The dependency scan misses these (only lib/echo.ts imports them), so
+    // they were bundled later and the changed hashes made open pages fail
+    // with "Failed to fetch dynamically imported module".
+    optimizeDeps: {
+        include: ['laravel-echo', 'pusher-js'],
+    },
     server: {
         watch: {
             ignored: [
