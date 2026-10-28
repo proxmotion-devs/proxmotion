@@ -11,8 +11,9 @@
 #
 # Removes every line of the user's authorized_keys that contains the key of a
 # removed_ssh_keys line (also lines with options), then appends each key of
-# ssh_keys that is not there yet. Lines Proxmotion does not know stay. Safe to
-# run any number of times.
+# ssh_keys that is not there yet. Lines Proxmotion does not know stay; a
+# linked file stays a link and keeps its owner and group. Safe to run any
+# number of times.
 set -eu
 
 VARS=/etc/proxmotion/ssh-keys.vars
@@ -42,9 +43,25 @@ if [ ! -d "$dir" ]; then
     chown "$user" "$dir"
 fi
 
-[ -f "$file" ] || : > "$file"
+# A linked authorized_keys (e.g. kept by configuration management) stays a
+# link: its target is the file that changes.
+if [ -L "$file" ]; then
+    target=$(readlink -f "$file" || true)
 
-tmp=$(mktemp "$dir/.authorized_keys.XXXXXX")
+    if [ -z "$target" ]; then
+        echo "The link $file cannot be followed." >&2
+        exit 2
+    fi
+
+    file=$target
+fi
+
+if [ ! -f "$file" ]; then
+    : > "$file"
+    chown "$user" "$file"
+fi
+
+tmp=$(mktemp "$(dirname "$file")/.authorized_keys.XXXXXX")
 trap 'rm -f "$tmp"' EXIT
 
 # A key is told by its base64 blob, the field after its type; options may
@@ -82,11 +99,19 @@ awk '
     }
 ' "$VARS" "$file" > "$tmp"
 
+# Nothing to change: the file is left exactly as it is.
+if command -v cmp > /dev/null 2>&1 && cmp -s "$tmp" "$file"; then
+    exit 0
+fi
+
+# The new file takes the old one's place in one step, with its owner and
+# group; sshd wants it writable by its owner only.
+owner=$(ls -ln "$file" | awk '{ print $3 ":" $4 }')
 chmod 600 "$tmp"
-chown "$user" "$tmp"
+chown "$owner" "$tmp"
 mv -f "$tmp" "$file"
 trap - EXIT
 
 if command -v restorecon > /dev/null 2>&1; then
-    restorecon -R "$dir" || true
+    restorecon "$file" || true
 fi
