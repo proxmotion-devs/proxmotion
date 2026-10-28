@@ -116,6 +116,21 @@ return [
         'stopped_grace_minutes' => (int) env('PROXMOTION_DRIFT_STOPPED_GRACE_MINUTES', 60),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Storage health (docs/adr/0047)
+    |--------------------------------------------------------------------------
+    |
+    | A storage, an LVM thin pool's metadata or a disk's rated life used at or
+    | above these per cents is a warning, then critical.
+    |
+    */
+
+    'storage' => [
+        'warning_percent' => (int) env('PROXMOTION_STORAGE_WARNING_PERCENT', 85),
+        'critical_percent' => (int) env('PROXMOTION_STORAGE_CRITICAL_PERCENT', 95),
+    ],
+
     'console' => [
         'proxy_secret' => env('CONSOLE_PROXY_SECRET'),
         'websocket_url' => env('CONSOLE_WEBSOCKET_URL'),

@@ -9,6 +9,8 @@ import PermissionList from '@/components/admin/PermissionList.vue';
 import ConfirmDelete from '@/components/admin/ConfirmDelete.vue';
 import FormDialog from '@/components/admin/FormDialog.vue';
 import FormField from '@/components/admin/FormField.vue';
+import HealthProblems from '@/components/admin/HealthProblems.vue';
+import NodeDisksTable from '@/components/admin/NodeDisksTable.vue';
 import StatusBadge from '@/components/admin/StatusBadge.vue';
 import Heading from '@/components/Heading.vue';
 import { useClusterSync } from '@/composables/useClusterSync';
@@ -20,6 +22,7 @@ import { useDateTime } from '@/composables/useDateTime';
 import { formatBytes, percentage } from '@/lib/format';
 import { optionalNumber } from '@/lib/forms';
 import type { OptionalNumber } from '@/lib/forms';
+import { healthLabel, healthTone } from '@/lib/storageHealth';
 import { destroy, index, permissions, show } from '@/routes/admin/clusters';
 import { update as updateNode } from '@/routes/admin/nodes';
 import { update as updateStorage } from '@/routes/admin/storages';
@@ -251,7 +254,54 @@ const submitNode = () => {
                     {{ cluster.resource_pool ?? '/vms' }}
                 </dd>
             </div>
+            <div>
+                <dt class="text-muted-foreground">
+                    {{ $t('Storage health') }}
+                </dt>
+                <dd>
+                    <StatusBadge
+                        :tone="healthTone[cluster.storage_health]"
+                        :label="healthLabel[cluster.storage_health]"
+                    />
+                </dd>
+            </div>
         </dl>
+
+        <section
+            v-if="cluster.ceph_health"
+            class="flex flex-col gap-2 rounded-xl border p-4 text-sm"
+            data-test="ceph-health"
+        >
+            <div class="flex flex-wrap items-center gap-2">
+                <span class="font-medium">{{ $t('Ceph') }}</span>
+                <StatusBadge
+                    :tone="
+                        cluster.ceph_health === 'HEALTH_OK'
+                            ? 'success'
+                            : cluster.ceph_health === 'HEALTH_ERR'
+                              ? 'danger'
+                              : 'warning'
+                    "
+                    :label="cluster.ceph_health"
+                />
+            </div>
+            <ul
+                v-if="cluster.ceph_checks.length > 0"
+                class="flex flex-col gap-0.5 text-xs"
+            >
+                <li
+                    v-for="(check, index) in cluster.ceph_checks"
+                    :key="index"
+                    :class="
+                        check.severity === 'HEALTH_ERR'
+                            ? 'text-red-700 dark:text-red-400'
+                            : 'text-amber-700 dark:text-amber-400'
+                    "
+                >
+                    {{ check.message }}
+                </li>
+            </ul>
+        </section>
 
         <section class="flex flex-col gap-4">
             <div class="flex flex-wrap items-start justify-between gap-4">
@@ -369,6 +419,9 @@ const submitNode = () => {
                                     {{ $t('Usage') }}
                                 </th>
                                 <th class="px-3 py-2 font-medium">
+                                    {{ $t('Health') }}
+                                </th>
+                                <th class="px-3 py-2 font-medium">
                                     {{ $t('Use for servers') }}
                                 </th>
                             </tr>
@@ -420,6 +473,42 @@ const submitNode = () => {
                                             )
                                         }}%)
                                     </span>
+                                    <div
+                                        v-if="
+                                            storage.metadata_total_bytes !==
+                                            null
+                                        "
+                                        class="text-xs text-muted-foreground"
+                                    >
+                                        {{
+                                            $t('Metadata: :used / :total', {
+                                                used: formatBytes(
+                                                    storage.metadata_used_bytes,
+                                                ),
+                                                total: formatBytes(
+                                                    storage.metadata_total_bytes,
+                                                ),
+                                            })
+                                        }}
+                                    </div>
+                                </td>
+                                <td class="px-3 py-2">
+                                    <div
+                                        class="flex flex-wrap items-center gap-1"
+                                    >
+                                        <StatusBadge
+                                            :tone="healthTone[storage.health]"
+                                            :label="healthLabel[storage.health]"
+                                        />
+                                        <span
+                                            v-if="storage.pool_state"
+                                            class="font-mono text-xs text-muted-foreground"
+                                            >{{ storage.pool_state }}</span
+                                        >
+                                    </div>
+                                    <HealthProblems
+                                        :problems="storage.health_problems"
+                                    />
                                 </td>
                                 <td class="px-3 py-2">
                                     <Checkbox
@@ -445,7 +534,7 @@ const submitNode = () => {
                             </tr>
                             <tr v-if="node.storages.length === 0">
                                 <td
-                                    colspan="5"
+                                    colspan="6"
                                     class="px-3 py-4 text-center text-muted-foreground"
                                 >
                                     {{ $t('No storages reported.') }}
@@ -454,6 +543,11 @@ const submitNode = () => {
                         </tbody>
                     </table>
                 </div>
+
+                <NodeDisksTable
+                    :disks="node.disks"
+                    :error="node.disk_health_error"
+                />
 
                 <div class="flex flex-wrap gap-2 text-xs">
                     <span class="text-muted-foreground"

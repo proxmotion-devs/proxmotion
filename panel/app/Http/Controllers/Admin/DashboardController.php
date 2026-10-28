@@ -5,14 +5,17 @@ declare(strict_types=1);
 namespace App\Http\Controllers\Admin;
 
 use App\Enums\NodeStatus;
+use App\Enums\StorageHealth;
 use App\Http\Controllers\Controller;
 use App\Models\Cluster;
 use App\Models\IpAddress;
 use App\Models\Location;
 use App\Models\Node;
+use App\Models\NodeDisk;
 use App\Models\OsTemplate;
 use App\Models\Package;
 use App\Models\ServerDrift;
+use App\Models\Storage;
 use App\Models\UsageViolation;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -33,6 +36,7 @@ class DashboardController extends Controller
                 'os_templates' => OsTemplate::query()->where('is_active', true)->count(),
                 'packages' => Package::query()->where('is_active', true)->count(),
                 'drifts' => ServerDrift::query()->visible()->count(),
+                'storage_problems' => $this->storageProblems(),
             ],
             // Servers over their traffic quota or a usage limit right now (docs/adr/0039).
             'usageViolations' => UsageViolation::query()->open()
@@ -47,5 +51,25 @@ class DashboardController extends Controller
                 ]),
             'usageViolationCount' => UsageViolation::query()->open()->count(),
         ]);
+    }
+
+    /**
+     * Storages and disks of online nodes in warning or critical health (docs/adr/0047);
+     * a shared storage, which has a row per node, counts once per cluster.
+     */
+    private function storageProblems(): int
+    {
+        $unhealthy = [StorageHealth::Warning, StorageHealth::Critical];
+        $online = fn ($query) => $query->where('status', NodeStatus::Online);
+
+        $storages = Storage::query()
+            ->whereIn('health', $unhealthy)
+            ->whereHas('node', $online)
+            ->with('node:id,cluster_id')
+            ->get(['id', 'node_id', 'name', 'is_shared'])
+            ->unique(fn (Storage $storage) => $storage->is_shared ? "{$storage->node->cluster_id}:{$storage->name}" : "id:{$storage->id}")
+            ->count();
+
+        return $storages + NodeDisk::query()->whereIn('health', $unhealthy)->whereHas('node', $online)->count();
     }
 }

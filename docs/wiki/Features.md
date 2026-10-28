@@ -104,7 +104,7 @@ The admin panel is for staff. **Every panel user is an administrator**; there ar
 | **Dashboard** | Overview of the installation |
 | **Help** | Setup order with what is already done, the OS template guide (Linux / Windows / why not macOS, with every command), questions and answers; links to the full guides when a documentation address is set (*Panel settings*) |
 | **Locations** | Create and edit locations |
-| **Clusters** | Connect clusters and standalone nodes, test the connection, check permissions, sync now; edit node and storage settings |
+| **Clusters** | Connect clusters and standalone nodes, test the connection, check permissions, sync now; edit node and storage settings; storage and disk health (ADR 0047) |
 | **Placement groups** | Named node sets per location |
 | **IP pools** | Pools, addresses (generate, bulk edit, reserve, per-IP MAC, notes), rDNS export |
 | **DNS providers** | rDNS drivers (`none`, `powerdns`) with a connection test |
@@ -116,7 +116,7 @@ The admin panel is for staff. **Every panel user is an administrator**; there ar
 | **Reports** | Capacity (nodes, storages, IP pools after over-commit), traffic and usage of a monthly period (per server, location, package, billing system; usage violations), server inventory (by status, location, package, OS template, billing system; created and deleted per month), operations (tasks and app installations of the last 7–365 days with failure rates and median durations, failed tasks); every table as CSV (ADR 0046) |
 | **Billing systems** | Billing systems, API tokens, webhook endpoints and delivery log |
 | **Users** | Administrators |
-| **Panel settings** | Panel-wide settings: cross-cluster moves, deadlines, lowest VMID, DNS check name, protected networks, drift grace period, console limits, documentation address, format of generated root passwords (ADR 0038); shows the `.env`-only security settings read-only |
+| **Panel settings** | Panel-wide settings: cross-cluster moves, deadlines, lowest VMID, DNS check name, protected networks, drift grace period, storage health thresholds, console limits, documentation address, format of generated root passwords (ADR 0038); shows the `.env`-only security settings read-only |
 
 Pages that need explaining start with a **guide box**: a short how-to that administrators can hide (remembered per browser) with a link into *Help*.
 
@@ -149,6 +149,7 @@ On save the panel **tests the connection** and **detects automatically** whether
 
 - nodes with their online state and capacity,
 - storages (type, shared flag, content types, size),
+- storage health: ZFS pool states, LVM thin pool metadata, the Ceph cluster Proxmox manages, and each node's physical disks with their SMART result and SSD wear ([ADR 0047](../adr/0047-storage-health.md)),
 - network bridges,
 - QEMU templates (offered when adding OS templates, with a name guess for distribution and version),
 - running VMs (used for adoption and drift reports).
@@ -168,6 +169,10 @@ Per node, administrators set:
 
 - **Use for servers**: whether automatic placement may put disks on it.
 - **Shared vs. local**: on local storage (LVM-thin, ZFS, dir) the template must exist on the target node; on shared storage (Ceph RBD, NFS, iSCSI) any node of the cluster can use it.
+
+### 4.5 Storage health
+
+Each sync judges every storage and disk as healthy, warning or critical ([ADR 0047](../adr/0047-storage-health.md)): space used and LVM thin pool metadata used against the thresholds on *Panel settings → General* (85 % and 95 % by default), the state of a ZFS pool (`DEGRADED` is a warning, `FAULTED` and the like critical), the health of the Ceph cluster Proxmox manages, a failed SMART check, SSD wear, and disks Proxmox stopped reporting. The cluster page shows the result per storage and per disk with what is wrong, plus Ceph's own checks; the cluster list and the dashboard point at clusters that need attention. Administrators get an email (event *A storage or disk is in worse health*) when something gets worse. A disk that disappeared stays listed until an administrator deletes it.
 
 ---
 

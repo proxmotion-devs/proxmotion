@@ -169,6 +169,27 @@ final class AdminNotifier
     }
 
     /**
+     * Storages or disks of a cluster got worse at its last sync (docs/adr/0047).
+     * Not throttled: only a change for the worse is mailed, so a mail dropped by a
+     * throttle would never come again.
+     *
+     * @param  list<array{0: string, 1?: array<string, string|int>}>  $lines  what got worse, as paragraphs
+     */
+    public function storageUnhealthy(Cluster $cluster, array $lines): void
+    {
+        $this->send(NotificationEvent::StorageUnhealthy, fn () => new AdminAlert(
+            NotificationEvent::StorageUnhealthy,
+            'Storage problem on cluster :cluster',
+            ['cluster' => $cluster->name],
+            [
+                ['The last sync of cluster :cluster found storages or disks in worse health than before.', ['cluster' => $cluster->name]],
+                ...$lines,
+            ],
+            route('admin.clusters.show', $cluster),
+        ));
+    }
+
+    /**
      * A delivery gave up after its last attempt: one mail per endpoint per throttle window.
      */
     public function webhookFailed(WebhookDelivery $delivery): void

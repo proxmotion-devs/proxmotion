@@ -14,6 +14,7 @@ enum NotificationEvent: string
     case UsageExceeded = 'usage_exceeded';
     case DriftDetected = 'drift_detected';
     case ClusterUnreachable = 'cluster_unreachable';
+    case StorageUnhealthy = 'storage_unhealthy';
     case WebhookFailed = 'webhook_failed';
     case AdminCreated = 'admin_created';
 
@@ -24,7 +25,7 @@ enum NotificationEvent: string
      */
     public static function defaults(): array
     {
-        return [self::TaskFailed, self::ClusterUnreachable, self::WebhookFailed, self::AdminCreated];
+        return [self::TaskFailed, self::ClusterUnreachable, self::StorageUnhealthy, self::WebhookFailed, self::AdminCreated];
     }
 
     /**
@@ -38,6 +39,7 @@ enum NotificationEvent: string
             self::UsageExceeded => 'A server went over a quota or usage limit',
             self::DriftDetected => 'Drift was found between the panel and Proxmox',
             self::ClusterUnreachable => 'A cluster cannot be reached',
+            self::StorageUnhealthy => 'A storage or disk is in worse health',
             self::WebhookFailed => 'A billing system did not receive a webhook',
             self::AdminCreated => 'An administrator account was created',
         };

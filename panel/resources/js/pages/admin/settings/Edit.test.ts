@@ -49,6 +49,8 @@ const settings = (overrides: Partial<PanelSettings> = {}): PanelSettings => ({
     verify_dns_name: 'example.com',
     protected_networks: ['198.51.100.0/24', '203.0.113.7'],
     drift_stopped_grace_minutes: 60,
+    storage_warning_percent: 85,
+    storage_critical_percent: 95,
     console_max_minutes: 60,
     console_idle_minutes: 15,
     docs_url: null,

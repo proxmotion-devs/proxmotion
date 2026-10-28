@@ -21,11 +21,13 @@ use App\Proxmox\ProxmoxClientFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Facades\DB;
+use Throwable;
 
 /**
  * Reads a cluster's nodes, storages, bridges and VM templates from Proxmox and
- * mirrors them in the database. Things that disappeared from Proxmox are marked
- * as unavailable rather than deleted (except templates, which have no state of their own).
+ * mirrors them in the database, then the health of its storages and disks
+ * (docs/adr/0047). Things that disappeared from Proxmox are marked as
+ * unavailable rather than deleted (except templates, which have no state of their own).
  */
 final readonly class ClusterSynchronizer
 {
@@ -35,6 +37,7 @@ final readonly class ClusterSynchronizer
         private DriftDetector $drift,
         private FirewallChecker $firewall,
         private AdminNotifier $notifier,
+        private StorageHealthCollector $health,
     ) {}
 
     /**
@@ -64,7 +67,7 @@ final readonly class ClusterSynchronizer
             throw $e;
         }
 
-        DB::transaction(function () use ($cluster, $version, $status, $nodes, $storages, $guests, $bridges, $firewall) {
+        $nodeModels = DB::transaction(function () use ($cluster, $version, $status, $nodes, $storages, $guests, $bridges, $firewall) {
             $cluster->forceFill([
                 'type' => $status->isCluster() ? ClusterType::Cluster : ClusterType::Standalone,
                 'proxmox_cluster_name' => $status->clusterName,
@@ -81,7 +84,22 @@ final readonly class ClusterSynchronizer
             $this->syncBridges($nodeModels, $bridges);
             $this->syncTemplates($cluster, $nodeModels, $guests);
             $this->reserveNodeAddresses($cluster);
+
+            return $nodeModels;
         });
+
+        // Outside the transaction: SMART reads can take a few seconds per node. Storage
+        // health never fails the sync, also not on answers shaped unlike expected.
+        try {
+            $this->health->collect(
+                $cluster,
+                $client,
+                $nodeModels,
+                array_values(array_map(fn (NodeInfo $node) => $node->name, array_filter($nodes, fn (NodeInfo $node) => $node->online))),
+            );
+        } catch (Throwable $e) {
+            report($e);
+        }
 
         $this->drift->detect($cluster, $guests, $this->firewall->check($cluster, $guests));
     }

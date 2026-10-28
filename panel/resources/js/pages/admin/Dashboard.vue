@@ -2,6 +2,7 @@
 import { Head, Link } from '@inertiajs/vue3';
 import {
     Disc3,
+    HardDrive,
     MapPin,
     Network,
     Package,
@@ -42,6 +43,8 @@ const props = defineProps<{
         os_templates: number;
         packages: number;
         drifts: number;
+        /** Storages and disks in warning or critical health (docs/adr/0047). */
+        storage_problems: number;
     };
     /** Servers over their traffic quota or a usage limit right now (docs/adr/0039). */
     usageViolations: (UsageViolation & {
@@ -71,6 +74,16 @@ const cards = computed<Card[]>(() => [
         warning: props.stats.drifts > 0,
         icon: TriangleAlert,
         href: drifts(),
+    },
+    {
+        title: 'Storage health',
+        value: String(props.stats.storage_problems),
+        detail: props.stats.storage_problems
+            ? 'Storages or disks need attention'
+            : undefined,
+        warning: props.stats.storage_problems > 0,
+        icon: HardDrive,
+        href: clusters(),
     },
     {
         title: 'Locations',

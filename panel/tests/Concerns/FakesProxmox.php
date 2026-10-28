@@ -25,6 +25,12 @@ trait FakesProxmox
             '*/api2/json/cluster/resources?type=vm' => $this->proxmoxFixture('cluster-resources-vm'),
             '*/api2/json/nodes/*/network?type=any_bridge' => $this->proxmoxFixture('node-network-bridges'),
             '*/api2/json/cluster/firewall/options' => $this->proxmoxFixture('cluster-firewall-options'),
+            // Storage health (docs/adr/0047).
+            '*/api2/json/storage' => $this->proxmoxFixture('storage'),
+            '*/api2/json/cluster/ceph/status' => $this->proxmoxFixture('cluster-ceph-status'),
+            '*/api2/json/nodes/*/disks/list' => $this->proxmoxFixture('node-disks'),
+            '*/api2/json/nodes/*/disks/zfs' => $this->proxmoxFixture('node-zfs'),
+            '*/api2/json/nodes/*/disks/lvmthin' => $this->proxmoxFixture('node-lvmthin'),
         ]);
     }
 

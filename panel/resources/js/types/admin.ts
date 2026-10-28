@@ -25,6 +25,8 @@ export type PanelSettings = {
     verify_dns_name: string | null;
     protected_networks: string[];
     drift_stopped_grace_minutes: number;
+    storage_warning_percent: number;
+    storage_critical_percent: number;
     console_max_minutes: number;
     console_idle_minutes: number;
     docs_url: string | null;
@@ -68,6 +70,41 @@ export type Cluster = {
     incoming_token_id: string | null;
     receives_moves: boolean;
     tls_fingerprint: string | null;
+    /** The worst health of its storages, disks and Ceph cluster (docs/adr/0047). */
+    storage_health: StorageHealth;
+    /** HEALTH_OK, HEALTH_WARN or HEALTH_ERR of the Ceph cluster Proxmox manages; null without one. */
+    ceph_health: string | null;
+    /** Ceph's health checks, in Ceph's own English. */
+    ceph_checks: { severity: string; message: string }[];
+};
+
+export type StorageHealth = 'ok' | 'warning' | 'critical' | 'unknown';
+
+/** What is wrong with a storage or disk: an English key with its placeholders. */
+export type HealthProblem = {
+    severity: 'warning' | 'critical';
+    message: string;
+    replace: Record<string, string | number>;
+};
+
+export type NodeDisk = {
+    id: number;
+    devpath: string;
+    model: string | null;
+    serial: string | null;
+    /** ssd, hdd, nvme, usb… */
+    type: string | null;
+    size_bytes: number | null;
+    /** What Proxmox says uses it (LVM, ZFS, partitions…). */
+    used: string | null;
+    /** smartctl's overall result (PASSED, FAILED, OK, UNKNOWN). */
+    smart: string | null;
+    /** Rated life left in per cent (SSDs and NVMe). */
+    wearout: number | null;
+    health: StorageHealth;
+    health_problems: HealthProblem[];
+    /** False once Proxmox no longer reports it. */
+    is_present: boolean;
 };
 
 export type Storage = {
@@ -81,6 +118,13 @@ export type Storage = {
     supports_vm_disks: boolean;
     total_bytes: number | null;
     used_bytes: number | null;
+    health: StorageHealth;
+    health_problems: HealthProblem[];
+    /** The state of its ZFS pool (ONLINE, DEGRADED…) or of the Ceph cluster (HEALTH_OK…). */
+    pool_state: string | null;
+    /** LVM thin pools: metadata in use. */
+    metadata_used_bytes: number | null;
+    metadata_total_bytes: number | null;
 };
 
 export type Bridge = {
@@ -108,6 +152,10 @@ export type Node = {
     api_host: string | null;
     last_seen_at: string | null;
     storages: Storage[];
+    /** Its physical disks (docs/adr/0047). */
+    disks: NodeDisk[];
+    /** Why its disks and pools could not be read at the last sync. */
+    disk_health_error: string | null;
     bridges: Bridge[];
 };
 

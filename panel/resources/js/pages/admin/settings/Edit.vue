@@ -61,6 +61,8 @@ const form = useForm({
     verify_dns_name: props.settings.verify_dns_name ?? '',
     protected_networks: props.settings.protected_networks.join('\n'),
     drift_stopped_grace_minutes: props.settings.drift_stopped_grace_minutes,
+    storage_warning_percent: props.settings.storage_warning_percent,
+    storage_critical_percent: props.settings.storage_critical_percent,
     console_max_minutes: props.settings.console_max_minutes,
     console_idle_minutes: props.settings.console_idle_minutes,
     docs_url: props.settings.docs_url ?? '',
@@ -559,6 +561,34 @@ const sectionClass = 'flex flex-col gap-4 rounded-xl border p-4';
                             type="number"
                             min="0"
                             max="10080"
+                        />
+                    </FormField>
+                    <FormField
+                        label="Storage warning at (%)"
+                        for="storage_warning_percent"
+                        :error="form.errors.storage_warning_percent"
+                        hint="A storage, a thin pool's metadata or a disk's rated life used at or above this is shown as a warning."
+                    >
+                        <Input
+                            id="storage_warning_percent"
+                            v-model.number="form.storage_warning_percent"
+                            type="number"
+                            min="50"
+                            max="99"
+                        />
+                    </FormField>
+                    <FormField
+                        label="Storage critical at (%)"
+                        for="storage_critical_percent"
+                        :error="form.errors.storage_critical_percent"
+                        hint="Must be above the warning."
+                    >
+                        <Input
+                            id="storage_critical_percent"
+                            v-model.number="form.storage_critical_percent"
+                            type="number"
+                            min="51"
+                            max="100"
                         />
                     </FormField>
                     <FormField

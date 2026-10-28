@@ -43,6 +43,9 @@ class PanelSettingsRequest extends FormRequest
             'verify_dns_name' => ['nullable', 'string', 'max:253', new Hostname],
             'protected_networks' => ['nullable', 'string', 'max:4000', new NetworkList],
             'drift_stopped_grace_minutes' => ['required', 'integer', 'min:0', 'max:10080'],
+            // Storage health (docs/adr/0047).
+            'storage_warning_percent' => ['required', 'integer', 'min:50', 'max:99'],
+            'storage_critical_percent' => ['required', 'integer', 'min:51', 'max:100', 'gt:storage_warning_percent'],
             'console_max_minutes' => ['required', 'integer', 'min:1', 'max:1440'],
             'console_idle_minutes' => ['required', 'integer', 'min:1', 'max:1440'],
             'docs_url' => ['nullable', 'string', 'max:255', 'url:https'],
@@ -144,6 +147,8 @@ class PanelSettingsRequest extends FormRequest
             'verify_dns_name' => fn () => ($name = $optionalString('verify_dns_name')) === null ? null : strtolower($name),
             'protected_networks' => fn () => NetworkList::canonical($optionalString('protected_networks')),
             'drift_stopped_grace_minutes' => fn () => (int) $data['drift_stopped_grace_minutes'],
+            'storage_warning_percent' => fn () => (int) $data['storage_warning_percent'],
+            'storage_critical_percent' => fn () => (int) $data['storage_critical_percent'],
             'console_max_minutes' => fn () => (int) $data['console_max_minutes'],
             'console_idle_minutes' => fn () => (int) $data['console_idle_minutes'],
             'docs_url' => fn () => $optionalString('docs_url'),

@@ -23,6 +23,7 @@ use App\Http\Controllers\Admin\IpPoolController;
 use App\Http\Controllers\Admin\IpPoolRdnsController;
 use App\Http\Controllers\Admin\LocationController;
 use App\Http\Controllers\Admin\NodeController;
+use App\Http\Controllers\Admin\NodeDiskController;
 use App\Http\Controllers\Admin\OperatingSystemController;
 use App\Http\Controllers\Admin\OsTemplateController;
 use App\Http\Controllers\Admin\PackageController;
@@ -81,6 +82,7 @@ Route::put('clusters/{cluster}/incoming', [ClusterController::class, 'updateInco
 Route::post('clusters/{cluster}/incoming/permissions', [ClusterController::class, 'checkIncomingPermissions'])->name('clusters.incoming.permissions');
 Route::patch('nodes/{node}', [NodeController::class, 'update'])->name('nodes.update');
 Route::patch('storages/{storage}', [StorageController::class, 'update'])->name('storages.update');
+Route::delete('node-disks/{disk}', [NodeDiskController::class, 'destroy'])->name('node-disks.destroy');
 
 Route::resource('ip-pools', IpPoolController::class)->only(['index', 'store', 'show', 'update', 'destroy'])
     ->parameters(['ip-pools' => 'ipPool']);

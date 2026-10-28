@@ -1,0 +1,14 @@
+{
+    "data": [
+        {
+            "lv": "data",
+            "vg": "pve",
+            "lv_size": 1000000000000,
+            "used": 214748364800,
+            "metadata_size": 1073741824,
+            "metadata_used": 107374182,
+            "lv_state": "a",
+            "lv_type": "t"
+        }
+    ]
+}

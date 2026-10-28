@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace App\Proxmox\Resources;
 
+use App\Proxmox\Data\CephStatus;
 use App\Proxmox\Data\ClusterStatus;
 use App\Proxmox\Data\DatacenterFirewall;
+use App\Proxmox\Data\StorageConfig;
 use App\Proxmox\Data\StorageInfo;
 use App\Proxmox\Data\VmResource;
 use App\Proxmox\Exceptions\ProxmoxRequestFailed;
@@ -29,6 +31,27 @@ final readonly class ClusterResource
             StorageInfo::fromArray(...),
             self::listOfArrays($this->client->get('/cluster/resources', ['type' => 'storage'])),
         );
+    }
+
+    /**
+     * The storage configuration (storage.cfg): which pool or volume group each storage uses.
+     *
+     * @return list<StorageConfig>
+     */
+    public function storageConfigs(): array
+    {
+        return array_map(
+            StorageConfig::fromArray(...),
+            self::listOfArrays($this->client->get('/storage')),
+        );
+    }
+
+    /**
+     * The health of the Ceph cluster Proxmox manages (fails where Ceph is not set up).
+     */
+    public function cephStatus(): CephStatus
+    {
+        return CephStatus::fromArray((array) $this->client->get('/cluster/ceph/status'));
     }
 
     /**

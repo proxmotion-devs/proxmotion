@@ -24,6 +24,8 @@ class PanelSettingsTest extends AdminTestCase
             'verify_dns_name' => 'Example.org',
             'protected_networks' => "198.51.100.0/24\n203.0.113.7, 198.51.100.0/24",
             'drift_stopped_grace_minutes' => 30,
+            'storage_warning_percent' => 80,
+            'storage_critical_percent' => 90,
             'console_max_minutes' => 45,
             'console_idle_minutes' => 10,
             'docs_url' => 'https://docs.example.com/proxmotion',
@@ -115,6 +117,8 @@ class PanelSettingsTest extends AdminTestCase
         $this->assertSame(16, PanelSettings::get('password_length'));
         $this->assertSame('lower', PanelSettings::get('password_characters'));
         $this->assertSame('.example!', PanelSettings::get('password_suffix'));
+        $this->assertSame(80, PanelSettings::get('storage_warning_percent'));
+        $this->assertSame(90, PanelSettings::get('storage_critical_percent'));
         $this->assertSame([], PanelSettings::unsaved());
 
         // .env no longer decides once the page was saved.
@@ -186,11 +190,14 @@ class PanelSettingsTest extends AdminTestCase
             'traffic_action' => 'stop',
             'usage_cpu_percent' => 150,
             'usage_window_minutes' => 5,
+            // Critical must be above the warning.
+            'storage_warning_percent' => 90,
+            'storage_critical_percent' => 90,
         ];
 
         $this->saveCategory('servers', $invalid)->assertSessionHasErrors(['min_vmid', 'move_deadline_minutes', 'verify_dns_name']);
         $this->saveCategory('network', $invalid)->assertSessionHasErrors(['protected_networks']);
-        $this->saveCategory('general', $invalid)->assertSessionHasErrors(['docs_url']);
+        $this->saveCategory('general', $invalid)->assertSessionHasErrors(['docs_url', 'storage_critical_percent']);
         $this->saveCategory('usage', $invalid)->assertSessionHasErrors(['traffic_reset_day', 'traffic_action', 'usage_cpu_percent', 'usage_window_minutes']);
 
         $this->assertSame(array_keys(PanelSettings::KEYS), PanelSettings::unsaved());
