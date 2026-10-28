@@ -14,6 +14,7 @@ enum GuestScriptEvent: string
     case DiskResized = 'disk_resized';
     case PasswordReset = 'password_reset';
     case HostnameChanged = 'hostname_changed';
+    case SshKeysChanged = 'ssh_keys_changed';
 
     /**
      * The file name inside the guest (and of the defaults in resources/guest).
@@ -27,6 +28,7 @@ enum GuestScriptEvent: string
             self::DiskResized => 'disk',
             self::PasswordReset => 'password',
             self::HostnameChanged => 'hostname',
+            self::SshKeysChanged => 'ssh-keys',
         };
     }
 
@@ -39,6 +41,7 @@ enum GuestScriptEvent: string
             self::DiskResized => 'guest_disk',
             self::PasswordReset => 'set_password',
             self::HostnameChanged => 'guest_hostname',
+            self::SshKeysChanged => 'guest_ssh_keys',
         };
     }
 
@@ -55,18 +58,23 @@ enum GuestScriptEvent: string
             self::DiskResized => ['disk_mib'],
             self::PasswordReset => ['username'],
             self::HostnameChanged => ['previous_hostname'],
+            self::SshKeysChanged => ['username', 'ssh_keys', 'removed_ssh_keys'],
         };
     }
 
     public function hasDefault(): bool
     {
-        return $this === self::AddressesChanged || $this === self::DiskResized || $this === self::HostnameChanged;
+        return $this !== self::Provisioned && $this !== self::PasswordReset;
     }
 
-    /** Whether a failing script fails the task instead of leaving a note. */
+    /**
+     * Whether a failing script fails the task instead of leaving a note: a
+     * password nobody knows, or an SSH key that may still let someone in
+     * (docs/adr/0049), must not look done.
+     */
     public function isCritical(): bool
     {
-        return $this === self::PasswordReset;
+        return $this === self::PasswordReset || $this === self::SshKeysChanged;
     }
 
     /**

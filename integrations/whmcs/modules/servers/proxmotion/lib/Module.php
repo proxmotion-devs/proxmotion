@@ -481,6 +481,79 @@ class Module
     }
 
     /**
+     * Add or delete an SSH key of the server (docs/adr/0049). $input "op" is
+     * "add" (public_key: one key per line) or "delete" (fingerprint).
+     * Proxmotion takes the whole list of keys, so the current ones are read first.
+     *
+     * @param array<string, mixed> $input from the form
+     */
+    public function sshKeys(array $input): string
+    {
+        $server = $this->requireActiveServer();
+        $id = (string) $server['id'];
+        $op = isset($input['op']) ? (string) $input['op'] : '';
+        $current = self::sshKeyList($this->client->sshKeys($id));
+        $keys = [];
+
+        foreach ($current as $key) {
+            $keys[] = $key['public_key'];
+        }
+
+        if ($op === 'add') {
+            $added = isset($input['public_key']) ? trim((string) $input['public_key']) : '';
+
+            if ($added === '') {
+                return $this->lang->get('ssh_key_required');
+            }
+
+            $keys[] = $added;
+        } elseif ($op === 'delete') {
+            $fingerprint = isset($input['fingerprint']) ? (string) $input['fingerprint'] : '';
+            $keys = [];
+
+            foreach ($current as $key) {
+                if ($key['fingerprint'] !== $fingerprint) {
+                    $keys[] = $key['public_key'];
+                }
+            }
+
+            if (count($keys) === count($current)) {
+                return $this->lang->get('ssh_key_unknown');
+            }
+        } else {
+            return $this->lang->get('ssh_key_unknown');
+        }
+
+        $this->client->updateSshKeys($id, $keys, $this->idempotencyKey('ssh-keys'));
+
+        return 'success';
+    }
+
+    /**
+     * The keys of GET /servers/{id}/ssh-keys.
+     *
+     * @param array<string, mixed> $data
+     * @return list<array{type: string, fingerprint: string, comment: string, public_key: string}>
+     */
+    private static function sshKeyList(array $data): array
+    {
+        $keys = [];
+
+        foreach (isset($data['ssh_keys']) && is_array($data['ssh_keys']) ? $data['ssh_keys'] : [] as $key) {
+            if (is_array($key) && isset($key['public_key'], $key['fingerprint'])) {
+                $keys[] = [
+                    'type' => isset($key['type']) ? (string) $key['type'] : '',
+                    'fingerprint' => (string) $key['fingerprint'],
+                    'comment' => isset($key['comment']) ? (string) $key['comment'] : '',
+                    'public_key' => (string) $key['public_key'],
+                ];
+            }
+        }
+
+        return $keys;
+    }
+
+    /**
      * What happens to incoming traffic no rule matches: "accept" or "drop".
      *
      * @param array<string, mixed> $firewall
@@ -708,6 +781,7 @@ class Module
             'installations' => [],
             'appsBusy' => false,
             'firewall' => null,
+            'sshKeys' => null,
         ];
 
         try {
@@ -739,6 +813,7 @@ class Module
                         return $installation['busy'];
                     })) > 0;
                     $vars['firewall'] = $this->presentFirewall($this->client->firewall((string) $server['id']), $this->client->firewallRulesets());
+                    $vars['sshKeys'] = $this->presentSshKeys((string) $server['id']);
                 }
             }
         } catch (ApiException $e) {
@@ -921,6 +996,39 @@ class Module
     private function idempotencyKey(string $operation): string
     {
         return 'whmcs-' . $this->params['serviceid'] . '-' . $operation . '-' . bin2hex(random_bytes(8));
+    }
+
+    /**
+     * The SSH keys for the template (docs/adr/0049), or null from a panel
+     * that does not manage keys yet.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function presentSshKeys(string $id): ?array
+    {
+        try {
+            $data = $this->client->sshKeys($id);
+        } catch (ApiException $e) {
+            if ($e->status() === 404) {
+                return null;
+            }
+
+            throw $e;
+        }
+
+        $keys = self::sshKeyList($data);
+        $max = isset($data['max_keys']) && is_numeric($data['max_keys']) ? (int) $data['max_keys'] : 20;
+
+        return [
+            'keys' => array_map(function (array $key) {
+                return [
+                    'fingerprint' => $key['fingerprint'],
+                    'type' => $key['type'],
+                    'comment' => $key['comment'],
+                ];
+            }, $keys),
+            'full' => count($keys) >= $max,
+        ];
     }
 
     /**

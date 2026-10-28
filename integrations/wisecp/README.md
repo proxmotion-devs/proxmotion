@@ -169,6 +169,16 @@ sends the whole list with an `Idempotency-Key`; Proxmotion's message is shown wh
 is wrong. The field of a rule's action is `rule_action`, because WISECP removes `action`
 from tool data. Like the Apps tool, it is unverified whether WISECP shows an added tool.
 
+### SSH keys
+
+An **SSH keys** tool of its own (`pages/tools/ssh-keys.php`, Proxmotion docs/adr/0049),
+shown while the server is active, lists the keys Proxmotion manages for root (Administrator
+on Windows) with delete, and has a form to add one or several public keys. Every change
+reads the current keys and sends the whole list with an `Idempotency-Key`; Proxmotion's
+message is shown when a key is wrong. The fields `public_key` and `fingerprint` are passed
+on unfiltered, since keys hold `+`, `/` and `=`. Keys the customer added inside the server
+are not listed and stay. Like the other added tools, it is unverified whether WISECP shows it.
+
 ## Webhooks
 
 Without webhooks, WISECP only learns what happens to a server when someone opens it.

@@ -22,6 +22,7 @@ enum TaskType: string
     case ChangePrimaryAddress = 'change_primary_address';
     case ChangeAddresses = 'change_addresses';
     case ChangeHostname = 'change_hostname';
+    case ChangeSshKeys = 'change_ssh_keys';
     case InstallApp = 'install_app';
     case AppRun = 'app_run';
     case Verify = 'verify';

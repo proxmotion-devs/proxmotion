@@ -26,6 +26,7 @@ import RdnsDialog from '@/components/servers/RdnsDialog.vue';
 import RebuildDialog from '@/components/servers/RebuildDialog.vue';
 import AntiSpoofingButton from '@/components/servers/AntiSpoofingButton.vue';
 import FirewallSection from '@/components/servers/FirewallSection.vue';
+import SshKeysSection from '@/components/servers/SshKeysSection.vue';
 import ReapplyAddressesButton from '@/components/servers/ReapplyAddressesButton.vue';
 import ReinstallDialog from '@/components/servers/ReinstallDialog.vue';
 import ReinstallLimitSection from '@/components/servers/ReinstallLimitSection.vue';
@@ -92,6 +93,7 @@ import type {
     ReinstallOptions,
     ResourceOptions,
     ServerFirewall,
+    ServerSshKeys,
     ServerAddress,
     ServerUsage,
     RevealedAppOutputs,
@@ -155,6 +157,8 @@ const props = withDefaults(
         moveOptions: MoveOptions;
         /** docs/adr/0035 */
         firewall: ServerFirewall;
+        /** docs/adr/0049 */
+        sshKeys: ServerSshKeys;
         /** Pools addresses may be added from (docs/adr/0028). */
         addressPools: AddressPoolOption[];
         drifts: Drift[];
@@ -212,6 +216,8 @@ const { start, stop } = usePoll(
             'drifts',
             'moveOptions',
             'scriptRuns',
+            // The list changes once a change_ssh_keys task succeeded (docs/adr/0049).
+            'sshKeys',
         ],
     },
     { autoStart: false },
@@ -270,6 +276,7 @@ const watchTick = () => {
             'power',
             'vm',
             'drifts',
+            'sshKeys',
             ...(askAgent ? ['agent'] : []),
         ],
         async: true,
@@ -1010,6 +1017,13 @@ const resetAfterTrial = () => {
                 :verification="server.verification"
                 :action="active ? verify(server.uuid) : undefined"
                 :disabled="vmBlocked"
+            />
+
+            <SshKeysSection
+                v-if="active"
+                :server="server.uuid"
+                :ssh-keys="sshKeys"
+                :disabled="vmBlocked || agentDown"
             />
 
             <ServerScripts

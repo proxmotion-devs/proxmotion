@@ -46,6 +46,7 @@ final readonly class TaskPlan
             TaskType::Unsuspend => ['start', 'wait_agent'],
             TaskType::Terminate => ['stop', 'destroy', 'release_ips'],
             TaskType::Verify => ['verify'],
+            TaskType::ChangeSshKeys => [GuestScriptEvent::SshKeysChanged->step()],
             TaskType::EnableAntiSpoofing, TaskType::ApplyFirewall => ['firewall'],
             TaskType::Move => $this->move($task),
             default => [],

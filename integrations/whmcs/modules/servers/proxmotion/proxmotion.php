@@ -246,7 +246,7 @@ function proxmotion_AdminCustomButtonArray()
  */
 function proxmotion_ClientAreaAllowedFunctions()
 {
-    return ['Start', 'Shutdown', 'Reboot', 'Stop', 'Console', 'ResetPassword', 'Reinstall', 'SetRdns', 'ChangeHostname', 'InstallApp', 'RetryApp', 'CancelApp', 'UninstallApp', 'UpgradeApp', 'RunAppAction', 'DownloadAppFile', 'Firewall'];
+    return ['Start', 'Shutdown', 'Reboot', 'Stop', 'Console', 'ResetPassword', 'Reinstall', 'SetRdns', 'ChangeHostname', 'InstallApp', 'RetryApp', 'CancelApp', 'UninstallApp', 'UpgradeApp', 'RunAppAction', 'DownloadAppFile', 'Firewall', 'SshKeys'];
 }
 
 /**
@@ -258,6 +258,18 @@ function proxmotion_Firewall(array $params): string
 {
     return proxmotion_run($params, function (Module $module) {
         return $module->firewall($_POST);
+    });
+}
+
+/**
+ * Add or delete an SSH key of the server (docs/adr/0049); the form's "op" says which.
+ *
+ * @param array<string, mixed> $params
+ */
+function proxmotion_SshKeys(array $params): string
+{
+    return proxmotion_run($params, function (Module $module) {
+        return $module->sshKeys($_POST);
     });
 }
 

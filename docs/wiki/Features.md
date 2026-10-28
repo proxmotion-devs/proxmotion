@@ -263,6 +263,15 @@ Every VPS gets the Proxmox firewall with **`ipfilter` and `macfilter`** enabled 
 - **How**: the panel writes one block of rules on top of the VM firewall (isolation, DHCP, app ports, the server's rules), all with comments starting with `Proxmotion`, and rewrites it whenever it differs; rules added in Proxmox by hand stay below it. The firewall check reports changed rules and an open policy as a firewall drift.
 - The console never goes through the network: a customer who locks themselves out can still get in.
 
+#### 6.4.3 SSH keys
+
+([ADR 0049](../adr/0049-ssh-keys-on-running-servers.md)) The public keys root (Administrator on Windows) logs in with, managed on a running server by customers (billing API and modules) and administrators (*SSH keys* on the server page):
+
+- **The list** starts with the keys of the server's creation or last reinstall; keys are added (one or several, at most 20 per server) and deleted from it. ed25519, ECDSA and RSA (2048 bits or more) keys; DSA keys are refused.
+- **How**: every change is a `change_ssh_keys` task that runs the `ssh_keys_changed` guest script (defaults for Linux, FreeBSD and Windows, `ssh-keys.sh` / `ssh-keys.ps1`, which administrators may replace per OS template): deleted keys are removed from `authorized_keys` (Windows: `administrators_authorized_keys`, and the Administrator's own file), new ones appended; lines the panel does not know stay. Proxmox's cloud-init `sshkeys` are left alone, so the server keeps its SSH host keys.
+- **Only once it worked**: the list changes when the script succeeded. A failing script or an agent that does not answer fails the task, and the same change can simply be sent again.
+- Keys added inside the server by its owner are not listed and not touched. A reinstall replaces the list with the keys it is given.
+
 ### 6.5 Changing the primary address
 
 ([ADR 0011](../adr/0011-changing-the-primary-address.md)) The billing API (`POST /servers/{id}/primary-address`) can make another address the **primary**; administrators do the same with *Edit IP addresses* (6.5.1):

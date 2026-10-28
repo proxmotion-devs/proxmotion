@@ -34,6 +34,7 @@ use App\Http\Controllers\Admin\ServerController;
 use App\Http\Controllers\Admin\ServerFirewallController;
 use App\Http\Controllers\Admin\ServerMoveController;
 use App\Http\Controllers\Admin\ServerReinstallLimitController;
+use App\Http\Controllers\Admin\ServerSshKeyController;
 use App\Http\Controllers\Admin\ServerStatsController;
 use App\Http\Controllers\Admin\StorageController;
 use App\Http\Controllers\Admin\TaskController;
@@ -193,6 +194,7 @@ Route::post('servers/{server}/verify', [ServerController::class, 'verify'])->mid
 Route::post('servers/{server}/scripts/{customScript}/run', [CustomScriptController::class, 'runOnServer'])->middleware('throttle:10,1')->name('servers.scripts.run');
 Route::put('servers/{server}/firewall', [ServerFirewallController::class, 'update'])->middleware('throttle:20,1')->name('servers.firewall');
 Route::post('servers/{server}/firewall/ruleset', [ServerFirewallController::class, 'ruleset'])->middleware('throttle:20,1')->name('servers.firewall.ruleset');
+Route::put('servers/{server}/ssh-keys', [ServerSshKeyController::class, 'update'])->middleware('throttle:20,1')->name('servers.ssh-keys');
 Route::post('servers/{server}/anti-spoofing', [ServerController::class, 'enableAntiSpoofing'])->middleware('throttle:10,1')->name('servers.enable-anti-spoofing');
 Route::post('tasks/{task}/fail', [TaskController::class, 'fail'])->name('tasks.fail');
 Route::post('tasks/{task}/cancel', [TaskController::class, 'cancel'])->name('tasks.cancel');

@@ -29,13 +29,15 @@ abstract class ModuleTestCase extends TestCase
 
     /**
      * A new fake API; the client area of an active server always shows its
-     * firewall (docs/adr/0035), so an empty one is there by default.
+     * firewall (docs/adr/0035) and SSH keys (docs/adr/0049), so empty ones
+     * are there by default.
      */
     protected function freshApi(): void
     {
         $this->api = new FakeTransport();
         $this->api->on('GET /servers/' . self::SERVER_ID . '/firewall', 200, ['data' => ['default_policy' => 'accept', 'rules' => [], 'app_rules' => []]]);
         $this->api->on('GET /firewall-rulesets', 200, ['data' => []]);
+        $this->api->on('GET /servers/' . self::SERVER_ID . '/ssh-keys', 200, ['data' => ['ssh_keys' => [], 'max_keys' => 20]]);
     }
 
     /**

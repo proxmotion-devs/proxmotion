@@ -22,6 +22,7 @@ use App\Proxmox\Exceptions\GuestCommandDisabled;
 use App\Proxmox\Exceptions\ProxmoxException;
 use App\Proxmox\ProxmoxClientFactory;
 use App\Proxmox\Resources\GuestAgentResource;
+use App\Support\Ssh\PublicKey;
 use Closure;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Sleep;
@@ -472,6 +473,11 @@ final readonly class GuestScripts
         }
 
         $this->runOrThrow($task, ScriptSlot::event($event), fn () => $this->run($task, $server, $event, draft: $draft, trace: $trace));
+
+        // A critical script leaves its step to the caller.
+        if ($event->isCritical()) {
+            $task->completeStep($event->step());
+        }
     }
 
     /**
@@ -820,6 +826,12 @@ final readonly class GuestScripts
             GuestScriptEvent::DiskResized => ['disk_mib' => $server->disk_mib],
             GuestScriptEvent::PasswordReset => ['username' => $platform->administrator()],
             GuestScriptEvent::HostnameChanged => ['previous_hostname' => is_string($task?->input['previous_hostname'] ?? null) ? $task->input['previous_hostname'] : null],
+            // Validated, normalized authorized_keys lines (docs/adr/0049).
+            GuestScriptEvent::SshKeysChanged => [
+                'username' => $platform->administrator(),
+                'ssh_keys' => array_map(fn (PublicKey $key) => $key->toString(), ServerSshKeys::wanted($server, $task)),
+                'removed_ssh_keys' => array_map(fn (PublicKey $key) => $key->toString(), ServerSshKeys::removed($server, $task)),
+            ],
         };
     }
 

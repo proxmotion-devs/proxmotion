@@ -2447,5 +2447,20 @@
     "Storages or disks need attention": "Storage veya diskler ilgi bekliyor",
     "The last sync of cluster :cluster found storages or disks in worse health than before.": ":cluster cluster'ının son senkronizasyonu, sağlığı öncekinden kötü olan storage veya diskler buldu.",
     "Used by": "Kullanan",
-    "Wearout": "Aşınma"
+    "Wearout": "Aşınma",
+    "Changing the SSH keys…": "SSH anahtarları değiştiriliyor…",
+    "A server can have at most :count SSH keys.": "Bir sunucunun en fazla :count SSH anahtarı olabilir.",
+    "Change SSH keys": "SSH anahtarlarını değiştir",
+    "Change the SSH keys in the server": "SSH anahtarlarını sunucunun içinde değiştir",
+    "SSH keys changed": "SSH anahtarları değişti",
+    "Writes the SSH keys added and deleted on the server page or through the billing system into the authorized keys of root (Administrator on Windows). Lines it does not know stay. If the script fails, the change fails and the server keeps its list of keys.": "Sunucu sayfasında veya billing sistemi üzerinden eklenen ve silinen SSH anahtarlarını root kullanıcısının (Windows'ta Administrator) authorized_keys dosyasına yazar. Tanımadığı satırlar kalır. Script başarısız olursa değişiklik de başarısız olur ve sunucunun anahtar listesi değişmez.",
+    "When SSH keys are added or deleted.": "SSH anahtarları eklendiğinde veya silindiğinde.",
+    "SSH keys": "SSH anahtarları",
+    "Add SSH key": "SSH anahtarı ekle",
+    "Keys that can log in as root (Administrator on Windows), written into the server through the guest agent. Keys added inside the server are not listed and stay.": "root (Windows'ta Administrator) olarak giriş yapabilen anahtarlar; guest agent ile sunucunun içine yazılır. Sunucunun içinde eklenen anahtarlar listelenmez ve kalır.",
+    "No comment": "Açıklama yok",
+    "The panel manages no SSH keys on this server.": "Panel bu sunucuda hiçbir SSH anahtarını yönetmiyor.",
+    "One public key per line. The server can have at most 20 keys.": "Her satıra bir public key. Sunucunun en fazla 20 anahtarı olabilir.",
+    "Delete SSH key": "SSH anahtarını sil",
+    "The key is removed from the server's authorized keys and can no longer log in.": "Anahtar sunucunun authorized_keys dosyasından kaldırılır ve artık giriş yapamaz."
 }

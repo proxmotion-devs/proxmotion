@@ -18,6 +18,7 @@ export const TASK_TYPE_LABELS: Record<TaskType, string> = {
     change_primary_address: 'Change primary address',
     change_addresses: 'Update IP addresses',
     change_hostname: 'Change hostname',
+    change_ssh_keys: 'Change SSH keys',
     install_app: 'Install app',
     app_run: 'App action or uninstall',
     verify: 'Check the server',

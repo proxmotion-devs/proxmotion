@@ -64,6 +64,7 @@ final readonly class ScriptSlot
             GuestScriptEvent::AddressesChanged => 'The guest agent did not answer: configure the additional addresses inside the server.',
             GuestScriptEvent::DiskResized => 'The guest agent did not answer: grow the file system inside the server (Linux templates with cloud-init grow it at the next boot).',
             GuestScriptEvent::HostnameChanged => 'The guest agent did not answer: change the hostname inside the server.',
+            GuestScriptEvent::SshKeysChanged => 'The guest agent did not answer: the SSH keys were not changed.',
             default => 'The guest agent did not answer: the template\'s script did not run.',
         };
     }
@@ -79,6 +80,7 @@ final readonly class ScriptSlot
             GuestScriptEvent::DiskResized => 'The file system could not be grown inside the server: ',
             GuestScriptEvent::PasswordReset => 'The password reset script failed: ',
             GuestScriptEvent::HostnameChanged => 'The hostname could not be changed inside the server: ',
+            GuestScriptEvent::SshKeysChanged => 'The SSH keys could not be changed inside the server: ',
             default => 'The template\'s script failed: ',
         };
     }

@@ -221,7 +221,8 @@ export type GuestScriptEvent =
     | 'addresses_changed'
     | 'disk_resized'
     | 'password_reset'
-    | 'hostname_changed';
+    | 'hostname_changed'
+    | 'ssh_keys_changed';
 
 export type GuestScriptSlot = {
     event: GuestScriptEvent;
@@ -352,6 +353,7 @@ export type TaskType =
     | 'enable_anti_spoofing'
     | 'apply_firewall'
     | 'change_hostname'
+    | 'change_ssh_keys'
     | 'install_app'
     | 'app_run'
     | 'verify'
@@ -932,6 +934,21 @@ export type AppFirewallRule = {
     app: string;
     protocol: 'tcp' | 'udp';
     port: number;
+};
+
+/** A public SSH key the panel manages on a server (docs/adr/0049). */
+export type SshKey = {
+    type: string;
+    fingerprint: string;
+    comment: string;
+    /** The normalized authorized_keys line. */
+    public_key: string;
+};
+
+export type ServerSshKeys = {
+    keys: SshKey[];
+    /** How many keys a server can have. */
+    max: number;
 };
 
 /** A server's firewall on its page, with the rule sets that can be applied. */

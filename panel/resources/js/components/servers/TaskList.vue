@@ -103,6 +103,7 @@ const stepLabels: Record<string, string> = {
     guest_disk: 'Grow the file system in the server',
     guest_provisioned: "Run the template's script in the server",
     guest_hostname: 'Change the hostname in the server',
+    guest_ssh_keys: 'Change the SSH keys in the server',
     app_upload: 'Upload the app installer to the server',
     app_start: 'Start the app installer',
     verify: 'Check addresses, gateway, DNS, hostname and disk',

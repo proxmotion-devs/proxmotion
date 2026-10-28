@@ -243,6 +243,43 @@
                 {/if}
             {/if}
 
+            {if $pmx.sshKeys}
+                <hr>
+                <h4>{$pmx.lang.ssh_keys|escape}</h4>
+                <p class="text-muted">{$pmx.lang.ssh_keys_intro|escape}</p>
+                <table class="table table-condensed">
+                    <tbody>
+                        {foreach from=$pmx.sshKeys.keys item=sshKey}
+                            <tr>
+                                <td>{if $sshKey.comment}{$sshKey.comment|escape}{else}<span class="text-muted">{$pmx.lang.ssh_key_no_comment|escape}</span>{/if}</td>
+                                <td><code>{$sshKey.type|escape}</code> <code>{$sshKey.fingerprint|escape}</code></td>
+                                <td class="text-right">
+                                    <form method="post" action="{$pmxAction}SshKeys" style="display: inline;" onsubmit="return confirm('{$pmx.lang.ssh_key_delete_confirm|escape:'javascript'}');">
+                                        <input type="hidden" name="token" value="{$token}">
+                                        <input type="hidden" name="op" value="delete">
+                                        <input type="hidden" name="fingerprint" value="{$sshKey.fingerprint|escape}">
+                                        <button type="submit" class="btn btn-danger btn-xs">{$pmx.lang.ssh_key_delete|escape}</button>
+                                    </form>
+                                </td>
+                            </tr>
+                        {foreachelse}
+                            <tr><td class="text-muted">{$pmx.lang.ssh_keys_none|escape}</td></tr>
+                        {/foreach}
+                    </tbody>
+                </table>
+                {if !$pmx.sshKeys.full}
+                    <form method="post" action="{$pmxAction}SshKeys" style="margin-bottom: 10px;">
+                        <input type="hidden" name="token" value="{$token}">
+                        <input type="hidden" name="op" value="add">
+                        <div class="form-group">
+                            <label for="pmx-ssh-key">{$pmx.lang.ssh_key_add_label|escape}</label>
+                            <textarea id="pmx-ssh-key" name="public_key" class="form-control" rows="3" required placeholder="ssh-ed25519 AAAA... user@host" style="font-family: monospace;"></textarea>
+                        </div>
+                        <button type="submit" class="btn btn-default btn-sm">{$pmx.lang.ssh_key_add|escape}</button>
+                    </form>
+                {/if}
+            {/if}
+
             {if $pmx.osTemplates}
                 <hr>
                 <h4>{$pmx.lang.reinstall_title|escape}</h4>

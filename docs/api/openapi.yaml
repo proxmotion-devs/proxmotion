@@ -706,6 +706,68 @@ paths:
         '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/ValidationError' }
 
+  /servers/{server}/ssh-keys:
+    parameters:
+      - $ref: '#/components/parameters/Server'
+    get:
+      tags: [Servers]
+      summary: The server's SSH keys
+      description: |
+        Scope: `servers:read`. The public keys Proxmotion manages for root (Windows: Administrator)
+        on the server: those of its creation or last reinstall and those added since (docs/adr/0049).
+        Keys added inside the server by its owner are not listed.
+      operationId: getServerSshKeys
+      responses:
+        '200':
+          description: The keys
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    required: [ssh_keys, max_keys]
+                    properties:
+                      ssh_keys: { type: array, items: { $ref: '#/components/schemas/SshKey' } }
+                      max_keys: { type: integer, description: How many keys a server can have. }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    put:
+      tags: [Servers]
+      summary: Replace the server's SSH keys
+      description: |
+        Scope: `servers:write`. Active servers only (the guest agent writes the keys). `ssh_keys` is
+        the whole new list: send the current keys with a new one to add it, without one to delete it,
+        an empty list to remove them all. Keys missing from it are removed from the server's
+        `authorized_keys`; other lines there stay. Answers `202` with the `change_ssh_keys` task; the
+        list changes once it succeeded, so after a failed task the same list can be sent again.
+      operationId: updateServerSshKeys
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ssh_keys]
+              properties:
+                ssh_keys:
+                  type: array
+                  maxItems: 20
+                  description: OpenSSH public keys (ed25519, ECDSA or RSA of 2048 bits or more); duplicates are dropped.
+                  items: { type: string, maxLength: 16384, examples: ['ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI... user@example.com'] }
+      responses:
+        '202': { $ref: '#/components/responses/TaskAccepted' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
   /servers/{server}/console:
     parameters:
       - $ref: '#/components/parameters/Server'
@@ -1355,6 +1417,14 @@ components:
               app: { type: string, description: The app's slug. }
               protocol: { type: string, enum: [tcp, udp] }
               port: { type: integer }
+    SshKey:
+      type: object
+      required: [type, fingerprint, comment, public_key]
+      properties:
+        type: { type: string, examples: [ssh-ed25519] }
+        fingerprint: { type: string, examples: ['SHA256:uNiVztksCsDhcc0u9e8BujQXVUpKZIDTMczCvj3tD2s'] }
+        comment: { type: string, description: The text after the key; may be empty. }
+        public_key: { type: string, description: 'The normalized line: type, key and comment.' }
     FirewallRuleset:
       type: object
       required: [id, name, description, default_policy, rules]
@@ -1508,7 +1578,7 @@ components:
       required: [id, type, status, server, steps, error, created_at, started_at, finished_at]
       properties:
         id: { type: string, format: uuid }
-        type: { type: string, enum: [create, suspend, unsuspend, terminate, adopt, start, shutdown, stop, reboot, reset_password, reinstall, change_resources, guest_script, change_primary_address, change_addresses, change_hostname, install_app, app_run, verify, enable_anti_spoofing, apply_firewall, move] }
+        type: { type: string, enum: [create, suspend, unsuspend, terminate, adopt, start, shutdown, stop, reboot, reset_password, reinstall, change_resources, guest_script, change_primary_address, change_addresses, change_hostname, change_ssh_keys, install_app, app_run, verify, enable_anti_spoofing, apply_firewall, move] }
         status: { type: string, enum: [queued, running, succeeded, failed] }
         server:
           type: object

@@ -445,6 +445,27 @@ final class ApiClient
         return $this->listOf($this->request('GET', '/firewall-rulesets'));
     }
 
+    /**
+     * The SSH keys Proxmotion manages on the server: ssh_keys, max_keys (docs/adr/0049).
+     *
+     * @return array<string, mixed>
+     */
+    public function sshKeys(string $id): array
+    {
+        return $this->dataOf($this->request('GET', '/servers/' . rawurlencode($id) . '/ssh-keys'));
+    }
+
+    /**
+     * Replace the server's SSH keys with these public keys; returns the task.
+     *
+     * @param list<string> $keys
+     * @return array<string, mixed>
+     */
+    public function updateSshKeys(string $id, array $keys, string $idempotencyKey): array
+    {
+        return $this->dataOf($this->request('PUT', '/servers/' . rawurlencode($id) . '/ssh-keys', ['ssh_keys' => $keys], $idempotencyKey));
+    }
+
     public function consoleLink(string $id): string
     {
         $data = $this->dataOf($this->request('POST', '/servers/' . rawurlencode($id) . '/console'));

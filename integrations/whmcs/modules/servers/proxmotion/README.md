@@ -181,6 +181,18 @@ checks the rules and the module shows its message when one is wrong. Nothing is 
 WHMCS. Changes take a few seconds to reach the server; the console works even when the
 firewall locks the customer out.
 
+### SSH keys
+
+Active servers list the **SSH keys** Proxmotion manages for root (Administrator on Windows)
+(Proxmotion docs/adr/0049): the keys of the order or the last reinstall and those added
+since, by comment, type and fingerprint. The customer pastes a public key (or several, one
+per line) to add it and deletes keys (with a confirmation); a deleted key is removed from
+the server. Every change reads the current keys from Proxmotion first and sends the whole
+list back with an `Idempotency-Key` (custom action `SshKeys`); Proxmotion checks the keys
+and the module shows its message when one is wrong. Keys the customer added inside the
+server are not listed and stay. Nothing is stored in WHMCS. The section is hidden with a
+Proxmotion that does not manage keys yet.
+
 ### Paid apps
 
 Apps marked paid in Proxmotion (Proxmotion docs/adr/0019) are installed later only when

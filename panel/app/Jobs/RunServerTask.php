@@ -23,6 +23,7 @@ use App\Provisioning\Pipelines\MoveServerPipeline;
 use App\Provisioning\Pipelines\PowerPipeline;
 use App\Provisioning\Pipelines\ReinstallServerPipeline;
 use App\Provisioning\Pipelines\ResetPasswordPipeline;
+use App\Provisioning\Pipelines\SshKeysPipeline;
 use App\Provisioning\Pipelines\TerminateServerPipeline;
 use App\Provisioning\Stages\StagedPipeline;
 use App\Provisioning\Stages\StageRunner;
@@ -59,7 +60,7 @@ class RunServerTask implements ShouldQueue
      */
     public function __construct(public Task $task, public int $dispatch = 0) {}
 
-    public function handle(CreateServerPipeline $create, MoveServerPipeline $move, PowerPipeline $power, TerminateServerPipeline $terminate, ResetPasswordPipeline $resetPassword, ReinstallServerPipeline $reinstall, ChangeResourcesPipeline $changeResources, GuestScripts $guestScripts, AddressesPipeline $addresses, HostnamePipeline $hostname, InstallAppPipeline $installApp, AppRunPipeline $appRun, AntiSpoofingPipeline $antiSpoofing, FirewallPipeline $firewall, ServerVerifier $verifier, StageRunner $stages, TaskFailer $failer): void
+    public function handle(CreateServerPipeline $create, MoveServerPipeline $move, PowerPipeline $power, TerminateServerPipeline $terminate, ResetPasswordPipeline $resetPassword, ReinstallServerPipeline $reinstall, ChangeResourcesPipeline $changeResources, GuestScripts $guestScripts, AddressesPipeline $addresses, HostnamePipeline $hostname, SshKeysPipeline $sshKeys, InstallAppPipeline $installApp, AppRunPipeline $appRun, AntiSpoofingPipeline $antiSpoofing, FirewallPipeline $firewall, ServerVerifier $verifier, StageRunner $stages, TaskFailer $failer): void
     {
         $task = $this->task;
 
@@ -108,6 +109,7 @@ class RunServerTask implements ShouldQueue
                     TaskType::GuestScript => $guestScripts->runOnce($task),
                     TaskType::ChangePrimaryAddress, TaskType::ChangeAddresses => $addresses->run($task),
                     TaskType::ChangeHostname => $hostname->run($task),
+                    TaskType::ChangeSshKeys => $sshKeys->run($task),
                     TaskType::InstallApp => $installApp->run($task),
                     TaskType::AppRun => $appRun->run($task),
                     TaskType::Verify => $verifier->runTask($task),

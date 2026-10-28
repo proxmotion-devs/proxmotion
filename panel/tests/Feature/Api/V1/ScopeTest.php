@@ -24,6 +24,8 @@ class ScopeTest extends ApiTestCase
             'show the firewall' => ['GET', '/api/v1/servers/{server}/firewall', ApiScope::ServersRead],
             'change the firewall' => ['PUT', '/api/v1/servers/{server}/firewall', ApiScope::ServersWrite],
             'apply a rule set' => ['POST', '/api/v1/servers/{server}/firewall/ruleset', ApiScope::ServersWrite],
+            'show the SSH keys' => ['GET', '/api/v1/servers/{server}/ssh-keys', ApiScope::ServersRead],
+            'change the SSH keys' => ['PUT', '/api/v1/servers/{server}/ssh-keys', ApiScope::ServersWrite],
             'list installed apps' => ['GET', '/api/v1/servers/{server}/apps', ApiScope::ServersRead],
             'install an app' => ['POST', '/api/v1/servers/{server}/apps', ApiScope::ServersWrite],
             'list app entitlements' => ['GET', '/api/v1/servers/{server}/app-entitlements', ApiScope::ServersRead],
