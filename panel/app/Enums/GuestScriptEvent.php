@@ -62,6 +62,15 @@ enum GuestScriptEvent: string
         };
     }
 
+    /**
+     * Whether its Linux default uses only POSIX sh and awk, so FreeBSD
+     * templates run it too instead of a copy (docs/adr/0048, 0049).
+     */
+    public function hasPortableDefault(): bool
+    {
+        return $this === self::SshKeysChanged;
+    }
+
     public function hasDefault(): bool
     {
         return $this !== self::Provisioned && $this !== self::PasswordReset;

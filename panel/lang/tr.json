@@ -2470,5 +2470,8 @@
     "Filter by name, type or fingerprint": "Ada, türe veya parmak izine göre filtrele",
     "No key matches the filter.": "Filtreye uyan anahtar yok.",
     "The SSH keys are being changed inside the server; the list follows once that worked.": "SSH anahtarları sunucunun içinde değiştiriliyor; liste bu tamamlanınca güncellenir.",
-    "The server has the most keys it can have; delete one to add another.": "Sunucu alabileceği en fazla anahtara ulaştı; yenisini eklemek için birini silin."
+    "The server has the most keys it can have; delete one to add another.": "Sunucu alabileceği en fazla anahtara ulaştı; yenisini eklemek için birini silin.",
+    "One public key per line.": "Her satıra bir public key.",
+    "The server can have at most :count keys.": "Sunucunun en fazla :count anahtarı olabilir.",
+    "The server's current keys; the new system gets exactly these. One key per line.": "Sunucunun şu anki anahtarları; yeni sistem tam olarak bunları alır. Her satıra bir anahtar."
 }

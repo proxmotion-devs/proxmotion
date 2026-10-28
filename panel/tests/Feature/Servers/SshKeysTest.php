@@ -149,13 +149,13 @@ class SshKeysTest extends TestCase
         $this->assertSame([PublicKeyTest::ED25519], $inputs['removed_ssh_keys']);
     }
 
-    public function test_freebsd_servers_run_their_own_script()
+    public function test_freebsd_servers_share_the_portable_linux_script()
     {
         $this->osTemplate->forceFill(['distribution' => 'freebsd', 'version' => '14.3'])->save();
 
         $this->change([PublicKeyTest::RSA]);
 
-        $this->assertSame(file_get_contents(resource_path('guest/freebsd/ssh-keys.sh')), $this->proxmox->guestFiles[$this->server->vmid][self::SCRIPT]);
+        $this->assertSame(file_get_contents(resource_path('guest/linux/ssh-keys.sh')), $this->proxmox->guestFiles[$this->server->vmid][self::SCRIPT]);
     }
 
     public function test_a_trial_run_writes_the_server_s_keys_and_removes_none()
@@ -170,6 +170,23 @@ class SshKeysTest extends TestCase
         $this->assertNotNull(collect($task->steps)->last()['finished_at'] ?? null, 'A critical script leaves its step to the caller.');
         $this->assertStringContainsString('ssh_keys='.PublicKeyTest::ED25519."\n", $this->vars());
         $this->assertStringNotContainsString('removed_ssh_keys=', $this->vars());
+        $this->assertSame(PublicKeyTest::ED25519, $this->server->refresh()->ssh_keys);
+    }
+
+    public function test_a_stored_key_today_s_rules_refuse_is_left_out_but_still_removed()
+    {
+        $old = 'ssh-dss AAAAB3NzaC1kc3M= old@example.com';
+        $this->server->forceFill(['ssh_keys' => PublicKeyTest::ED25519."\n".$old])->save();
+
+        $this->actingAs($this->admin)->get(route('admin.servers.show', $this->server))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page->has('sshKeys.keys', 1));
+
+        $task = $this->change([PublicKeyTest::ED25519]);
+
+        $this->assertSame(TaskStatus::Succeeded, $task->status, (string) $task->error);
+        $this->assertSame([$old], $task->input['removed_ssh_keys']);
+        $this->assertStringContainsString("removed_ssh_keys={$old}\n", $this->vars());
         $this->assertSame(PublicKeyTest::ED25519, $this->server->refresh()->ssh_keys);
     }
 

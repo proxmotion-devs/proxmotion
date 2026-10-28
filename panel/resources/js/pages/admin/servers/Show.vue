@@ -216,8 +216,6 @@ const { start, stop } = usePoll(
             'drifts',
             'moveOptions',
             'scriptRuns',
-            // The list changes once a change_ssh_keys task succeeded (docs/adr/0049).
-            'sshKeys',
         ],
     },
     { autoStart: false },
@@ -276,7 +274,6 @@ const watchTick = () => {
             'power',
             'vm',
             'drifts',
-            'sshKeys',
             ...(askAgent ? ['agent'] : []),
         ],
         async: true,
@@ -435,6 +432,12 @@ const runningTasks = computed(() =>
 const changingSshKeys = computed(() =>
     runningTasks.value.some((task) => task.type === 'change_ssh_keys'),
 );
+// The keys are not polled: reloaded once, when such a task has finished.
+watch(changingSshKeys, (changing, before) => {
+    if (before && !changing) {
+        router.reload({ only: ['sshKeys'] });
+    }
+});
 
 const active = computed(() => props.server.status === 'active');
 // Where the VM is, as Proxmox says (only asked for active servers).
@@ -1094,6 +1097,9 @@ const resetAfterTrial = () => {
                         :action="reinstall(server.uuid)"
                         :hostname="server.hostname"
                         :options="reinstallOptions"
+                        :ssh-keys="
+                            sshKeys.keys.map((key) => key.public_key).join('\n')
+                        "
                         :disabled="busy || (vmAway && vmState !== 'missing')"
                     />
                     <!-- Deleting would leave a VM moved to another node running there. -->

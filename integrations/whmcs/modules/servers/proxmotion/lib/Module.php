@@ -333,7 +333,8 @@ class Module
         $osTemplate = isset($input['os_template']) ? (string) $input['os_template'] : '';
         $app = isset($input['app']) ? trim((string) $input['app']) : '';
 
-        $this->client->reinstall((string) $server['id'], $osTemplate, $sshKey === '' ? [] : [$sshKey], $app === '' ? null : $app);
+        // Without a key the new system keeps the server's keys (docs/adr/0049).
+        $this->client->reinstall((string) $server['id'], $osTemplate, $sshKey === '' ? null : [$sshKey], $app === '' ? null : $app);
 
         return 'success';
     }
@@ -1017,7 +1018,8 @@ class Module
         }
 
         $keys = self::sshKeyList($data);
-        $max = isset($data['max_keys']) && is_numeric($data['max_keys']) ? (int) $data['max_keys'] : 20;
+        // Proxmotion's limit; without one the form stays and Proxmotion refuses what is too many.
+        $max = isset($data['max_keys']) && is_numeric($data['max_keys']) ? (int) $data['max_keys'] : null;
 
         return [
             'keys' => array_map(function (array $key) {
@@ -1027,7 +1029,7 @@ class Module
                     'comment' => $key['comment'],
                 ];
             }, $keys),
-            'full' => count($keys) >= $max,
+            'full' => $max !== null && count($keys) >= $max,
         ];
     }
 

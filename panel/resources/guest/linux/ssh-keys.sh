@@ -1,6 +1,7 @@
 #!/bin/sh
-# Proxmotion: the SSH keys the panel manages on the server (docs/adr/0010 and
-# 0049 in the Proxmotion repository). Installed and run by Proxmotion through
+# Proxmotion: the SSH keys the panel manages on the server, Linux and FreeBSD
+# (docs/adr/0010, 0048 and 0049 in the Proxmotion repository; POSIX sh and awk
+# only, so both can run it). Installed and run by Proxmotion through
 # the QEMU guest agent; changes to this file are overwritten.
 #
 # /etc/proxmotion/ssh-keys.vars (written by Proxmotion):

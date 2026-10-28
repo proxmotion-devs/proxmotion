@@ -97,12 +97,18 @@ foreach ($blob in $order) {
 Write-Lines $adminFile $lines
 
 # Administrators (S-1-5-32-544) and SYSTEM (S-1-5-18) only, by SID so that
-# localized group names do not matter.
-& icacls.exe $adminFile /inheritance:r /grant '*S-1-5-32-544:F' /grant '*S-1-5-18:F' | Out-Null
+# localized group names do not matter. /reset first drops explicit entries
+# (e.g. Users) that /inheritance:r would keep and sshd would refuse.
+foreach ($arguments in @(
+        @('/reset'),
+        @('/inheritance:r', '/grant:r', '*S-1-5-32-544:F', '/grant:r', '*S-1-5-18:F')
+    )) {
+    & icacls.exe $adminFile @arguments | Out-Null
 
-if ($LASTEXITCODE -ne 0) {
-    [Console]::Error.WriteLine("icacls failed with exit code $LASTEXITCODE.")
-    exit 1
+    if ($LASTEXITCODE -ne 0) {
+        [Console]::Error.WriteLine("icacls $($arguments[0]) failed with exit code $LASTEXITCODE.")
+        exit 1
+    }
 }
 
 $userFile = Join-Path $env:SystemDrive "Users\$user\.ssh\authorized_keys"

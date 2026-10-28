@@ -361,7 +361,9 @@ paths:
               required: [os_template]
               properties:
                 os_template: { type: string, format: uuid, description: 'An OS template available on the server''s cluster, which its package allows (docs/adr/0040)' }
-                ssh_keys: { $ref: '#/components/schemas/SshKeys' }
+                ssh_keys:
+                  allOf: [{ $ref: '#/components/schemas/SshKeys' }]
+                  description: 'The new system''s keys. Left out (or null): the server keeps its keys (`GET /servers/{server}/ssh-keys`); an empty list removes them (docs/adr/0049).'
                 app: { $ref: '#/components/schemas/OrderedApp' }
                 app_inputs: { $ref: '#/components/schemas/OrderedAppInputs' }
       responses:

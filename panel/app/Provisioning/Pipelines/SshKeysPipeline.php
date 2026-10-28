@@ -32,8 +32,7 @@ final readonly class SshKeysPipeline
             throw new GuestScriptFailed('The server\'s OS template has no script for this event.');
         }
 
-        $removed = ServerSshKeys::without(ServerSshKeys::of($server), $wanted);
-        $task->forceFill(['input' => [...($task->input ?? []), 'removed_ssh_keys' => array_map(fn (PublicKey $key) => $key->toString(), $removed)]])->save();
+        $task->forceFill(['input' => [...($task->input ?? []), 'removed_ssh_keys' => ServerSshKeys::removedLines($server, $task)]])->save();
 
         $this->scripts->run($task, $server, GuestScriptEvent::SshKeysChanged);
 

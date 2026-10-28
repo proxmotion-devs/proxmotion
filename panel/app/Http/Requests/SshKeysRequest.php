@@ -10,7 +10,6 @@ use App\Support\Ssh\PublicKey;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Validator;
-use InvalidArgumentException;
 
 /**
  * The whole list of a server's SSH keys as the admin page and the billing
@@ -18,6 +17,9 @@ use InvalidArgumentException;
  */
 class SshKeysRequest extends FormRequest
 {
+    /** @var list<PublicKey>|null */
+    private ?array $parsed = null;
+
     /**
      * @return array<string, ValidationRule|array<mixed>|string>
      */
@@ -42,22 +44,24 @@ class SshKeysRequest extends FormRequest
     }
 
     /**
-     * The keys, normalized, each once. An entry may hold several lines.
+     * The keys, normalized, each once, parsed once. An entry may hold several
+     * lines. Validation has checked every line, so a line that still fails
+     * here throws: an empty list would remove every key of the server.
      *
      * @return list<PublicKey>
      */
     public function sshKeys(): array
     {
+        if ($this->parsed !== null) {
+            return $this->parsed;
+        }
+
         $lines = [];
 
         foreach ((array) $this->input('ssh_keys', []) as $entry) {
             $lines[] = is_string($entry) ? $entry : '';
         }
 
-        try {
-            return PublicKey::parseMany(implode("\n", $lines));
-        } catch (InvalidArgumentException) {
-            return [];
-        }
+        return $this->parsed = PublicKey::parseMany(implode("\n", $lines));
     }
 }

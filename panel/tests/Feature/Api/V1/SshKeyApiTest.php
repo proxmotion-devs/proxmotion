@@ -69,6 +69,20 @@ class SshKeyApiTest extends ApiTestCase
         $this->api('GET', $this->url())->assertJsonPath('data.ssh_keys', []);
     }
 
+    public function test_a_reinstall_keeps_the_keys_unless_it_sends_its_own()
+    {
+        $template = $this->server->osTemplate->uuid;
+
+        $this->api('POST', "/api/v1/servers/{$this->server->uuid}/reinstall", ['os_template' => $template])->assertAccepted();
+        $this->assertSame(PublicKeyTest::ED25519, $this->server->refresh()->ssh_keys);
+
+        $this->api('POST', "/api/v1/servers/{$this->server->uuid}/reinstall", ['os_template' => $template, 'ssh_keys' => [PublicKeyTest::RSA]])->assertAccepted();
+        $this->assertSame(PublicKeyTest::RSA, $this->server->refresh()->ssh_keys);
+
+        $this->api('POST', "/api/v1/servers/{$this->server->uuid}/reinstall", ['os_template' => $template, 'ssh_keys' => []])->assertAccepted();
+        $this->assertNull($this->server->refresh()->ssh_keys);
+    }
+
     public function test_invalid_keys_and_missing_lists_are_refused()
     {
         $this->api('PUT', $this->url(), [])->assertUnprocessable()->assertJsonValidationErrors('ssh_keys');

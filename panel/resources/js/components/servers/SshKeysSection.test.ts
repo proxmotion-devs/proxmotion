@@ -3,9 +3,11 @@ import { beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 import SshKeysSection from '@/components/servers/SshKeysSection.vue';
 import type { ServerSshKeys, SshKey } from '@/types/admin';
 
-const { submit, submitted } = vi.hoisted(() => ({
+const { submit, submitted, failWith } = vi.hoisted(() => ({
     submit: vi.fn(),
     submitted: { value: null as Record<string, unknown> | null },
+    // Errors the next submit answers with instead of succeeding.
+    failWith: { value: null as Record<string, string> | null },
 }));
 
 vi.mock('@inertiajs/vue3', async () => {
@@ -17,10 +19,21 @@ vi.mock('@inertiajs/vue3', async () => {
                 ...data,
                 errors: {},
                 processing: false,
-                clearErrors: () => undefined,
-                submit: (...args: unknown[]) => {
+                clearErrors: () => {
+                    form.errors = {};
+                },
+                submit: (
+                    route: unknown,
+                    options: { onSuccess?: () => void } = {},
+                ) => {
                     submitted.value = { ...form };
-                    submit(...args);
+                    submit(route, options);
+
+                    if (failWith.value) {
+                        form.errors = failWith.value;
+                    } else {
+                        options.onSuccess?.();
+                    }
                 },
             });
 
@@ -71,6 +84,7 @@ describe('SshKeysSection', () => {
     beforeEach(() => {
         submit.mockClear();
         submitted.value = null;
+        failWith.value = null;
     });
 
     it('lists the keys in a table with readable types', () => {
@@ -163,5 +177,27 @@ describe('SshKeysSection', () => {
         expect(
             full.find('[data-test="add-ssh-key"]').attributes('disabled'),
         ).toBeDefined();
+    });
+
+    it('keeps the delete dialog with the error when the panel refuses', async () => {
+        failWith.value = { 'ssh_keys.1': 'Unsupported SSH key type.' };
+        const wrapper = mountSection([key(1), key(2), key(3)]);
+
+        await wrapper
+            .findAll('[data-test="delete-ssh-key"]')[0]
+            .trigger('click');
+        const dialog = wrapper.find('form[data-dialog="Delete SSH key"]');
+        await dialog.trigger('submit');
+
+        expect(dialog.text()).toContain('SHA256:key1');
+        expect(dialog.text()).toContain('Unsupported SSH key type.');
+    });
+
+    it('offers copying only where the browser has a clipboard', () => {
+        expect(
+            mountSection([key(1)])
+                .find('[aria-label="Copy public key"]')
+                .exists(),
+        ).toBe(navigator.clipboard !== undefined);
     });
 });

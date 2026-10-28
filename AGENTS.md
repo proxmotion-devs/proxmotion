@@ -324,7 +324,7 @@ The API is the only way customers' actions reach the panel (ADR 0007). Every cus
 | `POST /servers/{id}/hostname` | Rename: panel and PTRs equal to the old name at once, inside the guest by the `hostname_changed` script; Windows at the next restart unless `reboot`; the Proxmox VM name stays (ADR 0012) |
 | `POST /servers/{id}/primary-address` | Make an additional address (swap) or a free pool address (old primary released) the primary; applied in the guest, `ipconfig0` untouched (ADR 0011) |
 | `POST /servers/{id}/power` | `start|shutdown|stop|reboot` |
-| `POST /servers/{id}/reinstall` | Reinstall OS (SSH keys, optionally `app` + `app_inputs`; a paid app needs an entitlement); `409` `reinstall_limit_reached` with `available_at` over the package's or server's reinstall limit (ADR 0045) |
+| `POST /servers/{id}/reinstall` | Reinstall OS (SSH keys: without `ssh_keys` the server keeps its keys, `[]` removes them, ADR 0049; optionally `app` + `app_inputs`; a paid app needs an entitlement); `409` `reinstall_limit_reached` with `available_at` over the package's or server's reinstall limit (ADR 0045) |
 | `POST /servers/{id}/password` | Reset root password (task): to `root_password` chosen in the billing system, or random |
 | `GET /servers/{id}/password` | The initial or new root password, once (`root_password_unrevealed`), then `410` — `servers:secrets` |
 | `POST /servers/{id}/console` | Signed, single-use console link (≤60 s to open) for the module to open in the customer's browser — `servers:secrets` |

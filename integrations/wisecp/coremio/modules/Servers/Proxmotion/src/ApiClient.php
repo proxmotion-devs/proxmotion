@@ -166,16 +166,15 @@ final class ApiClient
     }
 
     /**
-     * @param list<string> $sshKeys
+     * @param list<string>|null $sshKeys the new system's keys; null keeps the server's keys (ADR 0049 in the Proxmotion repository)
      * @param string|null $app an app installed on the new system with its defaults (ADR 0016 §5 in the Proxmotion repository)
      * @return array<string, mixed> the queued task
      */
-    public function reinstall(string $id, string $osTemplate, array $sshKeys, ?string $app = null): array
+    public function reinstall(string $id, string $osTemplate, ?array $sshKeys, ?string $app = null): array
     {
-        return $this->dataOf($this->request('POST', '/servers/' . rawurlencode($id) . '/reinstall', [
-            'os_template' => $osTemplate,
-            'ssh_keys' => $sshKeys,
-        ] + ($app === null ? [] : ['app' => $app])));
+        return $this->dataOf($this->request('POST', '/servers/' . rawurlencode($id) . '/reinstall', ['os_template' => $osTemplate]
+            + ($sshKeys === null ? [] : ['ssh_keys' => $sshKeys])
+            + ($app === null ? [] : ['app' => $app])));
     }
 
     /**

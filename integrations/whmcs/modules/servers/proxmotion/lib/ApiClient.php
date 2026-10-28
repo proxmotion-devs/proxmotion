@@ -185,16 +185,17 @@ class ApiClient
     }
 
     /**
-     * @param list<string> $sshKeys
+     * @param list<string>|null $sshKeys the new system's keys; null keeps the server's keys (docs/adr/0049)
      * @param string|null $app an app installed on the new system (docs/adr/0016 §5), with its defaults
      * @return array<string, mixed> the queued task
      */
-    public function reinstall(string $id, string $osTemplate, array $sshKeys, ?string $app = null): array
+    public function reinstall(string $id, string $osTemplate, ?array $sshKeys, ?string $app = null): array
     {
-        $body = [
-            'os_template' => $osTemplate,
-            'ssh_keys' => $sshKeys,
-        ];
+        $body = ['os_template' => $osTemplate];
+
+        if ($sshKeys !== null) {
+            $body['ssh_keys'] = $sshKeys;
+        }
 
         if ($app !== null) {
             $body['app'] = $app;

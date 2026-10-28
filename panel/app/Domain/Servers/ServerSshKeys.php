@@ -14,6 +14,7 @@ use App\Models\User;
 use App\Provisioning\Exceptions\ProvisioningException;
 use App\Provisioning\TaskRunner;
 use App\Support\Ssh\PublicKey;
+use InvalidArgumentException;
 
 /**
  * The public SSH keys the panel manages on a running server (docs/adr/0049):
@@ -29,11 +30,57 @@ final readonly class ServerSshKeys
     public function __construct(private TaskRunner $tasks) {}
 
     /**
+     * The server's keys. A stored line today's rules refuse (e.g. after a
+     * stricter minimum) is left out here instead of breaking every page and
+     * API answer that lists the keys; removedLines() still takes it away.
+     *
      * @return list<PublicKey>
      */
     public static function of(Server $server): array
     {
-        return PublicKey::parseMany((string) $server->ssh_keys);
+        return self::parse(self::lines($server));
+    }
+
+    /**
+     * The stored authorized_keys lines as they are.
+     *
+     * @return list<string>
+     */
+    private static function lines(Server $server): array
+    {
+        return array_values(array_filter(array_map(trim(...), preg_split('/\R/', (string) $server->ssh_keys) ?: []), fn (string $line) => $line !== ''));
+    }
+
+    /**
+     * @param  list<mixed>  $lines
+     * @return list<PublicKey>
+     */
+    private static function parse(array $lines): array
+    {
+        $keys = [];
+
+        foreach ($lines as $line) {
+            try {
+                $key = is_string($line) ? PublicKey::parse($line) : null;
+            } catch (InvalidArgumentException) {
+                continue;
+            }
+
+            if ($key !== null) {
+                $keys[$key->fingerprint()] ??= $key;
+            }
+        }
+
+        return array_values($keys);
+    }
+
+    /**
+     * The base64 key of an authorized_keys line ("type key comment"), which
+     * the guest scripts compare.
+     */
+    private static function blob(string $line): string
+    {
+        return preg_split('/\s+/', trim($line))[1] ?? '';
     }
 
     /**
@@ -61,27 +108,28 @@ final readonly class ServerSshKeys
             return self::of($server);
         }
 
-        $lines = is_array($task->input['ssh_keys'] ?? null) ? $task->input['ssh_keys'] : [];
-
-        return PublicKey::parseMany(implode("\n", array_filter($lines, is_string(...))));
+        return self::parse(array_values(is_array($task->input['ssh_keys'] ?? null) ? $task->input['ssh_keys'] : []));
     }
 
     /**
-     * The server's keys the task's change takes away: recorded on the task
-     * when it starts (SshKeysPipeline), since the server's list changes once
-     * the script succeeded and custom scripts run after that.
+     * The stored lines the task's change takes away, also lines that no
+     * longer parse: recorded on the task when it starts (SshKeysPipeline),
+     * since the server's list changes once the script succeeded and custom
+     * scripts run after that.
      *
-     * @return list<PublicKey>
+     * @return list<string>
      */
-    public static function removed(Server $server, ?Task $task): array
+    public static function removedLines(Server $server, ?Task $task): array
     {
         $recorded = $task?->type === TaskType::ChangeSshKeys ? ($task->input['removed_ssh_keys'] ?? null) : null;
 
         if (is_array($recorded)) {
-            return PublicKey::parseMany(implode("\n", array_filter($recorded, is_string(...))));
+            return array_values(array_filter($recorded, is_string(...)));
         }
 
-        return self::without(self::of($server), self::wanted($server, $task));
+        $kept = array_map(fn (PublicKey $key) => self::blob($key->toString()), self::wanted($server, $task));
+
+        return array_values(array_filter(self::lines($server), fn (string $line) => ! in_array(self::blob($line), $kept, true)));
     }
 
     /**

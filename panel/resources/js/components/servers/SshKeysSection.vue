@@ -12,6 +12,7 @@ import {
 import { computed, ref } from 'vue';
 import FormDialog from '@/components/admin/FormDialog.vue';
 import FormField from '@/components/admin/FormField.vue';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { sshKeys as sshKeysRoute } from '@/routes/admin/servers';
@@ -96,6 +97,11 @@ const deleteOpen = computed({
     },
 });
 
+const startDelete = (key: SshKey) => {
+    form.clearErrors();
+    deleting.value = key;
+};
+
 const remove = () => {
     const key = deleting.value;
 
@@ -108,9 +114,27 @@ const remove = () => {
         .map((other) => other.public_key);
     form.submit(sshKeysRoute(props.server), {
         preserveScroll: true,
-        onFinish: () => (deleting.value = null),
+        // On an error the dialog stays open and shows it.
+        onSuccess: () => (deleting.value = null),
     });
 };
+
+// The panel's refusal: about the list, or about one of its keys (ssh_keys.N).
+const error = computed(() => {
+    const errors = form.errors as Record<string, string>;
+
+    return (
+        errors.ssh_keys ??
+        Object.entries(errors).find(([field]) =>
+            field.startsWith('ssh_keys.'),
+        )?.[1] ??
+        null
+    );
+});
+
+// Browsers offer the clipboard only on HTTPS (and localhost).
+const canCopy =
+    typeof navigator !== 'undefined' && navigator.clipboard !== undefined;
 
 // The fingerprint of the key just copied, for a moment.
 const copied = ref<string | null>(null);
@@ -138,12 +162,13 @@ const copy = async (key: SshKey) => {
             <h3 class="flex items-center gap-2 font-medium">
                 <KeyRound class="h-4 w-4" />
                 {{ $t('SSH keys') }}
-                <span
-                    class="rounded-full bg-muted px-2 py-0.5 text-xs font-normal text-muted-foreground"
+                <Badge
+                    variant="secondary"
+                    class="font-normal"
                     data-test="ssh-key-count"
                 >
                     {{ keys.length }} / {{ sshKeys.max }}
-                </span>
+                </Badge>
             </h3>
             <Button
                 size="sm"
@@ -175,8 +200,12 @@ const copy = async (key: SshKey) => {
                 )
             }}
         </p>
-        <p v-if="form.errors.ssh_keys" class="text-sm text-destructive">
-            {{ form.errors.ssh_keys }}
+        <p
+            v-if="error && !adding && !deleting"
+            class="text-sm text-destructive"
+            data-test="ssh-keys-error"
+        >
+            {{ error }}
         </p>
 
         <div v-if="keys.length >= FILTER_FROM" class="relative w-full max-w-xs">
@@ -231,11 +260,9 @@ const copy = async (key: SshKey) => {
                             }}</span>
                         </td>
                         <td class="px-2 py-2">
-                            <span
-                                class="inline-flex items-center rounded-md border px-1.5 py-0.5 text-xs font-medium"
-                                :title="key.type"
-                                >{{ typeOf(key).name }}</span
-                            >
+                            <Badge variant="outline" :title="key.type">{{
+                                typeOf(key).name
+                            }}</Badge>
                             <span
                                 v-if="typeOf(key).securityKey"
                                 class="ml-1 text-xs text-muted-foreground"
@@ -252,6 +279,7 @@ const copy = async (key: SshKey) => {
                         <td class="px-2 py-2">
                             <div class="flex justify-end gap-1">
                                 <Button
+                                    v-if="canCopy"
                                     variant="ghost"
                                     size="icon"
                                     class="h-8 w-8"
@@ -285,7 +313,7 @@ const copy = async (key: SshKey) => {
                                         })
                                     "
                                     data-test="delete-ssh-key"
-                                    @click="deleting = key"
+                                    @click="startDelete(key)"
                                 >
                                     <Trash2 class="h-4 w-4" />
                                 </Button>
@@ -326,7 +354,7 @@ const copy = async (key: SshKey) => {
         <FormDialog
             v-model:open="adding"
             title="Add SSH key"
-            description="One public key per line. The server can have at most 20 keys."
+            description="One public key per line."
             submit-label="Add"
             :processing="form.processing"
             @submit="add"
@@ -334,11 +362,7 @@ const copy = async (key: SshKey) => {
             <FormField
                 label="SSH public keys"
                 for="new_ssh_keys"
-                :error="
-                    (form.errors as Record<string, string>)[
-                        `ssh_keys.${keys.length}`
-                    ] ?? form.errors.ssh_keys
-                "
+                :error="error ?? undefined"
             >
                 <textarea
                     id="new_ssh_keys"
@@ -349,6 +373,13 @@ const copy = async (key: SshKey) => {
                     placeholder="ssh-ed25519 AAAA… user@host"
                 />
             </FormField>
+            <p class="text-xs text-muted-foreground">
+                {{
+                    $t('The server can have at most :count keys.', {
+                        count: String(sshKeys.max),
+                    })
+                }}
+            </p>
         </FormDialog>
 
         <FormDialog
@@ -367,6 +398,7 @@ const copy = async (key: SshKey) => {
                     {{ deleting.fingerprint }}
                 </dd>
             </dl>
+            <p v-if="error" class="text-sm text-destructive">{{ error }}</p>
         </FormDialog>
     </section>
 </template>

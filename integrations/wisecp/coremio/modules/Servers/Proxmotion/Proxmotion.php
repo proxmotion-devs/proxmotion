@@ -656,7 +656,8 @@ class Proxmotion extends ServerModule
             throw new Exception($this->text('unknown_os_template'));
         }
 
-        $this->api->reinstall($id, $osTemplate, [], $app === null || $app === '' ? null : $app);
+        // The new system keeps the server's SSH keys (ADR 0049).
+        $this->api->reinstall($id, $osTemplate, null, $app === null || $app === '' ? null : $app);
 
         return ['status' => 'successful', 'message' => $this->text('reinstall_started'), 'successToast' => true];
     }
@@ -962,7 +963,8 @@ class Proxmotion extends ServerModule
                 'type' => $key['type'],
                 'comment' => $key['comment'],
             ], $keys),
-            'full' => count($keys) >= (is_int($data['max_keys'] ?? null) ? $data['max_keys'] : 20),
+            // Proxmotion's limit; without one the form stays and Proxmotion refuses what is too many.
+            'full' => is_int($data['max_keys'] ?? null) && count($keys) >= $data['max_keys'],
         ];
     }
 

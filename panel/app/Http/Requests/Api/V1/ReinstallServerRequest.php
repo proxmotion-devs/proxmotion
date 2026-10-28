@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Requests\Api\V1;
 
 use App\Domain\Servers\ServerReinstaller;
+use App\Domain\Servers\ServerSshKeys;
 use App\Models\AppRecipe;
 use App\Models\OsTemplate;
 use App\Models\Server;
@@ -16,7 +17,7 @@ use Illuminate\Validation\Rule;
 
 /**
  * POST /api/v1/servers/{id}/reinstall: an OS template the server can use
- * and optional public SSH keys, optionally an app installed on the new
+ * and optionally public SSH keys (else it keeps its own), optionally an app installed on the new
  * system (docs/adr/0016 §5). The billing module asks the customer to
  * confirm; the panel's hostname confirmation is for its own admin form.
  */
@@ -32,7 +33,8 @@ class ReinstallServerRequest extends FormRequest
 
         return [
             'os_template' => ['required', 'string', Rule::in($eligible)],
-            'ssh_keys' => ['nullable', 'array', 'max:20'],
+            // Left out: the server keeps its keys; an empty list removes them (docs/adr/0049 §9).
+            'ssh_keys' => ['nullable', 'array', 'max:'.ServerSshKeys::MAX_KEYS],
             'ssh_keys.*' => ['string', 'max:16384', new SshPublicKeys],
             // An app installed once the new system has booted (docs/adr/0016 §5); checked by the reinstaller.
             'app' => ['nullable', 'string', Rule::exists('app_recipes', 'slug')],
@@ -59,10 +61,19 @@ class ReinstallServerRequest extends FormRequest
     }
 
     /**
+     * The keys of the new system: those sent, or without ssh_keys the
+     * server's current keys (docs/adr/0049 §9); an empty list clears them.
+     *
      * @return list<PublicKey>
      */
     public function sshKeys(): array
     {
+        $server = $this->route('server');
+
+        if ($this->input('ssh_keys') === null && $server instanceof Server) {
+            return ServerSshKeys::of($server);
+        }
+
         $keys = [];
 
         foreach ((array) $this->input('ssh_keys', []) as $line) {
