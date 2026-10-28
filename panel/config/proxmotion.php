@@ -188,6 +188,21 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | SSH keys of a server (docs/adr/0049)
+    |--------------------------------------------------------------------------
+    |
+    | How many public SSH keys a server may have (1–100), when it is created
+    | or reinstalled and on its SSH keys tab, through the API too. Together
+    | they may be at most 20 KB, so the guest agent can write them at once.
+    |
+    */
+
+    'ssh_keys' => [
+        'max' => (int) env('PROXMOTION_SSH_KEYS_MAX', 20),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Email notifications (docs/adr/0044)
     |--------------------------------------------------------------------------
     |

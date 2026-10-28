@@ -82,6 +82,7 @@ const form = useForm({
     password_characters: props.settings.password_characters,
     password_prefix: props.settings.password_prefix ?? '',
     password_suffix: props.settings.password_suffix ?? '',
+    ssh_keys_max: props.settings.ssh_keys_max,
     notifications_enabled: props.settings.notifications_enabled,
     notification_recipients: props.settings.notification_recipients.join('\n'),
     notification_throttle_minutes: props.settings.notification_throttle_minutes,
@@ -313,6 +314,30 @@ const sectionClass = 'flex flex-col gap-4 rounded-xl border p-4';
                         )
                     }}
                 </p>
+            </section>
+
+            <section :class="sectionClass" data-test="settings-ssh-keys">
+                <Heading
+                    variant="small"
+                    title="SSH keys"
+                    description="Keys that can log in as root (Administrator on Windows), given when a server is created or reinstalled and changed on its SSH keys tab, also through billing systems."
+                />
+                <div class="grid gap-4 sm:grid-cols-2">
+                    <FormField
+                        label="Most keys per server"
+                        for="ssh_keys_max"
+                        :error="form.errors.ssh_keys_max"
+                        hint="1 to 100. Together the keys may be at most 20 KB, so the guest agent can write them at once. Servers keep the keys they have when this is lowered."
+                    >
+                        <Input
+                            id="ssh_keys_max"
+                            v-model.number="form.ssh_keys_max"
+                            type="number"
+                            min="1"
+                            max="100"
+                        />
+                    </FormField>
+                </div>
             </section>
 
             <section :class="sectionClass" data-test="settings-moves">

@@ -3,6 +3,7 @@
 namespace Tests\Feature\Servers;
 
 use App\Domain\Servers\ServerSshKeys;
+use App\Domain\Settings\PanelSettings;
 use App\Enums\ServerStatus;
 use App\Enums\TaskStatus;
 use App\Enums\TaskType;
@@ -158,6 +159,41 @@ class SshKeysTest extends TestCase
         $this->assertSame(file_get_contents(resource_path('guest/linux/ssh-keys.sh')), $this->proxmox->guestFiles[$this->server->vmid][self::SCRIPT]);
     }
 
+    public function test_the_limit_comes_from_panel_settings_everywhere_keys_are_given()
+    {
+        PanelSettings::save(['ssh_keys_max' => 2]);
+        $three = [PublicKeyTest::ED25519, PublicKeyTest::RSA, PublicKeyTest::ECDSA];
+
+        $this->actingAs($this->admin)->get(route('admin.servers.show', $this->server))
+            ->assertInertia(fn (Assert $page) => $page->where('sshKeys.max', 2));
+
+        $this->actingAs($this->admin)->put(route('admin.servers.ssh-keys', $this->server), ['ssh_keys' => $three])
+            ->assertSessionHasErrors(['ssh_keys' => 'A server can have at most 2 SSH keys.']);
+        $this->actingAs($this->admin)->post(route('admin.servers.reinstall', $this->server), [
+            'os_template' => $this->osTemplate->uuid,
+            'ssh_keys' => implode("\n", $three),
+            'confirm_hostname' => $this->server->hostname,
+        ])->assertSessionHasErrors('ssh_keys');
+
+        $this->assertSame(PublicKeyTest::ED25519, $this->server->refresh()->ssh_keys);
+        $this->assertSame(0, $this->server->tasks()->whereIn('type', [TaskType::ChangeSshKeys, TaskType::Reinstall])->count());
+    }
+
+    public function test_the_keys_together_stay_small_enough_for_the_guest_agent()
+    {
+        PanelSettings::save(['ssh_keys_max' => 100]);
+
+        // 70 keys with long comments: about 23 KB.
+        $keys = self::distinctKeys(70, 250);
+
+        $this->actingAs($this->admin)->put(route('admin.servers.ssh-keys', $this->server), ['ssh_keys' => $keys])
+            ->assertSessionHasErrors(['ssh_keys' => 'The SSH keys are too long together: at most 20 KB.']);
+
+        $this->actingAs($this->admin)->put(route('admin.servers.ssh-keys', $this->server), ['ssh_keys' => array_slice($keys, 0, 50)])
+            ->assertSessionHasNoErrors();
+        $this->assertCount(50, ServerSshKeys::of($this->server->refresh()));
+    }
+
     public function test_a_trial_run_writes_the_server_s_keys_and_removes_none()
     {
         $this->actingAs($this->admin)
@@ -263,17 +299,31 @@ class SshKeysTest extends TestCase
         $this->assertCount(3, ServerSshKeys::of($this->server->refresh()));
     }
 
-    public function test_a_server_has_at_most_twenty_keys()
+    public function test_a_server_has_at_most_twenty_keys_by_default()
     {
         $this->actingAs($this->admin)->put(route('admin.servers.ssh-keys', $this->server), [
-            'ssh_keys' => array_fill(0, 21, PublicKeyTest::RSA),
-        ])->assertSessionHasErrors('ssh_keys');
+            'ssh_keys' => self::distinctKeys(21),
+        ])->assertSessionHasErrors(['ssh_keys' => 'A server can have at most 20 SSH keys.']);
 
         // Duplicates collapse before the count.
         $this->actingAs($this->admin)->put(route('admin.servers.ssh-keys', $this->server), [
-            'ssh_keys' => array_fill(0, 20, PublicKeyTest::RSA),
+            'ssh_keys' => array_fill(0, 21, PublicKeyTest::RSA),
         ])->assertSessionHasNoErrors();
 
         $this->assertSame(PublicKeyTest::RSA, $this->server->refresh()->ssh_keys);
+    }
+
+    /**
+     * Distinct ed25519 keys (random, never used to log in), with a comment
+     * padded to $comment characters.
+     *
+     * @return list<string>
+     */
+    public static function distinctKeys(int $count, int $comment = 20): array
+    {
+        return array_map(
+            fn (int $i) => 'ssh-ed25519 '.base64_encode(pack('N', 11).'ssh-ed25519'.pack('N', 32).random_bytes(32)).' '.str_pad("key{$i}@", $comment, 'x'),
+            range(1, $count),
+        );
     }
 }

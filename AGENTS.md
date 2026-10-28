@@ -331,7 +331,7 @@ The API is the only way customers' actions reach the panel (ADR 0007). Every cus
 | `POST /servers/{id}/rdns` | Set or remove the PTR of one of the server's addresses |
 | `GET /servers/{id}/firewall`, `PUT /servers/{id}/firewall` | The firewall (`default_policy` accept/drop, inbound rules, app ports) / set the policy and replace the rules → `202` + `apply_firewall` task (ADR 0035) |
 | `POST /servers/{id}/firewall/ruleset` | Apply a rule set: its rules and policy (`replace`) or its rules after the server's (`append`) → `202` |
-| `GET /servers/{id}/ssh-keys`, `PUT /servers/{id}/ssh-keys` | The SSH keys the panel manages on the server / replace the whole list (at most 20; active servers) → `202` + `change_ssh_keys` task; the list changes once the guest script succeeded (ADR 0049) |
+| `GET /servers/{id}/ssh-keys`, `PUT /servers/{id}/ssh-keys` | The SSH keys the panel manages on the server / replace the whole list (at most `max_keys`, *Panel settings*, 20 by default, 20 KB together; active servers) → `202` + `change_ssh_keys` task; the list changes once the guest script succeeded (ADR 0049) |
 | `GET /servers/{id}/usage` | Traffic and resource usage — Phase 6 |
 | `GET /packages`, `/locations`, `/os-templates`, `/firewall-rulesets` | Options for the billing side (`generates_hostnames` per location, ADR 0031; active firewall rule sets, ADR 0035; `os-templates?package=` or `?server=` for the templates a package or server may use, ADR 0040) |
 | `GET /apps?os_template=&package=&server=&mode=` | Apps eligible for the given OS, package or server (`catalog:read`); `mode=order` for apps that can come with a new system; paid apps are listed, with `server` also `entitled` |

@@ -20,6 +20,7 @@ use App\Provisioning\ResourceLimits;
 use App\Provisioning\ServerCreator;
 use App\Provisioning\ServerSpec;
 use App\Rules\Hostname;
+use App\Rules\SshKeyLimit;
 use App\Rules\SshPublicKeys;
 use App\Support\Ssh\PublicKey;
 use Illuminate\Contracts\Validation\ValidationRule;
@@ -77,7 +78,7 @@ class ServerRequest extends FormRequest
             'ipv4_addresses.*' => ['ipv4', 'distinct'],
             // Empty: a random password is generated.
             'root_password' => ['nullable', 'string', 'min:12', 'max:128'],
-            'ssh_keys' => ['nullable', 'string', 'max:16384', new SshPublicKeys],
+            'ssh_keys' => ['nullable', 'string', 'max:16384', new SshPublicKeys, new SshKeyLimit],
             // An app installed once the server has booted (docs/adr/0016 §5); checked by the creator.
             'app' => ['nullable', 'string', Rule::exists('app_recipes', 'slug')],
             'app_inputs' => ['nullable', 'array'],

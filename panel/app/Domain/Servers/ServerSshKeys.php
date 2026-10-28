@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Domain\Servers;
 
+use App\Domain\Settings\PanelSettings;
 use App\Enums\ServerStatus;
 use App\Enums\TaskType;
 use App\Models\ApiToken;
@@ -25,9 +26,48 @@ use InvalidArgumentException;
  */
 final readonly class ServerSshKeys
 {
-    public const MAX_KEYS = 20;
+    /** The highest key limit Panel settings accept. */
+    public const int CEILING = 100;
+
+    /**
+     * The keys of a server together, as normalized lines. A change writes
+     * them and the keys it removes (at most as many bytes again) in one
+     * input file, and the guest agent writes at most
+     * GuestAgentResource::MAX_WRITE_BYTES at once.
+     */
+    public const int MAX_BYTES = 20000;
 
     public function __construct(private TaskRunner $tasks) {}
+
+    /**
+     * How many keys a server may have (Panel settings, docs/adr/0049 §12).
+     */
+    public static function max(): int
+    {
+        $max = PanelSettings::get('ssh_keys_max');
+
+        return is_numeric($max) ? max(1, min(self::CEILING, (int) $max)) : 20;
+    }
+
+    /**
+     * Why these keys cannot be a server's keys, translated, or null.
+     *
+     * @param  list<PublicKey>  $keys
+     */
+    public static function problem(array $keys): ?string
+    {
+        if (count($keys) > self::max()) {
+            return __('A server can have at most :count SSH keys.', ['count' => self::max()]);
+        }
+
+        $bytes = array_sum(array_map(fn (PublicKey $key) => strlen($key->toString()) + 1, $keys));
+
+        if ($bytes > self::MAX_BYTES) {
+            return __('The SSH keys are too long together: at most :size KB.', ['size' => intdiv(self::MAX_BYTES, 1000)]);
+        }
+
+        return null;
+    }
 
     /**
      * The server's keys. A stored line today's rules refuse (e.g. after a
@@ -150,7 +190,7 @@ final readonly class ServerSshKeys
      * Queue a change to exactly these keys. Sending the server's own list
      * again runs the script again, e.g. after a failed change.
      *
-     * @param  list<PublicKey>  $keys  validated, at most MAX_KEYS
+     * @param  list<PublicKey>  $keys  validated, within problem()
      *
      * @throws ProvisioningException
      */

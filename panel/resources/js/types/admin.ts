@@ -43,6 +43,8 @@ export type PanelSettings = {
     password_characters: 'lower' | 'mixed' | 'symbols';
     password_prefix: string | null;
     password_suffix: string | null;
+    /** docs/adr/0049 */
+    ssh_keys_max: number;
     notifications_enabled: boolean;
     notification_recipients: string[];
     notification_throttle_minutes: number;

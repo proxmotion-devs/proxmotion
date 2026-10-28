@@ -9,6 +9,7 @@ use App\Domain\Servers\ServerSshKeys;
 use App\Models\AppRecipe;
 use App\Models\OsTemplate;
 use App\Models\Server;
+use App\Rules\SshKeyLimit;
 use App\Rules\SshPublicKeys;
 use App\Support\Ssh\PublicKey;
 use Illuminate\Contracts\Validation\ValidationRule;
@@ -34,7 +35,7 @@ class ReinstallServerRequest extends FormRequest
         return [
             'os_template' => ['required', 'string', Rule::in($eligible)],
             // Left out: the server keeps its keys; an empty list removes them (docs/adr/0049 §9).
-            'ssh_keys' => ['nullable', 'array', 'max:'.ServerSshKeys::MAX_KEYS],
+            'ssh_keys' => ['nullable', 'array', 'max:'.ServerSshKeys::CEILING, new SshKeyLimit],
             'ssh_keys.*' => ['string', 'max:16384', new SshPublicKeys],
             // An app installed once the new system has booted (docs/adr/0016 §5); checked by the reinstaller.
             'app' => ['nullable', 'string', Rule::exists('app_recipes', 'slug')],

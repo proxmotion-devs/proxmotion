@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Requests\Admin;
 
 use App\Domain\Servers\PasswordGenerator;
+use App\Domain\Servers\ServerSshKeys;
 use App\Domain\Settings\PanelSettings;
 use App\Rules\Hostname;
 use App\Rules\NetworkList;
@@ -64,6 +65,8 @@ class PanelSettingsRequest extends FormRequest
             'password_characters' => ['required', 'string', 'in:lower,mixed,symbols'],
             'password_prefix' => ['nullable', 'string', 'max:32', Rule::regex('/^[A-Za-z0-9!@#%+=.,:_-]+$/')],
             'password_suffix' => ['nullable', 'string', 'max:32', Rule::regex('/^[A-Za-z0-9!@#%+=.,:_-]+$/')],
+            // SSH keys per server (docs/adr/0049 §12); servers keep what they have when it is lowered.
+            'ssh_keys_max' => ['required', 'integer', 'min:1', 'max:'.ServerSshKeys::CEILING],
             // Email notifications (docs/adr/0044): recipients one per line or comma-separated.
             'notifications_enabled' => ['required', 'boolean'],
             'notification_recipients' => ['nullable', 'string', 'max:2550', function (string $attribute, mixed $value, Closure $fail) {
@@ -165,6 +168,7 @@ class PanelSettingsRequest extends FormRequest
             'password_characters' => fn () => (string) $data['password_characters'],
             'password_prefix' => fn () => $optionalString('password_prefix'),
             'password_suffix' => fn () => $optionalString('password_suffix'),
+            'ssh_keys_max' => fn () => (int) $data['ssh_keys_max'],
             'notifications_enabled' => fn () => (bool) $data['notifications_enabled'],
             'notification_recipients' => fn () => self::addresses((string) ($data['notification_recipients'] ?? '')),
             'notification_throttle_minutes' => fn () => (int) $data['notification_throttle_minutes'],

@@ -2485,5 +2485,9 @@
     "Its line has options (e.g. command=); they stay while the panel manages the key.": "Satırında seçenekler var (ör. command=); panel anahtarı yönetirken bunlar kalır.",
     "The panel lists the key and can delete it; nothing changes in the server.": "Panel anahtarı listeler ve silebilir; sunucuda hiçbir şey değişmez.",
     "Every key inside the server is one the panel manages.": "Sunucunun içindeki her anahtarı panel yönetiyor.",
-    ":count other key lines the panel cannot manage (e.g. DSA or short RSA keys) stay as they are.": "Panelin yönetemediği :count diğer anahtar satırı (ör. DSA veya kısa RSA anahtarları) olduğu gibi kalır."
+    ":count other key lines the panel cannot manage (e.g. DSA or short RSA keys) stay as they are.": "Panelin yönetemediği :count diğer anahtar satırı (ör. DSA veya kısa RSA anahtarları) olduğu gibi kalır.",
+    "The SSH keys are too long together: at most :size KB.": "SSH anahtarları toplamda çok uzun: en fazla :size KB.",
+    "Keys that can log in as root (Administrator on Windows), given when a server is created or reinstalled and changed on its SSH keys tab, also through billing systems.": "root (Windows'ta Administrator) olarak giriş yapabilen anahtarlar; sunucu oluşturulurken veya yeniden kurulurken verilir ve SSH anahtarları sekmesinde, billing sistemleri üzerinden de değiştirilir.",
+    "Most keys per server": "Sunucu başına en fazla anahtar",
+    "1 to 100. Together the keys may be at most 20 KB, so the guest agent can write them at once. Servers keep the keys they have when this is lowered.": "1 ile 100 arası. Guest agent hepsini tek seferde yazabilsin diye anahtarlar toplamda en fazla 20 KB olabilir. Bu değer düşürüldüğünde sunucular mevcut anahtarlarını korur."
 }

@@ -733,7 +733,7 @@ paths:
                     required: [ssh_keys, max_keys]
                     properties:
                       ssh_keys: { type: array, items: { $ref: '#/components/schemas/SshKey' } }
-                      max_keys: { type: integer, description: How many keys a server can have. }
+                      max_keys: { type: integer, description: "How many keys a server can have (Panel settings, 1–100, 20 by default)." }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
@@ -759,8 +759,8 @@ paths:
               properties:
                 ssh_keys:
                   type: array
-                  maxItems: 20
-                  description: OpenSSH public keys (ed25519, ECDSA or RSA of 2048 bits or more); duplicates are dropped.
+                  maxItems: 100
+                  description: 'OpenSSH public keys (ed25519, ECDSA or RSA of 2048 bits or more); duplicates are dropped. At most `max_keys` keys (set on the panel''s Panel settings, 20 by default) of at most 20 KB together.'
                   items: { type: string, maxLength: 16384, examples: ['ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI... user@example.com'] }
       responses:
         '202': { $ref: '#/components/responses/TaskAccepted' }
@@ -1368,9 +1368,9 @@ components:
       enum: [pending, provisioning, active, suspended, reinstalling, terminating, terminated, error]
     SshKeys:
       type: array
-      maxItems: 20
+      maxItems: 100
       items: { type: string, maxLength: 16384 }
-      description: OpenSSH public keys (ed25519, ECDSA, RSA ≥ 2048 bits; no DSA). An item may hold several lines.
+      description: 'OpenSSH public keys (ed25519, ECDSA, RSA ≥ 2048 bits; no DSA). An item may hold several lines. At most as many keys as `max_keys` of `GET /servers/{server}/ssh-keys` (Panel settings, 20 by default), of at most 20 KB together.'
     Package:
       type: object
       required: [id, name, cpu_cores, memory_mib, disk_mib, ipv4_count, ipv6_count, port_speed_mbps, traffic_bytes, network_models]

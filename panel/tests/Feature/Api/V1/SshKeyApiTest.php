@@ -2,12 +2,14 @@
 
 namespace Tests\Feature\Api\V1;
 
+use App\Domain\Settings\PanelSettings;
 use App\Enums\ServerStatus;
 use App\Enums\TaskStatus;
 use App\Models\AuditLog;
 use App\Models\Server;
 use App\Models\Task;
 use App\Support\Ssh\PublicKey;
+use Tests\Feature\Servers\SshKeysTest;
 use Tests\Unit\PublicKeyTest;
 
 /**
@@ -87,9 +89,27 @@ class SshKeyApiTest extends ApiTestCase
     {
         $this->api('PUT', $this->url(), [])->assertUnprocessable()->assertJsonValidationErrors('ssh_keys');
         $this->api('PUT', $this->url(), ['ssh_keys' => ['not a key']])->assertUnprocessable()->assertJsonValidationErrors('ssh_keys.0');
-        $this->api('PUT', $this->url(), ['ssh_keys' => array_fill(0, 21, PublicKeyTest::RSA)])->assertUnprocessable();
+        $this->api('PUT', $this->url(), ['ssh_keys' => SshKeysTest::distinctKeys(21)])->assertUnprocessable();
 
         $this->assertSame(PublicKeyTest::ED25519, $this->server->refresh()->ssh_keys);
+    }
+
+    public function test_the_limit_of_panel_settings_applies_to_new_servers_too()
+    {
+        PanelSettings::save(['ssh_keys_max' => 2]);
+
+        $this->api('GET', $this->url())->assertJsonPath('data.max_keys', 2);
+        $this->api('PUT', $this->url(), ['ssh_keys' => [PublicKeyTest::ED25519, PublicKeyTest::RSA."\n".PublicKeyTest::ECDSA]])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['ssh_keys' => 'A server can have at most 2 SSH keys.']);
+        $this->api('POST', '/api/v1/servers', [
+            'external_id' => 'whmcs-2002',
+            'package' => $this->package->uuid,
+            'location' => $this->location->uuid,
+            'os_template' => $this->osTemplate->uuid,
+            'hostname' => 'web2.example.com',
+            'ssh_keys' => [PublicKeyTest::ED25519, PublicKeyTest::RSA, PublicKeyTest::ECDSA],
+        ])->assertUnprocessable()->assertJsonValidationErrors('ssh_keys');
     }
 
     public function test_only_active_servers_without_a_running_task()

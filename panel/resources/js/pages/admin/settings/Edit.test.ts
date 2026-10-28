@@ -67,6 +67,7 @@ const settings = (overrides: Partial<PanelSettings> = {}): PanelSettings => ({
     password_characters: 'mixed',
     password_prefix: null,
     password_suffix: null,
+    ssh_keys_max: 20,
     notifications_enabled: false,
     notification_recipients: [],
     notification_throttle_minutes: 60,

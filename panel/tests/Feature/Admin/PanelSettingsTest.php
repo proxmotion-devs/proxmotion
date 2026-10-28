@@ -42,6 +42,7 @@ class PanelSettingsTest extends AdminTestCase
             'password_characters' => 'lower',
             'password_prefix' => null,
             'password_suffix' => '.example!',
+            'ssh_keys_max' => 30,
             'notifications_enabled' => true,
             'notification_recipients' => 'ops@example.com',
             'notification_throttle_minutes' => 30,
@@ -117,6 +118,7 @@ class PanelSettingsTest extends AdminTestCase
         $this->assertSame(16, PanelSettings::get('password_length'));
         $this->assertSame('lower', PanelSettings::get('password_characters'));
         $this->assertSame('.example!', PanelSettings::get('password_suffix'));
+        $this->assertSame(30, PanelSettings::get('ssh_keys_max'));
         $this->assertSame(80, PanelSettings::get('storage_warning_percent'));
         $this->assertSame(90, PanelSettings::get('storage_critical_percent'));
         $this->assertSame([], PanelSettings::unsaved());

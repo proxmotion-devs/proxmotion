@@ -358,7 +358,7 @@ class ServerController extends Controller
                     ->map(fn (FirewallRuleset $ruleset) => ['value' => $ruleset->uuid, 'label' => $ruleset->name]),
             ],
             // The keys the panel manages on the server (docs/adr/0049).
-            'sshKeys' => fn () => ['keys' => ServerSshKeys::describe($server), 'max' => ServerSshKeys::MAX_KEYS],
+            'sshKeys' => fn () => ['keys' => ServerSshKeys::describe($server), 'max' => ServerSshKeys::max()],
             // Pools addresses may be added from: same location, network model, bridge and VLAN (docs/adr/0028).
             'addressPools' => fn () => collect(IpVersion::cases())
                 ->flatMap(fn (IpVersion $version) => $ips->sameNetworkPools($server->location, $server->network_model, $version, $server->ipAddresses->first()?->pool))

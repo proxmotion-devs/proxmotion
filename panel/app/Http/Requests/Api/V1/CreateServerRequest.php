@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Requests\Api\V1;
 
 use App\Domain\Servers\PasswordGenerator;
+use App\Domain\Servers\ServerSshKeys;
 use App\Enums\NetworkModel;
 use App\Models\ApiToken;
 use App\Models\AppRecipe;
@@ -16,6 +17,7 @@ use App\Provisioning\HostnameGenerator;
 use App\Provisioning\NewServer;
 use App\Provisioning\ServerSpec;
 use App\Rules\Hostname;
+use App\Rules\SshKeyLimit;
 use App\Rules\SshPublicKeys;
 use App\Support\Ssh\PublicKey;
 use Illuminate\Contracts\Validation\ValidationRule;
@@ -31,8 +33,6 @@ use Illuminate\Validation\Validator;
  */
 class CreateServerRequest extends FormRequest
 {
-    private const MAX_SSH_KEYS = 20;
-
     /**
      * @return array<string, ValidationRule|array<mixed>|string>
      */
@@ -54,7 +54,7 @@ class CreateServerRequest extends FormRequest
             'primary_ipv4' => ['nullable', 'ipv4'],
             // Empty: a random password, fetched once through GET /servers/{id}/password.
             'root_password' => ['nullable', 'string', 'min:12', 'max:128'],
-            'ssh_keys' => ['nullable', 'array', 'max:'.self::MAX_SSH_KEYS],
+            'ssh_keys' => ['nullable', 'array', 'max:'.ServerSshKeys::CEILING, new SshKeyLimit],
             'ssh_keys.*' => ['string', 'max:16384', new SshPublicKeys],
             'resources' => ['nullable', 'array'],
             'resources.cpu_cores' => ['nullable', 'required_without:package', 'integer', 'between:1,512'],

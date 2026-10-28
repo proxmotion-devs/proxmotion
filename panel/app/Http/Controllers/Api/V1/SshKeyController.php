@@ -23,7 +23,7 @@ class SshKeyController extends ApiController
 
     public function show(Server $server): JsonResponse
     {
-        return response()->json(['data' => ['ssh_keys' => ServerSshKeys::describe($server), 'max_keys' => ServerSshKeys::MAX_KEYS]]);
+        return response()->json(['data' => ['ssh_keys' => ServerSshKeys::describe($server), 'max_keys' => ServerSshKeys::max()]]);
     }
 
     public function update(SshKeysRequest $request, Server $server): JsonResponse
