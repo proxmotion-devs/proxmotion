@@ -1942,6 +1942,7 @@
     "Suffix": "Sonek",
     "The same characters as the prefix. Up to 32.": "Önekle aynı karakterler. En fazla 32.",
     "Example": "Örnek",
+    "Passwords in this format do not fit Cloudbase-Init's user data: Windows servers get a temporary password first, which the guest agent replaces once Windows setup has finished. Start the prefix with a letter and leave out colons so that Cloudbase-Init sets them directly.": "Bu biçimdeki parolalar Cloudbase-Init'in user data'sına sığmaz: Windows sunucular önce geçici bir parola alır, guest agent bunu Windows kurulumu bitince asıl parolayla değiştirir. Parolanın doğrudan Cloudbase-Init ile ayarlanması için öneki bir harfle başlatın ve iki nokta (:) kullanmayın.",
     "Lowercase letters and digits": "Küçük harf ve rakamlar",
     "Upper and lowercase letters and digits": "Büyük ve küçük harf ile rakamlar",
     "Letters, digits and symbols": "Harf, rakam ve simgeler",

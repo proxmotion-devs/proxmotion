@@ -44,13 +44,18 @@ export function passwordExample(
 
     const kinds = SETS[characters];
     const alphabet = kinds.map((kind) => KINDS[kind]).join('');
+    const letters = kinds
+        .filter((kind) => kind === 'lower' || kind === 'upper')
+        .map((kind) => KINDS[kind])
+        .join('');
     let random: string;
 
-    // Like the server: the random part holds every kind of its set.
+    // Like the server: the random part starts with a letter and holds every kind of its set.
     do {
-        random = Array.from(
-            { length },
-            () => alphabet[randomIndex(alphabet.length)],
+        random = Array.from({ length }, (_, position) =>
+            position === 0
+                ? letters[randomIndex(letters.length)]
+                : alphabet[randomIndex(alphabet.length)],
         ).join('');
     } while (
         !kinds.every((kind) =>
@@ -59,6 +64,16 @@ export function passwordExample(
     );
 
     return `${prefix}${random}${suffix}`;
+}
+
+/**
+ * Whether Proxmox can put the password into cloud-init's user data as it is,
+ * like PasswordGenerator::fitsCloudInit(): a letter first, then printable
+ * ASCII without spaces and colons. Windows servers get one that does not fit
+ * through the guest agent once setup has finished.
+ */
+export function fitsCloudInit(password: string): boolean {
+    return /^[A-Za-z][\x21-\x39\x3B-\x7E]*$/.test(password);
 }
 
 function randomIndex(size: number): number {

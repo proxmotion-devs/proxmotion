@@ -77,12 +77,13 @@ const mountPage = (
     category: SettingsCategoryKey,
     fields: string[],
     unsaved: string[] = [],
+    overrides: Partial<PanelSettings> = {},
 ) =>
     mount(Edit, {
         props: {
             category,
             fields,
-            settings: settings(),
+            settings: settings(overrides),
             unsaved,
             environment: {
                 require_admin_two_factor: true,
@@ -169,6 +170,32 @@ describe('Panel settings page', () => {
             wrapper.find('[data-test="settings-environment"]').exists(),
         ).toBe(true);
         expect(wrapper.find('button[type="submit"]').exists()).toBe(false);
+    });
+
+    it('warns when generated passwords do not fit cloud-init', async () => {
+        const fields = ['password_prefix', 'password_suffix'];
+        const hint = (wrapper: ReturnType<typeof mountPage>) =>
+            wrapper.find('[data-test="password-cloud-init"]').exists();
+
+        expect(hint(mountPage('servers', fields))).toBe(false);
+        expect(
+            hint(
+                mountPage('servers', fields, [], {
+                    password_suffix: '.example.com',
+                }),
+            ),
+        ).toBe(false);
+
+        const wrapper = mountPage('servers', fields, [], {
+            password_prefix: '@',
+        });
+        expect(hint(wrapper)).toBe(true);
+
+        await wrapper.find('#password_prefix').setValue('Acme-');
+        expect(hint(wrapper)).toBe(false);
+
+        await wrapper.find('#password_suffix').setValue(':x');
+        expect(hint(wrapper)).toBe(true);
     });
 
     it('says when values still come from .env', () => {

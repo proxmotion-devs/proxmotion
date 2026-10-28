@@ -12,7 +12,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { optionalNumber } from '@/lib/forms';
 import type { OptionalNumber } from '@/lib/forms';
-import { passwordExample } from '@/lib/passwordExample';
+import { fitsCloudInit, passwordExample } from '@/lib/passwordExample';
 import type { PasswordCharacters } from '@/lib/passwordExample';
 import { SETTINGS_CATEGORIES } from '@/lib/settingsCategories';
 import type { SettingsCategoryKey } from '@/lib/settingsCategories';
@@ -155,6 +155,13 @@ const passwordExampleText = computed(() =>
     ),
 );
 
+// A prefix that does not start with a letter, or a colon: Windows passwords then go through the guest agent.
+const passwordSkipsCloudInit = computed(
+    () =>
+        passwordExampleText.value !== null &&
+        !fitsCloudInit(passwordExampleText.value),
+);
+
 const sectionClass = 'flex flex-col gap-4 rounded-xl border p-4';
 </script>
 
@@ -294,6 +301,17 @@ const sectionClass = 'flex flex-col gap-4 rounded-xl border p-4';
                         data-test="password-example"
                         >{{ passwordExampleText ?? '—' }}</span
                     >
+                </p>
+                <p
+                    v-if="passwordSkipsCloudInit"
+                    class="rounded-md border border-dashed px-3 py-2 text-sm text-muted-foreground"
+                    data-test="password-cloud-init"
+                >
+                    {{
+                        $t(
+                            "Passwords in this format do not fit Cloudbase-Init's user data: Windows servers get a temporary password first, which the guest agent replaces once Windows setup has finished. Start the prefix with a letter and leave out colons so that Cloudbase-Init sets them directly.",
+                        )
+                    }}
                 </p>
             </section>
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vite-plus/test';
-import { passwordExample } from '@/lib/passwordExample';
+import { fitsCloudInit, passwordExample } from '@/lib/passwordExample';
 
 describe('passwordExample', () => {
     it('has the chosen length around the prefix and suffix', () => {
@@ -27,6 +27,23 @@ describe('passwordExample', () => {
         expect(passwordExample(24, 'symbols', '', '')).toMatch(
             /^[A-Za-z0-9!@#%+=.\-_]+$/,
         );
+    });
+
+    it('starts the random part with a letter, like the server', () => {
+        for (let attempt = 0; attempt < 50; attempt++) {
+            const example = passwordExample(12, 'symbols', '', '') ?? '';
+
+            expect(example).toMatch(/^[A-Za-z]/);
+            expect(fitsCloudInit(example)).toBe(true);
+        }
+    });
+
+    it('tells which passwords do not fit cloud-init', () => {
+        expect(fitsCloudInit('Abc!@#%+=.-_x.example.net')).toBe(true);
+        expect(fitsCloudInit('@Abcdef123456.example.net')).toBe(false);
+        expect(fitsCloudInit('1Abcdef123456')).toBe(false);
+        expect(fitsCloudInit('Abcdef123456:x')).toBe(false);
+        expect(fitsCloudInit('Abc def123456')).toBe(false);
     });
 
     it('is null while the length is out of range', () => {
