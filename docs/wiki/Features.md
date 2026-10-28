@@ -265,7 +265,7 @@ Every VPS gets the Proxmox firewall with **`ipfilter` and `macfilter`** enabled 
 
 #### 6.4.3 SSH keys
 
-([ADR 0049](../adr/0049-ssh-keys-on-running-servers.md)) The public keys root (Administrator on Windows) logs in with, managed on a running server by customers (billing API and modules) and administrators (*SSH keys* on the server page):
+([ADR 0049](../adr/0049-ssh-keys-on-running-servers.md)) The public keys root (Administrator on Windows) logs in with, managed on a running server by customers (billing API and modules) and administrators (the *SSH keys* tab of an active server's page: a table of the keys with name, type, fingerprint, copy and delete, a filter for long lists, and a note while a change runs):
 
 - **The list** starts with the keys of the server's creation or last reinstall; keys are added (one or several, at most 20 per server) and deleted from it. ed25519, ECDSA and RSA (2048 bits or more) keys; DSA keys are refused.
 - **How**: every change is a `change_ssh_keys` task that runs the `ssh_keys_changed` guest script (defaults for Linux, FreeBSD and Windows, `ssh-keys.sh` / `ssh-keys.ps1`, which administrators may replace per OS template): deleted keys are removed from `authorized_keys` (Windows: `administrators_authorized_keys`, and the Administrator's own file), new ones appended; lines the panel does not know stay. Proxmox's cloud-init `sshkeys` are left alone, so the server keeps its SSH host keys.

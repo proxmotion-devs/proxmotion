@@ -346,15 +346,17 @@ const modelLabel =
     NETWORK_MODELS.find((model) => model.value === props.server.network_model)
         ?.label ?? props.server.network_model;
 
-// Overview, apps, firewall and tasks on their own tabs. The tab survives the
+// Overview, apps, firewall, SSH keys and tasks on their own tabs. The tab survives the
 // redirect back after an action (e.g. installing an app) for this server.
-type Tab = 'overview' | 'apps' | 'firewall' | 'tasks';
+type Tab = 'overview' | 'apps' | 'firewall' | 'ssh-keys' | 'tasks';
 const tabKey = `server-tab:${props.server.uuid}`;
 
 // The firewall can be changed while the server is active or suspended (docs/adr/0035).
 const hasFirewall = computed(() =>
     ['active', 'suspended'].includes(props.server.status),
 );
+// SSH keys only while it is active: the guest agent writes them (docs/adr/0049).
+const hasSshKeys = computed(() => props.server.status === 'active');
 
 const storedTab = (): Tab | null => {
     try {
@@ -363,7 +365,8 @@ const storedTab = (): Tab | null => {
         return value === 'overview' ||
             value === 'apps' ||
             value === 'tasks' ||
-            (value === 'firewall' && hasFirewall.value)
+            (value === 'firewall' && hasFirewall.value) ||
+            (value === 'ssh-keys' && hasSshKeys.value)
             ? value
             : null;
     } catch {
@@ -377,6 +380,11 @@ const tab = ref<Tab>(
 // A server leaving the active or suspended states (e.g. terminated) loses the tab.
 watch(hasFirewall, (value) => {
     if (!value && tab.value === 'firewall') {
+        tab.value = 'overview';
+    }
+});
+watch(hasSshKeys, (value) => {
+    if (!value && tab.value === 'ssh-keys') {
         tab.value = 'overview';
     }
 });
@@ -405,6 +413,15 @@ const tabs = computed(() => [
               },
           ]
         : []),
+    ...(hasSshKeys.value
+        ? [
+              {
+                  value: 'ssh-keys' as Tab,
+                  label: 'SSH keys',
+                  count: props.sshKeys.keys.length,
+              },
+          ]
+        : []),
     { value: 'tasks' as Tab, label: 'Tasks', count: null },
 ]);
 
@@ -412,6 +429,11 @@ const runningTasks = computed(() =>
     props.tasks.filter(
         (task) => task.status === 'queued' || task.status === 'running',
     ),
+);
+
+// The keys change once this task succeeded (docs/adr/0049).
+const changingSshKeys = computed(() =>
+    runningTasks.value.some((task) => task.type === 'change_ssh_keys'),
 );
 
 const active = computed(() => props.server.status === 'active');
@@ -1019,13 +1041,6 @@ const resetAfterTrial = () => {
                 :disabled="vmBlocked"
             />
 
-            <SshKeysSection
-                v-if="active"
-                :server="server.uuid"
-                :ssh-keys="sshKeys"
-                :disabled="vmBlocked || agentDown"
-            />
-
             <ServerScripts
                 v-if="scripts.length || scriptRuns.length"
                 :server-uuid="server.uuid"
@@ -1164,6 +1179,14 @@ const resetAfterTrial = () => {
             :server="server.uuid"
             :firewall="firewall"
             :disabled="vmBlocked"
+        />
+
+        <SshKeysSection
+            v-else-if="tab === 'ssh-keys'"
+            :server="server.uuid"
+            :ssh-keys="sshKeys"
+            :changing="changingSshKeys"
+            :disabled="vmBlocked || agentDown"
         />
 
         <TaskList v-else :tasks="tasks" />

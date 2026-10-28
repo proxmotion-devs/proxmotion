@@ -1,27 +1,71 @@
 <script setup lang="ts">
 import { useForm } from '@inertiajs/vue3';
-import { KeyRound, Plus, Trash2 } from '@lucide/vue';
+import {
+    Check,
+    Copy,
+    KeyRound,
+    LoaderCircle,
+    Plus,
+    Search,
+    Trash2,
+} from '@lucide/vue';
 import { computed, ref } from 'vue';
 import FormDialog from '@/components/admin/FormDialog.vue';
 import FormField from '@/components/admin/FormField.vue';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { sshKeys as sshKeysRoute } from '@/routes/admin/servers';
 import type { ServerSshKeys, SshKey } from '@/types/admin';
 
 /**
- * The SSH keys the panel manages on a running server (docs/adr/0049). Adding
- * and deleting send the whole new list, like the billing API; a
- * change_ssh_keys task writes it into the server and the list changes once
- * that succeeded.
+ * The SSH keys the panel manages on a running server (docs/adr/0049), on
+ * their own tab of the server page. Adding and deleting send the whole new
+ * list, like the billing API; a change_ssh_keys task writes it into the
+ * server and the list changes once that succeeded.
  */
 const props = defineProps<{
     server: string;
     sshKeys: ServerSshKeys;
+    /** A change_ssh_keys task is queued or running. */
+    changing?: boolean;
     disabled?: boolean;
 }>();
 
-const lines = computed(() => props.sshKeys.keys.map((key) => key.public_key));
-const full = computed(() => props.sshKeys.keys.length >= props.sshKeys.max);
+// Key types as people know them; security keys (FIDO) get a note.
+const TYPES: Record<string, { name: string; securityKey: boolean }> = {
+    'ssh-ed25519': { name: 'Ed25519', securityKey: false },
+    'ssh-rsa': { name: 'RSA', securityKey: false },
+    'ecdsa-sha2-nistp256': { name: 'ECDSA P-256', securityKey: false },
+    'ecdsa-sha2-nistp384': { name: 'ECDSA P-384', securityKey: false },
+    'ecdsa-sha2-nistp521': { name: 'ECDSA P-521', securityKey: false },
+    'sk-ssh-ed25519@openssh.com': { name: 'Ed25519', securityKey: true },
+    'sk-ecdsa-sha2-nistp256@openssh.com': {
+        name: 'ECDSA P-256',
+        securityKey: true,
+    },
+};
+const typeOf = (key: SshKey) =>
+    TYPES[key.type] ?? { name: key.type, securityKey: false };
+
+const keys = computed(() => props.sshKeys.keys);
+const full = computed(() => keys.value.length >= props.sshKeys.max);
+
+// The filter appears once the list is long enough to need one.
+const FILTER_FROM = 6;
+const filter = ref('');
+const shown = computed(() => {
+    const needle = filter.value.trim().toLowerCase();
+
+    return keys.value
+        .map((key, index) => ({ key, position: index + 1 }))
+        .filter(
+            ({ key }) =>
+                needle === '' ||
+                [key.comment, key.type, key.fingerprint].some((value) =>
+                    value.toLowerCase().includes(needle),
+                ),
+        );
+});
 
 const form = useForm({ ssh_keys: [] as string[] });
 
@@ -35,7 +79,7 @@ const openAdd = () => {
 };
 
 const add = () => {
-    form.ssh_keys = [...lines.value, newKeys.value];
+    form.ssh_keys = [...keys.value.map((key) => key.public_key), newKeys.value];
     form.submit(sshKeysRoute(props.server), {
         preserveScroll: true,
         onSuccess: () => (adding.value = false),
@@ -59,13 +103,29 @@ const remove = () => {
         return;
     }
 
-    form.ssh_keys = props.sshKeys.keys
+    form.ssh_keys = keys.value
         .filter((other) => other.fingerprint !== key.fingerprint)
         .map((other) => other.public_key);
     form.submit(sshKeysRoute(props.server), {
         preserveScroll: true,
         onFinish: () => (deleting.value = null),
     });
+};
+
+// The fingerprint of the key just copied, for a moment.
+const copied = ref<string | null>(null);
+let copiedTimer: ReturnType<typeof setTimeout> | undefined;
+
+const copy = async (key: SshKey) => {
+    try {
+        await navigator.clipboard.writeText(key.public_key);
+    } catch {
+        return;
+    }
+
+    copied.value = key.fingerprint;
+    clearTimeout(copiedTimer);
+    copiedTimer = setTimeout(() => (copied.value = null), 2000);
 };
 </script>
 
@@ -78,11 +138,16 @@ const remove = () => {
             <h3 class="flex items-center gap-2 font-medium">
                 <KeyRound class="h-4 w-4" />
                 {{ $t('SSH keys') }}
+                <span
+                    class="rounded-full bg-muted px-2 py-0.5 text-xs font-normal text-muted-foreground"
+                    data-test="ssh-key-count"
+                >
+                    {{ keys.length }} / {{ sshKeys.max }}
+                </span>
             </h3>
             <Button
-                variant="outline"
                 size="sm"
-                :disabled="disabled || full"
+                :disabled="disabled || full || changing"
                 data-test="add-ssh-key"
                 @click="openAdd"
             >
@@ -97,45 +162,165 @@ const remove = () => {
                 )
             }}
         </p>
+
+        <p
+            v-if="changing"
+            class="flex items-center gap-2 rounded-md border border-dashed px-3 py-2 text-sm text-muted-foreground"
+            data-test="ssh-keys-changing"
+        >
+            <LoaderCircle class="h-4 w-4 animate-spin" />
+            {{
+                $t(
+                    'The SSH keys are being changed inside the server; the list follows once that worked.',
+                )
+            }}
+        </p>
         <p v-if="form.errors.ssh_keys" class="text-sm text-destructive">
             {{ form.errors.ssh_keys }}
         </p>
 
-        <ul v-if="sshKeys.keys.length" class="divide-y rounded-md border">
-            <li
-                v-for="key in sshKeys.keys"
-                :key="key.fingerprint"
-                class="flex items-center justify-between gap-2 px-3 py-2 text-sm"
-            >
-                <div class="min-w-0">
-                    <div class="truncate font-medium">
-                        {{ key.comment || $t('No comment') }}
-                    </div>
-                    <div
-                        class="truncate font-mono text-xs text-muted-foreground"
+        <div v-if="keys.length >= FILTER_FROM" class="relative w-full max-w-xs">
+            <Search
+                class="pointer-events-none absolute top-1/2 left-2.5 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+            />
+            <Input
+                v-model="filter"
+                type="search"
+                class="h-8 pl-8"
+                :placeholder="$t('Filter by name, type or fingerprint')"
+                :aria-label="$t('Filter by name, type or fingerprint')"
+            />
+        </div>
+
+        <div class="overflow-x-auto rounded-xl border">
+            <table class="w-full min-w-[40rem] text-sm">
+                <thead class="bg-muted/50 text-left text-muted-foreground">
+                    <tr>
+                        <th class="w-10 px-3 py-2 font-medium">#</th>
+                        <th class="px-2 py-2 font-medium">{{ $t('Name') }}</th>
+                        <th class="w-40 px-2 py-2 font-medium">
+                            {{ $t('Type') }}
+                        </th>
+                        <th class="px-2 py-2 font-medium">
+                            {{ $t('Fingerprint') }}
+                        </th>
+                        <th class="w-24 px-2 py-2" />
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr
+                        v-for="{ key, position } in shown"
+                        :key="key.fingerprint"
+                        class="border-t"
+                        data-test="ssh-key"
                     >
-                        {{ key.type }} · {{ key.fingerprint }}
-                    </div>
-                </div>
-                <Button
-                    variant="ghost"
-                    size="icon"
-                    class="shrink-0 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                    :disabled="disabled"
-                    :aria-label="
-                        $t('Delete :name', { name: key.comment || key.type })
-                    "
-                    :title="
-                        $t('Delete :name', { name: key.comment || key.type })
-                    "
-                    @click="deleting = key"
-                >
-                    <Trash2 class="h-4 w-4" />
-                </Button>
-            </li>
-        </ul>
-        <p v-else class="text-sm text-muted-foreground">
-            {{ $t('The panel manages no SSH keys on this server.') }}
+                        <td
+                            class="px-3 py-2 font-mono text-xs text-muted-foreground"
+                        >
+                            {{ position }}
+                        </td>
+                        <td class="max-w-56 px-2 py-2">
+                            <span
+                                v-if="key.comment"
+                                class="block truncate font-medium"
+                                :title="key.comment"
+                                >{{ key.comment }}</span
+                            >
+                            <span v-else class="text-muted-foreground italic">{{
+                                $t('No comment')
+                            }}</span>
+                        </td>
+                        <td class="px-2 py-2">
+                            <span
+                                class="inline-flex items-center rounded-md border px-1.5 py-0.5 text-xs font-medium"
+                                :title="key.type"
+                                >{{ typeOf(key).name }}</span
+                            >
+                            <span
+                                v-if="typeOf(key).securityKey"
+                                class="ml-1 text-xs text-muted-foreground"
+                                >{{ $t('Security key') }}</span
+                            >
+                        </td>
+                        <td class="max-w-72 px-2 py-2">
+                            <code
+                                class="block truncate font-mono text-xs text-muted-foreground"
+                                :title="key.fingerprint"
+                                >{{ key.fingerprint }}</code
+                            >
+                        </td>
+                        <td class="px-2 py-2">
+                            <div class="flex justify-end gap-1">
+                                <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    class="h-8 w-8"
+                                    :aria-label="$t('Copy public key')"
+                                    :title="
+                                        copied === key.fingerprint
+                                            ? $t('Copied')
+                                            : $t('Copy public key')
+                                    "
+                                    @click="copy(key)"
+                                >
+                                    <Check
+                                        v-if="copied === key.fingerprint"
+                                        class="h-4 w-4 text-green-600"
+                                    />
+                                    <Copy v-else class="h-4 w-4" />
+                                </Button>
+                                <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    class="h-8 w-8 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                                    :disabled="disabled || changing"
+                                    :aria-label="
+                                        $t('Delete :name', {
+                                            name: key.comment || key.type,
+                                        })
+                                    "
+                                    :title="
+                                        $t('Delete :name', {
+                                            name: key.comment || key.type,
+                                        })
+                                    "
+                                    data-test="delete-ssh-key"
+                                    @click="deleting = key"
+                                >
+                                    <Trash2 class="h-4 w-4" />
+                                </Button>
+                            </div>
+                        </td>
+                    </tr>
+                    <tr v-if="keys.length === 0" class="border-t">
+                        <td
+                            colspan="5"
+                            class="px-3 py-6 text-center text-muted-foreground"
+                        >
+                            {{
+                                $t(
+                                    'The panel manages no SSH keys on this server.',
+                                )
+                            }}
+                        </td>
+                    </tr>
+                    <tr v-else-if="shown.length === 0" class="border-t">
+                        <td
+                            colspan="5"
+                            class="px-3 py-6 text-center text-muted-foreground"
+                        >
+                            {{ $t('No key matches the filter.') }}
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        <p v-if="full" class="text-xs text-muted-foreground">
+            {{
+                $t(
+                    'The server has the most keys it can have; delete one to add another.',
+                )
+            }}
         </p>
 
         <FormDialog
@@ -151,7 +336,7 @@ const remove = () => {
                 for="new_ssh_keys"
                 :error="
                     (form.errors as Record<string, string>)[
-                        `ssh_keys.${lines.length}`
+                        `ssh_keys.${keys.length}`
                     ] ?? form.errors.ssh_keys
                 "
             >
@@ -174,15 +359,14 @@ const remove = () => {
             :processing="form.processing"
             @submit="remove"
         >
-            <p
-                v-if="deleting"
-                class="font-mono text-xs break-all text-muted-foreground"
-            >
-                {{ deleting.type }} · {{ deleting.fingerprint }}
-                <template v-if="deleting.comment">
-                    · {{ deleting.comment }}</template
-                >
-            </p>
+            <dl v-if="deleting" class="grid gap-1 text-sm">
+                <dt class="text-muted-foreground">{{ $t('Name') }}</dt>
+                <dd>{{ deleting.comment || $t('No comment') }}</dd>
+                <dt class="text-muted-foreground">{{ $t('Fingerprint') }}</dt>
+                <dd class="font-mono text-xs break-all">
+                    {{ deleting.fingerprint }}
+                </dd>
+            </dl>
         </FormDialog>
     </section>
 </template>
