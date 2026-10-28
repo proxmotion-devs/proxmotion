@@ -169,6 +169,21 @@ class AdminNotificationTest extends TestCase
         Notification::assertSentTo($this->admin, AdminAlert::class, fn (AdminAlert $alert) => $alert->event === NotificationEvent::AppFailed);
     }
 
+    public function test_errors_from_guests_cannot_add_links_to_the_mail()
+    {
+        $this->admin->forceFill(['notification_events' => [NotificationEvent::AppFailed->value]])->save();
+        $installation = AppInstallation::factory()->create(['status' => AppInstallationStatus::Installing]);
+
+        app(AppInstallations::class)->failed($installation, 'Disk full. [Log in again](https://phish.example.com) ![x](https://phish.example.com/i.png) \\[x](https://phish.example.com) <a href="https://phish.example.com">here</a>');
+
+        Notification::assertSentTo($this->admin, AdminAlert::class, function (AdminAlert $alert) {
+            $html = (string) $alert->toMail($this->admin)->render();
+
+            return str_contains($html, 'Disk full. [Log in again](https://phish.example.com) ![x](https://phish.example.com/i.png) [x](https://phish.example.com)')
+                && ! preg_match('/<(a|img)\s[^>]*phish/', $html);
+        });
+    }
+
     public function test_a_usage_violation_is_reported_in_gb()
     {
         $this->admin->forceFill(['notification_events' => [NotificationEvent::UsageExceeded->value]])->save();

@@ -29,7 +29,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
         ->name('user-password.update');
 
     Route::inertia('settings/appearance', 'settings/Appearance')->name('appearance.edit');
+});
 
+// Behind 2FA like the admin pages: which events an administrator is mailed about.
+Route::middleware(['auth', 'verified', '2fa'])->group(function () {
     Route::get('settings/notifications', [NotificationController::class, 'edit'])->name('notifications.edit');
     Route::put('settings/notifications', [NotificationController::class, 'update'])->name('notifications.update');
 });

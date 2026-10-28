@@ -5,6 +5,7 @@ namespace Tests\Feature\Notifications;
 use App\Domain\Settings\PanelSettings;
 use App\Enums\NotificationEvent;
 use App\Models\AuditLog;
+use App\Models\User;
 use App\Notifications\AdminAlert;
 use Illuminate\Support\Facades\Notification;
 use Inertia\Testing\AssertableInertia as Assert;
@@ -106,5 +107,15 @@ class NotificationSettingsTest extends AdminTestCase
         $this->assertSame([], $this->admin->refresh()->notificationEvents());
 
         $this->put(route('notifications.update'), ['events' => ['nope']])->assertSessionHasErrors(['events.0']);
+    }
+
+    public function test_administrators_without_two_factor_cannot_change_their_events()
+    {
+        $user = User::factory()->create(['notification_events' => ['task_failed']]);
+
+        $this->actingAs($user)->get(route('notifications.edit'))->assertRedirect(route('security.edit'));
+        $this->actingAs($user)->put(route('notifications.update'), ['events' => []])->assertRedirect(route('security.edit'));
+
+        $this->assertSame(['task_failed'], $user->refresh()->notification_events);
     }
 }

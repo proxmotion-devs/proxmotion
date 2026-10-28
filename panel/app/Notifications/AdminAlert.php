@@ -54,7 +54,7 @@ class AdminAlert extends Notification implements ShouldQueue
             ->subject('['.config('app.name').'] '.__($this->subject, self::translated($this->replace)));
 
         foreach ($this->lines as $line) {
-            $mail->line(__($line[0], self::translated($line[1] ?? [])));
+            $mail->line(__($line[0], self::literal(self::translated($line[1] ?? []))));
         }
 
         if ($this->url !== null) {
@@ -78,5 +78,19 @@ class AdminAlert extends Notification implements ShouldQueue
     private static function translated(array $replace): array
     {
         return array_map(fn (string|int $value) => is_string($value) ? (string) __($value) : $value, $replace);
+    }
+
+    /**
+     * Replacements in paragraphs are text, never Markdown: errors come from guests
+     * (an app's status.json) and Proxmox, so "[Log in](https://…)" in one must not
+     * become a link in the mail. Blade escapes HTML and the mail joins lines, so
+     * escaping link brackets (and backslashes, which could undo that) is enough.
+     *
+     * @param  array<string, string|int>  $replace
+     * @return array<string, string|int>
+     */
+    private static function literal(array $replace): array
+    {
+        return array_map(fn (string|int $value) => is_string($value) ? addcslashes($value, '\\[]') : $value, $replace);
     }
 }
