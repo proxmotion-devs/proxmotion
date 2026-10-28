@@ -1,4 +1,4 @@
-import { mount } from '@vue/test-utils';
+import { flushPromises, mount } from '@vue/test-utils';
 import { beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 import SshKeysSection from '@/components/servers/SshKeysSection.vue';
 import type { ServerSshKeys, SshKey } from '@/types/admin';
@@ -41,6 +41,14 @@ vi.mock('@inertiajs/vue3', async () => {
         },
     };
 });
+
+vi.mock('laravel-vue-i18n', () => ({ trans: (text: string) => text }));
+
+vi.mock('@/routes/admin/servers/ssh-keys', () => ({
+    guest: {
+        url: (server: string) => `/admin/servers/${server}/ssh-keys/guest`,
+    },
+}));
 
 vi.mock('@/routes/admin/servers', () => ({
     sshKeys: (server: string) => ({
@@ -199,5 +207,90 @@ describe('SshKeysSection', () => {
                 .find('[aria-label="Copy public key"]')
                 .exists(),
         ).toBe(navigator.clipboard !== undefined);
+    });
+
+    it('reads the keys inside the server and takes one over', async () => {
+        const found = {
+            keys: [
+                {
+                    ...key(1),
+                    file: '/root/.ssh/authorized_keys',
+                    options: false,
+                    managed: true,
+                },
+                {
+                    ...key(9),
+                    file: '/root/.ssh/authorized_keys',
+                    options: true,
+                    managed: false,
+                },
+            ],
+            missing: ['SHA256:key2'],
+            unsupported: 1,
+        };
+        const fetchMock = vi.fn().mockResolvedValue({
+            ok: true,
+            json: () => Promise.resolve(found),
+        });
+        vi.stubGlobal('fetch', fetchMock);
+        const wrapper = mountSection([key(1), key(2)]);
+
+        await wrapper.find('[data-test="read-ssh-keys"]').trigger('click');
+        await flushPromises();
+
+        expect(fetchMock).toHaveBeenCalledWith(
+            '/admin/servers/server-uuid/ssh-keys/guest',
+            expect.anything(),
+        );
+        const managedRows = wrapper.findAll('[data-test="ssh-key"]');
+        expect(
+            managedRows[0].find('[data-test="ssh-key-missing"]').exists(),
+        ).toBe(false);
+        expect(
+            managedRows[1].find('[data-test="ssh-key-missing"]').exists(),
+        ).toBe(true);
+
+        const rows = wrapper.findAll('[data-test="guest-ssh-key"]');
+        expect(rows).toHaveLength(1);
+        expect(rows[0].text()).toContain('user9@example.com');
+        expect(rows[0].text()).toContain('Options');
+        expect(wrapper.find('[data-test="guest-ssh-keys"]').text()).toContain(
+            ':count other key lines',
+        );
+
+        await rows[0].find('[data-test="manage-ssh-key"]').trigger('click');
+        expect(submitted.value?.ssh_keys).toEqual([
+            key(1).public_key,
+            key(2).public_key,
+            key(9).public_key,
+        ]);
+
+        vi.unstubAllGlobals();
+    });
+
+    it('says why the keys inside could not be read', async () => {
+        vi.stubGlobal(
+            'fetch',
+            vi.fn().mockResolvedValue({
+                ok: false,
+                json: () =>
+                    Promise.resolve({
+                        message: 'Its guest agent does not answer.',
+                    }),
+            }),
+        );
+        const wrapper = mountSection([key(1)]);
+
+        await wrapper.find('[data-test="read-ssh-keys"]').trigger('click');
+        await flushPromises();
+
+        expect(wrapper.find('[data-test="ssh-keys-read-error"]').text()).toBe(
+            'Its guest agent does not answer.',
+        );
+        expect(wrapper.find('[data-test="guest-ssh-keys"]').exists()).toBe(
+            false,
+        );
+
+        vi.unstubAllGlobals();
     });
 });

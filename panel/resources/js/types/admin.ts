@@ -945,6 +945,25 @@ export type SshKey = {
     public_key: string;
 };
 
+/** A key found in the server's authorized_keys (docs/adr/0049 §11). */
+export type GuestSshKey = SshKey & {
+    /** The file it was found in. */
+    file: string;
+    /** Its line starts with options (command="…", no-pty, …). */
+    options: boolean;
+    /** The panel manages it. */
+    managed: boolean;
+};
+
+/** What reading the keys inside a server found. */
+export type GuestSshKeys = {
+    keys: GuestSshKey[];
+    /** Fingerprints of managed keys found in no file. */
+    missing: string[];
+    /** Key lines the panel cannot manage (e.g. DSA, short RSA keys). */
+    unsupported: number;
+};
+
 export type ServerSshKeys = {
     keys: SshKey[];
     /** How many keys a server can have. */

@@ -270,7 +270,8 @@ Every VPS gets the Proxmox firewall with **`ipfilter` and `macfilter`** enabled 
 - **The list** starts with the keys of the server's creation or last reinstall; keys are added (one or several, at most 20 per server) and deleted from it. ed25519, ECDSA and RSA (2048 bits or more) keys; DSA keys are refused.
 - **How**: every change is a `change_ssh_keys` task that runs the `ssh_keys_changed` guest script (defaults for Linux, FreeBSD and Windows, `ssh-keys.sh` / `ssh-keys.ps1`, which administrators may replace per OS template): deleted keys are removed from `authorized_keys` (Windows: `administrators_authorized_keys`, and the Administrator's own file), new ones appended; lines the panel does not know stay. Proxmox's cloud-init `sshkeys` are left alone, so the server keeps its SSH host keys.
 - **Only once it worked**: the list changes when the script succeeded. A failing script or an agent that does not answer fails the task, and the same change can simply be sent again.
-- Keys added inside the server by its owner are not listed and not touched. A reinstall replaces the list with the keys it is given.
+- Keys added inside the server by its owner are not touched. **Read from the server** (admin only) reads root's `authorized_keys` through the guest agent: managed keys missing there are marked *Not in the server*, and keys only the server has are listed with **Manage**, which lets the panel list and delete them without changing the server.
+- A reinstall keeps the keys unless it is given others (an empty list removes them).
 
 ### 6.5 Changing the primary address
 

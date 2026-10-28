@@ -6,23 +6,33 @@ import {
     KeyRound,
     LoaderCircle,
     Plus,
+    ScanSearch,
     Search,
     Trash2,
 } from '@lucide/vue';
-import { computed, ref } from 'vue';
+import { trans } from 'laravel-vue-i18n';
+import { computed, ref, watch } from 'vue';
 import FormDialog from '@/components/admin/FormDialog.vue';
 import FormField from '@/components/admin/FormField.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { sshKeys as sshKeysRoute } from '@/routes/admin/servers';
-import type { ServerSshKeys, SshKey } from '@/types/admin';
+import { guest as guestRoute } from '@/routes/admin/servers/ssh-keys';
+import type {
+    GuestSshKey,
+    GuestSshKeys,
+    ServerSshKeys,
+    SshKey,
+} from '@/types/admin';
 
 /**
  * The SSH keys the panel manages on a running server (docs/adr/0049), on
  * their own tab of the server page. Adding and deleting send the whole new
  * list, like the billing API; a change_ssh_keys task writes it into the
- * server and the list changes once that succeeded.
+ * server and the list changes once that succeeded. *Read from the server*
+ * shows the keys really inside it (§11): managed keys it lacks, and keys
+ * only it has, which the panel can take over.
  */
 const props = defineProps<{
     server: string;
@@ -132,6 +142,59 @@ const error = computed(() => {
     );
 });
 
+// What reading the server found; stale (and dropped) once the list changes.
+const found = ref<GuestSshKeys | null>(null);
+const reading = ref(false);
+const readError = ref<string | null>(null);
+
+watch(
+    () => props.sshKeys,
+    () => {
+        found.value = null;
+    },
+);
+
+const readFromServer = async () => {
+    reading.value = true;
+    readError.value = null;
+
+    try {
+        const response = await fetch(guestRoute.url(props.server), {
+            headers: { Accept: 'application/json' },
+        });
+        const body = await response.json().catch(() => ({}));
+
+        if (response.ok) {
+            found.value = body as GuestSshKeys;
+        } else {
+            readError.value =
+                body.message ??
+                trans('The keys inside the server could not be read.');
+        }
+    } catch {
+        readError.value = trans(
+            'The keys inside the server could not be read.',
+        );
+    } finally {
+        reading.value = false;
+    }
+};
+
+const missing = computed(() => new Set(found.value?.missing ?? []));
+const unmanaged = computed(
+    () => found.value?.keys.filter((key) => !key.managed) ?? [],
+);
+
+// The panel takes over keys found inside: the script finds them there and changes nothing.
+const manage = (selected: GuestSshKey[]) => {
+    form.clearErrors();
+    form.ssh_keys = [
+        ...keys.value.map((key) => key.public_key),
+        ...selected.map((key) => key.public_key),
+    ];
+    form.submit(sshKeysRoute(props.server), { preserveScroll: true });
+};
+
 // Browsers offer the clipboard only on HTTPS (and localhost).
 const canCopy =
     typeof navigator !== 'undefined' && navigator.clipboard !== undefined;
@@ -170,22 +233,42 @@ const copy = async (key: SshKey) => {
                     {{ keys.length }} / {{ sshKeys.max }}
                 </Badge>
             </h3>
-            <Button
-                size="sm"
-                :disabled="disabled || full || changing"
-                data-test="add-ssh-key"
-                @click="openAdd"
-            >
-                <Plus class="h-4 w-4" />
-                {{ $t('Add SSH key') }}
-            </Button>
+            <div class="flex flex-wrap gap-2">
+                <Button
+                    variant="outline"
+                    size="sm"
+                    :disabled="disabled || reading"
+                    data-test="read-ssh-keys"
+                    @click="readFromServer"
+                >
+                    <LoaderCircle v-if="reading" class="h-4 w-4 animate-spin" />
+                    <ScanSearch v-else class="h-4 w-4" />
+                    {{ $t('Read from the server') }}
+                </Button>
+                <Button
+                    size="sm"
+                    :disabled="disabled || full || changing"
+                    data-test="add-ssh-key"
+                    @click="openAdd"
+                >
+                    <Plus class="h-4 w-4" />
+                    {{ $t('Add SSH key') }}
+                </Button>
+            </div>
         </div>
         <p class="text-sm text-muted-foreground">
             {{
                 $t(
-                    'Keys that can log in as root (Administrator on Windows), written into the server through the guest agent. Keys added inside the server are not listed and stay.',
+                    'Keys that can log in as root (Administrator on Windows), written into the server through the guest agent. Keys added inside the server are listed only after Read from the server, and stay unless the panel takes them over.',
                 )
             }}
+        </p>
+        <p
+            v-if="readError"
+            class="text-sm text-destructive"
+            data-test="ssh-keys-read-error"
+        >
+            {{ readError }}
         </p>
 
         <p
@@ -275,6 +358,18 @@ const copy = async (key: SshKey) => {
                                 :title="key.fingerprint"
                                 >{{ key.fingerprint }}</code
                             >
+                            <Badge
+                                v-if="missing.has(key.fingerprint)"
+                                variant="outline"
+                                class="mt-1 border-amber-500/50 text-amber-700 dark:text-amber-400"
+                                :title="
+                                    $t(
+                                        'Add or delete a key to write the list into the server again.',
+                                    )
+                                "
+                                data-test="ssh-key-missing"
+                                >{{ $t('Not in the server') }}</Badge
+                            >
                         </td>
                         <td class="px-2 py-2">
                             <div class="flex justify-end gap-1">
@@ -343,6 +438,138 @@ const copy = async (key: SshKey) => {
                 </tbody>
             </table>
         </div>
+
+        <!-- Keys only the server has (docs/adr/0049 §11). -->
+        <div
+            v-if="found"
+            class="flex flex-col gap-2"
+            data-test="guest-ssh-keys"
+        >
+            <div class="flex flex-wrap items-center justify-between gap-2">
+                <h4 class="text-sm font-medium">
+                    {{ $t('Only inside the server') }}
+                </h4>
+                <Button
+                    v-if="unmanaged.length > 1"
+                    variant="outline"
+                    size="sm"
+                    :disabled="disabled || changing || form.processing"
+                    data-test="manage-all-ssh-keys"
+                    @click="manage(unmanaged)"
+                >
+                    {{ $t('Manage all') }}
+                </Button>
+            </div>
+            <div
+                v-if="unmanaged.length"
+                class="overflow-x-auto rounded-xl border"
+            >
+                <table class="w-full min-w-[40rem] text-sm">
+                    <thead class="bg-muted/50 text-left text-muted-foreground">
+                        <tr>
+                            <th class="px-3 py-2 font-medium">
+                                {{ $t('Name') }}
+                            </th>
+                            <th class="w-40 px-2 py-2 font-medium">
+                                {{ $t('Type') }}
+                            </th>
+                            <th class="px-2 py-2 font-medium">
+                                {{ $t('Fingerprint') }}
+                            </th>
+                            <th class="w-28 px-2 py-2" />
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr
+                            v-for="key in unmanaged"
+                            :key="key.fingerprint"
+                            class="border-t"
+                            data-test="guest-ssh-key"
+                        >
+                            <td class="max-w-56 px-3 py-2">
+                                <span
+                                    v-if="key.comment"
+                                    class="block truncate font-medium"
+                                    :title="key.comment"
+                                    >{{ key.comment }}</span
+                                >
+                                <span
+                                    v-else
+                                    class="text-muted-foreground italic"
+                                    >{{ $t('No comment') }}</span
+                                >
+                                <span
+                                    class="block truncate font-mono text-xs text-muted-foreground"
+                                    :title="key.file"
+                                    >{{ key.file }}</span
+                                >
+                            </td>
+                            <td class="px-2 py-2">
+                                <Badge variant="outline" :title="key.type">{{
+                                    typeOf(key).name
+                                }}</Badge>
+                                <Badge
+                                    v-if="key.options"
+                                    variant="secondary"
+                                    class="ml-1 font-normal"
+                                    :title="
+                                        $t(
+                                            'Its line has options (e.g. command=); they stay while the panel manages the key.',
+                                        )
+                                    "
+                                    >{{ $t('Options') }}</Badge
+                                >
+                            </td>
+                            <td class="max-w-72 px-2 py-2">
+                                <code
+                                    class="block truncate font-mono text-xs text-muted-foreground"
+                                    :title="key.fingerprint"
+                                    >{{ key.fingerprint }}</code
+                                >
+                            </td>
+                            <td class="px-2 py-2 text-right">
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    :disabled="
+                                        disabled ||
+                                        changing ||
+                                        full ||
+                                        form.processing
+                                    "
+                                    :title="
+                                        $t(
+                                            'The panel lists the key and can delete it; nothing changes in the server.',
+                                        )
+                                    "
+                                    data-test="manage-ssh-key"
+                                    @click="manage([key])"
+                                >
+                                    {{ $t('Manage') }}
+                                </Button>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            <p v-else class="text-sm text-muted-foreground">
+                {{
+                    $t('Every key inside the server is one the panel manages.')
+                }}
+            </p>
+            <p
+                v-if="found.unsupported > 0"
+                class="text-xs text-muted-foreground"
+            >
+                {{
+                    $t(
+                        ':count other key lines the panel cannot manage (e.g. DSA or short RSA keys) stay as they are.',
+                        { count: String(found.unsupported) },
+                    )
+                }}
+            </p>
+        </div>
+
         <p v-if="full" class="text-xs text-muted-foreground">
             {{
                 $t(

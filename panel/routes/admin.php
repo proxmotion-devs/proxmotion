@@ -195,6 +195,8 @@ Route::post('servers/{server}/scripts/{customScript}/run', [CustomScriptControll
 Route::put('servers/{server}/firewall', [ServerFirewallController::class, 'update'])->middleware('throttle:20,1')->name('servers.firewall');
 Route::post('servers/{server}/firewall/ruleset', [ServerFirewallController::class, 'ruleset'])->middleware('throttle:20,1')->name('servers.firewall.ruleset');
 Route::put('servers/{server}/ssh-keys', [ServerSshKeyController::class, 'update'])->middleware('throttle:20,1')->name('servers.ssh-keys');
+// The keys really inside the server, read through the guest agent (docs/adr/0049 §11).
+Route::get('servers/{server}/ssh-keys/guest', [ServerSshKeyController::class, 'guest'])->middleware('throttle:20,1')->name('servers.ssh-keys.guest');
 Route::post('servers/{server}/anti-spoofing', [ServerController::class, 'enableAntiSpoofing'])->middleware('throttle:10,1')->name('servers.enable-anti-spoofing');
 Route::post('tasks/{task}/fail', [TaskController::class, 'fail'])->name('tasks.fail');
 Route::post('tasks/{task}/cancel', [TaskController::class, 'cancel'])->name('tasks.cancel');

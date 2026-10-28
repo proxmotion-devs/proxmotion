@@ -190,6 +190,49 @@ class SshKeysTest extends TestCase
         $this->assertSame(PublicKeyTest::ED25519, $this->server->refresh()->ssh_keys);
     }
 
+    public function test_the_keys_inside_the_server_are_read_next_to_the_managed_ones()
+    {
+        $this->server->forceFill(['ssh_keys' => PublicKeyTest::ED25519."\n".PublicKeyTest::ECDSA])->save();
+        $this->proxmox->guestFiles[$this->server->vmid]['/root/.ssh/authorized_keys'] = implode("\n", [
+            '# keys of the team',
+            PublicKeyTest::ED25519,
+            'command="/usr/bin/backup",no-pty '.PublicKeyTest::RSA,
+            'ssh-dss AAAAB3NzaC1kc3M= old@example.com',
+            '',
+        ]);
+
+        $response = $this->actingAs($this->admin)
+            ->getJson(route('admin.servers.ssh-keys.guest', $this->server))
+            ->assertOk();
+
+        $this->assertSame([
+            ['type' => 'ssh-ed25519', 'fingerprint' => $this->fingerprint(PublicKeyTest::ED25519), 'comment' => 'test@example.com', 'public_key' => PublicKeyTest::ED25519, 'file' => '/root/.ssh/authorized_keys', 'options' => false, 'managed' => true],
+            ['type' => 'ssh-rsa', 'fingerprint' => $this->fingerprint(PublicKeyTest::RSA), 'comment' => 'rsa@example.com', 'public_key' => PublicKeyTest::RSA, 'file' => '/root/.ssh/authorized_keys', 'options' => true, 'managed' => false],
+        ], $response->json('keys'));
+        $this->assertSame([$this->fingerprint(PublicKeyTest::ECDSA)], $response->json('missing'));
+        $this->assertSame(1, $response->json('unsupported'));
+        $this->assertSame(0, $this->server->tasks()->where('type', TaskType::ChangeSshKeys)->count(), 'Reading changes nothing.');
+    }
+
+    public function test_windows_servers_are_read_in_both_files_and_without_an_agent_nothing_is()
+    {
+        $this->osTemplate->forceFill(['distribution' => 'windows'])->save();
+        $this->proxmox->guestFiles[$this->server->vmid]['C:\\Users\\Administrator\\.ssh\\authorized_keys'] = PublicKeyTest::RSA."\r\n";
+
+        $this->actingAs($this->admin)
+            ->getJson(route('admin.servers.ssh-keys.guest', $this->server))
+            ->assertOk()
+            ->assertJsonPath('keys.0.file', 'C:\\Users\\Administrator\\.ssh\\authorized_keys')
+            ->assertJsonPath('missing', [$this->fingerprint(PublicKeyTest::ED25519)]);
+
+        $this->proxmox->agentDown[$this->server->vmid] = true;
+
+        $this->actingAs($this->admin)
+            ->getJson(route('admin.servers.ssh-keys.guest', $this->server))
+            ->assertUnprocessable()
+            ->assertJsonPath('message', 'Could not read the SSH keys inside web1.example.com: its guest agent does not answer.');
+    }
+
     public function test_only_active_servers_change_their_keys()
     {
         $this->server->forceFill(['status' => ServerStatus::Suspended])->save();
