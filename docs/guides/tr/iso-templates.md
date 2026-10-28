@@ -9,7 +9,7 @@ noktanın nasıl kontrol edileceğini anlatır; böylece bu rehberde adı geçme
 şablon hazırlayabilirsiniz.
 
 Ubuntu ve Debian için [os-templates.md](../os-templates.md)'deki cloud image yolu daha hızlıdır.
-Windows'un kendi rehberi var: [windows-templates.md](windows-templates.md).
+Windows'un kendi rehberi var: [windows-templates.md](windows-templates.md), FreeBSD'nin de: [freebsd-templates.md](freebsd-templates.md).
 
 > **Durum:** bu rehber Proxmox VE'nin, cloud-init'in ve kurulum programlarının belgelenmiş
 > davranışını izler. Şimdiye kadar gerçek bir Proxmox VE ile yalnızca bir Debian 13 şablonu
@@ -390,7 +390,7 @@ korur; systemd olmadan bunlar uygulanır ama bir sonraki yeniden başlatmada kay
 kendi sürümlerinizi *OS şablonları → Script'ler* altında yazın (ADR 0010) ya da bu şablonları yalnızca
 tek adresli paketlerle sunun.
 
-BSD'ler ve Linux olmayan diğer sistemler desteklenmez: panelin script'leri Linux shell script'leridir.
+FreeBSD'nin kendi rehberi var: [freebsd-templates.md](freebsd-templates.md); panel bu şablonlarda script'lerinin FreeBSD sürümlerini çalıştırır (ADR 0048). Diğer BSD'ler ve Linux olmayan sistemler desteklenmez: panelin varsayılan script'leri Linux shell script'leridir.
 
 ## Şablonu güncellemek
 

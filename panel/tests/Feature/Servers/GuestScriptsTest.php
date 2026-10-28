@@ -172,6 +172,28 @@ class GuestScriptsTest extends TestCase
         );
     }
 
+    public function test_freebsd_templates_run_their_own_default_scripts()
+    {
+        $this->osTemplate->forceFill(['distribution' => 'freebsd', 'version' => '14.3'])->save();
+
+        $task = $this->grow(ipv4: 2);
+        $files = $this->proxmox->guestFiles[$this->server->vmid];
+
+        $this->assertSame(TaskStatus::Succeeded, $task->status, (string) $task->error);
+        $this->assertSame('linux', $this->osTemplate->refresh()->platform->value, 'Root and sh scripts, like Linux.');
+        $this->assertSame(file_get_contents(resource_path('guest/freebsd/disk.sh')), $files['/usr/local/sbin/proxmotion-disk']);
+        $this->assertSame(file_get_contents(resource_path('guest/freebsd/addresses.sh')), $files['/usr/local/sbin/proxmotion-addresses']);
+        $this->assertStringContainsString("disk_mib=61440\n", $files['/etc/proxmotion/disk.vars']);
+        $this->assertContains(['sh', '/usr/local/sbin/proxmotion-disk'], $this->commands());
+
+        $this->actingAs($this->admin)
+            ->get(route('admin.os-templates.scripts', $this->osTemplate))
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('scripts.1.default', file_get_contents(resource_path('guest/freebsd/addresses.sh')))
+                ->where('scripts.2.default', file_get_contents(resource_path('guest/freebsd/disk.sh')))
+                ->where('scripts.4.default', file_get_contents(resource_path('guest/freebsd/hostname.sh'))));
+    }
+
     public function test_a_script_runs_again_when_the_guest_restarts_while_it_runs()
     {
         $this->osTemplate->forceFill(['distribution' => 'windows'])->save();

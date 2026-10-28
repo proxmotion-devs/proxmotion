@@ -9,7 +9,7 @@ check each point yourself, so you can build a template for a distribution this g
 mentions.
 
 For Ubuntu and Debian, the cloud-image path in [os-templates.md](os-templates.md) is faster.
-Windows has its own guide: [windows-templates.md](windows-templates.md).
+Windows has its own guide: [windows-templates.md](windows-templates.md), and so has FreeBSD: [freebsd-templates.md](freebsd-templates.md).
 
 > **Status:** this follows the documented behaviour of Proxmox VE, cloud-init and the installers.
 > So far only a Debian 13 template has been used with a real Proxmox VE; the notes on the other
@@ -388,7 +388,7 @@ with systemd units; without systemd those are applied but lost at the next resta
 versions for the template under *OS templates → Scripts* (ADR 0010), or offer such templates only
 with packages that have a single address.
 
-BSDs and other non-Linux systems are not supported: the panel's scripts are Linux shell scripts.
+FreeBSD has its own guide, [freebsd-templates.md](freebsd-templates.md): the panel runs FreeBSD versions of its scripts on such templates (ADR 0048). Other BSDs and non-Linux systems are not supported: the panel's default scripts are Linux shell scripts.
 
 ## Updating a template
 

@@ -102,7 +102,7 @@ The admin panel is for staff. **Every panel user is an administrator**; there ar
 | Page | What it does |
 |---|---|
 | **Dashboard** | Overview of the installation |
-| **Help** | Setup order with what is already done, the OS template guide (Linux / Windows / why not macOS, with every command), questions and answers; links to the full guides when a documentation address is set (*Panel settings*) |
+| **Help** | Setup order with what is already done, the OS template guide (Linux / Windows / FreeBSD / why not macOS, with every command), questions and answers; links to the full guides when a documentation address is set (*Panel settings*) |
 | **Locations** | Create and edit locations |
 | **Clusters** | Connect clusters and standalone nodes, test the connection, check permissions, sync now; edit node and storage settings; storage and disk health (ADR 0047) |
 | **Placement groups** | Named node sets per location |
@@ -307,6 +307,7 @@ Requirements of every template: **cloud-init** and the **QEMU guest agent** inst
 - [OS templates](../guides/os-templates.md) — from cloud images, with `deploy/proxmox/prepare-images.sh` (build images off-node, natively or in Docker) and `build-templates.sh` (create templates on the node with `qm`/`pvesh`).
 - [ISO templates](../guides/iso-templates.md) — building a Linux template by hand from an ISO.
 - [Windows templates](../guides/windows-templates.md).
+- [FreeBSD templates](../guides/freebsd-templates.md) — FreeBSD 14 and 15 with UFS; the panel runs FreeBSD versions of its default scripts on them ([ADR 0048](../adr/0048-freebsd-templates.md)); apps are not offered.
 
 Operating systems are the administrators' own list ([ADR 0026](../adr/0026-operating-systems-of-administrators.md)): in the *Operating systems* section of the page they add a system (a name such as "Ubuntu", and Linux or Windows) and its versions (26.04, 24.04, …). The list starts empty. Each template is of one of those versions, picked from a single list; its system, version and platform (which picks the guest scripts) come from it.
 
@@ -332,7 +333,7 @@ After certain events, the panel runs a script inside the server through the gues
 | `password_reset` | Changes the root (Windows: `Administrator`) password; failing fails the reset |
 | `hostname_changed` | Renames the host, keeps `/etc/hosts` across reboots (Windows: rename at next restart) |
 
-Defaults ship for Linux (`resources/guest/linux`) and Windows (`resources/guest/windows`). Under *OS templates → Scripts* administrators can:
+Defaults ship for Linux (`resources/guest/linux`), Windows (`resources/guest/windows`) and FreeBSD (`resources/guest/freebsd`, for templates whose operating system has the slug `freebsd`, ADR 0048). Under *OS templates → Scripts* administrators can:
 
 - write an **override** per template and event (audited),
 - keep it as a **draft** and **try it** on a server (optionally with an `sh -x` trace),

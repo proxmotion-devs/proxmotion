@@ -59,6 +59,34 @@ describe('TemplateGuide', () => {
         expect(wrapper.text()).not.toContain('sysprep.exe /generalize');
     });
 
+    it('switches to the FreeBSD steps', async () => {
+        const wrapper = mountGuide();
+
+        await wrapper
+            .find('[data-test="template-tab-freebsd"]')
+            .trigger('click');
+
+        expect(
+            wrapper.find('[data-test="template-panel-freebsd"]').exists(),
+        ).toBe(true);
+        // The settings without which clones do not grow or the panel does not wait for cloud-init
+        expect(wrapper.text()).toContain('sysrc growfs_swap_size=0');
+        expect(wrapper.text()).toContain('qemu_guest_agent_env=');
+        expect(wrapper.text()).toContain('virtio_console_load=YES');
+        expect(wrapper.text()).not.toContain('cloudbase-init-unattend.conf');
+    });
+
+    it('opens the FreeBSD tab a link points to', async () => {
+        window.location.hash = '#template-guide-freebsd';
+
+        const wrapper = mountGuide();
+        await nextTick();
+
+        expect(
+            wrapper.find('[data-test="template-panel-freebsd"]').exists(),
+        ).toBe(true);
+    });
+
     it('explains macOS', async () => {
         const wrapper = mountGuide();
 

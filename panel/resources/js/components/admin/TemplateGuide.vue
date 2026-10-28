@@ -5,17 +5,19 @@ import { onBeforeUnmount, onMounted, ref } from 'vue';
  * Building an OS template by hand, one tab per operating system. It explains
  * what a template must provide and why, so it works for any distribution
  * and for every Windows version from Server 2016 to Windows 11, and how to
- * check each point. Follows docs/guides/iso-templates.md and
- * docs/guides/windows-templates.md; keep them in step. Links such as
- * #template-guide-windows open a tab, #template-guide-windows-nosysprep
- * also picks the way of making Windows clones unique.
+ * check each point. Follows docs/guides/iso-templates.md,
+ * docs/guides/windows-templates.md and docs/guides/freebsd-templates.md;
+ * keep them in step. Links such as #template-guide-windows open a tab,
+ * #template-guide-windows-nosysprep also picks the way of making Windows
+ * clones unique.
  */
-type Os = 'linux' | 'windows' | 'macos';
+type Os = 'linux' | 'windows' | 'freebsd' | 'macos';
 type WindowsWay = 'sysprep' | 'nosysprep';
 
 const tabs: { os: Os; label: string }[] = [
     { os: 'linux', label: 'Linux' },
     { os: 'windows', label: 'Windows' },
+    { os: 'freebsd', label: 'FreeBSD' },
     { os: 'macos', label: 'macOS' },
 ];
 
@@ -353,6 +355,44 @@ wevtutil el | ForEach-Object { wevtutil cl "$_" 2>$null }`,
     sysprep: `C:\\Windows\\System32\\Sysprep\\sysprep.exe /generalize /oobe /shutdown /unattend:"C:\\Program Files\\Cloudbase Solutions\\Cloudbase-Init\\conf\\Unattend.xml"`,
     restarts: `Get-WinEvent -FilterHashtable @{LogName='System'; Id=1074} -MaxEvents 5 | Format-List TimeCreated, Message`,
     checksum: `shasum -a 256 ~/Downloads/<file>.iso`,
+    freebsdGpart: `gpart show da0      # freebsd-ufs is the last partition, only free space after it
+swapinfo            # lists no swap device`,
+    freebsdUpdate: `PAGER=cat freebsd-update fetch install
+pkg bootstrap -y && pkg upgrade -y
+reboot`,
+    freebsdInstall: `pkg install -y net/cloud-init qemu-guest-agent
+sysrc cloudinit_enable=YES qemu_guest_agent_enable=YES
+sysrc qemu_guest_agent_env="PATH=/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/sbin:/usr/local/bin"
+sysrc growfs_swap_size=0
+sysrc -f /boot/loader.conf virtio_console_load=YES virtio_random_load=YES`,
+    freebsdCloudConfig: `cat > /usr/local/etc/cloud/cloud.cfg.d/99-proxmotion.cfg <<'EOF'
+datasource_list: [NoCloud, None]
+disable_root: false
+ssh_pwauth: true
+EOF`,
+    freebsdNetwork: `sysrc -ix ifconfig_vtnet0 ifconfig_vtnet0_ipv6 defaultrouter ipv6_defaultrouter rtsold_enable
+grep -E '^(ifconfig_|defaultrouter|ipv6_defaultrouter|rtsold)' /etc/rc.conf    # prints nothing`,
+    freebsdAgent: `kldload virtio_console
+service qemu-guest-agent start
+ls /dev/vtcon/                    # org.qemu.guest_agent.0`,
+    freebsdAgentCheck: `qm guest cmd <vmid> ping
+qm guest exec <vmid> -- id
+qm guest exec <vmid> -- sh -c 'command -v cloud-init'
+qm guest exec <vmid> -- mkdir -p /var/lib/proxmotion/check
+qm guest exec <vmid> -- rmdir /var/lib/proxmotion/check /var/lib/proxmotion`,
+    freebsdSshd: `printf 'PermitRootLogin yes\\nPasswordAuthentication yes\\n' >> /etc/ssh/sshd_config
+sshd -T | grep -E '^(permitrootlogin|passwordauthentication) '
+sysrc sshd_enable=YES`,
+    freebsdForget: `pw usershow freebsd > /dev/null 2>&1 && pw userdel -n freebsd -r
+pw usermod root -w no             # cloud-init sets the real password
+cloud-init clean --logs --seed
+rm -f /etc/hostid /etc/machine-id /etc/ssh/ssh_host_*
+rm -f /etc/resolv.conf /var/db/dhclient.leases.*
+rm -rf /tmp/* /var/tmp/*
+find /var/log -type f -exec truncate -s 0 {} +
+pkg clean -ay
+rm -f /root/.sh_history /root/.history
+poweroff`,
 };
 
 const virtioUrl =
@@ -1452,6 +1492,471 @@ const cloudbaseUrl = 'https://cloudbase.it/cloudbase-init/';
                 </section>
             </template>
 
+            <!-- FreeBSD -->
+            <template v-else-if="active === 'freebsd'">
+                <p>
+                    {{
+                        $t(
+                            'For FreeBSD 14 and 15 on amd64, with a UFS root file system. The panel treats a FreeBSD template like a Linux one (user root, sh scripts) and, when the operating system of the template has the slug freebsd, runs its own FreeBSD scripts for additional addresses, disk growth and hostname changes. This guide follows the documented behaviour of FreeBSD, cloud-init and Proxmox and has not been tried on a real server yet.',
+                        )
+                    }}
+                </p>
+
+                <section>
+                    <h4>
+                        {{ $t('How a FreeBSD server is born from a template') }}
+                    </h4>
+                    <p>
+                        {{
+                            $t(
+                                'As on Linux (see the Linux tab), with the tools of FreeBSD:',
+                            )
+                        }}
+                    </p>
+                    <ul>
+                        <li>
+                            {{
+                                $t(
+                                    'Proxmox writes the CloudInit drive in the NoCloud format for every OS type except Windows; cloud-init, installed from the FreeBSD packages, reads it on the first boot.',
+                                )
+                            }}
+                        </li>
+                        <li>
+                            {{
+                                $t(
+                                    "cloud-init grows the root partition and file system with FreeBSD's own growfs service, writes the network and the hostname into /etc/rc.conf and sets root's password and keys. It may rename the network interface to the name in Proxmox's network settings; the panel's scripts find it by its MAC address.",
+                                )
+                            }}
+                        </li>
+                        <li>
+                            {{
+                                $t(
+                                    'The panel waits for the guest agent and cloud-init, runs its FreeBSD scripts through the agent and checks the server from inside. A password reset sets the password through the agent, which uses pw on FreeBSD.',
+                                )
+                            }}
+                        </li>
+                    </ul>
+                </section>
+
+                <section>
+                    <h4>{{ $t('What does not work on FreeBSD') }}</h4>
+                    <ul>
+                        <li>
+                            {{
+                                $t(
+                                    'Apps: the app runner needs bash and systemd. Never tick a FreeBSD version for an app (Apps, Choose systems).',
+                                )
+                            }}
+                        </li>
+                        <li>
+                            {{
+                                $t(
+                                    'The Disk space card stays empty while the FreeBSD guest agent does not report file systems (guest-get-fsinfo).',
+                                )
+                            }}
+                        </li>
+                        <li>
+                            {{
+                                $t(
+                                    "Stop script in the task list ends the task but cannot stop the run inside a FreeBSD server: finding its processes needs Linux's /proc.",
+                                )
+                            }}
+                        </li>
+                        <li>
+                            {{
+                                $t(
+                                    'IPv6: once another IPv6 address is the primary, FreeBSD still picks the source of outgoing IPv6 connections by its own rules (RFC 6724). For IPv4 the default route sets it.',
+                                )
+                            }}
+                        </li>
+                    </ul>
+                </section>
+
+                <section>
+                    <h4>{{ $t('1. Create the VM') }}</h4>
+                    <p>
+                        {{
+                            $t(
+                                'Download the disc1 ISO of your version (e.g. FreeBSD-15.0-RELEASE-amd64-disc1.iso) from download.freebsd.org with Download from URL and the SHA256 checksum from the CHECKSUM.SHA256 file next to it. Then Create VM with a VMID outside the range of your servers (e.g. 9000 and up):',
+                            )
+                        }}
+                    </p>
+                    <ul>
+                        <li>
+                            {{
+                                $t(
+                                    'OS type Other: Proxmox writes the NoCloud format for every type except Windows, which cloud-init reads on FreeBSD too.',
+                                )
+                            }}
+                        </li>
+                        <li>
+                            {{
+                                $t(
+                                    'QEMU Agent ticked: without it the VM has no channel for the guest agent.',
+                                )
+                            }}
+                        </li>
+                        <li>
+                            {{
+                                $t(
+                                    'A small disk (10 GiB) on SCSI with VirtIO SCSI single, Discard and SSD emulation on: a full clone copies every used block, the panel grows the disk anyway, and Discard lets freed blocks go back to the storage.',
+                                )
+                            }}
+                        </li>
+                        <li>
+                            {{
+                                $t(
+                                    'CPU type default, not host: host ties the template to one CPU model and clones may not start on other nodes.',
+                                )
+                            }}
+                        </li>
+                        <li>
+                            {{
+                                $t(
+                                    "Resource pool: the panel's pool, if its API token is limited to one, because the token can only clone what it can see. Memory and network only need to suit the installer; the panel sets each server's own.",
+                                )
+                            }}
+                        </li>
+                        <li>
+                            {{
+                                $t(
+                                    'After creating it: Hardware, Add, VirtIO RNG. Every clone starts from the entropy file the template saved when it shut down; the RNG adds fresh randomness from the host at every boot.',
+                                )
+                            }}
+                        </li>
+                    </ul>
+                </section>
+
+                <section>
+                    <h4>
+                        {{ $t('2. Install: UFS, the root partition last') }}
+                    </h4>
+                    <p>
+                        {{
+                            $t(
+                                'The rule of the Linux tab: root last, no swap partition after it, because the panel adds free space at the end of the disk and growfs grows only the last partition. The FreeBSD installer puts swap after root, so remove it:',
+                            )
+                        }}
+                    </p>
+                    <ol>
+                        <li>
+                            {{
+                                $t(
+                                    'Boot the ISO, choose Install, a keymap and any hostname. Distribution Select: untick every optional component; the base system is always installed.',
+                                )
+                            }}
+                        </li>
+                        <li>
+                            {{
+                                $t(
+                                    'Partitioning: Auto (UFS), Entire Disk, GPT. In the partition editor select the freebsd-swap partition, Delete, then Finish and Commit.',
+                                )
+                            }}
+                        </li>
+                        <li>
+                            {{
+                                $t(
+                                    'Set a temporary root password. Network: configure vtnet0 for the build. Time zone: UTC.',
+                                )
+                            }}
+                        </li>
+                        <li>
+                            {{
+                                $t(
+                                    'System Configuration: sshd on, dumpdev off (crash dumps need swap). Hardening: the defaults. Add users: No. Exit and reboot.',
+                                )
+                            }}
+                        </li>
+                    </ol>
+                    <p>
+                        {{
+                            $t(
+                                'Check after the first boot. ZFS works with growfs as well, but needs more memory per server and its guided layout keeps a swap partition, so this guide uses UFS.',
+                            )
+                        }}
+                    </p>
+                    <pre>{{ commands.freebsdGpart }}</pre>
+                </section>
+
+                <section>
+                    <h4>
+                        {{ $t('3. Updates, cloud-init and the guest agent') }}
+                    </h4>
+                    <p>
+                        {{
+                            $t(
+                                'Log in on the console as root. Install the updates first and restart once: once cloud-init is enabled, the template should not boot again (without a CloudInit drive cloud-init would create its default user freebsd). FreeBSD 15 installed from base system packages is updated with pkg upgrade alone.',
+                            )
+                        }}
+                    </p>
+                    <pre>{{ commands.freebsdUpdate }}</pre>
+                    <p>
+                        {{
+                            $t(
+                                'Then install cloud-init and the guest agent from the packages and set them up in /etc/rc.conf and /boot/loader.conf:',
+                            )
+                        }}
+                    </p>
+                    <pre>{{ commands.freebsdInstall }}</pre>
+                    <ul>
+                        <li>
+                            {{
+                                $t(
+                                    'qemu_guest_agent_env: services start with a PATH without /usr/local, so the commands the panel runs through the agent would not find cloud-init and the panel would not wait for it.',
+                                )
+                            }}
+                        </li>
+                        <li>
+                            {{
+                                $t(
+                                    'growfs_swap_size=0: otherwise growfs, which cloud-init runs on the first boot, can add a swap partition after root on disks over 15 GB, and root could never grow again.',
+                                )
+                            }}
+                        </li>
+                        <li>
+                            {{
+                                $t(
+                                    'virtio_console: the device of the guest agent, not part of the GENERIC kernel. virtio_random: the VirtIO RNG of step 1.',
+                                )
+                            }}
+                        </li>
+                    </ul>
+                    <p>
+                        {{
+                            $t(
+                                "Tell cloud-init where to look; on FreeBSD its configuration is under /usr/local/etc/cloud/. With a single data source (and None) in the list, cloud-init's ds-identify uses it without having to recognise the CD. disable_root and ssh_pwauth belong to step 6.",
+                            )
+                        }}
+                    </p>
+                    <pre>{{ commands.freebsdCloudConfig }}</pre>
+                </section>
+
+                <section>
+                    <h4>{{ $t('4. Hand the network to cloud-init') }}</h4>
+                    <p>
+                        {{
+                            $t(
+                                "Why: as on Linux, the installer's settings would fight with the ones cloud-init writes on each clone. They are lines in /etc/rc.conf, and /etc/resolv.conf, which step 7 removes because cloud-init only adds to it. Remove the lines now; the network keeps working until the next boot:",
+                            )
+                        }}
+                    </p>
+                    <pre>{{ commands.freebsdNetwork }}</pre>
+                </section>
+
+                <section>
+                    <h4>{{ $t('5. The QEMU guest agent') }}</h4>
+                    <p>
+                        {{
+                            $t(
+                                'Why: as on Linux, the agent is the only way the panel gets into a server. Load the VirtIO console driver and start the agent without a restart; from the next boot loader.conf loads the driver:',
+                            )
+                        }}
+                    </p>
+                    <pre>{{ commands.freebsdAgent }}</pre>
+                    <p>
+                        {{
+                            $t(
+                                'Check from the node shell while the VM runs: every command must answer with exitcode 0, and the third must print /usr/local/bin/cloud-init (otherwise qemu_guest_agent_env of step 3 is missing; restart the service after setting it).',
+                            )
+                        }}
+                    </p>
+                    <pre>{{ commands.freebsdAgentCheck }}</pre>
+                </section>
+
+                <section>
+                    <h4>{{ $t('6. Root login') }}</h4>
+                    <p>
+                        {{
+                            $t(
+                                "Why: as on Linux, customers get root's password and keys, and FreeBSD's sshd refuses root by default. cloud-init keeps root enabled on FreeBSD, and ssh_pwauth: true from step 3 lets it allow passwords. sshd keeps the first value it reads and FreeBSD's sshd_config has these only as comments, so append them:",
+                            )
+                        }}
+                    </p>
+                    <pre>{{ commands.freebsdSshd }}</pre>
+                    <p>
+                        {{
+                            $t(
+                                'For key-only logins use PermitRootLogin prohibit-password, PasswordAuthentication no, KbdInteractiveAuthentication no (FreeBSD also asks for passwords through PAM) and ssh_pwauth: false; customers then need an SSH key.',
+                            )
+                        }}
+                    </p>
+                </section>
+
+                <section>
+                    <h4>
+                        {{ $t('7. Forget the identity, shrink, shut down') }}
+                    </h4>
+                    <p>
+                        {{
+                            $t(
+                                'Everything that makes this VM this machine must go, so each clone creates its own:',
+                            )
+                        }}
+                    </p>
+                    <ul>
+                        <li>
+                            {{
+                                $t(
+                                    "root's password (cloud-init sets the real one), and the user freebsd, which cloud-init creates if the template ever booted with it enabled.",
+                                )
+                            }}
+                        </li>
+                        <li>
+                            {{
+                                $t(
+                                    'The cloud-init state: otherwise cloud-init takes the clone for the same instance and skips its work.',
+                                )
+                            }}
+                        </li>
+                        <li>
+                            {{
+                                $t(
+                                    "The host ID and machine ID (FreeBSD creates both at boot, from the clone's new SMBIOS UUID), the SSH host keys, the resolver settings and the DHCP leases: clones would share them.",
+                                )
+                            }}
+                        </li>
+                        <li>
+                            {{
+                                $t(
+                                    'Logs, temporary files, the package cache and shell history: they only make every clone larger and slower to create.',
+                                )
+                            }}
+                        </li>
+                    </ul>
+                    <pre>{{ commands.freebsdForget }}</pre>
+                    <p>
+                        {{
+                            $t(
+                                'Do not start the VM again afterwards: its first boot would give it an identity again. If you must, repeat this step.',
+                            )
+                        }}
+                    </p>
+                </section>
+
+                <section>
+                    <h4>{{ $t('8. Turn the VM into a template') }}</h4>
+                    <ol>
+                        <li>{{ $t('Hardware: remove the CD/DVD drive.') }}</li>
+                        <li>
+                            {{
+                                $t(
+                                    'Hardware, Add, CloudInit Drive: on the same storage as the disk. Leave the Cloud-Init tab empty; the panel fills it in for every server.',
+                                )
+                            }}
+                        </li>
+                        <li>
+                            {{
+                                $t(
+                                    'Options: Boot Order only the disk (scsi0), QEMU Guest Agent enabled.',
+                                )
+                            }}
+                        </li>
+                        <li>{{ $t('More, Convert to template.') }}</li>
+                    </ol>
+                    <p>
+                        {{
+                            $t(
+                                'With local storage the template must exist on every node that hosts servers (Clone with a target node, full clone, then convert); with shared storage one is enough.',
+                            )
+                        }}
+                    </p>
+                </section>
+
+                <section>
+                    <h4>{{ $t('9. Add it to the panel and test it') }}</h4>
+                    <ol>
+                        <li>
+                            {{
+                                $t(
+                                    "In Proxmox, add the template to the panel's resource pool: Datacenter, Permissions, Pools, the pool, Members, Add, Virtual Machine.",
+                                )
+                            }}
+                        </li>
+                        <li>
+                            {{
+                                $t(
+                                    'On the Clusters page, open the cluster and run a sync.',
+                                )
+                            }}
+                        </li>
+                        <li>
+                            {{
+                                $t(
+                                    'On the OS templates page the template is listed under Found on Proxmox; with freebsd in its name the panel suggests FreeBSD and the version. The operating system FreeBSD has the platform Linux and the slug freebsd, which makes the panel use its FreeBSD scripts. Check them and click Add.',
+                                )
+                            }}
+                        </li>
+                        <li>
+                            {{
+                                $t('Leave its version unticked for every app.')
+                            }}
+                        </li>
+                        <li>
+                            {{
+                                $t(
+                                    'Create two test servers and check each condition on them:',
+                                )
+                            }}
+                        </li>
+                    </ol>
+                    <ul>
+                        <li>
+                            {{
+                                $t(
+                                    'The task ends without notes and the server page shows the guest agent (cloud-init and the agent work).',
+                                )
+                            }}
+                        </li>
+                        <li>
+                            {{
+                                $t(
+                                    "SSH as root to the server's address works with the password and with a key (root login).",
+                                )
+                            }}
+                        </li>
+                        <li>
+                            {{
+                                $t(
+                                    "ifconfig, netstat -rn, hostname and /etc/resolv.conf show the panel's values (network).",
+                                )
+                            }}
+                        </li>
+                        <li>
+                            {{
+                                $t(
+                                    'df -h / shows the package size, and grows after Change resources without a restart (disk layout).',
+                                )
+                            }}
+                        </li>
+                        <li>
+                            {{
+                                $t(
+                                    '/etc/hostid and the SSH host key fingerprints differ between the two servers (identity).',
+                                )
+                            }}
+                        </li>
+                        <li>
+                            {{
+                                $t(
+                                    "Edit IP addresses adds an address and a restart keeps it; a changed hostname stays after a restart too (the panel's FreeBSD scripts).",
+                                )
+                            }}
+                        </li>
+                    </ul>
+                </section>
+
+                <section>
+                    <h4>{{ $t('Updating a FreeBSD template') }}</h4>
+                    <p>
+                        {{
+                            $t(
+                                'Make a full clone of the template, set the user root and a temporary password in its Cloud-Init tab, start it and log in on the console. Install the updates (freebsd-update fetch install, pkg upgrade) and restart, check that steps 3 to 6 still hold, run step 7 again and clear the Cloud-Init user and password. Then convert it to a template with a new name.',
+                            )
+                        }}
+                    </p>
+                </section>
+            </template>
+
             <!-- macOS -->
             <template v-else>
                 <section>
@@ -1459,7 +1964,7 @@ const cloudbaseUrl = 'https://cloudbase.it/cloudbase-init/';
                     <p>
                         {{
                             $t(
-                                "No. Apple's licence allows macOS virtual machines only on Apple hardware, and Proxmox nodes are not Apple machines. The panel therefore supports Linux and Windows templates only.",
+                                "No. Apple's licence allows macOS virtual machines only on Apple hardware, and Proxmox nodes are not Apple machines. The panel therefore supports Linux, Windows and FreeBSD templates only.",
                             )
                         }}
                     </p>
@@ -1472,7 +1977,7 @@ const cloudbaseUrl = 'https://cloudbase.it/cloudbase-init/';
                     <p>
                         {{
                             $t(
-                                "Yes. Every step of the Linux and Windows tabs happens in the Proxmox web interface and the VM's console in your browser, so your own computer does not matter. Use Download from URL so the ISO goes straight to the node instead of through your Mac.",
+                                "Yes. Every step of the Linux, Windows and FreeBSD tabs happens in the Proxmox web interface and the VM's console in your browser, so your own computer does not matter. Use Download from URL so the ISO goes straight to the node instead of through your Mac.",
                             )
                         }}
                     </p>

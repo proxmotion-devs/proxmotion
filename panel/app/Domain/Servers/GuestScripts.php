@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Domain\Servers;
 
+use App\Domain\Infrastructure\Distributions;
 use App\Enums\GuestScriptEvent;
 use App\Enums\OsPlatform;
 use App\Enums\TaskStatus;
@@ -29,7 +30,8 @@ use Throwable;
 /**
  * Runs the script of an event inside a server through the QEMU guest agent
  * (docs/adr/0010): the OS template's own script, or the default from
- * resources/guest for its platform. The script and its inputs (from the
+ * resources/guest for its platform (FreeBSD templates have their own,
+ * docs/adr/0048). The script and its inputs (from the
  * panel's database only, never interpolated into the script) are written with
  * file-write, then the script runs with exec.
  *
@@ -242,18 +244,24 @@ final readonly class GuestScripts
             return [$own->content, GuestScriptLog::SOURCE_PUBLISHED];
         }
 
-        $default = self::defaultScript($platform, $event);
+        $default = self::defaultScript($platform, $event, $template?->distribution);
 
         return $default === null ? null : [$default, GuestScriptLog::SOURCE_DEFAULT];
     }
 
-    public static function defaultScript(OsPlatform $platform, GuestScriptEvent $event): ?string
+    /**
+     * The panel's own script of the event: resources/guest/<platform>, or
+     * resources/guest/freebsd for a FreeBSD template, whose platform is
+     * Linux (root, sh scripts) but whose tools are not (docs/adr/0048).
+     */
+    public static function defaultScript(OsPlatform $platform, GuestScriptEvent $event, ?string $distribution = null): ?string
     {
         if (! $event->hasDefault()) {
             return null;
         }
 
-        $file = resource_path('guest/'.$platform->value.'/'.$event->name().($platform === OsPlatform::Windows ? '.ps1' : '.sh'));
+        $directory = $platform === OsPlatform::Linux && $distribution === Distributions::FREEBSD ? Distributions::FREEBSD : $platform->value;
+        $file = resource_path('guest/'.$directory.'/'.$event->name().($platform === OsPlatform::Windows ? '.ps1' : '.sh'));
 
         return is_file($file) ? (string) file_get_contents($file) : null;
     }

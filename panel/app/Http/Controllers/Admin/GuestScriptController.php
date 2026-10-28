@@ -56,7 +56,7 @@ class GuestScriptController extends Controller
                 'event' => $event->value,
                 'content' => $own->get($event->value)?->content,
                 'draft' => $own->get($event->value)?->draft_content,
-                'default' => GuestScripts::defaultScript($osTemplate->platform, $event),
+                'default' => GuestScripts::defaultScript($osTemplate->platform, $event, $osTemplate->distribution),
                 'inputs' => ['server', 'hostname', 'mac', ...$event->inputKeys()],
                 'can_be_tried' => $event->canBeTried(),
                 'critical' => $event->isCritical(),
