@@ -49,14 +49,13 @@ class TaskController extends Controller
      */
     public function cancel(Request $request, Task $task, #[CurrentUser] User $admin, TaskFailer $failer): RedirectResponse
     {
-        if (! $failer->canCancel($task)) {
+        $status = $task->status->value;
+
+        if (! $failer->canCancel($task) || ! $failer->cancel($task, GuestScripts::CANCELLED)) {
             $this->toast('error', 'This task can no longer be cancelled.');
 
             return back();
         }
-
-        $status = $task->status->value;
-        $failer->fail($task, GuestScripts::CANCELLED, alert: false);
 
         AuditLog::record('task.cancelled', $admin, $task->server, [
             'task' => $task->uuid,

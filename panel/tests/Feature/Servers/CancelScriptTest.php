@@ -110,6 +110,56 @@ class CancelScriptTest extends TestCase
         $this->assertSame(TaskStatus::Succeeded, $task->refresh()->status);
     }
 
+    public function test_a_run_that_finished_meanwhile_keeps_its_outcome()
+    {
+        Queue::fake([RunServerTask::class]);
+        $task = app(TaskRunner::class)->start($this->server, TaskType::GuestScript, $this->admin, input: ['script' => $this->script->uuid, 'manual' => true]);
+        $task->forceFill(['status' => TaskStatus::Running])->save();
+
+        // The job ends the run after the administrator's request read the task.
+        Task::query()->whereKey($task->id)->update(['status' => TaskStatus::Succeeded, 'finished_at' => now()]);
+
+        $this->assertFalse(app(TaskFailer::class)->cancel($task, GuestScripts::CANCELLED));
+        $this->assertSame(TaskStatus::Succeeded, $task->refresh()->status);
+        $this->assertNull($task->error);
+    }
+
+    public function test_a_job_does_not_start_a_run_cancelled_after_it_read_the_task()
+    {
+        Queue::fake([RunServerTask::class]);
+        $task = app(TaskRunner::class)->start($this->server, TaskType::GuestScript, $this->admin, input: ['script' => $this->script->uuid, 'manual' => true]);
+        $job = new RunServerTask($task);
+
+        $this->assertTrue(app(TaskFailer::class)->cancel($task->fresh(), GuestScripts::CANCELLED));
+        $this->assertSame(TaskStatus::Queued, $job->task->status, 'The job still holds the task as queued.');
+        $commands = count($this->proxmox->guestCommands);
+
+        app()->call([$job, 'handle']);
+
+        $task->refresh();
+        $this->assertSame(TaskStatus::Failed, $task->status);
+        $this->assertSame(GuestScripts::CANCELLED, $task->error);
+        $this->assertNull($task->started_at);
+        $this->assertCount($commands, $this->proxmox->guestCommands, 'Nothing ran inside the server.');
+    }
+
+    public function test_a_cancelled_freebsd_run_is_stopped_through_procstat()
+    {
+        Sleep::fake();
+        $this->osTemplate->forceFill(['distribution' => 'freebsd'])->save();
+        $path = "/usr/local/sbin/proxmotion-script-{$this->script->id}";
+        $this->hangUntilCancelled($path);
+
+        $task = app(TaskRunner::class)->start($this->server, TaskType::GuestScript, $this->admin, input: ['script' => $this->script->uuid, 'manual' => true])->refresh();
+
+        $this->assertSame(TaskStatus::Failed, $task->status);
+        $log = GuestScriptLog::query()->sole();
+        $this->assertContains(['env', "PROXMOTION_SCRIPT_RUN={$log->id}", 'sh', $path], $this->commands());
+        $this->assertContains(['sh', '-c', GuestScripts::FREEBSD_STOP_SCRIPT, 'proxmotion-stop', (string) $log->id], $this->commands());
+        $this->assertNotContains(['sh', '-c', GuestScripts::LINUX_STOP_SCRIPT, 'proxmotion-stop', (string) $log->id], $this->commands());
+        $this->assertSame(GuestScripts::CANCELLED, $log->message);
+    }
+
     public function test_a_cancelled_linux_run_is_stopped_inside_the_server_by_its_marker()
     {
         Sleep::fake();
@@ -172,9 +222,7 @@ class CancelScriptTest extends TestCase
             $pid->value = $hanging;
             $task = Task::query()->where('type', TaskType::GuestScript)->sole();
 
-            if ($task->status === TaskStatus::Running) {
-                app(TaskFailer::class)->fail($task, GuestScripts::CANCELLED, alert: false);
-            }
+            app(TaskFailer::class)->cancel($task, GuestScripts::CANCELLED);
         };
 
         return $pid;

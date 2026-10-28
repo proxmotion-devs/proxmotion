@@ -184,6 +184,21 @@ final readonly class GuestScripts
         SH;
 
     /**
+     * LINUX_STOP_SCRIPT for FreeBSD templates (docs/adr/0048), which have no
+     * /proc by default: procstat -e -a lists every process with its
+     * environment (PID, COMM, then one word per variable).
+     */
+    public const FREEBSD_STOP_SCRIPT = <<<'SH'
+        marker="PROXMOTION_SCRIPT_RUN=$1"
+        for signal in STOP KILL; do
+            procstat -e -a 2> /dev/null \
+                | awk -v marker="$marker" -v self="$$" 'NR > 1 && $1 != self { for (i = 3; i <= NF; i++) if ($i == marker) { print $1; break } }' \
+                | while read -r pid; do kill -"$signal" "$pid" 2> /dev/null; done
+        done
+        exit 0
+        SH;
+
+    /**
      * Stops a cancelled Windows run: the process the agent started ({pid})
      * and every process below it. Children keep their parent's id after it
      * exited, and the agent holds the run's process until it reports it as
@@ -387,7 +402,7 @@ final readonly class GuestScripts
 
                 break;
             } catch (GuestCommandCancelled $e) {
-                $this->stopCancelled($agent, $server->vmid, $platform, $slot, $log, $e->pid);
+                $this->stopCancelled($agent, $server->vmid, $platform, $server->osTemplate?->distribution, $slot, $log, $e->pid);
 
                 throw new GuestScriptFailed(self::CANCELLED);
             } catch (ProxmoxException $e) {
@@ -886,11 +901,13 @@ final readonly class GuestScripts
      * then. The task has already ended (TaskController::cancel()); a run that
      * cannot be stopped is noted on its log.
      */
-    private function stopCancelled(GuestAgentResource $agent, int $vmid, OsPlatform $platform, ScriptSlot $slot, GuestScriptLog $log, int $pid): void
+    private function stopCancelled(GuestAgentResource $agent, int $vmid, OsPlatform $platform, ?string $distribution, ScriptSlot $slot, GuestScriptLog $log, int $pid): void
     {
-        $command = $platform === OsPlatform::Windows
-            ? ['powershell.exe', '-NoProfile', '-NonInteractive', '-Command', str_replace('{pid}', (string) $pid, self::WINDOWS_STOP_SCRIPT)]
-            : ['sh', '-c', self::LINUX_STOP_SCRIPT, 'proxmotion-stop', (string) $log->id];
+        $command = match (true) {
+            $platform === OsPlatform::Windows => ['powershell.exe', '-NoProfile', '-NonInteractive', '-Command', str_replace('{pid}', (string) $pid, self::WINDOWS_STOP_SCRIPT)],
+            $distribution === Distributions::FREEBSD => ['sh', '-c', self::FREEBSD_STOP_SCRIPT, 'proxmotion-stop', (string) $log->id],
+            default => ['sh', '-c', self::LINUX_STOP_SCRIPT, 'proxmotion-stop', (string) $log->id],
+        };
         $message = self::CANCELLED;
         $result = null;
 

@@ -25,10 +25,7 @@ final class TaskFailer
         private readonly AdminNotifier $notifier,
     ) {}
 
-    /**
-     * @param  bool  $alert  whether administrators get the "task failed" email (not when one of them ended it on purpose)
-     */
-    public function fail(Task $task, string $message, bool $alert = true): void
+    public function fail(Task $task, string $message): void
     {
         // The pipeline may have failed while saving these models: drop what it
         // left unsaved, or the same error would stop the task from ending.
@@ -53,10 +50,33 @@ final class TaskFailer
         }
 
         $this->notify($task);
+        $this->notifier->taskFailed($task);
+    }
 
-        if ($alert) {
-            $this->notifier->taskFailed($task);
+    /**
+     * Cancel an administrator's run of a script (see canCancel()). The task
+     * ends only if it is still queued or running in the database, so a run
+     * that has just finished, or a job that has just started it, keeps its
+     * outcome. No "task failed" email: an administrator ended it on purpose.
+     *
+     * @return bool whether it was cancelled
+     */
+    public function cancel(Task $task, string $message): bool
+    {
+        $cancelled = Task::query()
+            ->whereKey($task->id)
+            ->where('type', TaskType::GuestScript)
+            ->whereIn('status', [TaskStatus::Queued, TaskStatus::Running])
+            ->update(['status' => TaskStatus::Failed, 'error' => $message, 'finished_at' => now()]);
+
+        if ($cancelled === 0) {
+            return false;
         }
+
+        $task->refresh();
+        $this->notify($task);
+
+        return true;
     }
 
     /**

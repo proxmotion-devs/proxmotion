@@ -495,14 +495,14 @@ class FakeProxmoxCluster
 
     /**
      * A stop command of GuestScripts ends the hanging commands it finds:
-     * Linux ones by their marker (killed, signal 9), Windows ones by pid
+     * Linux and FreeBSD ones by their marker (killed, signal 9), Windows ones by pid
      * (exit code 1, as Stop-Process -Force leaves it).
      *
      * @param  list<string>  $command
      */
     private function stopHanging(array $command): bool
     {
-        if ($command[0] === 'sh' && ($command[2] ?? null) === GuestScripts::LINUX_STOP_SCRIPT) {
+        if ($command[0] === 'sh' && in_array($command[2] ?? null, [GuestScripts::LINUX_STOP_SCRIPT, GuestScripts::FREEBSD_STOP_SCRIPT], true)) {
             $matches = fn (int $pid, array $process) => ($process['marker'] ?? null) === $command[4];
             $ending = ['signal' => 9];
         } elseif ($command[0] === 'powershell.exe' && preg_match('/\$tree\.Add\((\d+)\)/', $command[4] ?? '', $found) === 1) {
