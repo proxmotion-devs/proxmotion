@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Domain\Backups;
 
+use App\Domain\Apps\AppInstallations;
 use App\Enums\ServerStatus;
 use App\Enums\TaskType;
 use App\Models\ApiToken;
@@ -98,12 +99,19 @@ final readonly class ServerSnapshots
     /**
      * Queue a rollback: the server's disk and configuration go back to the
      * snapshot, then the panel writes its own state back (docs/adr/0051 §5).
+     * Not while an app script runs: the rollback would take its disk away
+     * under it, and it runs outside the server's tasks.
      *
      * @throws ProvisioningException
      */
     public function rollback(Server $server, Snapshot $snapshot, User|ApiToken $actor, ?string $ipAddress): Task
     {
         self::ensureActive($server);
+
+        if (AppInstallations::scriptRunning($server)) {
+            throw new ProvisioningException('An app script is running on this server: wait until it has finished, or cancel it.');
+        }
+
         $task = $this->tasks->start($server, TaskType::RollbackSnapshot, $actor, input: ['snapshot' => $snapshot->uuid]);
 
         AuditLog::record('server.snapshot_rolled_back', $actor, $server, ['hostname' => $server->hostname, 'snapshot' => $snapshot->name, 'label' => $snapshot->label], $ipAddress);

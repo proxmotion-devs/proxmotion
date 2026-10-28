@@ -2529,5 +2529,6 @@
     "Taking the snapshot…": "Snapshot alınıyor…",
     "Rolling back to the snapshot…": "Snapshot'a geri dönülüyor…",
     "Deleting the snapshot…": "Snapshot siliniyor…",
-    "Rolling back to the \"trial base\" snapshot…": "\"trial base\" snapshot'ına geri dönülüyor…"
+    "Rolling back to the \"trial base\" snapshot…": "\"trial base\" snapshot'ına geri dönülüyor…",
+    "An app script is running on this server: wait until it has finished, or cancel it.": "Bu sunucuda bir uygulama script'i çalışıyor: bitmesini bekleyin ya da iptal edin."
 }

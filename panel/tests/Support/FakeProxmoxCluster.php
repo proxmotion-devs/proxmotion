@@ -28,7 +28,7 @@ class FakeProxmoxCluster
     /** @var list<array{method: string, path: string, data: array<string, mixed>}> */
     public array $writes = [];
 
-    /** @var array<int, array<string, array{description: string, snaptime: int, config: array<string, mixed>, firewall: array<string, mixed>, rules: list<array<string, mixed>>, ipset: list<string>|null}>> snapshots per VMID by name, with what a rollback brings back (docs/adr/0051) */
+    /** @var array<int, array<string, array{description: string, snaptime: int, config: array<string, mixed>}>> snapshots per VMID by name, with the configuration a rollback brings back (docs/adr/0051) */
     public array $snapshots = [];
 
     /** When set, taking, rolling back or deleting a snapshot fails with this exit status. */
@@ -775,23 +775,20 @@ class FakeProxmoxCluster
     }
 
     /**
-     * A snapshot keeps the configuration and the firewall of its time, like
-     * Proxmox (the firewall file is not part of a snapshot there; kept here
-     * so tests can see the panel write its own back after a rollback).
+     * A snapshot keeps the VM configuration of its time. The VM firewall
+     * (options, rules, IP sets) is a file of its own that a snapshot does
+     * not include (believed, docs/adr/0051 "To verify"), so a rollback
+     * leaves it as it is.
      *
      * @param  array<string, mixed>  $data
      */
     private function takeSnapshot(string $node, int $vmid, array $data): PromiseInterface
     {
         if ($this->failSnapshot === null) {
-            $vm = $this->vms[$vmid];
             $this->snapshots[$vmid][(string) $data['snapname']] = [
                 'description' => (string) ($data['description'] ?? ''),
                 'snaptime' => now()->getTimestamp(),
-                'config' => $vm['config'],
-                'firewall' => $vm['firewall'],
-                'rules' => $vm['rules'],
-                'ipset' => $vm['ipset'],
+                'config' => $this->vms[$vmid]['config'],
             ];
             $this->vms[$vmid]['config']['parent'] = (string) $data['snapname'];
         }
@@ -815,9 +812,6 @@ class FakeProxmoxCluster
                 ...$this->vms[$vmid],
                 'status' => 'stopped',
                 'config' => [...$snapshot['config'], 'parent' => $name],
-                'firewall' => $snapshot['firewall'],
-                'rules' => $snapshot['rules'],
-                'ipset' => $snapshot['ipset'],
             ];
         }
 

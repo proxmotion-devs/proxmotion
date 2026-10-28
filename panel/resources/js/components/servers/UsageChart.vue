@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { usePage } from '@inertiajs/vue3';
 import { computed, ref } from 'vue';
+import { linePath, nearestPoint } from '@/lib/charts';
 
 /** A point of the chart: its start (ms), for bars its end, and a value per series. */
 export type ChartPoint = {
@@ -63,26 +64,16 @@ const y = (value: number) =>
     HEIGHT - 1 - (Math.min(value, top.value) / top.value) * (HEIGHT - 2);
 
 const paths = computed(() =>
-    props.series.map((series) => {
-        let d = '';
-        let previous: number | null = null;
-
-        for (const point of props.points) {
-            const value = point.values[series.key];
-
-            if (value === null || value === undefined) {
-                previous = null;
-                continue;
-            }
-
-            const joined =
-                previous !== null && point.time - previous <= props.gapMs;
-            d += `${joined ? 'L' : 'M'}${x(point.time).toFixed(1)},${y(value).toFixed(1)}`;
-            previous = point.time;
-        }
-
-        return { ...series, d };
-    }),
+    props.series.map((series) => ({
+        ...series,
+        d: linePath(
+            props.points,
+            (point) => point.values[series.key],
+            x,
+            y,
+            props.gapMs,
+        ),
+    })),
 );
 
 const bars = computed(() =>
@@ -132,18 +123,8 @@ const hover = (event: PointerEvent) => {
     const box = (event.currentTarget as SVGElement).getBoundingClientRect();
     const time =
         props.from + ((event.clientX - box.left) / box.width) * span.value;
-    let nearest: ChartPoint | null = null;
 
-    for (const point of props.points) {
-        if (
-            nearest === null ||
-            Math.abs(middle(point) - time) < Math.abs(middle(nearest) - time)
-        ) {
-            nearest = point;
-        }
-    }
-
-    hovered.value = nearest;
+    hovered.value = nearestPoint(props.points, time, middle);
 };
 
 const hoverX = computed(() => {

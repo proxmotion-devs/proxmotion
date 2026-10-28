@@ -159,6 +159,24 @@ class SnapshotTest extends TestCase
         $this->assertTrue(AuditLog::query()->where('action', 'server.snapshot_rolled_back')->exists());
     }
 
+    public function test_no_rollback_while_an_app_script_runs()
+    {
+        $this->take();
+        $installing = AppInstallation::factory()->for($this->server)->create(['status' => AppInstallationStatus::Installing]);
+
+        try {
+            $this->snapshots()->rollback($this->server, Snapshot::query()->sole(), $this->admin, null);
+            $this->fail('The rollback was queued.');
+        } catch (ProvisioningException $e) {
+            $this->assertSame('An app script is running on this server: wait until it has finished, or cancel it.', $e->getMessage());
+        }
+
+        $this->assertSame(0, $this->server->tasks()->where('type', TaskType::RollbackSnapshot)->count());
+
+        $installing->forceFill(['status' => AppInstallationStatus::Installed])->save();
+        $this->assertSame(TaskStatus::Succeeded, $this->snapshots()->rollback($this->server, Snapshot::query()->sole(), $this->admin, null)->refresh()->status);
+    }
+
     public function test_a_stopped_server_stays_stopped_after_a_rollback()
     {
         $this->take();

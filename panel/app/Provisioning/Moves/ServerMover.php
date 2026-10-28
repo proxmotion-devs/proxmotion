@@ -4,9 +4,8 @@ declare(strict_types=1);
 
 namespace App\Provisioning\Moves;
 
+use App\Domain\Apps\AppInstallations;
 use App\Domain\Settings\PanelSettings;
-use App\Enums\AppInstallationStatus;
-use App\Enums\AppRunStatus;
 use App\Enums\IpVersion;
 use App\Enums\NetworkModel;
 use App\Enums\ServerMoveKind;
@@ -14,7 +13,6 @@ use App\Enums\ServerMoveStatus;
 use App\Enums\ServerStatus;
 use App\Enums\TaskStatus;
 use App\Enums\TaskType;
-use App\Models\AppRun;
 use App\Models\AuditLog;
 use App\Models\Cluster;
 use App\Models\IpAddress;
@@ -97,10 +95,7 @@ final readonly class ServerMover
             return 'Another task is still running for this server.';
         }
 
-        $scripts = $server->appInstallations()->whereIn('status', [AppInstallationStatus::Queued, AppInstallationStatus::Installing, AppInstallationStatus::Uninstalling, AppInstallationStatus::Upgrading])->exists()
-            || AppRun::query()->whereIn('status', [AppRunStatus::Queued, AppRunStatus::Running])->whereHas('installation', fn ($query) => $query->where('server_id', $server->id))->exists();
-
-        return $scripts ? 'An app script is running on this server: wait until it has finished.' : null;
+        return AppInstallations::scriptRunning($server) ? 'An app script is running on this server: wait until it has finished.' : null;
     }
 
     /**
