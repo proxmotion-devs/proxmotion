@@ -193,6 +193,10 @@ and the module shows its message when one is wrong. Keys the customer added insi
 server are not listed and stay. Nothing is stored in WHMCS. The section is hidden with a
 Proxmotion that does not manage keys yet.
 
+A **reinstall** keeps the server's keys; a key typed into the reinstall form is added to
+them (the module reads the current keys and sends them with it). With a Proxmotion that
+does not manage keys yet, the typed key is the new system's only key, as before.
+
 ### Paid apps
 
 Apps marked paid in Proxmotion (Proxmotion docs/adr/0019) are installed later only when

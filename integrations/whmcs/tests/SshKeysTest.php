@@ -132,4 +132,32 @@ class SshKeysTest extends ModuleTestCase
             $this->assertStringContainsString('Unsupported SSH key type', $e->describe());
         }
     }
+
+    public function test_a_reinstall_keeps_the_keys_and_adds_a_typed_one()
+    {
+        $this->hasKeys();
+        $this->api->on('POST /servers/' . self::SERVER_ID . '/reinstall', 202, $this->task('reinstall'));
+
+        $this->assertSame('success', $this->module()->reinstall(['os_template' => 'os-uuid', 'confirm' => '1']));
+        $this->assertSame(['os_template' => 'os-uuid'], $this->api->last('POST /servers/' . self::SERVER_ID . '/reinstall')['body']);
+
+        $this->module()->reinstall(['os_template' => 'os-uuid', 'ssh_key' => ' ssh-rsa AAAAB3 new@example.com ', 'confirm' => '1']);
+        $this->assertSame(
+            ['os_template' => 'os-uuid', 'ssh_keys' => [self::ED25519, self::ECDSA, 'ssh-rsa AAAAB3 new@example.com']],
+            $this->api->last('POST /servers/' . self::SERVER_ID . '/reinstall')['body'],
+        );
+    }
+
+    public function test_a_reinstall_on_a_panel_without_ssh_keys_sends_the_typed_key_alone()
+    {
+        $this->serviceHas($this->server());
+        $this->api = new FakeTransport();
+        $this->api->on('GET /servers?external_id=42', 200, ['data' => [$this->server()]]);
+        $this->api->on('GET /servers/' . self::SERVER_ID . '/ssh-keys', 404, ['message' => 'Not found.']);
+        $this->api->on('POST /servers/' . self::SERVER_ID . '/reinstall', 202, $this->task('reinstall'));
+
+        $this->module()->reinstall(['os_template' => 'os-uuid', 'ssh_key' => 'ssh-rsa AAAAB3 new@example.com', 'confirm' => '1']);
+
+        $this->assertSame(['ssh-rsa AAAAB3 new@example.com'], $this->api->last('POST /servers/' . self::SERVER_ID . '/reinstall')['body']['ssh_keys']);
+    }
 }

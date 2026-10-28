@@ -333,10 +333,41 @@ class Module
         $osTemplate = isset($input['os_template']) ? (string) $input['os_template'] : '';
         $app = isset($input['app']) ? trim((string) $input['app']) : '';
 
-        // Without a key the new system keeps the server's keys (docs/adr/0049).
-        $this->client->reinstall((string) $server['id'], $osTemplate, $sshKey === '' ? null : [$sshKey], $app === '' ? null : $app);
+        $id = (string) $server['id'];
+
+        // The new system keeps the server's keys (docs/adr/0049); a typed key joins them.
+        $this->client->reinstall($id, $osTemplate, $sshKey === '' ? null : $this->keysWith($id, $sshKey), $app === '' ? null : $app);
 
         return 'success';
+    }
+
+    /**
+     * The server's keys and one more, for a reinstall. A panel that does not
+     * manage keys yet (404) reinstalls with the typed key alone, as before.
+     *
+     * @return list<string>
+     */
+    private function keysWith(string $id, string $added): array
+    {
+        try {
+            $current = self::sshKeyList($this->client->sshKeys($id));
+        } catch (ApiException $e) {
+            if ($e->status() === 404) {
+                return [$added];
+            }
+
+            throw $e;
+        }
+
+        $keys = [];
+
+        foreach ($current as $key) {
+            $keys[] = $key['public_key'];
+        }
+
+        $keys[] = $added;
+
+        return $keys;
     }
 
     /**

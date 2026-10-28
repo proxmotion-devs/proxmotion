@@ -57,7 +57,7 @@ return [
     'reinstall_title' => 'Reinstall the operating system',
     'reinstall_warning' => 'All data on the server is deleted. The IP addresses stay the same.',
     'reinstall_os' => 'Operating system',
-    'reinstall_ssh_key' => 'SSH public key (optional)',
+    'reinstall_ssh_key' => 'Add an SSH public key (optional; the server keeps its keys)',
     'reinstall_app' => 'App (optional)',
     'reinstall_no_app' => 'No app',
     'reinstall_app_hint' => 'Installed on the new system with its default settings once it has started.',

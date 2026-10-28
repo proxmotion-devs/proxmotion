@@ -57,7 +57,7 @@ return [
     'reinstall_title' => 'İşletim sistemini yeniden kur',
     'reinstall_warning' => 'Sunucudaki tüm veriler silinir. IP adresleri aynı kalır.',
     'reinstall_os' => 'İşletim sistemi',
-    'reinstall_ssh_key' => 'SSH açık anahtarı (isteğe bağlı)',
+    'reinstall_ssh_key' => 'SSH public key ekle (isteğe bağlı; sunucu anahtarlarını korur)',
     'reinstall_app' => 'Uygulama (isteğe bağlı)',
     'reinstall_no_app' => 'Uygulama yok',
     'reinstall_app_hint' => 'Yeni sistem açıldıktan sonra varsayılan ayarlarıyla kurulur.',
