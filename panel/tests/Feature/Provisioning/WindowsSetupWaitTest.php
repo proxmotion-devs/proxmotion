@@ -236,6 +236,19 @@ class WindowsSetupWaitTest extends TestCase
         );
     }
 
+    public function test_a_plugin_that_failed_ends_the_wait_with_a_note_instead_of_the_timeout()
+    {
+        $this->answers = [self::checkOutput(done: 'SetUserPasswordPlugin,NetworkConfigPlugin')."failed=UserDataPlugin\r\n"];
+        Sleep::fake();
+
+        $server = app(ServerCreator::class)->create($this->order())->refresh();
+
+        $this->assertSame(1, $this->checks);
+        Sleep::assertNeverSlept();
+        $this->assertSame(ServerStatus::Active, $server->status);
+        $this->assertSame('Cloudbase-Init could not run UserDataPlugin: see cloudbase-init.log inside the server.', $this->waitStep($server->tasks()->sole())['message']);
+    }
+
     public function test_a_windows_agent_that_never_answers_still_times_out_after_ten_minutes()
     {
         $this->proxmox->agentDown[100] = true;

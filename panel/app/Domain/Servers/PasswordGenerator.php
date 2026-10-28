@@ -40,25 +40,63 @@ final readonly class PasswordGenerator
 
     /**
      * A password in the saved format. Its random part holds every kind of
-     * its set, so it never comes out with fewer than the set's kinds.
+     * its set, so it never comes out with fewer than the set's kinds, and
+     * starts with a letter, so that without a prefix it fits cloud-init's
+     * user data (fitsCloudInit()).
      */
     public function generate(): string
     {
         // .env values are not checked like the page's: an unknown set or a length out of range falls back to the page's limits.
         $characters = (string) PanelSettings::get('password_characters');
         $kinds = self::SETS[isset(self::SETS[$characters]) ? $characters : 'mixed'];
-        $alphabet = implode('', array_map(fn (string $kind): string => self::KINDS[$kind], $kinds));
         $length = min(64, max(12, (int) PanelSettings::get('password_length')));
 
-        do {
-            $random = '';
+        return (string) PanelSettings::get('password_prefix').$this->random($kinds, $length).(string) PanelSettings::get('password_suffix');
+    }
 
-            for ($i = 0; $i < $length; $i++) {
+    /**
+     * A password that always fits cloud-init's user data, whatever the saved
+     * format: 24 letters and digits, starting with a letter, with lowercase,
+     * uppercase and digits (Windows wants three kinds). The panel gives it to
+     * Proxmox in place of a password that does not fit, until the guest
+     * agent can set that one.
+     */
+    public function temporary(): string
+    {
+        return $this->random(self::SETS['mixed'], 24);
+    }
+
+    /**
+     * Whether Proxmox can put the password into cloud-init's user data as it
+     * is. For Windows VMs Proxmox writes it there unhashed and unquoted
+     * ("password: <password>"), and Cloudbase-Init's UserDataPlugin fails on
+     * YAML that does not parse (a first character like @, % or ` cannot
+     * start a value, # starts a comment, ": " ends it, a line break starts a
+     * new key). One that starts with a letter and holds only printable ASCII
+     * without spaces and colons is always read back as the same string.
+     */
+    public static function fitsCloudInit(string $password): bool
+    {
+        return preg_match('/^[A-Za-z][\x21-\x39\x3B-\x7E]*$/D', $password) === 1;
+    }
+
+    /**
+     * @param  list<string>  $kinds
+     */
+    private function random(array $kinds, int $length): string
+    {
+        $alphabet = implode('', array_map(fn (string $kind): string => self::KINDS[$kind], $kinds));
+        $letters = implode('', array_map(fn (string $kind): string => self::KINDS[$kind], array_intersect($kinds, ['lower', 'upper'])));
+
+        do {
+            $random = $letters[random_int(0, strlen($letters) - 1)];
+
+            for ($i = 1; $i < $length; $i++) {
                 $random .= $alphabet[random_int(0, strlen($alphabet) - 1)];
             }
         } while (! $this->containsEveryKind($random, $kinds));
 
-        return (string) PanelSettings::get('password_prefix').$random.(string) PanelSettings::get('password_suffix');
+        return $random;
     }
 
     /**

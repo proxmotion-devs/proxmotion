@@ -33,6 +33,21 @@ class WindowsSetupPendingTest extends TestCase
         $this->assertSame('Cloudbase-Init has not finished SetUserPasswordPlugin, NetworkConfigPlugin', $this->pending($plugins));
     }
 
+    public function test_a_plugin_whose_failure_the_log_shows_since_the_last_boot_counts_as_run()
+    {
+        // UserDataPlugin on user data that is not valid YAML: logged, never recorded, tried again at the next boot.
+        $plugins = ['service' => 'Stopped', 'plugins' => 'SetUserPasswordPlugin,UserDataPlugin', 'done' => 'SetUserPasswordPlugin', 'later' => ''];
+
+        $this->assertNull($this->pending([...$plugins, 'failed' => 'UserDataPlugin']));
+        $this->assertSame('Cloudbase-Init has not finished UserDataPlugin', $this->pending([...$plugins, 'failed' => '']));
+        $this->assertSame('the cloudbase-init service is Running', $this->pending([...$plugins, 'service' => 'Running', 'failed' => 'UserDataPlugin']));
+        // Without a plugins line a failure proves the service has run.
+        $this->assertNull($this->pending(['service' => 'Stopped', 'failed' => 'UserDataPlugin']));
+
+        $this->assertSame(['UserDataPlugin', 'MTUPlugin'], GuestScripts::windowsSetupFailures("service=Stopped\r\nfailed=UserDataPlugin,MTUPlugin\r\n"));
+        $this->assertSame([], GuestScripts::windowsSetupFailures("service=Stopped\r\nfailed=\r\n"));
+    }
+
     public function test_plugins_that_run_at_every_boot_count_as_run()
     {
         // The guide's configuration: ExtendVolumesPlugin and LocalScriptsPlugin record 2 (run again at the next boot), never 1.

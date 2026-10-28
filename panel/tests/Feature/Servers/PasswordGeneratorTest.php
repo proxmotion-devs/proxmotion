@@ -61,6 +61,46 @@ class PasswordGeneratorTest extends TestCase
         }
     }
 
+    public function test_the_random_part_starts_with_a_letter_so_it_fits_cloud_init()
+    {
+        foreach (['lower', 'mixed', 'symbols'] as $characters) {
+            $this->save(['password_length' => 12, 'password_characters' => $characters]);
+
+            for ($attempt = 0; $attempt < 50; $attempt++) {
+                $password = (new PasswordGenerator)->generate();
+
+                $this->assertMatchesRegularExpression('/^[A-Za-z]/', $password);
+                $this->assertTrue(PasswordGenerator::fitsCloudInit($password), $password);
+            }
+        }
+    }
+
+    public function test_a_temporary_password_always_fits_cloud_init_and_windows()
+    {
+        $this->save(['password_characters' => 'lower', 'password_prefix' => '@acme:']);
+
+        for ($attempt = 0; $attempt < 50; $attempt++) {
+            $password = (new PasswordGenerator)->temporary();
+
+            $this->assertMatchesRegularExpression('/^[A-Za-z][A-Za-z0-9]{23}$/', $password);
+            $this->assertMatchesRegularExpression('/[a-z]/', $password);
+            $this->assertMatchesRegularExpression('/[A-Z]/', $password);
+            $this->assertMatchesRegularExpression('/[0-9]/', $password);
+        }
+    }
+
+    public function test_fits_cloud_init_refuses_what_yaml_would_not_read_back()
+    {
+        foreach (['a-very-long-password', 'Abc!@#%+=.-_x', 'Pass#word', 'x\'quoted"'] as $password) {
+            $this->assertTrue(PasswordGenerator::fitsCloudInit($password), $password);
+        }
+
+        // Cannot start a value, a tag, a comment, a quote, a number; ": " ends it, spaces and line breaks.
+        foreach (['@secret-pass', '%secret-pass', '`secret-pass', '!secret-pass', '#secret-pass', '\'secret-pass', '1234567890123', 'pass: word', 'password:', 'pass word', "pass\nruncmd", 'pässword-long', ''] as $password) {
+            $this->assertFalse(PasswordGenerator::fitsCloudInit($password), $password);
+        }
+    }
+
     public function test_broken_env_values_fall_back_to_a_usable_format()
     {
         PanelSettings::save([]);

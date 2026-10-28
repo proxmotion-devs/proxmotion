@@ -57,9 +57,12 @@ final readonly class GuestScripts
      * "power off" of Fast Startup on Windows 10/11, after which the boot time
      * stays the same), plugins= and unattend= (the plugins its
      * configuration file and cloudbase-init-unattend.conf beside it list),
-     * done= and later= (the plugins it recorded as done, or to run at the next
-     * boot, for the instance ID on the config drive). A fixed command: nothing
-     * in it comes from the server or a customer.
+     * failed= (the plugins its log, logdir and logfile of its configuration,
+     * says failed since the last boot: "plugin '<name>' failed with error",
+     * lines stamped in local time), done= and later= (the plugins it recorded
+     * as done, or to run at the next boot, for the instance ID on the config
+     * drive). A fixed command: nothing in it comes from the server or a
+     * customer.
      *
      * Cloudbase-Init keeps a plugin's state under
      * HKLM\SOFTWARE\Cloudbase Solutions\Cloudbase-Init\<instance ID>\Plugins
@@ -85,6 +88,16 @@ final readonly class GuestScripts
             if ($plugins) { Write-Output ('plugins=' + $plugins) }
             $unattend = & $pluginsOf (Join-Path (Split-Path -Path $conf) 'cloudbase-init-unattend.conf')
             if ($unattend) { Write-Output ('unattend=' + $unattend) }
+            $option = { param($name) $line = Get-Content -Path $conf | Where-Object { $_ -match ('^\s*' + $name + '\s*=') } | Select-Object -First 1; if ($line) { ($line -split '=', 2)[1].Trim() } }
+            $logdir = & $option 'logdir'
+            if (-not $logdir) { $logdir = Join-Path (Split-Path -Path (Split-Path -Path $conf)) 'log' }
+            $logfile = & $option 'logfile'
+            if (-not $logfile) { $logfile = 'cloudbase-init.log' }
+            if ($boot) {
+                $since = $boot.ToString('yyyy-MM-dd HH:mm:ss')
+                $failed = Get-Content -Path (Join-Path $logdir $logfile) | ForEach-Object { if ($_.Length -ge 19 -and [string]::CompareOrdinal($_.Substring(0, 19), $since) -ge 0 -and $_ -match "plugin '(\w+)' failed with error") { $Matches[1] } } | Select-Object -Unique
+                Write-Output ('failed=' + ($failed -join ','))
+            }
             $drive = Get-CimInstance -ClassName Win32_LogicalDisk -Filter 'DriveType=5' | Where-Object { $_.VolumeName -eq 'config-2' } | Select-Object -First 1
             $instance = if ($drive) { (Get-Content -Raw -Path ($drive.DeviceID + '\openstack\latest\meta_data.json') | ConvertFrom-Json).uuid } else { '' }
             foreach ($root in 'HKLM:\SOFTWARE\Cloudbase Solutions\Cloudbase-Init', 'HKLM:\SOFTWARE\WOW6432Node\Cloudbase Solutions\Cloudbase-Init') {
@@ -540,16 +553,19 @@ final readonly class GuestScripts
         if ($agent->ping($server->vmid)) {
             $state['answered'] = true;
 
+            $failed = [];
+
             try {
                 $result = $agent->run($server->vmid, self::WINDOWS_SETUP_COMMAND, timeoutSeconds: 60);
                 $pending = $result->succeeded() ? self::windowsSetupPending($result->stdout) : 'the setup check did not succeed';
+                $failed = $result->succeeded() ? self::windowsSetupFailures($result->stdout) : [];
             } catch (ProxmoxException) {
                 // Windows restarted while the check ran.
                 $pending = is_string($state['waiting_for'] ?? null) ? $state['waiting_for'] : 'Windows restarted during the check';
             }
 
             if ($pending === null) {
-                return $done(null);
+                return $done($failed === [] ? null : 'Cloudbase-Init could not run '.implode(', ', $failed).': see cloudbase-init.log inside the server.');
             }
 
             $state['waiting_for'] = $pending;
@@ -586,24 +602,18 @@ final readonly class GuestScripts
      * MTUPlugin) always record 2, never 1. A plugin that records 2 to run
      * again after a restart (a local script exiting 1003) also has
      * Cloudbase-Init restart Windows, which the restart check waits for. One
-     * that failed records nothing (Cloudbase-Init logs the error and goes on),
-     * so it is still waited for. Without a plugins line the service runs its
-     * default plugins: then any plugin it recorded besides those of the
-     * specialize pass (cloudbase-init-unattend.conf, same instance ID) proves
-     * it has run.
+     * that failed records nothing (Cloudbase-Init logs the error and goes on,
+     * and tries it again at the next boot), so its failure in the log since
+     * the last boot counts as its run (windowsSetupFailures()): waiting for it
+     * would only wait for the timeout. Without a plugins line the service
+     * runs its default plugins: then any plugin it recorded besides those of
+     * the specialize pass (cloudbase-init-unattend.conf, same instance ID),
+     * or one that failed, proves it has run.
      */
     public static function windowsSetupPending(string $output): ?string
     {
-        $values = [];
-
-        foreach (preg_split('/\R/', $output) ?: [] as $line) {
-            if (str_contains($line, '=')) {
-                [$key, $value] = explode('=', $line, 2);
-                $values[trim($key)] = trim($value);
-            }
-        }
-
-        $list = fn (string $key) => array_values(array_filter(array_map(trim(...), explode(',', $values[$key] ?? '')), fn (string $name) => $name !== ''));
+        $values = self::windowsSetupValues($output);
+        $list = fn (string $key) => self::windowsSetupList($values, $key);
         $image = $values['image'] ?? '';
         $service = $values['service'] ?? '';
         $name = $values['name'] ?? '';
@@ -630,17 +640,56 @@ final readonly class GuestScripts
         }
 
         $recorded = array_map(strtolower(...), [...$list('done'), ...$list('later')]);
+        $failed = array_map(strtolower(...), $list('failed'));
         $required = $list('plugins');
 
         if ($required === []) {
             $specialize = array_map(strtolower(...), $list('unattend'));
 
-            return array_diff($recorded, $specialize) === [] ? 'Cloudbase-Init has not run for this server yet' : null;
+            return array_diff($recorded, $specialize) === [] && $failed === [] ? 'Cloudbase-Init has not run for this server yet' : null;
         }
 
-        $missing = array_values(array_filter($required, fn (string $plugin) => ! in_array(strtolower($plugin), $recorded, true)));
+        $missing = array_values(array_filter($required, fn (string $plugin) => ! in_array(strtolower($plugin), [...$recorded, ...$failed], true)));
 
         return $missing === [] ? null : 'Cloudbase-Init has not finished '.implode(', ', $missing);
+    }
+
+    /**
+     * The Cloudbase-Init plugins that failed since the last boot, from the
+     * output of WINDOWS_SETUP_COMMAND (failed=). A plugin that failed did not
+     * do its part, e.g. UserDataPlugin on user data that is not valid YAML.
+     *
+     * @return list<string>
+     */
+    public static function windowsSetupFailures(string $output): array
+    {
+        return self::windowsSetupList(self::windowsSetupValues($output), 'failed');
+    }
+
+    /**
+     * @return array<string, string> the key=value lines of WINDOWS_SETUP_COMMAND's output
+     */
+    private static function windowsSetupValues(string $output): array
+    {
+        $values = [];
+
+        foreach (preg_split('/\R/', $output) ?: [] as $line) {
+            if (str_contains($line, '=')) {
+                [$key, $value] = explode('=', $line, 2);
+                $values[trim($key)] = trim($value);
+            }
+        }
+
+        return $values;
+    }
+
+    /**
+     * @param  array<string, string>  $values
+     * @return list<string>
+     */
+    private static function windowsSetupList(array $values, string $key): array
+    {
+        return array_values(array_filter(array_map(trim(...), explode(',', $values[$key] ?? '')), fn (string $name) => $name !== ''));
     }
 
     private static function agentTimeoutNote(int $timeoutSeconds): string
