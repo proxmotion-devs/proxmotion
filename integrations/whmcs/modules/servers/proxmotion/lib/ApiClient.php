@@ -480,6 +480,17 @@ class ApiClient
     }
 
     /**
+     * The server's usage over a range: day, week, month or year (docs/adr/0050);
+     * Proxmotion answers 404 before it has usage history.
+     *
+     * @return array<string, mixed>
+     */
+    public function usage(string $id, string $range): array
+    {
+        return $this->dataOf($this->request('GET', '/servers/' . rawurlencode($id) . '/usage?range=' . rawurlencode($range)));
+    }
+
+    /**
      * Replace the server's SSH keys with these public keys; returns the task.
      *
      * @param list<string> $keys

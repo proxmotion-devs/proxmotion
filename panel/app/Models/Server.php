@@ -252,6 +252,14 @@ class Server extends Model
     }
 
     /**
+     * @return HasMany<UsageRollup, $this>
+     */
+    public function usageRollups(): HasMany
+    {
+        return $this->hasMany(UsageRollup::class);
+    }
+
+    /**
      * @return HasMany<UsageViolation, $this>
      */
     public function usageViolations(): HasMany

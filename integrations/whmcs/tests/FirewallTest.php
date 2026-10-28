@@ -54,6 +54,7 @@ class FirewallTest extends ModuleTestCase
         $this->api->on('GET /servers/' . self::SERVER_ID, 200, ['data' => $this->server()]);
         $this->api->on('GET /os-templates?server=9b2f2c1e-0000-4000-8000-000000000001', 200, ['data' => []]);
         $this->api->on('GET /servers/' . self::SERVER_ID . '/apps', 200, ['data' => []]);
+        $this->api->on('GET /servers/' . self::SERVER_ID . '/usage?range=day', 404, ['message' => 'Not found.']);
         $this->api->on('GET /apps?server=' . self::SERVER_ID, 200, ['data' => []]);
         $this->api->on('GET /servers/' . self::SERVER_ID . '/firewall', 200, ['data' => self::firewall()]);
         $this->api->on('GET /firewall-rulesets', 200, ['data' => [['id' => 'ruleset-uuid', 'name' => 'Web', 'description' => null, 'rules' => []]]]);

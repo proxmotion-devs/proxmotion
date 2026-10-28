@@ -36,6 +36,7 @@ use App\Http\Controllers\Admin\ServerMoveController;
 use App\Http\Controllers\Admin\ServerReinstallLimitController;
 use App\Http\Controllers\Admin\ServerSshKeyController;
 use App\Http\Controllers\Admin\ServerStatsController;
+use App\Http\Controllers\Admin\ServerUsageController;
 use App\Http\Controllers\Admin\StorageController;
 use App\Http\Controllers\Admin\TaskController;
 use App\Http\Controllers\Admin\UserController;
@@ -187,6 +188,8 @@ Route::post('servers/{server}/unsuspend', [ServerController::class, 'unsuspend']
 Route::post('servers/{server}/power/{action}', [ServerController::class, 'power'])->middleware('throttle:20,1')->name('servers.power');
 // Live figures of the server page, which also mark it as watched (docs/adr/0036).
 Route::get('servers/{server}/stats', ServerStatsController::class)->middleware('throttle:30,1')->name('servers.stats');
+// Usage history of the server page's Usage tab (docs/adr/0050).
+Route::get('servers/{server}/usage', ServerUsageController::class)->middleware('throttle:60,1')->name('servers.usage');
 Route::post('servers/{server}/retry', [ServerController::class, 'retry'])->name('servers.retry');
 Route::post('servers/{server}/rebuild', [ServerController::class, 'rebuild'])->middleware('throttle:10,1')->name('servers.rebuild');
 Route::post('servers/{server}/verify', [ServerController::class, 'verify'])->middleware('throttle:10,1')->name('servers.verify');

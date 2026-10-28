@@ -796,16 +796,18 @@ class Module
     }
 
     /**
-     * The client area overview: server details and actions.
+     * The client area overview: server details and actions, and the usage
+     * history over $range (day, week, month or year; docs/adr/0050).
      *
      * @return array<string, mixed>
      */
-    public function clientArea(): array
+    public function clientArea(string $range = 'day'): array
     {
         $vars = [
             'lang' => $this->lang->all(),
             'server' => null,
             'error' => null,
+            'usage' => null,
             'osTemplates' => [],
             'apps' => [],
             'reinstallApps' => [],
@@ -846,6 +848,10 @@ class Module
                     })) > 0;
                     $vars['firewall'] = $this->presentFirewall($this->client->firewall((string) $server['id']), $this->client->firewallRulesets());
                     $vars['sshKeys'] = $this->presentSshKeys((string) $server['id']);
+                }
+
+                if ($server['status'] === 'active' || $server['status'] === 'suspended') {
+                    $vars['usage'] = $this->presentUsage((string) $server['id'], $range);
                 }
             }
         } catch (ApiException $e) {
@@ -1062,6 +1068,91 @@ class Module
             }, $keys),
             'full' => $max !== null && count($keys) >= $max,
         ];
+    }
+
+    /**
+     * The usage history for the template (docs/adr/0050): links to the
+     * ranges and the charts as SVG. Null when Proxmotion cannot say (a panel
+     * before usage history, or an error): the rest of the page still shows.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function presentUsage(string $id, string $range): ?array
+    {
+        $ranges = ['day', 'week', 'month', 'year'];
+        $range = in_array($range, $ranges, true) ? $range : 'day';
+
+        try {
+            $usage = $this->client->usage($id, $range);
+        } catch (ApiException $e) {
+            return null;
+        }
+
+        $points = isset($usage['points']) && is_array($usage['points']) ? array_values($usage['points']) : [];
+        $buckets = isset($usage['traffic']['buckets']) && is_array($usage['traffic']['buckets']) ? array_values($usage['traffic']['buckets']) : [];
+        $interval = isset($usage['traffic']['interval']) && in_array($usage['traffic']['interval'], ['hour', 'day', 'period'], true) ? (string) $usage['traffic']['interval'] : 'day';
+        $from = isset($usage['from']) ? (string) $usage['from'] : '';
+        $to = isset($usage['to']) ? (string) $usage['to'] : '';
+        $seconds = isset($usage['interval_seconds']) ? max(1, (int) $usage['interval_seconds']) : 300;
+        // Times as Proxmotion sent them (its own time zone), as precise as a point or bucket:
+        // the time of day for 5-minute samples and hours of the last day, date and time for
+        // the hours of a week or month, the date for days and the month for traffic periods.
+        $time = function ($iso) use ($range) {
+            if ($range === 'day') {
+                return (string) substr($iso, 11, 5);
+            }
+
+            return $range === 'year' ? (string) substr($iso, 0, 10) : substr($iso, 0, 10) . ' ' . substr($iso, 11, 5);
+        };
+        $bucketTime = function ($iso) use ($interval) {
+            if ($interval === 'hour') {
+                return (string) substr($iso, 11, 5);
+            }
+
+            return $interval === 'period' ? (string) substr($iso, 0, 7) : (string) substr($iso, 0, 10);
+        };
+        $percent = function ($value) {
+            return round($value, 1) . '%';
+        };
+        $traffic = function ($value) {
+            return Module::bytes((int) $value);
+        };
+        $in = 0;
+        $out = 0;
+
+        foreach ($buckets as $bucket) {
+            $in += isset($bucket['in_bytes']) ? (int) $bucket['in_bytes'] : 0;
+            $out += isset($bucket['out_bytes']) ? (int) $bucket['out_bytes'] : 0;
+        }
+
+        return [
+            'ranges' => array_map(function ($value) use ($range) {
+                return ['value' => $value, 'label' => $this->lang->get('usage_range_' . $value), 'active' => $value === $range];
+            }, $ranges),
+            'empty' => $points === [],
+            'cpu' => UsageChart::line($points, ['cpu_percent' => $this->lang->get('usage_cpu')], $from, $to, $seconds, 100.0, $percent, $time),
+            'network' => UsageChart::line($points, ['net_in_rate' => $this->lang->get('usage_in'), 'net_out_rate' => $this->lang->get('usage_out')], $from, $to, $seconds, null, [self::class, 'bitRate'], $time),
+            'trafficTitle' => $this->lang->get('usage_traffic_' . $interval),
+            'traffic' => UsageChart::bars($buckets, ['in_bytes' => $this->lang->get('usage_in'), 'out_bytes' => $this->lang->get('usage_out')], $from, $to, $traffic, $bucketTime),
+            'trafficTotal' => $this->lang->get('usage_traffic_total', ['in' => self::bytes($in), 'out' => self::bytes($out)]),
+        ];
+    }
+
+    /**
+     * Bytes per second in bits like port speeds: "820 Kbps", "12.4 Mbps".
+     */
+    public static function bitRate(float $bytesPerSecond): string
+    {
+        $value = max(0.0, $bytesPerSecond) * 8;
+        $units = ['bps', 'Kbps', 'Mbps', 'Gbps', 'Tbps'];
+        $unit = 0;
+
+        while ($value >= 1000 && $unit < count($units) - 1) {
+            $value /= 1000;
+            $unit++;
+        }
+
+        return rtrim(rtrim(number_format($value, 1, '.', ''), '0'), '.') . ' ' . $units[$unit];
     }
 
     /**

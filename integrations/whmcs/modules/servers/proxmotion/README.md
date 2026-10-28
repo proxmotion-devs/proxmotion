@@ -14,7 +14,7 @@ client area. The module is a thin client of the Proxmotion billing API v1
 | Terminate | Deletes the server and its disks; the addresses are released |
 | Change Password | Sets the service password as the root password (at least 12 characters) |
 | Change Package | Upgrades and downgrades: the new product's package and configurable options, with the same rules as ordering. CPU and memory take effect at the server's next restart (the client area says so) unless *Restart after upgrades* is on. The disk only grows. Additional IP addresses come from Proxmotion's pools; with fewer, the newest extra ones are released. |
-| Client area | Status, power state, IP addresses with reverse DNS, hostname change (the service domain follows), start / shut down / reboot / force stop, browser console, root password reset, reinstall, the month's traffic against the quota and why Proxmotion suspended the server |
+| Client area | Status, power state, IP addresses with reverse DNS, hostname change (the service domain follows), start / shut down / reboot / force stop, browser console, root password reset, reinstall, the month's traffic against the quota and why Proxmotion suspended the server, usage charts (see [Usage history](#usage-history)) |
 | Admin area | Server status (and why Proxmotion suspended it), addresses and the month's traffic on the service page, a link to the server in Proxmotion, power and password buttons |
 | Usage update | WHMCS's daily cron writes each service's traffic of the month and its quota into its usage statistics (see [Traffic](#traffic)) |
 
@@ -127,6 +127,14 @@ quota it is unsuspended automatically when the next month starts or when the quo
 raised; over a usage limit (CPU, memory, disk or network) the customer is asked to contact
 support. A suspension by WHMCS is not explained again. Suspending such a service in WHMCS
 makes the suspension WHMCS's, so Proxmotion no longer lifts it.
+
+### Usage history
+
+The overview of an active or suspended server charts its CPU and network use and its
+traffic over the last 24 hours, 7 days, 30 days or 12 months (`GET /servers/{id}/usage`,
+ADR 0050). The range is a link (`pmxrange` in the address); the charts are SVG drawn by
+the module, with each value shown on hover, and need no JavaScript. With a Proxmotion
+before usage history the section is left out.
 
 **Usage update:** `proxmotion_UsageUpdate` runs with WHMCS's daily cron when its usage
 statistics update is enabled in the automation settings, once per WHMCS server of this module. It reads every server of the billing system from

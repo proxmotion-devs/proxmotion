@@ -110,6 +110,41 @@
             </div>
         </div>
 
+        {if $pmx.usage}
+            {* Usage history (docs/adr/0050); the charts are SVG built by the module from numbers. *}
+            {assign var=usage value=$pmx.usage}
+            <h4>{$pmx.lang.usage_history|escape}</h4>
+            <div class="btn-group btn-group-sm" role="group" style="margin-bottom: 10px;">
+                {foreach from=$usage.ranges item=usageRange}
+                    <a href="clientarea.php?action=productdetails&amp;id={$serviceid}&amp;pmxrange={$usageRange.value|escape:'url'}" class="btn {if $usageRange.active}btn-primary{else}btn-default{/if}">{$usageRange.label|escape}</a>
+                {/foreach}
+            </div>
+            {if $usage.empty}
+                <p class="text-muted">{$pmx.lang.usage_none|escape}</p>
+            {else}
+                <div class="row">
+                    <div class="col-sm-6">
+                        <h5>{$pmx.lang.usage_cpu|escape}</h5>
+                        {$usage.cpu}
+                    </div>
+                    <div class="col-sm-6">
+                        <h5>
+                            {$pmx.lang.usage_network|escape}
+                            <small><span style="color: #2a78d6;">&#9632;</span> {$pmx.lang.usage_in|escape} <span style="color: #eb6834;">&#9632;</span> {$pmx.lang.usage_out|escape}</small>
+                        </h5>
+                        {$usage.network}
+                    </div>
+                </div>
+                <h5>
+                    {$usage.trafficTitle|escape}
+                    <small><span style="color: #2a78d6;">&#9632;</span> {$pmx.lang.usage_in|escape} <span style="color: #eb6834;">&#9632;</span> {$pmx.lang.usage_out|escape}</small>
+                </h5>
+                {$usage.traffic}
+                <p class="text-muted"><small>{$usage.trafficTotal|escape}</small></p>
+            {/if}
+            <hr>
+        {/if}
+
         {if $server.active}
             <div class="btn-toolbar" role="toolbar">
                 <div class="btn-group" role="group">

@@ -49,6 +49,7 @@ class BillingSystemIsolationTest extends ApiTestCase
             'apply a rule set' => ['POST', '/firewall/ruleset'],
             'show the SSH keys' => ['GET', '/ssh-keys'],
             'change the SSH keys' => ['PUT', '/ssh-keys'],
+            'usage history' => ['GET', '/usage'],
             'console link' => ['POST', '/console'],
             'list installed apps' => ['GET', '/apps'],
             'install an app' => ['POST', '/apps'],

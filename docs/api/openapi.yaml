@@ -770,6 +770,41 @@ paths:
         '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/ValidationError' }
 
+  /servers/{server}/usage:
+    parameters:
+      - $ref: '#/components/parameters/Server'
+    get:
+      tags: [Servers]
+      summary: The server's usage over a range
+      description: |
+        Scope: `servers:read`. What the server used over the last day, week, month or year
+        (docs/adr/0050): `day` gives the 5-minute samples of the last 24 hours, `week` and `month`
+        hourly averages, `year` daily averages. Traffic comes in buckets per hour (`day`), per day
+        (`week`, `month`) or per traffic period (`year`, the last 12). Times are missing where
+        Proxmotion has no figures (the server was not running, Proxmox did not answer, before it was
+        created); break lines there. Usage is collected every 5 minutes; hours are kept 35 days,
+        days 400 days.
+      operationId: getServerUsage
+      parameters:
+        - name: range
+          in: query
+          required: false
+          schema: { type: string, enum: [day, week, month, year], default: day }
+      responses:
+        '200':
+          description: The usage
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: { $ref: '#/components/schemas/ServerUsage' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
   /servers/{server}/console:
     parameters:
       - $ref: '#/components/parameters/Server'
@@ -1371,6 +1406,58 @@ components:
       maxItems: 100
       items: { type: string, maxLength: 16384 }
       description: 'OpenSSH public keys (ed25519, ECDSA, RSA ≥ 2048 bits; no DSA). An item may hold several lines. At most as many keys as `max_keys` of `GET /servers/{server}/ssh-keys` (Panel settings, 20 by default), of at most 20 KB together.'
+    ServerUsage:
+      type: object
+      required: [range, interval_seconds, from, to, points, traffic, current]
+      properties:
+        range: { type: string, enum: [day, week, month, year] }
+        interval_seconds: { type: integer, description: 'The time each point covers: 300, 3600 or 86400.' }
+        from: { type: string, format: date-time }
+        to: { type: string, format: date-time }
+        points:
+          type: array
+          description: Oldest first; each point covers `interval_seconds` from `time`.
+          items:
+            type: object
+            required: [time, cpu_percent, memory_percent, net_in_rate, net_out_rate, disk_read_rate, disk_write_rate, in_bytes, out_bytes]
+            properties:
+              time: { type: string, format: date-time }
+              cpu_percent: { type: [number, 'null'], description: Average share of the server's vCPUs }
+              memory_percent: { type: [number, 'null'], description: Average share of its memory as Proxmox reports it }
+              net_in_rate: { type: [number, 'null'], description: Average bytes per second received }
+              net_out_rate: { type: [number, 'null'], description: Average bytes per second sent }
+              disk_read_rate: { type: [number, 'null'], description: Average bytes per second read }
+              disk_write_rate: { type: [number, 'null'], description: Average bytes per second written }
+              in_bytes: { type: integer, description: Received within the point }
+              out_bytes: { type: integer, description: Sent within the point }
+        traffic:
+          type: object
+          required: [interval, buckets]
+          properties:
+            interval: { type: string, enum: [hour, day, period] }
+            buckets:
+              type: array
+              description: Oldest first; only buckets with figures.
+              items:
+                type: object
+                required: [start, end, in_bytes, out_bytes, counted_bytes]
+                properties:
+                  start: { type: string, format: date-time }
+                  end: { type: string, format: date-time }
+                  in_bytes: { type: integer }
+                  out_bytes: { type: integer }
+                  counted_bytes: { type: integer, description: 'What counts against the quota: in + out, out or in, as set in the panel' }
+        current:
+          type: object
+          description: The current traffic period, like `traffic` of the server, with its quota.
+          required: [period_start, period_end, in_bytes, out_bytes, counted_bytes, quota_bytes]
+          properties:
+            period_start: { type: string, format: date-time }
+            period_end: { type: string, format: date-time }
+            in_bytes: { type: integer }
+            out_bytes: { type: integer }
+            counted_bytes: { type: integer }
+            quota_bytes: { type: [integer, 'null'], description: Null is unlimited }
     Package:
       type: object
       required: [id, name, cpu_cores, memory_mib, disk_mib, ipv4_count, ipv6_count, port_speed_mbps, traffic_bytes, network_models]

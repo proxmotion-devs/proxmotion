@@ -24,6 +24,8 @@ use Illuminate\Support\Carbon;
  * @property float|null $memory_percent
  * @property float|null $net_in_rate
  * @property float|null $net_out_rate
+ * @property int|null $net_in_bytes received since the previous sample (docs/adr/0050)
+ * @property int|null $net_out_bytes sent since the previous sample
  * @property float|null $disk_read_rate
  * @property float|null $disk_write_rate
  * @property-read Server $server
@@ -47,6 +49,8 @@ class UsageSample extends Model
             'memory_percent' => 'float',
             'net_in_rate' => 'float',
             'net_out_rate' => 'float',
+            'net_in_bytes' => 'integer',
+            'net_out_bytes' => 'integer',
             'disk_read_rate' => 'float',
             'disk_write_rate' => 'float',
         ];

@@ -7,6 +7,8 @@ use App\Enums\SuspensionCause;
 use App\Models\AuditLog;
 use App\Models\Server;
 use App\Models\TrafficPeriod;
+use App\Models\UsageRollup;
+use App\Models\UsageSample;
 use App\Models\UsageViolation;
 use Illuminate\Support\Carbon;
 
@@ -93,5 +95,44 @@ class UsageApiTest extends ApiTestCase
         $this->api('POST', $this->url('/suspend'))
             ->assertOk()
             ->assertJsonPath('data.suspension_reason', 'Usage limit exceeded: CPU averaged 99% over 60 minutes (limit 90%).');
+    }
+
+    public function test_the_usage_history_of_a_range()
+    {
+        UsageSample::query()->insert([
+            'server_id' => $this->server->id,
+            'sampled_at' => now()->subMinutes(5),
+            'status' => 'running',
+            'cpu_percent' => 12.5,
+            'net_in_bytes' => 3000,
+            'net_out_bytes' => 1000,
+        ]);
+        UsageRollup::query()->insert([
+            'server_id' => $this->server->id,
+            'resolution' => UsageRollup::HOUR,
+            'starts_at' => '2026-10-15 11:00:00',
+            'samples' => 1,
+            'cpu_percent' => 12.5,
+            'in_bytes' => 3000,
+            'out_bytes' => 1000,
+        ]);
+
+        $this->api('GET', $this->url('/usage'))
+            ->assertOk()
+            ->assertJsonPath('data.range', 'day')
+            ->assertJsonPath('data.interval_seconds', 300)
+            ->assertJsonPath('data.points.0.time', '2026-10-15T11:55:00+00:00')
+            ->assertJsonPath('data.points.0.cpu_percent', 12.5)
+            ->assertJsonPath('data.points.0.in_bytes', 3000)
+            ->assertJsonPath('data.traffic.interval', 'hour')
+            ->assertJsonPath('data.traffic.buckets.0.counted_bytes', 4000)
+            ->assertJsonPath('data.current.period_start', '2026-10-01T00:00:00+00:00');
+
+        $this->api('GET', $this->url('/usage?range=month'))
+            ->assertOk()
+            ->assertJsonPath('data.interval_seconds', 3600)
+            ->assertJsonPath('data.points.0.time', '2026-10-15T11:00:00+00:00');
+
+        $this->api('GET', $this->url('/usage?range=decade'))->assertUnprocessable()->assertJsonValidationErrors(['range']);
     }
 }

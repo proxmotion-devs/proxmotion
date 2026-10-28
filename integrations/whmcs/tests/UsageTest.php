@@ -181,4 +181,75 @@ class UsageTest extends ModuleTestCase
     {
         $this->assertTrue(function_exists('proxmotion_UsageUpdate'));
     }
+
+    public function test_the_overview_draws_the_usage_history_of_the_chosen_range()
+    {
+        $this->showsServer($this->trafficServer(0, null));
+        $point = ['cpu_percent' => 12.5, 'memory_percent' => 40, 'net_in_rate' => 1550000, 'net_out_rate' => 125000, 'disk_read_rate' => null, 'disk_write_rate' => 0, 'in_bytes' => 0, 'out_bytes' => 0];
+        $this->api->on('GET /servers/' . self::SERVER_ID . '/usage?range=week', 200, ['data' => [
+            'range' => 'week',
+            'interval_seconds' => 3600,
+            'from' => '2026-10-08T12:00:00+03:00',
+            'to' => '2026-10-15T12:00:00+03:00',
+            'points' => [
+                array_merge($point, ['time' => '2026-10-15T10:00:00+03:00']),
+                array_merge($point, ['time' => '2026-10-15T11:00:00+03:00', 'cpu_percent' => null]),
+            ],
+            'traffic' => ['interval' => 'day', 'buckets' => [
+                ['start' => '2026-10-14T00:00:00+03:00', 'end' => '2026-10-15T00:00:00+03:00', 'in_bytes' => 2 * self::GB, 'out_bytes' => self::GB, 'counted_bytes' => 3 * self::GB],
+                ['start' => '2026-10-15T00:00:00+03:00', 'end' => '2026-10-16T00:00:00+03:00', 'in_bytes' => 500000000, 'out_bytes' => 0, 'counted_bytes' => 500000000],
+            ]],
+        ]]);
+
+        $usage = $this->module(['clientsdetails' => ['language' => 'turkish']])->clientArea('week')['templateVariables']['pmx']['usage'];
+
+        $this->assertSame([['week', true]], array_values(array_map(function ($range) {
+            return [$range['value'], $range['active']];
+        }, array_filter($usage['ranges'], function ($range) {
+            return $range['active'];
+        }))));
+        $this->assertSame('7 gün', $usage['ranges'][1]['label']);
+        $this->assertFalse($usage['empty']);
+        $this->assertStringContainsString('<svg', $usage['cpu']);
+        $this->assertStringContainsString('<title>2026-10-15 10:00 — 12.5%</title>', $usage['cpu'], 'Hours of a week tell their time.');
+        $this->assertStringContainsString('<title>2026-10-15 11:00 — —</title>', $usage['cpu'], 'A point without a value says so.');
+        $this->assertStringContainsString('<span>2026-10-08 12:00</span>', $usage['cpu']);
+        $this->assertStringContainsString('Gelen 12.4 Mbps, Giden 1 Mbps', $usage['network']);
+        $this->assertSame('Günlük trafik', $usage['trafficTitle']);
+        $this->assertSame(4, substr_count($usage['traffic'], '<rect '), 'Two stacked bars.');
+        $this->assertStringContainsString('<title>2026-10-14 — Gelen 2 GB, Giden 1 GB</title>', $usage['traffic'], 'Days of traffic tell their date only.');
+        $this->assertSame('Gelen 2.5 GB, giden 1 GB.', $usage['trafficTotal']);
+
+        // A year: days by their date, traffic periods by their month.
+        $this->api->on('GET /servers/' . self::SERVER_ID . '/usage?range=year', 200, ['data' => [
+            'range' => 'year',
+            'interval_seconds' => 86400,
+            'from' => '2025-10-15T12:00:00+03:00',
+            'to' => '2026-10-15T12:00:00+03:00',
+            'points' => [array_merge($point, ['time' => '2026-10-14T00:00:00+03:00'])],
+            'traffic' => ['interval' => 'period', 'buckets' => [
+                ['start' => '2026-10-01T00:00:00+03:00', 'end' => '2026-11-01T00:00:00+03:00', 'in_bytes' => self::GB, 'out_bytes' => 0, 'counted_bytes' => self::GB],
+            ]],
+        ]]);
+
+        $year = $this->module()->clientArea('year')['templateVariables']['pmx']['usage'];
+        $this->assertStringContainsString('<title>2026-10-14 — 12.5%</title>', $year['cpu']);
+        $this->assertStringContainsString('<title>2026-10 — In 1 GB, Out 0 MB</title>', $year['traffic']);
+        $this->assertSame('Traffic per month', $year['trafficTitle']);
+    }
+
+    public function test_the_overview_keeps_working_without_usage_history()
+    {
+        $this->showsServer($this->trafficServer(0, null));
+        // A panel before usage history.
+        $this->api->on('GET /servers/' . self::SERVER_ID . '/usage?range=month', 404, ['message' => 'Not found.']);
+
+        $vars = $this->module()->clientArea('month')['templateVariables']['pmx'];
+        $this->assertNull($vars['usage']);
+        $this->assertNotNull($vars['server']);
+
+        // An unknown range is the last day.
+        $this->assertTrue($this->module()->clientArea('decade')['templateVariables']['pmx']['usage']['empty']);
+        $this->assertContains('GET /servers/' . self::SERVER_ID . '/usage?range=day', $this->api->sent());
+    }
 }

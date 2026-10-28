@@ -467,6 +467,8 @@ Moves to other clusters need *Allow moves to other clusters and locations* on *P
 
 **Traffic quotas and usage limits** ([ADR 0039](../adr/0039-usage-limits.md)): `usage:collect` reads `/cluster/resources` of every cluster every 5 minutes and adds each server's traffic since the previous run to its month (from the *traffic reset day* of *Panel settings* on; counted in + out, out or in). A server over its quota gets a violation and, when *When a server is over its quota* is *Suspend the server*, is suspended with the reason; the panel unsuspends it again when the next month starts or its quota is raised, and an administrator or billing system that unsuspends it earlier lets it run for the rest of the month. Optional **usage limits** (CPU and memory in per cent, disk I/O in MB/s, network in Mbps) apply to the average over a time window (15–1440 minutes): over one, the server is only recorded, stopped (the customer may start it again) or suspended (until someone unsuspends it). The server page shows the month's traffic against the quota, the latest violations and why the panel suspended it, with *Exempt from usage limits* (recorded, never acted on); the dashboard lists servers over their limits. Billing systems get `server.usage_exceeded`, the usual `server.suspended` / `server.unsuspended`, and the month's traffic and `suspension_cause` on every server; a billing system that suspends a server the panel suspended takes the suspension over. Everything is off until set on *Panel settings*. Tested with a faked Proxmox only.
 
+**Usage history** ([ADR 0050](../adr/0050-usage-history.md)): every collection also rolls its samples up into hours (kept 35 days) and days (kept 400 days). The *Usage* tab of a server page shows CPU, memory, network and disk I/O over the last 24 hours, 7 days, 30 days or 12 months as line charts, and the traffic per hour, day or month as bars. Billing systems read the same with `GET /servers/{id}/usage`; the WHMCS client area draws CPU, network and traffic for the chosen range. Tested with a faked Proxmox only.
+
 ### 9.5 Windows guests
 
 Windows templates are supported by the data model and default guest scripts exist (`addresses.ps1`, `disk.ps1`, `hostname.ps1`, password for `Administrator`), with a [Windows template guide](../guides/windows-templates.md). They have **not run on a real Windows guest yet**.
@@ -629,7 +631,7 @@ Every change is audited with a version diff. A custom recipe can never override 
 | **Apps** | `POST`/`GET /servers/{id}/apps`, `GET /servers/{id}/apps/{installation}`, `POST …/retry`, `POST …/cancel`, `DELETE …` (uninstall), `POST …/upgrade`, `POST …/actions/{key}`, `GET …/runs`, `GET …/runs/{run}`, `POST …/runs/{run}/cancel` |
 | **Entitlements** | `POST`/`GET /servers/{id}/app-entitlements`, `DELETE /servers/{id}/app-entitlements/{app}` |
 | **Tasks** | `GET /tasks/{id}` |
-| **Usage** | The current month's traffic and `suspension_cause` on every server ([ADR 0039](../adr/0039-usage-limits.md)); `GET /servers/{id}/usage` with history **(planned, Phase 6)** |
+| **Usage** | The current month's traffic and `suspension_cause` on every server ([ADR 0039](../adr/0039-usage-limits.md)); `GET /servers/{id}/usage?range=day\|week\|month\|year`: CPU, memory, network and disk averages and traffic per hour, day or month ([ADR 0050](../adr/0050-usage-history.md)) |
 
 Tasks and audit log entries record the API token that started them.
 
@@ -671,6 +673,7 @@ Both modules are thin clients of the API: business logic stays in the panel, and
 - **Paid apps**: module setting *Paid app addons* maps WHMCS addons to apps; `hooks.php` grants on `AddonActivation` and revokes on `AddonCancelled` / `AddonTerminated`.
 - **Admin**: services tab fields and custom buttons.
 - **Traffic** ([ADR 0039](../adr/0039-usage-limits.md)): `UsageUpdate` writes each service's traffic of the month and its quota into WHMCS's usage statistics (`bwusage`, `bwlimit`) with the daily cron; the client area shows the traffic against the quota and why the panel suspended a server over its quota or a usage limit.
+- **Usage history** ([ADR 0050](../adr/0050-usage-history.md)): the client area charts CPU, network and traffic over the last 24 hours, 7 days, 30 days or 12 months (SVG drawn by the module, values on hover).
 - **Webhook receiver** (`webhook.php`): verifies signature and timestamp, drops repeats, sets a pending service *Active* on `server.provisioned`, keeps *Active* ⇄ *Suspended* in step, notifies administrators on terminations and failures. The signing secret goes into the WHMCS server's **Access Hash**.
 - Writes carry an `Idempotency-Key` and are retried once after a lost connection.
 - **Not done**: graphs (Phase 6). **Not run in a real WHMCS yet.**
@@ -798,7 +801,7 @@ See `panel/.env.example` for the full list (database, Redis, mail, …).
 | 3 | Server operations, console, reinstall, rDNS, drift | Done |
 | 4 | Billing API, WHMCS and WISECP modules, webhooks | Done |
 | 5 | App Marketplace: install, order-time apps, paid apps, uninstall/upgrade/actions, logs, editor, trials, import/export, 16 recipes | Mostly done; catalogs and signing (ADR 0017) open |
-| 6 | Usage and quotas: traffic collection, graphs, throttle/suspend, `UsageUpdate` | Resource changes, guest scripts, primary address and hostname changes done early; traffic collection, quotas and usage limits with suspend/stop, WHMCS `UsageUpdate` and traffic in the billing modules done (ADR 0039); graphs and throttling not started |
+| 6 | Usage and quotas: traffic collection, graphs, throttle/suspend, `UsageUpdate` | Resource changes, guest scripts, primary address and hostname changes done early; traffic collection, quotas and usage limits with suspend/stop, WHMCS `UsageUpdate` and traffic in the billing modules done (ADR 0039); usage history with graphs in the admin panel, the API and the WHMCS client area done (ADR 0050); throttling not started |
 | 7 | Snapshots and backups, Proxmox Backup Server | Planned |
 | 8 | Virtualizor import, native installer, production images, branding | Planned |
 | 9 | NAT VPS, LXC, ISO mount, rescue mode, customer firewall, moving servers (pulled forward, see 9.4), reseller system, more billing modules | Planned |

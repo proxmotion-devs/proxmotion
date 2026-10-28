@@ -487,7 +487,8 @@ function proxmotion_UsageUpdate(array $params): string
  */
 function proxmotion_ClientArea(array $params)
 {
-    return Module::fromParams($params)->clientArea();
+    // The usage range is a link of the overview (docs/adr/0050).
+    return Module::fromParams($params)->clientArea(isset($_GET['pmxrange']) && is_string($_GET['pmxrange']) ? $_GET['pmxrange'] : 'day');
 }
 
 /**

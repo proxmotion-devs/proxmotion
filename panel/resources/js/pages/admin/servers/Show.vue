@@ -39,6 +39,7 @@ import ServerStatsCards from '@/components/servers/ServerStatsCards.vue';
 import SuspendDialog from '@/components/servers/SuspendDialog.vue';
 import TaskList from '@/components/servers/TaskList.vue';
 import UnsuspendDialog from '@/components/servers/UnsuspendDialog.vue';
+import UsageHistorySection from '@/components/servers/UsageHistorySection.vue';
 import UsageSection from '@/components/servers/UsageSection.vue';
 import { Button } from '@/components/ui/button';
 import { useDateTime } from '@/composables/useDateTime';
@@ -345,12 +346,16 @@ const modelLabel =
 
 // Overview, apps, firewall, SSH keys and tasks on their own tabs. The tab survives the
 // redirect back after an action (e.g. installing an app) for this server.
-type Tab = 'overview' | 'apps' | 'firewall' | 'ssh-keys' | 'tasks';
+type Tab = 'overview' | 'usage' | 'apps' | 'firewall' | 'ssh-keys' | 'tasks';
 const tabKey = `server-tab:${props.server.uuid}`;
 
 // The firewall can be changed while the server is active or suspended (docs/adr/0035).
 const hasFirewall = computed(() =>
     ['active', 'suspended'].includes(props.server.status),
+);
+// Usage history once the server has run (docs/adr/0050).
+const hasUsage = computed(
+    () => !['pending', 'provisioning'].includes(props.server.status),
 );
 // SSH keys only while it is active: the guest agent writes them (docs/adr/0049).
 const hasSshKeys = computed(() => props.server.status === 'active');
@@ -360,6 +365,7 @@ const storedTab = (): Tab | null => {
         const value = sessionStorage.getItem(tabKey);
 
         return value === 'overview' ||
+            (value === 'usage' && hasUsage.value) ||
             value === 'apps' ||
             value === 'tasks' ||
             (value === 'firewall' && hasFirewall.value) ||
@@ -396,6 +402,9 @@ watch(tab, (value) => {
 
 const tabs = computed(() => [
     { value: 'overview' as Tab, label: 'Overview', count: null },
+    ...(hasUsage.value
+        ? [{ value: 'usage' as Tab, label: 'Usage', count: null }]
+        : []),
     {
         value: 'apps' as Tab,
         label: 'Apps',
@@ -1179,6 +1188,11 @@ const resetAfterTrial = () => {
                 </div>
             </section>
         </template>
+
+        <UsageHistorySection
+            v-else-if="tab === 'usage'"
+            :server-uuid="server.uuid"
+        />
 
         <FirewallSection
             v-else-if="tab === 'firewall'"

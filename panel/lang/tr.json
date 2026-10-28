@@ -2489,5 +2489,17 @@
     "The SSH keys are too long together: at most :size KB.": "SSH anahtarları toplamda çok uzun: en fazla :size KB.",
     "Keys that can log in as root (Administrator on Windows), given when a server is created or reinstalled and changed on its SSH keys tab, also through billing systems.": "root (Windows'ta Administrator) olarak giriş yapabilen anahtarlar; sunucu oluşturulurken veya yeniden kurulurken verilir ve SSH anahtarları sekmesinde, billing sistemleri üzerinden de değiştirilir.",
     "Most keys per server": "Sunucu başına en fazla anahtar",
-    "1 to 100. Together the keys may be at most 20 KB, so the guest agent can write them at once. Servers keep the keys they have when this is lowered.": "1 ile 100 arası. Guest agent hepsini tek seferde yazabilsin diye anahtarlar toplamda en fazla 20 KB olabilir. Bu değer düşürüldüğünde sunucular mevcut anahtarlarını korur."
+    "1 to 100. Together the keys may be at most 20 KB, so the guest agent can write them at once. Servers keep the keys they have when this is lowered.": "1 ile 100 arası. Guest agent hepsini tek seferde yazabilsin diye anahtarlar toplamda en fazla 20 KB olabilir. Bu değer düşürüldüğünde sunucular mevcut anahtarlarını korur.",
+    "Usage history": "Kullanım geçmişi",
+    "Averages of what Proxmox reported every 5 minutes.": "Proxmox'un 5 dakikada bir bildirdiği değerlerin ortalamaları.",
+    "Range": "Aralık",
+    "24 hours": "24 saat",
+    "7 days": "7 gün",
+    "30 days": "30 gün",
+    "12 months": "12 ay",
+    "The usage history could not be loaded.": "Kullanım geçmişi yüklenemedi.",
+    "Nothing was recorded for this server in this range yet.": "Bu sunucu için bu aralıkta henüz bir şey kaydedilmedi.",
+    "Traffic per hour": "Saatlik trafik",
+    "Traffic per day": "Günlük trafik",
+    "Traffic per period": "Dönem başına trafik"
 }

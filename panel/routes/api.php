@@ -8,6 +8,7 @@ use App\Http\Controllers\Api\V1\ServerConsoleController;
 use App\Http\Controllers\Api\V1\ServerController;
 use App\Http\Controllers\Api\V1\ServerPasswordController;
 use App\Http\Controllers\Api\V1\ServerRdnsController;
+use App\Http\Controllers\Api\V1\ServerUsageController;
 use App\Http\Controllers\Api\V1\SshKeyController;
 use App\Http\Controllers\Api\V1\TaskController;
 use Illuminate\Support\Facades\Route;
@@ -36,6 +37,7 @@ Route::middleware('api.scope:servers:read')->group(function (): void {
     Route::get('servers/{server}/app-entitlements', [AppEntitlementController::class, 'index'])->name('servers.app-entitlements.index');
     Route::get('servers/{server}/firewall', [FirewallController::class, 'show'])->name('servers.firewall.show');
     Route::get('servers/{server}/ssh-keys', [SshKeyController::class, 'show'])->name('servers.ssh-keys.show');
+    Route::get('servers/{server}/usage', ServerUsageController::class)->name('servers.usage');
 });
 
 Route::middleware(['api.scope:servers:write', 'api.idempotent'])->group(function (): void {

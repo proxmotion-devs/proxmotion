@@ -552,6 +552,42 @@ export type ServerUsage = {
     violations: UsageViolation[];
 };
 
+/** The ranges of a server's usage history (docs/adr/0050). */
+export type UsageRange = 'day' | 'week' | 'month' | 'year';
+
+/** One sample, hour or day of a server's usage; rates in bytes per second. */
+export type UsagePoint = {
+    time: string;
+    cpu_percent: number | null;
+    memory_percent: number | null;
+    net_in_rate: number | null;
+    net_out_rate: number | null;
+    disk_read_rate: number | null;
+    disk_write_rate: number | null;
+    in_bytes: number;
+    out_bytes: number;
+};
+
+/** A server's traffic in one hour, day or traffic period. */
+export type TrafficBucket = {
+    start: string;
+    end: string;
+    in_bytes: number;
+    out_bytes: number;
+    counted_bytes: number;
+};
+
+/** A server's usage over a range (UsageHistory, docs/adr/0050); missing points are left out. */
+export type UsageHistory = {
+    range: UsageRange;
+    interval_seconds: number;
+    from: string;
+    to: string;
+    points: UsagePoint[];
+    traffic: { interval: 'hour' | 'day' | 'period'; buckets: TrafficBucket[] };
+    current: ServerUsage['traffic'];
+};
+
 /** How often a server's billing system may reinstall it (ReinstallLimits, docs/adr/0045). */
 export type ReinstallLimitState = {
     /** server: its own limit; package: its package's (none without a package). */

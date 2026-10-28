@@ -55,6 +55,7 @@ class SshKeysTest extends ModuleTestCase
         $this->api->on('GET /servers/' . self::SERVER_ID, 200, ['data' => $this->server()]);
         $this->api->on('GET /os-templates?server=' . self::SERVER_ID, 200, ['data' => []]);
         $this->api->on('GET /servers/' . self::SERVER_ID . '/apps', 200, ['data' => []]);
+        $this->api->on('GET /servers/' . self::SERVER_ID . '/usage?range=day', 404, ['message' => 'Not found.']);
         $this->api->on('GET /apps?server=' . self::SERVER_ID, 200, ['data' => []]);
         $this->api->on('GET /servers/' . self::SERVER_ID . '/firewall', 200, ['data' => ['default_policy' => 'accept', 'rules' => [], 'app_rules' => []]]);
         $this->api->on('GET /firewall-rulesets', 200, ['data' => []]);
@@ -77,6 +78,7 @@ class SshKeysTest extends ModuleTestCase
         $this->api->on('GET /servers/' . self::SERVER_ID, 200, ['data' => $this->server()]);
         $this->api->on('GET /os-templates?server=' . self::SERVER_ID, 200, ['data' => []]);
         $this->api->on('GET /servers/' . self::SERVER_ID . '/apps', 200, ['data' => []]);
+        $this->api->on('GET /servers/' . self::SERVER_ID . '/usage?range=day', 404, ['message' => 'Not found.']);
         $this->api->on('GET /apps?server=' . self::SERVER_ID, 200, ['data' => []]);
         $this->api->on('GET /servers/' . self::SERVER_ID . '/firewall', 200, ['data' => ['default_policy' => 'accept', 'rules' => [], 'app_rules' => []]]);
         $this->api->on('GET /firewall-rulesets', 200, ['data' => []]);
