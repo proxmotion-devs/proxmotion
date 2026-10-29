@@ -50,6 +50,13 @@ class FakeProxmoxCluster
     /** @var list<string> UPIDs stopped through DELETE /nodes/{node}/tasks/{upid} */
     public array $stoppedTasks = [];
 
+    /**
+     * Called when a vzdump request arrives, before it answers (to cancel its task meanwhile).
+     *
+     * @var (callable(): void)|null
+     */
+    public $onVzdump = null;
+
     /** @var array<string, list<string>> privileges per ACL path */
     public array $permissions = [];
 
@@ -877,6 +884,10 @@ class FakeProxmoxCluster
     {
         $this->vzdumps[] = $data;
         $vmid = (int) $data['vmid'];
+
+        if ($this->onVzdump !== null) {
+            ($this->onVzdump)();
+        }
 
         if ($this->failBackup === null) {
             $storage = (string) $data['storage'];

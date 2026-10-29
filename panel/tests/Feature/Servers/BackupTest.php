@@ -368,6 +368,39 @@ class BackupTest extends TestCase
         $this->assertSame([$upid], $this->proxmox->stoppedTasks);
     }
 
+    public function test_a_backup_cancelled_while_vzdump_starts_is_stopped_by_the_task()
+    {
+        Queue::fake([RunServerTask::class]);
+        $this->proxmox->runningPolls['vzdump'] = 5;
+        $task = $this->backups()->take($this->server, null, $this->admin, null);
+        // The cancel lands before the task knows vzdump's UPID, so it has nothing to stop.
+        $this->proxmox->onVzdump = fn () => $this->assertTrue(app(TaskFailer::class)->cancel($task->fresh() ?? $task, 'Cancelled by an administrator.'));
+
+        $job = Queue::pushed(RunServerTask::class, fn (RunServerTask $job) => $job->task->is($task))->sole();
+        $job = unserialize(serialize($job));
+        $job->withFakeQueueInteractions();
+        app()->call([$job, 'handle']);
+
+        $task->refresh();
+        $this->assertSame(TaskStatus::Failed, $task->status);
+        $this->assertSame('Cancelled by an administrator.', $task->error);
+        $this->assertCount(1, $this->proxmox->stoppedTasks, 'The task stopped the vzdump it had just started.');
+        $this->assertStringContainsString(':vzdump:', $this->proxmox->stoppedTasks[0]);
+        $this->assertSame(0, Backup::query()->count());
+    }
+
+    public function test_a_backup_that_cannot_be_deleted_does_not_hold_up_a_termination()
+    {
+        $this->take();
+        $this->proxmox->failBackup = 'storage backup-nfs is not online';
+
+        $terminate = app(TaskRunner::class)->start($this->server, TaskType::Terminate, $this->admin)->refresh();
+
+        $this->assertSame(TaskStatus::Succeeded, $terminate->status, (string) $terminate->error);
+        $this->assertSame('terminated', $this->server->refresh()->status->value);
+        $this->assertSame(1, Backup::query()->count(), 'Kept, so it can be found and removed by hand.');
+    }
+
     public function test_a_backup_vzdump_has_finished_cannot_be_cancelled_any_more()
     {
         Queue::fake([RunServerTask::class]);

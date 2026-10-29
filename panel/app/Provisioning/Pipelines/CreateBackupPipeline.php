@@ -6,6 +6,7 @@ namespace App\Provisioning\Pipelines;
 
 use App\Domain\Settings\PanelSettings;
 use App\Enums\BackupKind;
+use App\Enums\TaskStatus;
 use App\Models\Backup;
 use App\Models\Server;
 use App\Models\Task;
@@ -13,6 +14,7 @@ use App\Provisioning\Stages\HasOwnDeadline;
 use App\Provisioning\Stages\StagedPipeline;
 use App\Provisioning\Stages\StageRunner;
 use App\Proxmox\Data\BackupVolume;
+use App\Proxmox\Data\Upid;
 use App\Proxmox\ProxmoxClientFactory;
 use RuntimeException;
 
@@ -66,8 +68,10 @@ final readonly class CreateBackupPipeline implements HasOwnDeadline, StagedPipel
         $client = $this->clients->forCluster($server->cluster);
         $node = $server->node->name;
 
+        $starting = $task->stageValue('upid') === null;
+
         // A task that still holds the VM (a shutdown, a migration) is waited for between runs.
-        if ($task->stageValue('upid') === null && $client->tasks()->activeForVm($node, $server->vmid) !== []) {
+        if ($starting && $client->tasks()->activeForVm($node, $server->vmid) !== []) {
             return 5;
         }
 
@@ -81,6 +85,16 @@ final readonly class CreateBackupPipeline implements HasOwnDeadline, StagedPipel
                 notes: self::notes($server, (string) ($task->input['backup'] ?? '')),
             );
         }, timeoutSeconds: $this->deadlineMinutes() * 60, pollSeconds: self::POLL_SECONDS);
+
+        // An administrator who cancelled while vzdump was being started found no task
+        // to stop (TaskFailer::cancel()): stop it here, now that it is known.
+        $upid = $task->stageValue('upid');
+
+        if ($starting && is_string($upid) && $task->fresh()?->status !== TaskStatus::Running) {
+            $client->tasks()->stop(Upid::parse($upid));
+
+            throw new RuntimeException('The backup was cancelled.');
+        }
 
         if ($delay === null) {
             $task->completeStep('backup');
