@@ -96,7 +96,7 @@ final class AppsTest extends ModuleTestCase
         }
 
         $this->assertSame('successful', $this->module()->tool_action('apps', 'reinstall', ['os_template' => 'os-uuid', 'app' => 'docker', 'confirm' => '1'])['status']);
-        $this->assertSame(['os_template' => 'os-uuid', 'ssh_keys' => [], 'app' => 'docker'], $this->api->last('POST ' . self::SERVER . '/reinstall')['body']);
+        $this->assertSame(['os_template' => 'os-uuid', 'app' => 'docker'], $this->api->last('POST ' . self::SERVER . '/reinstall')['body']);
     }
 
     public function test_the_page_offers_paid_apps_to_buy_and_the_reinstall_form(): void

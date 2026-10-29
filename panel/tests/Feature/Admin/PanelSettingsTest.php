@@ -21,6 +21,7 @@ class PanelSettingsTest extends AdminTestCase
             'move_bwlimit_kib' => 51200,
             'min_vmid' => 5000,
             'provisioning_deadline_minutes' => 90,
+            'backup_deadline_minutes' => 240,
             'verify_dns_name' => 'Example.org',
             'protected_networks' => "198.51.100.0/24\n203.0.113.7, 198.51.100.0/24",
             'drift_stopped_grace_minutes' => 30,
@@ -42,6 +43,7 @@ class PanelSettingsTest extends AdminTestCase
             'password_characters' => 'lower',
             'password_prefix' => null,
             'password_suffix' => '.example!',
+            'ssh_keys_max' => 30,
             'notifications_enabled' => true,
             'notification_recipients' => 'ops@example.com',
             'notification_throttle_minutes' => 30,
@@ -117,6 +119,7 @@ class PanelSettingsTest extends AdminTestCase
         $this->assertSame(16, PanelSettings::get('password_length'));
         $this->assertSame('lower', PanelSettings::get('password_characters'));
         $this->assertSame('.example!', PanelSettings::get('password_suffix'));
+        $this->assertSame(30, PanelSettings::get('ssh_keys_max'));
         $this->assertSame(80, PanelSettings::get('storage_warning_percent'));
         $this->assertSame(90, PanelSettings::get('storage_critical_percent'));
         $this->assertSame([], PanelSettings::unsaved());
@@ -183,6 +186,7 @@ class PanelSettingsTest extends AdminTestCase
         $invalid = [
             'min_vmid' => 50,
             'move_deadline_minutes' => 5,
+            'backup_deadline_minutes' => 5,
             'verify_dns_name' => 'not a name',
             'protected_networks' => "198.51.100.0/24\nnope",
             'docs_url' => 'http://docs.example.com',
@@ -195,7 +199,7 @@ class PanelSettingsTest extends AdminTestCase
             'storage_critical_percent' => 90,
         ];
 
-        $this->saveCategory('servers', $invalid)->assertSessionHasErrors(['min_vmid', 'move_deadline_minutes', 'verify_dns_name']);
+        $this->saveCategory('servers', $invalid)->assertSessionHasErrors(['min_vmid', 'move_deadline_minutes', 'backup_deadline_minutes', 'verify_dns_name']);
         $this->saveCategory('network', $invalid)->assertSessionHasErrors(['protected_networks']);
         $this->saveCategory('general', $invalid)->assertSessionHasErrors(['docs_url', 'storage_critical_percent']);
         $this->saveCategory('usage', $invalid)->assertSessionHasErrors(['traffic_reset_day', 'traffic_action', 'usage_cpu_percent', 'usage_window_minutes']);

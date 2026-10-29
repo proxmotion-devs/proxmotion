@@ -93,7 +93,9 @@ class ClusterController extends Controller
                     'is_shared' => $storage->is_shared,
                     'is_available' => $storage->is_available,
                     'use_for_servers' => $storage->use_for_servers,
+                    'use_for_backups' => $storage->use_for_backups,
                     'supports_vm_disks' => $storage->supportsVmDisks(),
+                    'supports_backups' => $storage->supportsBackups(),
                     'total_bytes' => $storage->total_bytes,
                     'used_bytes' => $storage->used_bytes,
                     // Storage health (docs/adr/0047).

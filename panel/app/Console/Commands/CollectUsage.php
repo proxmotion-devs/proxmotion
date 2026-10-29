@@ -6,17 +6,19 @@ namespace App\Console\Commands;
 
 use App\Domain\Usage\UsageCollector;
 use App\Domain\Usage\UsageLimits;
+use App\Domain\Usage\UsageRollups;
 use App\Models\Cluster;
+use App\Models\Server;
 use App\Proxmox\Exceptions\ProxmoxException;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
 
 #[Signature('usage:collect')]
-#[Description('Count the traffic of every server and act on traffic quotas and usage limits (docs/adr/0039)')]
+#[Description('Count the traffic of every server and act on traffic quotas and usage limits (docs/adr/0039, 0050)')]
 class CollectUsage extends Command
 {
-    public function handle(UsageCollector $collector, UsageLimits $limits): int
+    public function handle(UsageCollector $collector, UsageLimits $limits, UsageRollups $rollups): int
     {
         $failed = false;
 
@@ -32,6 +34,7 @@ class CollectUsage extends Command
             }
 
             $limits->check($servers);
+            $rollups->roll(array_map(fn (Server $server): int => $server->id, $servers->all()));
             $this->components->info("{$cluster->name}: sampled {$servers->count()} servers.");
         }
 

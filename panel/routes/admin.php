@@ -30,11 +30,15 @@ use App\Http\Controllers\Admin\PackageController;
 use App\Http\Controllers\Admin\PanelSettingsController;
 use App\Http\Controllers\Admin\PlacementGroupController;
 use App\Http\Controllers\Admin\ReportController;
+use App\Http\Controllers\Admin\ServerBackupController;
 use App\Http\Controllers\Admin\ServerController;
 use App\Http\Controllers\Admin\ServerFirewallController;
 use App\Http\Controllers\Admin\ServerMoveController;
 use App\Http\Controllers\Admin\ServerReinstallLimitController;
+use App\Http\Controllers\Admin\ServerSnapshotController;
+use App\Http\Controllers\Admin\ServerSshKeyController;
 use App\Http\Controllers\Admin\ServerStatsController;
+use App\Http\Controllers\Admin\ServerUsageController;
 use App\Http\Controllers\Admin\StorageController;
 use App\Http\Controllers\Admin\TaskController;
 use App\Http\Controllers\Admin\UserController;
@@ -186,6 +190,8 @@ Route::post('servers/{server}/unsuspend', [ServerController::class, 'unsuspend']
 Route::post('servers/{server}/power/{action}', [ServerController::class, 'power'])->middleware('throttle:20,1')->name('servers.power');
 // Live figures of the server page, which also mark it as watched (docs/adr/0036).
 Route::get('servers/{server}/stats', ServerStatsController::class)->middleware('throttle:30,1')->name('servers.stats');
+// Usage history of the server page's Usage tab (docs/adr/0050).
+Route::get('servers/{server}/usage', ServerUsageController::class)->middleware('throttle:60,1')->name('servers.usage');
 Route::post('servers/{server}/retry', [ServerController::class, 'retry'])->name('servers.retry');
 Route::post('servers/{server}/rebuild', [ServerController::class, 'rebuild'])->middleware('throttle:10,1')->name('servers.rebuild');
 Route::post('servers/{server}/verify', [ServerController::class, 'verify'])->middleware('throttle:10,1')->name('servers.verify');
@@ -193,6 +199,17 @@ Route::post('servers/{server}/verify', [ServerController::class, 'verify'])->mid
 Route::post('servers/{server}/scripts/{customScript}/run', [CustomScriptController::class, 'runOnServer'])->middleware('throttle:10,1')->name('servers.scripts.run');
 Route::put('servers/{server}/firewall', [ServerFirewallController::class, 'update'])->middleware('throttle:20,1')->name('servers.firewall');
 Route::post('servers/{server}/firewall/ruleset', [ServerFirewallController::class, 'ruleset'])->middleware('throttle:20,1')->name('servers.firewall.ruleset');
+Route::put('servers/{server}/ssh-keys', [ServerSshKeyController::class, 'update'])->middleware('throttle:20,1')->name('servers.ssh-keys');
+// The keys really inside the server, read through the guest agent (docs/adr/0049 §11).
+Route::get('servers/{server}/ssh-keys/guest', [ServerSshKeyController::class, 'guest'])->middleware('throttle:20,1')->name('servers.ssh-keys.guest');
+// Snapshots (docs/adr/0051).
+Route::post('servers/{server}/snapshots', [ServerSnapshotController::class, 'store'])->middleware('throttle:20,1')->name('servers.snapshots.store');
+Route::post('servers/{server}/snapshots/{snapshot}/rollback', [ServerSnapshotController::class, 'rollback'])->middleware('throttle:10,1')->name('servers.snapshots.rollback');
+Route::delete('servers/{server}/snapshots/{snapshot}', [ServerSnapshotController::class, 'destroy'])->middleware('throttle:20,1')->name('servers.snapshots.destroy');
+// Backups (docs/adr/0051 §4).
+Route::post('servers/{server}/backups', [ServerBackupController::class, 'store'])->middleware('throttle:10,1')->name('servers.backups.store');
+Route::post('servers/{server}/backups/{backup}/restore', [ServerBackupController::class, 'restore'])->middleware('throttle:10,1')->name('servers.backups.restore');
+Route::delete('servers/{server}/backups/{backup}', [ServerBackupController::class, 'destroy'])->middleware('throttle:20,1')->name('servers.backups.destroy');
 Route::post('servers/{server}/anti-spoofing', [ServerController::class, 'enableAntiSpoofing'])->middleware('throttle:10,1')->name('servers.enable-anti-spoofing');
 Route::post('tasks/{task}/fail', [TaskController::class, 'fail'])->name('tasks.fail');
 Route::post('tasks/{task}/cancel', [TaskController::class, 'cancel'])->name('tasks.cancel');

@@ -72,6 +72,20 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Backups (docs/adr/0051)
+    |--------------------------------------------------------------------------
+    |
+    | Taking or restoring a backup must finish within deadline_minutes of its
+    | start: large servers can take hours.
+    |
+    */
+
+    'backups' => [
+        'deadline_minutes' => (int) env('PROXMOTION_BACKUP_DEADLINE_MINUTES', 360),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Moving servers (docs/adr/0037)
     |--------------------------------------------------------------------------
     |
@@ -184,6 +198,21 @@ return [
         'characters' => (string) env('PROXMOTION_PASSWORD_CHARACTERS', 'mixed'),
         'prefix' => (string) env('PROXMOTION_PASSWORD_PREFIX', '') === '' ? null : (string) env('PROXMOTION_PASSWORD_PREFIX'),
         'suffix' => (string) env('PROXMOTION_PASSWORD_SUFFIX', '') === '' ? null : (string) env('PROXMOTION_PASSWORD_SUFFIX'),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | SSH keys of a server (docs/adr/0049)
+    |--------------------------------------------------------------------------
+    |
+    | How many public SSH keys a server may have (1–100), when it is created
+    | or reinstalled and on its SSH keys tab, through the API too. Together
+    | they may be at most 20 KB, so the guest agent can write them at once.
+    |
+    */
+
+    'ssh_keys' => [
+        'max' => (int) env('PROXMOTION_SSH_KEYS_MAX', 20),
     ],
 
     /*

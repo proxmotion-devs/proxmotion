@@ -1,0 +1,296 @@
+import { flushPromises, mount } from '@vue/test-utils';
+import { beforeEach, describe, expect, it, vi } from 'vite-plus/test';
+import SshKeysSection from '@/components/servers/SshKeysSection.vue';
+import type { ServerSshKeys, SshKey } from '@/types/admin';
+
+const { submit, submitted, failWith } = vi.hoisted(() => ({
+    submit: vi.fn(),
+    submitted: { value: null as Record<string, unknown> | null },
+    // Errors the next submit answers with instead of succeeding.
+    failWith: { value: null as Record<string, string> | null },
+}));
+
+vi.mock('@inertiajs/vue3', async () => {
+    const { reactive } = await import('vue');
+
+    return {
+        useForm: (data: Record<string, unknown>) => {
+            const form: Record<string, unknown> = reactive({
+                ...data,
+                errors: {},
+                processing: false,
+                clearErrors: () => {
+                    form.errors = {};
+                },
+                submit: (
+                    route: unknown,
+                    options: { onSuccess?: () => void } = {},
+                ) => {
+                    submitted.value = { ...form };
+                    submit(route, options);
+
+                    if (failWith.value) {
+                        form.errors = failWith.value;
+                    } else {
+                        options.onSuccess?.();
+                    }
+                },
+            });
+
+            return form;
+        },
+    };
+});
+
+vi.mock('laravel-vue-i18n', () => ({ trans: (text: string) => text }));
+
+vi.mock('@/routes/admin/servers/ssh-keys', () => ({
+    guest: {
+        url: (server: string) => `/admin/servers/${server}/ssh-keys/guest`,
+    },
+}));
+
+vi.mock('@/routes/admin/servers', () => ({
+    sshKeys: (server: string) => ({
+        url: `/admin/servers/${server}/ssh-keys`,
+        method: 'put',
+    }),
+}));
+
+const key = (n: number, overrides: Partial<SshKey> = {}): SshKey => ({
+    type: 'ssh-ed25519',
+    fingerprint: `SHA256:key${n}`,
+    comment: `user${n}@example.com`,
+    public_key: `ssh-ed25519 AAAA${n} user${n}@example.com`,
+    ...overrides,
+});
+
+const mountSection = (
+    keys: SshKey[],
+    props: { changing?: boolean; max?: number } = {},
+) =>
+    mount(SshKeysSection, {
+        props: {
+            server: 'server-uuid',
+            sshKeys: { keys, max: props.max ?? 20 } as ServerSshKeys,
+            changing: props.changing ?? false,
+        },
+        global: {
+            mocks: { $t: (text: string) => text },
+            stubs: {
+                FormDialog: {
+                    props: ['title'],
+                    emits: ['submit'],
+                    template:
+                        '<form :data-dialog="title" @submit.prevent="$emit(\'submit\')"><slot /></form>',
+                },
+            },
+        },
+    });
+
+describe('SshKeysSection', () => {
+    beforeEach(() => {
+        submit.mockClear();
+        submitted.value = null;
+        failWith.value = null;
+    });
+
+    it('lists the keys in a table with readable types', () => {
+        const wrapper = mountSection([
+            key(1),
+            key(2, {
+                type: 'sk-ecdsa-sha2-nistp256@openssh.com',
+                comment: '',
+            }),
+        ]);
+
+        const rows = wrapper.findAll('[data-test="ssh-key"]');
+        expect(rows).toHaveLength(2);
+        expect(rows[0].text()).toContain('user1@example.com');
+        expect(rows[0].text()).toContain('Ed25519');
+        expect(rows[0].text()).toContain('SHA256:key1');
+        expect(rows[1].text()).toContain('No comment');
+        expect(rows[1].text()).toContain('ECDSA P-256');
+        expect(rows[1].text()).toContain('Security key');
+        expect(wrapper.find('[data-test="ssh-key-count"]').text()).toBe(
+            '2 / 20',
+        );
+    });
+
+    it('sends the whole list without the deleted key', async () => {
+        const wrapper = mountSection([key(1), key(2), key(3)]);
+
+        await wrapper
+            .findAll('[data-test="delete-ssh-key"]')[1]
+            .trigger('click');
+        await wrapper
+            .find('form[data-dialog="Delete SSH key"]')
+            .trigger('submit');
+
+        expect(submitted.value?.ssh_keys).toEqual([
+            key(1).public_key,
+            key(3).public_key,
+        ]);
+        expect(submit).toHaveBeenCalledWith(
+            { url: '/admin/servers/server-uuid/ssh-keys', method: 'put' },
+            expect.anything(),
+        );
+    });
+
+    it('sends the whole list with the added keys', async () => {
+        const wrapper = mountSection([key(1)]);
+
+        await wrapper
+            .find('textarea')
+            .setValue('ssh-rsa AAAAnew new@example.com');
+        await wrapper.find('form[data-dialog="Add SSH key"]').trigger('submit');
+
+        expect(submitted.value?.ssh_keys).toEqual([
+            key(1).public_key,
+            'ssh-rsa AAAAnew new@example.com',
+        ]);
+    });
+
+    it('filters long lists', async () => {
+        const wrapper = mountSection([1, 2, 3, 4, 5, 6].map((n) => key(n)));
+
+        await wrapper.find('input[type="search"]').setValue('user4');
+
+        const rows = wrapper.findAll('[data-test="ssh-key"]');
+        expect(rows).toHaveLength(1);
+        expect(rows[0].text()).toContain('4');
+        expect(
+            mountSection([key(1)])
+                .find('input[type="search"]')
+                .exists(),
+        ).toBe(false);
+    });
+
+    it('waits while a change runs and when the server is full', () => {
+        const changing = mountSection([key(1)], { changing: true });
+
+        expect(changing.find('[data-test="ssh-keys-changing"]').exists()).toBe(
+            true,
+        );
+        expect(
+            changing.find('[data-test="add-ssh-key"]').attributes('disabled'),
+        ).toBeDefined();
+        expect(
+            changing
+                .find('[data-test="delete-ssh-key"]')
+                .attributes('disabled'),
+        ).toBeDefined();
+
+        const full = mountSection([key(1), key(2)], { max: 2 });
+        expect(
+            full.find('[data-test="add-ssh-key"]').attributes('disabled'),
+        ).toBeDefined();
+    });
+
+    it('keeps the delete dialog with the error when the panel refuses', async () => {
+        failWith.value = { 'ssh_keys.1': 'Unsupported SSH key type.' };
+        const wrapper = mountSection([key(1), key(2), key(3)]);
+
+        await wrapper
+            .findAll('[data-test="delete-ssh-key"]')[0]
+            .trigger('click');
+        const dialog = wrapper.find('form[data-dialog="Delete SSH key"]');
+        await dialog.trigger('submit');
+
+        expect(dialog.text()).toContain('SHA256:key1');
+        expect(dialog.text()).toContain('Unsupported SSH key type.');
+    });
+
+    it('offers copying only where the browser has a clipboard', () => {
+        expect(
+            mountSection([key(1)])
+                .find('[aria-label="Copy public key"]')
+                .exists(),
+        ).toBe(navigator.clipboard !== undefined);
+    });
+
+    it('reads the keys inside the server and takes one over', async () => {
+        const found = {
+            keys: [
+                {
+                    ...key(1),
+                    file: '/root/.ssh/authorized_keys',
+                    options: false,
+                    managed: true,
+                },
+                {
+                    ...key(9),
+                    file: '/root/.ssh/authorized_keys',
+                    options: true,
+                    managed: false,
+                },
+            ],
+            missing: ['SHA256:key2'],
+            unsupported: 1,
+        };
+        const fetchMock = vi.fn().mockResolvedValue({
+            ok: true,
+            json: () => Promise.resolve(found),
+        });
+        vi.stubGlobal('fetch', fetchMock);
+        const wrapper = mountSection([key(1), key(2)]);
+
+        await wrapper.find('[data-test="read-ssh-keys"]').trigger('click');
+        await flushPromises();
+
+        expect(fetchMock).toHaveBeenCalledWith(
+            '/admin/servers/server-uuid/ssh-keys/guest',
+            expect.anything(),
+        );
+        const managedRows = wrapper.findAll('[data-test="ssh-key"]');
+        expect(
+            managedRows[0].find('[data-test="ssh-key-missing"]').exists(),
+        ).toBe(false);
+        expect(
+            managedRows[1].find('[data-test="ssh-key-missing"]').exists(),
+        ).toBe(true);
+
+        const rows = wrapper.findAll('[data-test="guest-ssh-key"]');
+        expect(rows).toHaveLength(1);
+        expect(rows[0].text()).toContain('user9@example.com');
+        expect(rows[0].text()).toContain('Options');
+        expect(wrapper.find('[data-test="guest-ssh-keys"]').text()).toContain(
+            ':count other key lines',
+        );
+
+        await rows[0].find('[data-test="manage-ssh-key"]').trigger('click');
+        expect(submitted.value?.ssh_keys).toEqual([
+            key(1).public_key,
+            key(2).public_key,
+            key(9).public_key,
+        ]);
+
+        vi.unstubAllGlobals();
+    });
+
+    it('says why the keys inside could not be read', async () => {
+        vi.stubGlobal(
+            'fetch',
+            vi.fn().mockResolvedValue({
+                ok: false,
+                json: () =>
+                    Promise.resolve({
+                        message: 'Its guest agent does not answer.',
+                    }),
+            }),
+        );
+        const wrapper = mountSection([key(1)]);
+
+        await wrapper.find('[data-test="read-ssh-keys"]').trigger('click');
+        await flushPromises();
+
+        expect(wrapper.find('[data-test="ssh-keys-read-error"]').text()).toBe(
+            'Its guest agent does not answer.',
+        );
+        expect(wrapper.find('[data-test="guest-ssh-keys"]').exists()).toBe(
+            false,
+        );
+
+        vi.unstubAllGlobals();
+    });
+});

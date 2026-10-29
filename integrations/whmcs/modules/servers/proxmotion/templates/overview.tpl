@@ -110,6 +110,41 @@
             </div>
         </div>
 
+        {if $pmx.usage}
+            {* Usage history (docs/adr/0050); the charts are SVG built by the module from numbers. *}
+            {assign var=usage value=$pmx.usage}
+            <h4>{$pmx.lang.usage_history|escape}</h4>
+            <div class="btn-group btn-group-sm" role="group" style="margin-bottom: 10px;">
+                {foreach from=$usage.ranges item=usageRange}
+                    <a href="clientarea.php?action=productdetails&amp;id={$serviceid}&amp;pmxrange={$usageRange.value|escape:'url'}" class="btn {if $usageRange.active}btn-primary{else}btn-default{/if}">{$usageRange.label|escape}</a>
+                {/foreach}
+            </div>
+            {if $usage.empty}
+                <p class="text-muted">{$pmx.lang.usage_none|escape}</p>
+            {else}
+                <div class="row">
+                    <div class="col-sm-6">
+                        <h5>{$pmx.lang.usage_cpu|escape}</h5>
+                        {$usage.cpu}
+                    </div>
+                    <div class="col-sm-6">
+                        <h5>
+                            {$pmx.lang.usage_network|escape}
+                            <small><span style="color: #2a78d6;">&#9632;</span> {$pmx.lang.usage_in|escape} <span style="color: #eb6834;">&#9632;</span> {$pmx.lang.usage_out|escape}</small>
+                        </h5>
+                        {$usage.network}
+                    </div>
+                </div>
+                <h5>
+                    {$usage.trafficTitle|escape}
+                    <small><span style="color: #2a78d6;">&#9632;</span> {$pmx.lang.usage_in|escape} <span style="color: #eb6834;">&#9632;</span> {$pmx.lang.usage_out|escape}</small>
+                </h5>
+                {$usage.traffic}
+                <p class="text-muted"><small>{$usage.trafficTotal|escape}</small></p>
+            {/if}
+            <hr>
+        {/if}
+
         {if $server.active}
             <div class="btn-toolbar" role="toolbar">
                 <div class="btn-group" role="group">
@@ -240,6 +275,138 @@
                             <code>{$appRule.port|escape}/{$appRule.protocol|escape}</code> ({$appRule.app|escape})
                         {/foreach}
                     </p>
+                {/if}
+            {/if}
+
+            {if $pmx.snapshots}
+                {* Snapshots of the disk and settings (docs/adr/0051). *}
+                <hr>
+                <h4>{$pmx.lang.snapshots|escape} <small>{$pmx.snapshots.count|escape}</small></h4>
+                <p class="text-muted">{$pmx.lang.snapshots_intro|escape}</p>
+                {if $pmx.snapshots.unavailable}
+                    <p class="text-muted">{$pmx.snapshots.unavailable|escape}</p>
+                {/if}
+                <table class="table table-condensed">
+                    <tbody>
+                        {foreach from=$pmx.snapshots.items item=snapshot}
+                            <tr>
+                                <td>{$snapshot.label|escape}</td>
+                                <td class="text-muted">{$snapshot.time|escape}</td>
+                                <td class="text-right">
+                                    <form method="post" action="{$pmxAction}Snapshots" style="display: inline;" onsubmit="return confirm('{$pmx.lang.snapshot_rollback_confirm|escape:'javascript'}');">
+                                        <input type="hidden" name="token" value="{$token}">
+                                        <input type="hidden" name="op" value="rollback">
+                                        <input type="hidden" name="snapshot" value="{$snapshot.id|escape}">
+                                        <button type="submit" class="btn btn-warning btn-xs">{$pmx.lang.snapshot_rollback|escape}</button>
+                                    </form>
+                                    <form method="post" action="{$pmxAction}Snapshots" style="display: inline;" onsubmit="return confirm('{$pmx.lang.snapshot_delete_confirm|escape:'javascript'}');">
+                                        <input type="hidden" name="token" value="{$token}">
+                                        <input type="hidden" name="op" value="delete">
+                                        <input type="hidden" name="snapshot" value="{$snapshot.id|escape}">
+                                        <button type="submit" class="btn btn-danger btn-xs">{$pmx.lang.snapshot_delete|escape}</button>
+                                    </form>
+                                </td>
+                            </tr>
+                        {foreachelse}
+                            <tr><td class="text-muted">{$pmx.lang.snapshots_none|escape}</td></tr>
+                        {/foreach}
+                    </tbody>
+                </table>
+                {if $pmx.snapshots.canTake}
+                    <form method="post" action="{$pmxAction}Snapshots" class="form-inline" style="margin-bottom: 10px;">
+                        <input type="hidden" name="token" value="{$token}">
+                        <input type="hidden" name="op" value="take">
+                        <input type="text" name="label" class="form-control input-sm" maxlength="64" placeholder="{$pmx.lang.snapshot_label|escape}">
+                        <button type="submit" class="btn btn-default btn-sm">{$pmx.lang.snapshot_take|escape}</button>
+                    </form>
+                {/if}
+            {/if}
+
+            {if $pmx.backups}
+                {* Full copies of the server on backup storage (docs/adr/0051 §4). *}
+                <hr>
+                <h4>{$pmx.lang.backups|escape} <small>{$pmx.backups.count|escape}</small></h4>
+                <p class="text-muted">{$pmx.lang.backups_intro|escape}</p>
+                {if $pmx.backups.unavailable}
+                    <p class="text-muted">{$pmx.backups.unavailable|escape}</p>
+                {/if}
+                <table class="table table-condensed">
+                    <tbody>
+                        {foreach from=$pmx.backups.items item=backup}
+                            <tr>
+                                <td>
+                                    {$backup.label|escape}
+                                    {if $backup.reason}<br><small class="text-warning">{$backup.reason|escape}</small>{/if}
+                                </td>
+                                <td class="text-muted">{$backup.time|escape}</td>
+                                <td class="text-muted">{$backup.size|escape}</td>
+                                <td class="text-muted">{$backup.system|escape}</td>
+                                <td class="text-right">
+                                    {if $backup.restorable}
+                                        <form method="post" action="{$pmxAction}Backups" style="display: inline;" onsubmit="return confirm('{$pmx.lang.backup_restore_confirm|escape:'javascript'}');">
+                                            <input type="hidden" name="token" value="{$token}">
+                                            <input type="hidden" name="op" value="restore">
+                                            <input type="hidden" name="backup" value="{$backup.id|escape}">
+                                            <button type="submit" class="btn btn-warning btn-xs">{$pmx.lang.backup_restore|escape}</button>
+                                        </form>
+                                    {/if}
+                                    <form method="post" action="{$pmxAction}Backups" style="display: inline;" onsubmit="return confirm('{$pmx.lang.backup_delete_confirm|escape:'javascript'}');">
+                                        <input type="hidden" name="token" value="{$token}">
+                                        <input type="hidden" name="op" value="delete">
+                                        <input type="hidden" name="backup" value="{$backup.id|escape}">
+                                        <button type="submit" class="btn btn-danger btn-xs">{$pmx.lang.snapshot_delete|escape}</button>
+                                    </form>
+                                </td>
+                            </tr>
+                        {foreachelse}
+                            <tr><td class="text-muted">{$pmx.lang.backups_none|escape}</td></tr>
+                        {/foreach}
+                    </tbody>
+                </table>
+                {if $pmx.backups.canTake}
+                    <form method="post" action="{$pmxAction}Backups" class="form-inline" style="margin-bottom: 10px;">
+                        <input type="hidden" name="token" value="{$token}">
+                        <input type="hidden" name="op" value="take">
+                        <input type="text" name="label" class="form-control input-sm" maxlength="64" placeholder="{$pmx.lang.snapshot_label|escape}">
+                        <button type="submit" class="btn btn-default btn-sm">{$pmx.lang.backup_take|escape}</button>
+                    </form>
+                {/if}
+            {/if}
+
+            {if $pmx.sshKeys}
+                <hr>
+                <h4>{$pmx.lang.ssh_keys|escape}</h4>
+                <p class="text-muted">{$pmx.lang.ssh_keys_intro|escape}</p>
+                <table class="table table-condensed">
+                    <tbody>
+                        {foreach from=$pmx.sshKeys.keys item=sshKey}
+                            <tr>
+                                <td>{if $sshKey.comment}{$sshKey.comment|escape}{else}<span class="text-muted">{$pmx.lang.ssh_key_no_comment|escape}</span>{/if}</td>
+                                <td><code>{$sshKey.type|escape}</code> <code>{$sshKey.fingerprint|escape}</code></td>
+                                <td class="text-right">
+                                    <form method="post" action="{$pmxAction}SshKeys" style="display: inline;" onsubmit="return confirm('{$pmx.lang.ssh_key_delete_confirm|escape:'javascript'}');">
+                                        <input type="hidden" name="token" value="{$token}">
+                                        <input type="hidden" name="op" value="delete">
+                                        <input type="hidden" name="fingerprint" value="{$sshKey.fingerprint|escape}">
+                                        <button type="submit" class="btn btn-danger btn-xs">{$pmx.lang.ssh_key_delete|escape}</button>
+                                    </form>
+                                </td>
+                            </tr>
+                        {foreachelse}
+                            <tr><td class="text-muted">{$pmx.lang.ssh_keys_none|escape}</td></tr>
+                        {/foreach}
+                    </tbody>
+                </table>
+                {if !$pmx.sshKeys.full}
+                    <form method="post" action="{$pmxAction}SshKeys" style="margin-bottom: 10px;">
+                        <input type="hidden" name="token" value="{$token}">
+                        <input type="hidden" name="op" value="add">
+                        <div class="form-group">
+                            <label for="pmx-ssh-key">{$pmx.lang.ssh_key_add_label|escape}</label>
+                            <textarea id="pmx-ssh-key" name="public_key" class="form-control" rows="3" required placeholder="ssh-ed25519 AAAA... user@host" style="font-family: monospace;"></textarea>
+                        </div>
+                        <button type="submit" class="btn btn-default btn-sm">{$pmx.lang.ssh_key_add|escape}</button>
+                    </form>
                 {/if}
             {/if}
 

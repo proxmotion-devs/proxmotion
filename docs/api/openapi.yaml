@@ -361,7 +361,9 @@ paths:
               required: [os_template]
               properties:
                 os_template: { type: string, format: uuid, description: 'An OS template available on the server''s cluster, which its package allows (docs/adr/0040)' }
-                ssh_keys: { $ref: '#/components/schemas/SshKeys' }
+                ssh_keys:
+                  allOf: [{ $ref: '#/components/schemas/SshKeys' }]
+                  description: 'The new system''s keys. Left out (or null): the server keeps its keys (`GET /servers/{server}/ssh-keys`); an empty list removes them (docs/adr/0049).'
                 app: { $ref: '#/components/schemas/OrderedApp' }
                 app_inputs: { $ref: '#/components/schemas/OrderedAppInputs' }
       responses:
@@ -426,6 +428,8 @@ paths:
                     ipv6_count: { type: integer, minimum: 0, maximum: 64, description: Skipped (no IPv6 addresses) when the location has no active IPv6 pool for the network model; an IPv6 pool that has run out fails the request. }
                     port_speed_mbps: { type: integer, minimum: 1, maximum: 400000 }
                     traffic_bytes: { type: integer, minimum: 1 }
+                    snapshot_slots: { type: integer, minimum: 0, maximum: 100, description: "How many snapshots it may have (docs/adr/0051); 0: none" }
+                    backup_slots: { type: integer, minimum: 0, maximum: 100, description: How many backups it may have; 0: none }
                 reboot: { type: boolean, default: false }
       responses:
         '202': { $ref: '#/components/responses/TaskAccepted' }
@@ -704,6 +708,312 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /servers/{server}/ssh-keys:
+    parameters:
+      - $ref: '#/components/parameters/Server'
+    get:
+      tags: [Servers]
+      summary: The server's SSH keys
+      description: |
+        Scope: `servers:read`. The public keys Proxmotion manages for root (Windows: Administrator)
+        on the server: those of its creation or last reinstall and those added since (docs/adr/0049).
+        Keys added inside the server by its owner are not listed.
+      operationId: getServerSshKeys
+      responses:
+        '200':
+          description: The keys
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    required: [ssh_keys, max_keys]
+                    properties:
+                      ssh_keys: { type: array, items: { $ref: '#/components/schemas/SshKey' } }
+                      max_keys: { type: integer, description: "How many keys a server can have (Panel settings, 1–100, 20 by default)." }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    put:
+      tags: [Servers]
+      summary: Replace the server's SSH keys
+      description: |
+        Scope: `servers:write`. Active servers only (the guest agent writes the keys). `ssh_keys` is
+        the whole new list: send the current keys with a new one to add it, without one to delete it,
+        an empty list to remove them all. Keys missing from it are removed from the server's
+        `authorized_keys`; other lines there stay. Answers `202` with the `change_ssh_keys` task; the
+        list changes once it succeeded, so after a failed task the same list can be sent again.
+      operationId: updateServerSshKeys
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ssh_keys]
+              properties:
+                ssh_keys:
+                  type: array
+                  maxItems: 100
+                  description: 'OpenSSH public keys (ed25519, ECDSA or RSA of 2048 bits or more); duplicates are dropped. At most `max_keys` keys (set on the panel''s Panel settings, 20 by default) of at most 20 KB together.'
+                  items: { type: string, maxLength: 16384, examples: ['ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI... user@example.com'] }
+      responses:
+        '202': { $ref: '#/components/responses/TaskAccepted' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /servers/{server}/snapshots:
+    parameters:
+      - $ref: '#/components/parameters/Server'
+    get:
+      tags: [Servers]
+      summary: The server's snapshots
+      description: |
+        Scope: `servers:read`. Snapshots of the server's disk and configuration, without RAM
+        (docs/adr/0051), oldest first. They live on the server's own storage: a reinstall or a
+        termination deletes them, and the disk cannot grow while there are any.
+      operationId: getServerSnapshots
+      responses:
+        '200':
+          description: The snapshots
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    required: [snapshots, slots, unavailable_reason]
+                    properties:
+                      snapshots: { type: array, items: { $ref: '#/components/schemas/Snapshot' } }
+                      slots: { type: integer, description: 'How many it may have (`resources.snapshot_slots`); 0: none.' }
+                      unavailable_reason: { type: [string, 'null'], description: 'Why it cannot take snapshots at all (none in its plan, or its storage does not take them), in the language of the request; null when it can.' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    post:
+      tags: [Servers]
+      summary: Take a snapshot
+      description: |
+        Scope: `servers:write`. Active servers only. Answers `202` with the `create_snapshot` task;
+        the snapshot is listed once it succeeded. `409` with `error: snapshot_slots_full` when the
+        server has as many as it may; `422` with `error: snapshots_not_supported` when it cannot
+        have any.
+      operationId: createServerSnapshot
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                label: { type: [string, 'null'], maxLength: 64, description: The customer's name for it; no control characters }
+      responses:
+        '202': { $ref: '#/components/responses/TaskAccepted' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /servers/{server}/snapshots/{snapshot}/rollback:
+    parameters:
+      - $ref: '#/components/parameters/Server'
+      - { name: snapshot, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [Servers]
+      summary: Roll the server back to a snapshot
+      description: |
+        Scope: `servers:write`. Active servers only; destructive, so ask the customer to confirm.
+        The disk and configuration go back to the snapshot, then Proxmotion writes its own state
+        back: resources, port speed, disk size, firewall, and inside the server its addresses,
+        hostname and SSH keys. A running server is started again; a stopped one stays stopped and gets its addresses, hostname and SSH keys when it is next started through Proxmotion. The root password is the one
+        of the snapshot's time, so `GET /servers/{id}/password` no longer has one. Apps installed
+        since the snapshot are removed. Answers `202` with the `rollback_snapshot` task; webhook
+        `server.restored` when it succeeded.
+      operationId: rollbackServerSnapshot
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '202': { $ref: '#/components/responses/TaskAccepted' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /servers/{server}/snapshots/{snapshot}:
+    parameters:
+      - $ref: '#/components/parameters/Server'
+      - { name: snapshot, in: path, required: true, schema: { type: string, format: uuid } }
+    delete:
+      tags: [Servers]
+      summary: Delete a snapshot
+      description: |
+        Scope: `servers:write`. Active and suspended servers. Answers `202` with the
+        `delete_snapshot` task; the snapshot leaves the list once it succeeded.
+      operationId: deleteServerSnapshot
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '202': { $ref: '#/components/responses/TaskAccepted' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /servers/{server}/backups:
+    parameters:
+      - $ref: '#/components/parameters/Server'
+    get:
+      tags: [Servers]
+      summary: The server's backups
+      description: |
+        Scope: `servers:read`. Full copies of the server made by Proxmox (vzdump) on backup storage
+        (docs/adr/0051 §4), oldest first. They survive reinstalls and are deleted with the server
+        when it is terminated. A backup belongs to its server and can only be restored onto it;
+        after the server moved to another node or cluster, a backup it can no longer reach is
+        listed with `restorable: false` and the reason.
+      operationId: getServerBackups
+      responses:
+        '200':
+          description: The backups
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    required: [backups, slots, unavailable_reason]
+                    properties:
+                      backups: { type: array, items: { $ref: '#/components/schemas/Backup' } }
+                      slots: { type: integer, description: 'How many it may have (`resources.backup_slots`); 0: none.' }
+                      unavailable_reason: { type: [string, 'null'], description: 'Why it cannot take backups at all (none in its plan, or no backup storage its node reaches), in the language of the request; null when it can.' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    post:
+      tags: [Servers]
+      summary: Take a backup
+      description: |
+        Scope: `servers:write`. Active servers only; the server keeps running. Answers `202` with
+        the `create_backup` task, which may take hours on large servers; meanwhile the server takes
+        no other operation (`409`). The backup is listed once the task succeeded. `409` with
+        `error: backup_slots_full` when the server has as many as it may; `422` with
+        `error: backups_not_supported` when its plan has none, `error: no_backup_storage` when no
+        backup storage is available to it.
+      operationId: createServerBackup
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                label: { type: [string, 'null'], maxLength: 64, description: The customer's name for it; no control characters }
+      responses:
+        '202': { $ref: '#/components/responses/TaskAccepted' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /servers/{server}/backups/{backup}/restore:
+    parameters:
+      - $ref: '#/components/parameters/Server'
+      - { name: backup, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [Servers]
+      summary: Restore a backup onto the server
+      description: |
+        Scope: `servers:write`. Active servers only; destructive, so ask the customer to confirm.
+        The server's disks and snapshots are replaced by the backup, then Proxmotion writes its own
+        state back: resources, port speed, disk size, firewall, and inside the server its
+        addresses, hostname and SSH keys. A running server is started again; a stopped one stays
+        stopped and gets its addresses, hostname and SSH keys when it is next started through
+        Proxmotion. The server's operating system becomes the backup's, and its root password the
+        one of the backup's time, so `GET /servers/{id}/password` no longer has one. Apps installed
+        since the backup are removed. Answers `202` with the `restore_backup` task; webhook
+        `server.restored` when it succeeded. `409` with `error: backup_not_restorable` when the
+        server can no longer reach the backup (see `restorable`).
+      operationId: restoreServerBackup
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '202': { $ref: '#/components/responses/TaskAccepted' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /servers/{server}/backups/{backup}:
+    parameters:
+      - $ref: '#/components/parameters/Server'
+      - { name: backup, in: path, required: true, schema: { type: string, format: uuid } }
+    delete:
+      tags: [Servers]
+      summary: Delete a backup
+      description: |
+        Scope: `servers:write`. Active and suspended servers. Answers `202` with the
+        `delete_backup` task; the backup leaves the list once it succeeded.
+      operationId: deleteServerBackup
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '202': { $ref: '#/components/responses/TaskAccepted' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /servers/{server}/usage:
+    parameters:
+      - $ref: '#/components/parameters/Server'
+    get:
+      tags: [Servers]
+      summary: The server's usage over a range
+      description: |
+        Scope: `servers:read`. What the server used over the last day, week, month or year
+        (docs/adr/0050): `day` gives the 5-minute samples of the last 24 hours, `week` and `month`
+        hourly averages, `year` daily averages. Traffic comes in buckets per hour (`day`), per day
+        (`week`, `month`) or per traffic period (`year`, the last 12). Times are missing where
+        Proxmotion has no figures (the server was not running, Proxmox did not answer, before it was
+        created); break lines there. Usage is collected every 5 minutes; hours are kept 35 days,
+        days 400 days.
+      operationId: getServerUsage
+      parameters:
+        - name: range
+          in: query
+          required: false
+          schema: { type: string, enum: [day, week, month, year], default: day }
+      responses:
+        '200':
+          description: The usage
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: { $ref: '#/components/schemas/ServerUsage' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
         '422': { $ref: '#/components/responses/ValidationError' }
 
   /servers/{server}/console:
@@ -1304,12 +1614,83 @@ components:
       enum: [pending, provisioning, active, suspended, reinstalling, terminating, terminated, error]
     SshKeys:
       type: array
-      maxItems: 20
+      maxItems: 100
       items: { type: string, maxLength: 16384 }
-      description: OpenSSH public keys (ed25519, ECDSA, RSA ≥ 2048 bits; no DSA). An item may hold several lines.
+      description: 'OpenSSH public keys (ed25519, ECDSA, RSA ≥ 2048 bits; no DSA). An item may hold several lines. At most as many keys as `max_keys` of `GET /servers/{server}/ssh-keys` (Panel settings, 20 by default), of at most 20 KB together.'
+    Snapshot:
+      type: object
+      required: [id, label, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        label: { type: [string, 'null'] }
+        created_at: { type: [string, 'null'], format: date-time }
+    Backup:
+      type: object
+      required: [id, kind, label, size_bytes, os_template, created_at, restorable, unrestorable_reason]
+      properties:
+        id: { type: string, format: uuid }
+        kind: { type: string, enum: [manual, scheduled], description: 'Taken on request, or by a backup schedule (later).' }
+        label: { type: [string, 'null'] }
+        size_bytes: { type: [integer, 'null'] }
+        os_template: { type: [string, 'null'], description: "The name of the server's OS template when it was taken; a restore brings that system back." }
+        created_at: { type: [string, 'null'], format: date-time }
+        restorable: { type: boolean, description: "Whether the server's node can reach the backup's storage." }
+        unrestorable_reason: { type: [string, 'null'], description: 'Why it cannot be restored, in the language of the request; null when it can.' }
+    ServerUsage:
+      type: object
+      required: [range, interval_seconds, from, to, points, traffic, current]
+      properties:
+        range: { type: string, enum: [day, week, month, year] }
+        interval_seconds: { type: integer, description: 'The time each point covers: 300, 3600 or 86400.' }
+        from: { type: string, format: date-time }
+        to: { type: string, format: date-time }
+        points:
+          type: array
+          description: Oldest first; each point covers `interval_seconds` from `time`.
+          items:
+            type: object
+            required: [time, cpu_percent, memory_percent, net_in_rate, net_out_rate, disk_read_rate, disk_write_rate, in_bytes, out_bytes]
+            properties:
+              time: { type: string, format: date-time }
+              cpu_percent: { type: [number, 'null'], description: Average share of the server's vCPUs }
+              memory_percent: { type: [number, 'null'], description: Average share of its memory as Proxmox reports it }
+              net_in_rate: { type: [number, 'null'], description: Average bytes per second received }
+              net_out_rate: { type: [number, 'null'], description: Average bytes per second sent }
+              disk_read_rate: { type: [number, 'null'], description: Average bytes per second read }
+              disk_write_rate: { type: [number, 'null'], description: Average bytes per second written }
+              in_bytes: { type: integer, description: Received within the point }
+              out_bytes: { type: integer, description: Sent within the point }
+        traffic:
+          type: object
+          required: [interval, buckets]
+          properties:
+            interval: { type: string, enum: [hour, day, period] }
+            buckets:
+              type: array
+              description: Oldest first; only buckets with figures.
+              items:
+                type: object
+                required: [start, end, in_bytes, out_bytes, counted_bytes]
+                properties:
+                  start: { type: string, format: date-time }
+                  end: { type: string, format: date-time }
+                  in_bytes: { type: integer }
+                  out_bytes: { type: integer }
+                  counted_bytes: { type: integer, description: 'What counts against the quota: in + out, out or in, as set in the panel' }
+        current:
+          type: object
+          description: The current traffic period, like `traffic` of the server, with its quota.
+          required: [period_start, period_end, in_bytes, out_bytes, counted_bytes, quota_bytes]
+          properties:
+            period_start: { type: string, format: date-time }
+            period_end: { type: string, format: date-time }
+            in_bytes: { type: integer }
+            out_bytes: { type: integer }
+            counted_bytes: { type: integer }
+            quota_bytes: { type: [integer, 'null'], description: Null is unlimited }
     Package:
       type: object
-      required: [id, name, cpu_cores, memory_mib, disk_mib, ipv4_count, ipv6_count, port_speed_mbps, traffic_bytes, network_models]
+      required: [id, name, cpu_cores, memory_mib, disk_mib, ipv4_count, ipv6_count, port_speed_mbps, traffic_bytes, snapshot_slots, backup_slots, network_models]
       properties:
         id: { type: string, format: uuid }
         name: { type: string }
@@ -1320,6 +1701,8 @@ components:
         ipv6_count: { type: integer }
         port_speed_mbps: { type: [integer, 'null'] }
         traffic_bytes: { type: [integer, 'null'] }
+        snapshot_slots: { type: integer, description: 'How many snapshots its servers may have (docs/adr/0051); 0: none.' }
+        backup_slots: { type: integer, description: 'How many backups its servers may have; 0: none.' }
         reinstall_limit:
           type: [object, 'null']
           description: 'How often its servers may be reinstalled through the API: `count` times (0: never) within the last `period_days` days; null is unlimited (docs/adr/0045).'
@@ -1355,6 +1738,14 @@ components:
               app: { type: string, description: The app's slug. }
               protocol: { type: string, enum: [tcp, udp] }
               port: { type: integer }
+    SshKey:
+      type: object
+      required: [type, fingerprint, comment, public_key]
+      properties:
+        type: { type: string, examples: [ssh-ed25519] }
+        fingerprint: { type: string, examples: ['SHA256:uNiVztksCsDhcc0u9e8BujQXVUpKZIDTMczCvj3tD2s'] }
+        comment: { type: string, description: The text after the key; may be empty. }
+        public_key: { type: string, description: 'The normalized line: type, key and comment.' }
     FirewallRuleset:
       type: object
       required: [id, name, description, default_policy, rules]
@@ -1424,6 +1815,8 @@ components:
             ipv6_count: { type: integer, minimum: 0, maximum: 64, description: Skipped (no IPv6 addresses) when the location has no active IPv6 pool for the network model; an IPv6 pool that has run out fails the request. }
             port_speed_mbps: { type: integer, minimum: 1, maximum: 400000 }
             traffic_bytes: { type: integer, minimum: 1 }
+            snapshot_slots: { type: integer, minimum: 0, maximum: 100, description: "How many snapshots it may have (docs/adr/0051); 0: none. Default: the package's." }
+            backup_slots: { type: integer, minimum: 0, maximum: 100, description: "How many backups it may have; 0: none. Default: the package's." }
     Server:
       type: object
       required: [id, external_id, external_client_id, hostname, status, suspension_reason, suspension_cause, reboot_required, network_model, package, location, os_template, resources, traffic, addresses, root_password_available, created_at, provisioned_at, terminated_at]
@@ -1470,13 +1863,15 @@ components:
           properties: { id: { type: string, format: uuid }, name: { type: string } }
         resources:
           type: object
-          required: [cpu_cores, memory_mib, disk_mib, port_speed_mbps, traffic_bytes]
+          required: [cpu_cores, memory_mib, disk_mib, port_speed_mbps, traffic_bytes, snapshot_slots, backup_slots]
           properties:
             cpu_cores: { type: integer }
             memory_mib: { type: integer }
             disk_mib: { type: integer }
             port_speed_mbps: { type: [integer, 'null'] }
             traffic_bytes: { type: [integer, 'null'], description: Monthly traffic quota; null is unlimited }
+            snapshot_slots: { type: integer, description: 'How many snapshots it may have (docs/adr/0051); 0: none' }
+            backup_slots: { type: integer, description: 'How many backups it may have; 0: none' }
         traffic:
           type: object
           description: Traffic of the current period (docs/adr/0039), counted every 5 minutes.
@@ -1508,7 +1903,7 @@ components:
       required: [id, type, status, server, steps, error, created_at, started_at, finished_at]
       properties:
         id: { type: string, format: uuid }
-        type: { type: string, enum: [create, suspend, unsuspend, terminate, adopt, start, shutdown, stop, reboot, reset_password, reinstall, change_resources, guest_script, change_primary_address, change_addresses, change_hostname, install_app, app_run, verify, enable_anti_spoofing, apply_firewall, move] }
+        type: { type: string, enum: [create, suspend, unsuspend, terminate, adopt, start, shutdown, stop, reboot, reset_password, reinstall, change_resources, guest_script, change_primary_address, change_addresses, change_hostname, change_ssh_keys, install_app, app_run, verify, enable_anti_spoofing, apply_firewall, move, create_snapshot, rollback_snapshot, delete_snapshot, create_backup, restore_backup, delete_backup] }
         status: { type: string, enum: [queued, running, succeeded, failed] }
         server:
           type: object
@@ -1742,7 +2137,7 @@ components:
         id: { type: string, format: uuid }
         event:
           type: string
-          enum: [ping, server.provisioned, server.suspended, server.unsuspended, server.reinstalled, server.terminated, server.moved, server.failed, server.usage_exceeded, task.succeeded, task.failed, app.installed, app.failed, app.uninstalled, app.uninstall_failed, app.upgraded, app.upgrade_failed, app.action_succeeded, app.action_failed]
+          enum: [ping, server.provisioned, server.suspended, server.unsuspended, server.reinstalled, server.terminated, server.moved, server.restored, server.failed, server.usage_exceeded, task.succeeded, task.failed, app.installed, app.failed, app.uninstalled, app.uninstall_failed, app.upgraded, app.upgrade_failed, app.action_succeeded, app.action_failed]
         created_at: { type: string, format: date-time }
         data:
           type: object
@@ -1781,6 +2176,9 @@ webhooks:
         - `server.moved`: an administrator moved the server to another node, cluster or location
           (docs/adr/0037). After a move to another location the server has new addresses: read
           them with `GET /servers/{id}`.
+        - `server.restored`: the server went back to a snapshot or was restored from a backup
+          (docs/adr/0051). Its root password is the one of that time: the panel no longer knows
+          it, so offer a password reset.
         - `server.failed`: creating, reinstalling or terminating failed; the server is in `error`.
         - `server.usage_exceeded`: the server went over its traffic quota or a usage limit
           (docs/adr/0039), whatever Proxmotion does about it; `data` has the server and the

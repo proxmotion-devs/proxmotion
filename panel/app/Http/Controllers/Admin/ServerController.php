@@ -12,6 +12,8 @@ use App\Domain\Apps\LiveAppPolls;
 use App\Domain\Apps\OrderedAppOptions;
 use App\Domain\Apps\RecipeAction;
 use App\Domain\Apps\RecipeInput;
+use App\Domain\Backups\ServerBackups;
+use App\Domain\Backups\ServerSnapshots;
 use App\Domain\Firewall\ServerFirewalls;
 use App\Domain\Servers\GuestAgentProbe;
 use App\Domain\Servers\HostnameChanger;
@@ -23,6 +25,7 @@ use App\Domain\Servers\ServerLiveState;
 use App\Domain\Servers\ServerPasswords;
 use App\Domain\Servers\ServerPower;
 use App\Domain\Servers\ServerReinstaller;
+use App\Domain\Servers\ServerSshKeys;
 use App\Domain\Usage\TrafficPeriods;
 use App\Enums\AppInstallationStatus;
 use App\Enums\AppRunKind;
@@ -356,6 +359,25 @@ class ServerController extends Controller
                 'rulesets' => FirewallRuleset::query()->where('is_active', true)->orderBy('name')->get(['uuid', 'name'])
                     ->map(fn (FirewallRuleset $ruleset) => ['value' => $ruleset->uuid, 'label' => $ruleset->name]),
             ],
+            // The keys the panel manages on the server (docs/adr/0049).
+            'sshKeys' => fn () => ['keys' => ServerSshKeys::describe($server), 'max' => ServerSshKeys::max()],
+            // Snapshots of the VM (docs/adr/0051).
+            'snapshots' => fn () => [
+                'items' => ServerSnapshots::describe($server),
+                'slots' => $server->snapshot_slots,
+                'unavailable' => ServerSnapshots::unavailable($server)?->translatedMessage(),
+            ],
+            // Backups of the VM (docs/adr/0051 §4), with where they are.
+            'backups' => function () use ($server) {
+                $storage = ServerBackups::storageFor($server);
+
+                return [
+                    'items' => ServerBackups::describe($server, withStorage: true),
+                    'slots' => $server->backup_slots,
+                    'unavailable' => ServerBackups::unavailable($server, $storage)?->translatedMessage(),
+                    'storage' => $storage?->name,
+                ];
+            },
             // Pools addresses may be added from: same location, network model, bridge and VLAN (docs/adr/0028).
             'addressPools' => fn () => collect(IpVersion::cases())
                 ->flatMap(fn (IpVersion $version) => $ips->sameNetworkPools($server->location, $server->network_model, $version, $server->ipAddresses->first()?->pool))

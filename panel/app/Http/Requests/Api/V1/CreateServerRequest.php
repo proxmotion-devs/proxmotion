@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Requests\Api\V1;
 
 use App\Domain\Servers\PasswordGenerator;
+use App\Domain\Servers\ServerSshKeys;
 use App\Enums\NetworkModel;
 use App\Models\ApiToken;
 use App\Models\AppRecipe;
@@ -12,10 +13,12 @@ use App\Models\BillingSystem;
 use App\Models\Location;
 use App\Models\OsTemplate;
 use App\Models\Package;
+use App\Provisioning\BackupSlots;
 use App\Provisioning\HostnameGenerator;
 use App\Provisioning\NewServer;
 use App\Provisioning\ServerSpec;
 use App\Rules\Hostname;
+use App\Rules\SshKeyLimit;
 use App\Rules\SshPublicKeys;
 use App\Support\Ssh\PublicKey;
 use Illuminate\Contracts\Validation\ValidationRule;
@@ -31,8 +34,6 @@ use Illuminate\Validation\Validator;
  */
 class CreateServerRequest extends FormRequest
 {
-    private const MAX_SSH_KEYS = 20;
-
     /**
      * @return array<string, ValidationRule|array<mixed>|string>
      */
@@ -54,7 +55,7 @@ class CreateServerRequest extends FormRequest
             'primary_ipv4' => ['nullable', 'ipv4'],
             // Empty: a random password, fetched once through GET /servers/{id}/password.
             'root_password' => ['nullable', 'string', 'min:12', 'max:128'],
-            'ssh_keys' => ['nullable', 'array', 'max:'.self::MAX_SSH_KEYS],
+            'ssh_keys' => ['nullable', 'array', 'max:'.ServerSshKeys::CEILING, new SshKeyLimit],
             'ssh_keys.*' => ['string', 'max:16384', new SshPublicKeys],
             'resources' => ['nullable', 'array'],
             'resources.cpu_cores' => ['nullable', 'required_without:package', 'integer', 'between:1,512'],
@@ -65,6 +66,9 @@ class CreateServerRequest extends FormRequest
             'resources.ipv6_count' => ['nullable', 'integer', 'between:0,64'],
             'resources.port_speed_mbps' => ['nullable', 'integer', 'between:1,400000'],
             'resources.traffic_bytes' => ['nullable', 'integer', 'between:1,10000000000000000'],
+            // Snapshots and backups a server may have (docs/adr/0051 §2).
+            'resources.snapshot_slots' => ['nullable', 'integer', 'between:0,'.BackupSlots::MAX],
+            'resources.backup_slots' => ['nullable', 'integer', 'between:0,'.BackupSlots::MAX],
             // An app installed once the server has booted (docs/adr/0016 §5); eligibility and inputs are checked by the creator.
             'app' => ['nullable', 'string', Rule::exists('app_recipes', 'slug')],
             'app_inputs' => ['nullable', 'array'],
@@ -181,6 +185,10 @@ class CreateServerRequest extends FormRequest
             trafficBytes: $override('traffic_bytes', $package->trafficBytes),
             // From the package; the API takes no overrides (docs/adr/0034).
             limits: $package->limits,
+            slots: new BackupSlots(
+                snapshots: (int) $override('snapshot_slots', $package->slots->snapshots),
+                backups: (int) $override('backup_slots', $package->slots->backups),
+            ),
         );
     }
 }

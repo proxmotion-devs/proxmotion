@@ -22,10 +22,17 @@ enum TaskType: string
     case ChangePrimaryAddress = 'change_primary_address';
     case ChangeAddresses = 'change_addresses';
     case ChangeHostname = 'change_hostname';
+    case ChangeSshKeys = 'change_ssh_keys';
     case InstallApp = 'install_app';
     case AppRun = 'app_run';
     case Verify = 'verify';
     case EnableAntiSpoofing = 'enable_anti_spoofing';
     case ApplyFirewall = 'apply_firewall';
     case Move = 'move';
+    case CreateSnapshot = 'create_snapshot';
+    case RollbackSnapshot = 'rollback_snapshot';
+    case DeleteSnapshot = 'delete_snapshot';
+    case CreateBackup = 'create_backup';
+    case RestoreBackup = 'restore_backup';
+    case DeleteBackup = 'delete_backup';
 }

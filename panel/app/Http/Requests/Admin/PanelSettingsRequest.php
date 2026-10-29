@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Requests\Admin;
 
 use App\Domain\Servers\PasswordGenerator;
+use App\Domain\Servers\ServerSshKeys;
 use App\Domain\Settings\PanelSettings;
 use App\Rules\Hostname;
 use App\Rules\NetworkList;
@@ -40,6 +41,7 @@ class PanelSettingsRequest extends FormRequest
                 }
             }],
             'provisioning_deadline_minutes' => ['required', 'integer', 'min:15', 'max:1440'],
+            'backup_deadline_minutes' => ['required', 'integer', 'min:30', 'max:2880'],
             'verify_dns_name' => ['nullable', 'string', 'max:253', new Hostname],
             'protected_networks' => ['nullable', 'string', 'max:4000', new NetworkList],
             'drift_stopped_grace_minutes' => ['required', 'integer', 'min:0', 'max:10080'],
@@ -64,6 +66,8 @@ class PanelSettingsRequest extends FormRequest
             'password_characters' => ['required', 'string', 'in:lower,mixed,symbols'],
             'password_prefix' => ['nullable', 'string', 'max:32', Rule::regex('/^[A-Za-z0-9!@#%+=.,:_-]+$/')],
             'password_suffix' => ['nullable', 'string', 'max:32', Rule::regex('/^[A-Za-z0-9!@#%+=.,:_-]+$/')],
+            // SSH keys per server (docs/adr/0049 §12); servers keep what they have when it is lowered.
+            'ssh_keys_max' => ['required', 'integer', 'min:1', 'max:'.ServerSshKeys::CEILING],
             // Email notifications (docs/adr/0044): recipients one per line or comma-separated.
             'notifications_enabled' => ['required', 'boolean'],
             'notification_recipients' => ['nullable', 'string', 'max:2550', function (string $attribute, mixed $value, Closure $fail) {
@@ -144,6 +148,7 @@ class PanelSettingsRequest extends FormRequest
             'move_bwlimit_kib' => fn () => $optionalInt('move_bwlimit_kib'),
             'min_vmid' => fn () => (int) $data['min_vmid'],
             'provisioning_deadline_minutes' => fn () => (int) $data['provisioning_deadline_minutes'],
+            'backup_deadline_minutes' => fn () => (int) $data['backup_deadline_minutes'],
             'verify_dns_name' => fn () => ($name = $optionalString('verify_dns_name')) === null ? null : strtolower($name),
             'protected_networks' => fn () => NetworkList::canonical($optionalString('protected_networks')),
             'drift_stopped_grace_minutes' => fn () => (int) $data['drift_stopped_grace_minutes'],
@@ -165,6 +170,7 @@ class PanelSettingsRequest extends FormRequest
             'password_characters' => fn () => (string) $data['password_characters'],
             'password_prefix' => fn () => $optionalString('password_prefix'),
             'password_suffix' => fn () => $optionalString('password_suffix'),
+            'ssh_keys_max' => fn () => (int) $data['ssh_keys_max'],
             'notifications_enabled' => fn () => (bool) $data['notifications_enabled'],
             'notification_recipients' => fn () => self::addresses((string) ($data['notification_recipients'] ?? '')),
             'notification_throttle_minutes' => fn () => (int) $data['notification_throttle_minutes'],

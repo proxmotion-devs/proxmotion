@@ -7,6 +7,7 @@ namespace App\Domain\Servers;
 use App\Enums\IpVersion;
 use App\Models\Package;
 use App\Models\Server;
+use App\Provisioning\BackupSlots;
 use App\Provisioning\ResourceLimits;
 
 /**
@@ -20,7 +21,7 @@ final class ResourceOptions
      * A package's resources in the units of the resource forms (disk in GiB,
      * traffic in GB; null port speed or traffic is unlimited).
      *
-     * @return array{cpu_cores: int, memory_mib: int, disk_gib: int, ipv4_count: int, ipv6_count: int, port_speed_mbps: int|null, traffic_gb: int|null, cpu_limit: float|null, cpu_units: int|null, disk_mb_s: int|null, disk_iops: int|null}
+     * @return array{cpu_cores: int, memory_mib: int, disk_gib: int, ipv4_count: int, ipv6_count: int, port_speed_mbps: int|null, traffic_gb: int|null, cpu_limit: float|null, cpu_units: int|null, disk_mb_s: int|null, disk_iops: int|null, snapshot_slots: int, backup_slots: int}
      */
     public static function packageValues(Package $package): array
     {
@@ -34,6 +35,8 @@ final class ResourceOptions
             'traffic_gb' => $package->traffic_bytes === null ? null : intdiv($package->traffic_bytes, 1000 ** 3),
             // CPU and disk limits (docs/adr/0034); null is unlimited.
             ...ResourceLimits::of($package)->columns(),
+            // Snapshots and backups (docs/adr/0051 §2).
+            ...BackupSlots::of($package)->columns(),
         ];
     }
 
@@ -63,6 +66,7 @@ final class ResourceOptions
                 'port_speed_mbps' => $server->port_speed_mbps,
                 'traffic_gb' => $server->traffic_bytes === null ? null : intdiv($server->traffic_bytes, 1000 ** 3),
                 ...ResourceLimits::of($server)->columns(),
+                ...BackupSlots::of($server)->columns(),
             ],
         ];
     }

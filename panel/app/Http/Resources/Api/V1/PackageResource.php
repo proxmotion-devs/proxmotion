@@ -29,6 +29,9 @@ class PackageResource extends JsonResource
             'ipv6_count' => $this->ipv6_count,
             'port_speed_mbps' => $this->port_speed_mbps,
             'traffic_bytes' => $this->traffic_bytes,
+            // How many snapshots and backups its servers may have; 0: none (docs/adr/0051).
+            'snapshot_slots' => $this->snapshot_slots,
+            'backup_slots' => $this->backup_slots,
             // How often its servers may be reinstalled through the API; null for unlimited (docs/adr/0045).
             'reinstall_limit' => $this->reinstall_limit === null || $this->reinstall_period_days === null
                 ? null

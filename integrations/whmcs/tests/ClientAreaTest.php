@@ -439,7 +439,7 @@ class ClientAreaTest extends ModuleTestCase
 
         $this->module()->reinstall(['os_template' => 'os-uuid', 'app' => ' docker ', 'confirm' => '1']);
 
-        $this->assertSame(['os_template' => 'os-uuid', 'ssh_keys' => [], 'app' => 'docker'], $this->api->last('POST /servers/' . self::SERVER_ID . '/reinstall')['body']);
+        $this->assertSame(['os_template' => 'os-uuid', 'app' => 'docker'], $this->api->last('POST /servers/' . self::SERVER_ID . '/reinstall')['body']);
     }
 
     public function test_the_reinstall_form_offers_apps_the_server_may_install_with_their_defaults()

@@ -101,7 +101,7 @@ final readonly class UsageCollector
     /**
      * The sample's figures, the bytes since the previous collection and the counters to keep.
      *
-     * @return array{0: array{status: string, cpu_percent: float|null, memory_percent: float|null, net_in_rate: float|null, net_out_rate: float|null, disk_read_rate: float|null, disk_write_rate: float|null}, 1: array{in: int, out: int}, 2: array{time: int, uptime: int|null, net_in: int|null, net_out: int|null, disk_read: int|null, disk_write: int|null}}
+     * @return array{0: array{status: string, cpu_percent: float|null, memory_percent: float|null, net_in_rate: float|null, net_out_rate: float|null, net_in_bytes: int|null, net_out_bytes: int|null, disk_read_rate: float|null, disk_write_rate: float|null}, 1: array{in: int, out: int}, 2: array{time: int, uptime: int|null, net_in: int|null, net_out: int|null, disk_read: int|null, disk_write: int|null}}
      */
     private function measure(Server $server, VmResource $guest, int $time): array
     {
@@ -144,6 +144,9 @@ final readonly class UsageCollector
                 'memory_percent' => ! $running ? 0.0 : ($guest->memoryUsedBytes === null || ! $guest->memoryBytes ? null : round($guest->memoryUsedBytes / $guest->memoryBytes * 100, 1)),
                 'net_in_rate' => $rate($netIn),
                 'net_out_rate' => $rate($netOut),
+                // Summed into hours and days (docs/adr/0050).
+                'net_in_bytes' => $netIn,
+                'net_out_bytes' => $netOut,
                 'disk_read_rate' => $rate($delta('disk_read')),
                 'disk_write_rate' => $rate($delta('disk_write')),
             ],

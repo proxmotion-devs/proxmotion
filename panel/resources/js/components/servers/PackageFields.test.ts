@@ -24,6 +24,8 @@ const pkg = (overrides: Partial<PackageOption> = {}): PackageOption => ({
     cpu_units: null,
     disk_mb_s: null,
     disk_iops: null,
+    snapshot_slots: 0,
+    backup_slots: 0,
     ...overrides,
 });
 

@@ -14,7 +14,7 @@ client area. The module is a thin client of the Proxmotion billing API v1
 | Terminate | Deletes the server and its disks; the addresses are released |
 | Change Password | Sets the service password as the root password (at least 12 characters) |
 | Change Package | Upgrades and downgrades: the new product's package and configurable options, with the same rules as ordering. CPU and memory take effect at the server's next restart (the client area says so) unless *Restart after upgrades* is on. The disk only grows. Additional IP addresses come from Proxmotion's pools; with fewer, the newest extra ones are released. |
-| Client area | Status, power state, IP addresses with reverse DNS, hostname change (the service domain follows), start / shut down / reboot / force stop, browser console, root password reset, reinstall, the month's traffic against the quota and why Proxmotion suspended the server |
+| Client area | Status, power state, IP addresses with reverse DNS, hostname change (the service domain follows), start / shut down / reboot / force stop, browser console, root password reset, reinstall, the month's traffic against the quota and why Proxmotion suspended the server, usage charts (see [Usage history](#usage-history)) |
 | Admin area | Server status (and why Proxmotion suspended it), addresses and the month's traffic on the service page, a link to the server in Proxmotion, power and password buttons |
 | Usage update | WHMCS's daily cron writes each service's traffic of the month and its quota into its usage statistics (see [Traffic](#traffic)) |
 
@@ -69,6 +69,7 @@ Configurable options are matched by their **option name** (the part before `|`, 
 | `ipv4_count`, `ipv6_count` | Quantity / dropdown | Number of addresses |
 | `port_speed_mbps` | Quantity / dropdown | Port speed |
 | `traffic_gb` | Quantity / dropdown | Monthly traffic in GB (10⁹ bytes) |
+| `snapshots`, `backups` | Quantity / dropdown | How many snapshots and backups the server may have (0: none; Proxmotion docs/adr/0051) |
 | `extra_<any of the above>` | Quantity / dropdown | **Added** to the package's value, e.g. `extra_memory_gib` with 2 adds 2 GB, `extra_ipv4_count` adds addresses |
 
 The ids of OS templates and locations are listed by `GET /api/v1/os-templates` and
@@ -128,6 +129,14 @@ raised; over a usage limit (CPU, memory, disk or network) the customer is asked 
 support. A suspension by WHMCS is not explained again. Suspending such a service in WHMCS
 makes the suspension WHMCS's, so Proxmotion no longer lifts it.
 
+### Usage history
+
+The overview of an active or suspended server charts its CPU and network use and its
+traffic over the last 24 hours, 7 days, 30 days or 12 months (`GET /servers/{id}/usage`,
+ADR 0050). The range is a link (`pmxrange` in the address); the charts are SVG drawn by
+the module, with each value shown on hover, and need no JavaScript. With a Proxmotion
+before usage history the section is left out.
+
 **Usage update:** `proxmotion_UsageUpdate` runs with WHMCS's daily cron when its usage
 statistics update is enabled in the automation settings, once per WHMCS server of this module. It reads every server of the billing system from
 `GET /servers` (all pages) and writes the counted traffic of the month to `bwusage` and the
@@ -180,6 +189,46 @@ Proxmotion first and sends the whole list back with an `Idempotency-Key`; Proxmo
 checks the rules and the module shows its message when one is wrong. Nothing is stored in
 WHMCS. Changes take a few seconds to reach the server; the console works even when the
 firewall locks the customer out.
+
+### Snapshots
+
+Active servers whose package (or `snapshots` option) allows snapshots list them in a
+**Snapshots** section (Proxmotion docs/adr/0051): label and time, *Roll back* and *Delete*,
+each with a confirmation, and a form to take one with an optional label while slots are
+free (custom action `Snapshots` with `op` take, rollback or delete). A rollback takes the
+disk back to that moment and Proxmotion puts its own settings back; the root password then
+is the one of that time, so the customer resets it. Proxmotion's message is shown when a
+server is full or cannot have snapshots. Hidden with a Proxmotion without snapshots, or when it answers with an error (the rest of the page still shows).
+
+### Backups
+
+Active servers whose package (or `backups` option) allows backups list them in a
+**Backups** section (Proxmotion docs/adr/0051 §4): label, time, size and operating system,
+*Restore* and *Delete*, each with a confirmation, and a form to take one with an optional
+label while slots are free (custom action `Backups` with `op` take, restore or delete).
+Backups are full copies on separate storage made by Proxmox; they survive reinstalls, and a
+backup of a large server can take a long time, during which the server takes no other
+action. A restore replaces the whole disk and deletes the snapshots; the operating system
+and root password become those of the backup, so the customer resets the password. A backup
+the server can no longer reach (after Proxmotion's administrators moved it) shows the reason
+instead of *Restore*. Proxmotion's message is shown when a server is full or has no backup
+storage. Hidden with a Proxmotion without backups, or when it answers with an error.
+
+### SSH keys
+
+Active servers list the **SSH keys** Proxmotion manages for root (Administrator on Windows)
+(Proxmotion docs/adr/0049): the keys of the order or the last reinstall and those added
+since, by comment, type and fingerprint. The customer pastes a public key (or several, one
+per line) to add it and deletes keys (with a confirmation); a deleted key is removed from
+the server. Every change reads the current keys from Proxmotion first and sends the whole
+list back with an `Idempotency-Key` (custom action `SshKeys`); Proxmotion checks the keys
+and the module shows its message when one is wrong. Keys the customer added inside the
+server are not listed and stay. Nothing is stored in WHMCS. The section is hidden with a
+Proxmotion that does not manage keys yet.
+
+A **reinstall** keeps the server's keys; a key typed into the reinstall form is added to
+them (the module reads the current keys and sends them with it). With a Proxmotion that
+does not manage keys yet, the typed key is the new system's only key, as before.
 
 ### Paid apps
 

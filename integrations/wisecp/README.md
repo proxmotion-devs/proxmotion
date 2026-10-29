@@ -75,7 +75,8 @@ Product requirements (questions on the order form) can be mapped to the module:
 
 Add-on options can carry module values that are **added** to the package's (or the
 product's) value: `extra_cpu_cores`, `extra_memory_gib`, `extra_disk_gib`,
-`extra_ipv4_count`, `extra_ipv6_count`, `extra_port_speed_mbps`, `extra_traffic_gb`.
+`extra_ipv4_count`, `extra_ipv6_count`, `extra_port_speed_mbps`, `extra_traffic_gb`,
+`extra_snapshots`, `extra_backups` (snapshot and backup slots, Proxmotion docs/adr/0051).
 They need a package or the matching product field; otherwise the order fails with a
 readable error. When an add-on changes, upgrade the service so Proxmotion gets the
 new values.
@@ -168,6 +169,37 @@ anything, it lets SSH (Linux) or RDP (Windows) in. Every change reads the curren
 sends the whole list with an `Idempotency-Key`; Proxmotion's message is shown when a rule
 is wrong. The field of a rule's action is `rule_action`, because WISECP removes `action`
 from tool data. Like the Apps tool, it is unverified whether WISECP shows an added tool.
+
+### SSH keys
+
+An **SSH keys** tool of its own (`pages/tools/ssh-keys.php`, Proxmotion docs/adr/0049),
+shown while the server is active, lists the keys Proxmotion manages for root (Administrator
+on Windows) with delete, and has a form to add one or several public keys. Every change
+reads the current keys and sends the whole list with an `Idempotency-Key`; Proxmotion's
+message is shown when a key is wrong. The fields `public_key` and `fingerprint` are passed
+on unfiltered, since keys hold `+`, `/` and `=`. Keys the customer added inside the server
+are not listed and stay. Like the other added tools, it is unverified whether WISECP shows it.
+
+### Snapshots
+
+A **Snapshots** tool (`pages/tools/snapshots.php`, Proxmotion docs/adr/0051), shown while
+the server is active, lists the snapshots of the server's disk and settings with *Roll back*
+and *Delete* (each confirmed), and a form to take one with an optional label while slots
+are free. How many a server may have comes from the package, plus the add-on value
+`extra_snapshots`. Proxmotion refuses with its reason when a server is full or cannot have
+snapshots. Unverified whether WISECP shows it.
+
+### Backups
+
+A **Backups** tool (`pages/tools/backups.php`, Proxmotion docs/adr/0051 §4), shown while the
+server is active, lists the server's backups (full copies on separate storage made by
+Proxmox) with label, time, size and operating system, *Restore* and *Delete* (each
+confirmed), and a form to take one with an optional label while slots are free. How many a
+server may have comes from the package, plus the add-on value `extra_backups`. A restore
+replaces the whole disk and deletes the snapshots; the operating system and root password
+become those of the backup. A backup the server can no longer reach shows Proxmotion's
+reason instead of *Restore*. Proxmotion refuses with its reason when a server is full or
+has no backup storage. Unverified whether WISECP shows it.
 
 ## Webhooks
 

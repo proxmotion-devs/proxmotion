@@ -27,6 +27,9 @@ class ServerOrder
         'ipv6_count' => ['ipv6_count', 1],
         'port_speed_mbps' => ['port_speed_mbps', 1],
         'traffic_gb' => ['traffic_bytes', 1000000000],
+        // How many snapshots and backups the server may have (docs/adr/0051).
+        'snapshots' => ['snapshot_slots', 1],
+        'backups' => ['backup_slots', 1],
     ];
 
     /** @var array<string, mixed> */

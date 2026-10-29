@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { useForm } from '@inertiajs/vue3';
 import { RefreshCw } from '@lucide/vue';
-import { ref } from 'vue';
+import { ref, watch } from 'vue';
 import FormField from '@/components/admin/FormField.vue';
 import NativeSelect from '@/components/admin/NativeSelect.vue';
 import OrderedAppFields from '@/components/servers/OrderedAppFields.vue';
@@ -21,8 +21,10 @@ import type { OrderedAppOption } from '@/types/admin';
 import type { RouteDefinition } from '@/wayfinder';
 
 /**
- * Choose an OS, optionally paste SSH keys and pick an app installed on the
- * new system, type the hostname, and wipe the server.
+ * Choose an OS, keep or change the SSH keys and pick an app installed on the
+ * new system, type the hostname, and wipe the server. The keys start as the
+ * server's current ones (docs/adr/0049): the new system gets exactly the
+ * keys in the field.
  */
 const props = defineProps<{
     action: RouteDefinition<'post'>;
@@ -31,6 +33,8 @@ const props = defineProps<{
         osTemplates: { value: string; label: string }[];
         apps: OrderedAppOption[];
     };
+    /** The server's current public keys, one per line. */
+    sshKeys?: string;
     disabled?: boolean;
 }>();
 
@@ -38,10 +42,17 @@ const open = ref(false);
 
 const form = useForm({
     os_template: props.options.osTemplates[0]?.value ?? null,
-    ssh_keys: '',
+    ssh_keys: props.sshKeys ?? '',
     confirm_hostname: '',
     app: '',
     app_inputs: {} as Record<string, string | number | boolean>,
+});
+
+// Each time it opens, the keys the server has now (they may have changed since).
+watch(open, (value) => {
+    if (value) {
+        form.ssh_keys = props.sshKeys ?? '';
+    }
 });
 
 const submit = () =>
@@ -102,7 +113,7 @@ const submit = () =>
                     label="SSH public keys"
                     for="ssh_keys"
                     :error="form.errors.ssh_keys"
-                    hint="Optional. One key per line."
+                    hint="The server's current keys; the new system gets exactly these. One key per line."
                 >
                     <textarea
                         id="ssh_keys"

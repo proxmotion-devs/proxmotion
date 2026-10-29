@@ -2,12 +2,16 @@
 
 use App\Http\Controllers\Api\V1\AppController;
 use App\Http\Controllers\Api\V1\AppEntitlementController;
+use App\Http\Controllers\Api\V1\BackupController;
 use App\Http\Controllers\Api\V1\CatalogController;
 use App\Http\Controllers\Api\V1\FirewallController;
 use App\Http\Controllers\Api\V1\ServerConsoleController;
 use App\Http\Controllers\Api\V1\ServerController;
 use App\Http\Controllers\Api\V1\ServerPasswordController;
 use App\Http\Controllers\Api\V1\ServerRdnsController;
+use App\Http\Controllers\Api\V1\ServerUsageController;
+use App\Http\Controllers\Api\V1\SnapshotController;
+use App\Http\Controllers\Api\V1\SshKeyController;
 use App\Http\Controllers\Api\V1\TaskController;
 use Illuminate\Support\Facades\Route;
 
@@ -34,6 +38,10 @@ Route::middleware('api.scope:servers:read')->group(function (): void {
     Route::get('servers/{server}/apps/{installation}/runs/{run}', [AppController::class, 'run'])->name('servers.apps.runs.show');
     Route::get('servers/{server}/app-entitlements', [AppEntitlementController::class, 'index'])->name('servers.app-entitlements.index');
     Route::get('servers/{server}/firewall', [FirewallController::class, 'show'])->name('servers.firewall.show');
+    Route::get('servers/{server}/ssh-keys', [SshKeyController::class, 'show'])->name('servers.ssh-keys.show');
+    Route::get('servers/{server}/usage', ServerUsageController::class)->name('servers.usage');
+    Route::get('servers/{server}/snapshots', [SnapshotController::class, 'index'])->name('servers.snapshots.index');
+    Route::get('servers/{server}/backups', [BackupController::class, 'index'])->name('servers.backups.index');
 });
 
 Route::middleware(['api.scope:servers:write', 'api.idempotent'])->group(function (): void {
@@ -50,6 +58,15 @@ Route::middleware(['api.scope:servers:write', 'api.idempotent'])->group(function
     Route::post('servers/{server}/rdns', ServerRdnsController::class)->name('servers.rdns');
     Route::put('servers/{server}/firewall', [FirewallController::class, 'update'])->name('servers.firewall.update');
     Route::post('servers/{server}/firewall/ruleset', [FirewallController::class, 'ruleset'])->name('servers.firewall.ruleset');
+    Route::put('servers/{server}/ssh-keys', [SshKeyController::class, 'update'])->name('servers.ssh-keys.update');
+    // Snapshots (docs/adr/0051).
+    Route::post('servers/{server}/snapshots', [SnapshotController::class, 'store'])->name('servers.snapshots.store');
+    Route::post('servers/{server}/snapshots/{snapshot}/rollback', [SnapshotController::class, 'rollback'])->name('servers.snapshots.rollback');
+    Route::delete('servers/{server}/snapshots/{snapshot}', [SnapshotController::class, 'destroy'])->name('servers.snapshots.destroy');
+    // Backups (docs/adr/0051 §4).
+    Route::post('servers/{server}/backups', [BackupController::class, 'store'])->name('servers.backups.store');
+    Route::post('servers/{server}/backups/{backup}/restore', [BackupController::class, 'restore'])->name('servers.backups.restore');
+    Route::delete('servers/{server}/backups/{backup}', [BackupController::class, 'destroy'])->name('servers.backups.destroy');
     Route::post('servers/{server}/apps', [AppController::class, 'store'])->name('servers.apps.store');
     Route::post('servers/{server}/apps/{installation}/retry', [AppController::class, 'retry'])->name('servers.apps.retry');
     Route::post('servers/{server}/apps/{installation}/cancel', [AppController::class, 'cancel'])->name('servers.apps.cancel');

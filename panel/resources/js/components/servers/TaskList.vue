@@ -103,6 +103,7 @@ const stepLabels: Record<string, string> = {
     guest_disk: 'Grow the file system in the server',
     guest_provisioned: "Run the template's script in the server",
     guest_hostname: 'Change the hostname in the server',
+    guest_ssh_keys: 'Change the SSH keys in the server',
     app_upload: 'Upload the app installer to the server',
     app_start: 'Start the app installer',
     verify: 'Check addresses, gateway, DNS, hostname and disk',
@@ -111,6 +112,16 @@ const stepLabels: Record<string, string> = {
     migrate: 'Move the VM (Proxmox)',
     record: 'Record the new place',
     configure_network: 'Set up the network for the new addresses',
+    // Snapshots (docs/adr/0051).
+    snapshot: 'Take the snapshot (Proxmox)',
+    rollback: 'Roll back to the snapshot (Proxmox)',
+    delete_snapshot: 'Delete the snapshot (Proxmox)',
+    // Backups (docs/adr/0051 §4).
+    backup: 'Back up the VM (Proxmox)',
+    record_backup: 'Record the backup',
+    restore: 'Restore the backup (Proxmox)',
+    delete_backup: 'Delete the backup (Proxmox)',
+    delete_backups: "Delete the server's backups",
 };
 // Custom scripts record their steps as "script:<event>:<name>" at an event and
 // "script:<name>" otherwise; names cannot contain ":" (docs/adr/0043).
@@ -236,7 +247,11 @@ const stepRows = (task: TaskProgress) => {
                         @click="cancelling = task"
                     >
                         <CircleStop class="h-4 w-4" />
-                        {{ $t('Stop script') }}
+                        {{
+                            task.type === 'create_backup'
+                                ? $t('Stop backup')
+                                : $t('Stop script')
+                        }}
                     </Button>
                     <Button
                         v-else-if="task.can_fail"
@@ -343,7 +358,31 @@ const stepRows = (task: TaskProgress) => {
             :open="cancelling !== null"
             @update:open="(open) => !open && (cancelling = null)"
         >
-            <DialogContent>
+            <DialogContent v-if="cancelling?.type === 'create_backup'">
+                <DialogTitle>{{ $t('Stop this backup?') }}</DialogTitle>
+                <DialogDescription>
+                    {{
+                        $t(
+                            'The task fails at once and Proxmox stops the backup. The server itself does not change.',
+                        )
+                    }}
+                </DialogDescription>
+                <DialogFooter class="gap-2">
+                    <DialogClose as-child>
+                        <Button variant="secondary">{{ $t('Cancel') }}</Button>
+                    </DialogClose>
+                    <Button
+                        variant="destructive"
+                        :disabled="processing"
+                        data-test="task-cancel-confirm"
+                        @click="stopScript"
+                    >
+                        <Spinner v-if="processing" />
+                        {{ $t('Stop backup') }}
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+            <DialogContent v-else>
                 <DialogTitle>{{ $t('Stop this script?') }}</DialogTitle>
                 <DialogDescription>
                     {{

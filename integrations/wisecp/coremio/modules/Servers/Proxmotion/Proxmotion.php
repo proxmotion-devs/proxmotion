@@ -32,7 +32,7 @@ class Proxmotion extends ServerModule
     private const BUSY = ['pending', 'provisioning', 'reinstalling', 'terminating'];
 
     /** Tools that need a running server, hidden while it is busy or not active. */
-    private const SERVER_TOOLS = ['start-server', 'stop-server', 'restart-server', 'poweroff-server', 'reset-password', 'reinstall-os', 'vnc-console', 'hostname-change', 'reverse-dns', 'apps', 'firewall'];
+    private const SERVER_TOOLS = ['start-server', 'stop-server', 'restart-server', 'poweroff-server', 'reset-password', 'reinstall-os', 'vnc-console', 'hostname-change', 'reverse-dns', 'apps', 'firewall', 'ssh-keys', 'snapshots', 'backups'];
 
     /** App installation statuses during which the installer still runs. */
     private const APP_BUSY = ['queued', 'installing', 'uninstalling', 'upgrading'];
@@ -101,6 +101,42 @@ class Proxmotion extends ServerModule
             'type' => 'page-loader',
             'capabilities' => ['list', 'policy', 'add', 'delete', 'up', 'down', 'ruleset'],
         ]);
+
+        // The SSH keys on the server (docs/adr/0049): pages/tools/ssh-keys.php.
+        $this->add_tool('ssh-keys', [
+            'name' => $this->text('tool_ssh_keys'),
+            'label' => $this->text('tool_ssh_keys'),
+            'group' => 'system',
+            'order' => 17,
+            'icon' => 'bi bi-key',
+            'page' => 'ssh-keys',
+            'type' => 'page-loader',
+            'capabilities' => ['list', 'add', 'delete'],
+        ]);
+
+        // Snapshots of the server (docs/adr/0051): pages/tools/snapshots.php.
+        $this->add_tool('snapshots', [
+            'name' => $this->text('tool_snapshots'),
+            'label' => $this->text('tool_snapshots'),
+            'group' => 'system',
+            'order' => 18,
+            'icon' => 'bi bi-camera',
+            'page' => 'snapshots',
+            'type' => 'page-loader',
+            'capabilities' => ['list', 'take', 'rollback', 'delete'],
+        ]);
+
+        // Backups of the server (docs/adr/0051 §4): pages/tools/backups.php.
+        $this->add_tool('backups', [
+            'name' => $this->text('tool_backups'),
+            'label' => $this->text('tool_backups'),
+            'group' => 'system',
+            'order' => 19,
+            'icon' => 'bi bi-archive',
+            'page' => 'backups',
+            'type' => 'page-loader',
+            'capabilities' => ['list', 'take', 'restore', 'delete'],
+        ]);
     }
 
     /**
@@ -115,6 +151,11 @@ class Proxmotion extends ServerModule
         $filters['apps'] = ['secret_inputs' => null, 'app' => 'route', 'installation' => 'route', 'run' => 'route', 'app_action' => 'identifier', 'output' => 'identifier'];
         // Proxmotion validates the rest of a rule; rule_action, as WISECP removes "action".
         $filters['firewall'] = ['ruleset' => 'route', 'mode' => 'identifier', 'rule_action' => 'identifier', 'protocol' => 'identifier', 'index' => 'identifier', 'default_policy' => 'identifier'];
+        // Unchanged: keys and fingerprints hold +, / and =; Proxmotion validates the keys.
+        $filters['ssh-keys'] = ['public_key' => null, 'fingerprint' => null];
+        // Proxmotion validates the label.
+        $filters['snapshots'] = ['snapshot' => 'route', 'label' => null];
+        $filters['backups'] = ['backup' => 'route', 'label' => null];
 
         return $filters;
     }
@@ -534,6 +575,18 @@ class Proxmotion extends ServerModule
             return $this->firewallData((string) $this->requireActiveServer()['id']);
         }
 
+        if ($tool === 'ssh-keys') {
+            return $this->sshKeysData((string) $this->requireActiveServer()['id']);
+        }
+
+        if ($tool === 'snapshots') {
+            return $this->snapshotsData((string) $this->requireActiveServer()['id']);
+        }
+
+        if ($tool === 'backups') {
+            return $this->backupsData((string) $this->requireActiveServer()['id']);
+        }
+
         $server = $this->api->server((string) $this->requireActiveServer()['id']);
 
         return match ($tool) {
@@ -592,6 +645,9 @@ class Proxmotion extends ServerModule
                 default => throw new Exception('Unknown action: ' . $action),
             },
             'firewall' => $this->firewall($id, $action, $data),
+            'ssh-keys' => $this->sshKeys($id, $action, $data),
+            'snapshots' => $this->snapshots($id, $action, $data),
+            'backups' => $this->backups($id, $action, $data),
             default => throw new Exception('Unknown tool: ' . $tool),
         };
     }
@@ -637,7 +693,8 @@ class Proxmotion extends ServerModule
             throw new Exception($this->text('unknown_os_template'));
         }
 
-        $this->api->reinstall($id, $osTemplate, [], $app === null || $app === '' ? null : $app);
+        // The new system keeps the server's SSH keys (ADR 0049).
+        $this->api->reinstall($id, $osTemplate, null, $app === null || $app === '' ? null : $app);
 
         return ['status' => 'successful', 'message' => $this->text('reinstall_started'), 'successToast' => true];
     }
@@ -925,6 +982,191 @@ class Proxmotion extends ServerModule
         $this->api->updateFirewall($id, $policy, $rules, $this->idempotencyKey('firewall'));
 
         return $done;
+    }
+
+    /**
+     * The Snapshots tool's page (docs/adr/0051): the snapshots, the slots and
+     * whether one more can be taken.
+     *
+     * @return array<string, mixed>
+     */
+    private function snapshotsData(string $id): array
+    {
+        $data = $this->api->snapshots($id);
+        $slots = is_int($data['slots'] ?? null) ? $data['slots'] : 0;
+        $unavailable = is_string($data['unavailable_reason'] ?? null) ? $data['unavailable_reason'] : null;
+        $items = array_values(array_map(static fn (array $snapshot): array => [
+            'id' => (string) $snapshot['id'],
+            'label' => is_string($snapshot['label'] ?? null) ? $snapshot['label'] : '',
+            // Date and time as Proxmotion sent them (its own time zone).
+            'time' => substr(str_replace('T', ' ', (string) ($snapshot['created_at'] ?? '')), 0, 16),
+        ], array_filter(is_array($data['snapshots'] ?? null) ? $data['snapshots'] : [], static fn (mixed $snapshot): bool => is_array($snapshot) && isset($snapshot['id']))));
+
+        return [
+            'snapshots' => $items,
+            'slots' => $slots,
+            'unavailable' => $unavailable,
+            'can_take' => $unavailable === null && count($items) < $slots,
+        ];
+    }
+
+    /**
+     * Take (label), roll back to or delete (snapshot) a snapshot. Proxmotion
+     * checks the server's state and slots and answers with the reason when
+     * it refuses.
+     *
+     * @param array<string, mixed> $data
+     * @return array<string, mixed>
+     */
+    private function snapshots(string $id, string $action, array $data): array
+    {
+        $snapshot = trim((string) ($data['snapshot'] ?? ''));
+
+        match (true) {
+            $action === 'take' => $this->api->createSnapshot($id, trim((string) ($data['label'] ?? '')), $this->idempotencyKey('snapshot')),
+            $action === 'rollback' && $snapshot !== '' => $this->api->rollbackSnapshot($id, $snapshot, $this->idempotencyKey('snapshot-rollback')),
+            $action === 'delete' && $snapshot !== '' => $this->api->deleteSnapshot($id, $snapshot, $this->idempotencyKey('snapshot-delete')),
+            default => throw new Exception($this->text('snapshot_unknown')),
+        };
+
+        return ['status' => 'successful', 'message' => $this->text('snapshot_started'), 'successToast' => true];
+    }
+
+    /**
+     * The Backups tool's page (docs/adr/0051 §4): the backups, the slots and
+     * whether one more can be taken.
+     *
+     * @return array<string, mixed>
+     */
+    private function backupsData(string $id): array
+    {
+        $data = $this->api->backups($id);
+        $slots = is_int($data['slots'] ?? null) ? $data['slots'] : 0;
+        $unavailable = is_string($data['unavailable_reason'] ?? null) ? $data['unavailable_reason'] : null;
+        $items = array_values(array_map(static fn (array $backup): array => [
+            'id' => (string) $backup['id'],
+            'label' => is_string($backup['label'] ?? null) ? $backup['label'] : '',
+            // Date and time as Proxmotion sent them (its own time zone).
+            'time' => substr(str_replace('T', ' ', (string) ($backup['created_at'] ?? '')), 0, 16),
+            // Decimal GB like the traffic figures.
+            'size' => is_int($backup['size_bytes'] ?? null) ? rtrim(rtrim(number_format($backup['size_bytes'] / self::GB, 1, '.', ''), '0'), '.') . ' GB' : '',
+            'system' => is_string($backup['os_template'] ?? null) ? $backup['os_template'] : '',
+            'restorable' => ($backup['restorable'] ?? true) === true,
+            'reason' => is_string($backup['unrestorable_reason'] ?? null) ? $backup['unrestorable_reason'] : '',
+        ], array_filter(is_array($data['backups'] ?? null) ? $data['backups'] : [], static fn (mixed $backup): bool => is_array($backup) && isset($backup['id']))));
+
+        return [
+            'backups' => $items,
+            'slots' => $slots,
+            'unavailable' => $unavailable,
+            'can_take' => $unavailable === null && count($items) < $slots,
+        ];
+    }
+
+    /**
+     * Take (label), restore or delete (backup) a backup. Proxmotion checks
+     * the server's state, slots and backup storage and answers with the
+     * reason when it refuses.
+     *
+     * @param array<string, mixed> $data
+     * @return array<string, mixed>
+     */
+    private function backups(string $id, string $action, array $data): array
+    {
+        $backup = trim((string) ($data['backup'] ?? ''));
+
+        match (true) {
+            $action === 'take' => $this->api->createBackup($id, trim((string) ($data['label'] ?? '')), $this->idempotencyKey('backup')),
+            $action === 'restore' && $backup !== '' => $this->api->restoreBackup($id, $backup, $this->idempotencyKey('backup-restore')),
+            $action === 'delete' && $backup !== '' => $this->api->deleteBackup($id, $backup, $this->idempotencyKey('backup-delete')),
+            default => throw new Exception($this->text('backup_unknown')),
+        };
+
+        return ['status' => 'successful', 'message' => $this->text('snapshot_started'), 'successToast' => true];
+    }
+
+    /**
+     * The SSH keys tool's page (docs/adr/0049): the keys and whether one more fits.
+     *
+     * @return array<string, mixed>
+     */
+    private function sshKeysData(string $id): array
+    {
+        $data = $this->api->sshKeys($id);
+        $keys = self::sshKeyList($data);
+
+        return [
+            'keys' => array_map(static fn (array $key): array => [
+                'fingerprint' => $key['fingerprint'],
+                'type' => $key['type'],
+                'comment' => $key['comment'],
+            ], $keys),
+            // Proxmotion's limit; without one the form stays and Proxmotion refuses what is too many.
+            'full' => is_int($data['max_keys'] ?? null) && count($keys) >= $data['max_keys'],
+        ];
+    }
+
+    /**
+     * Add (public_key: one key per line) or delete (fingerprint) an SSH key.
+     * Proxmotion takes the whole list of keys, so the current ones are read first.
+     *
+     * @param array<string, mixed> $data
+     * @return array<string, mixed>
+     */
+    private function sshKeys(string $id, string $action, array $data): array
+    {
+        $current = self::sshKeyList($this->api->sshKeys($id));
+        $keys = array_column($current, 'public_key');
+
+        switch ($action) {
+            case 'add':
+                $added = trim((string) ($data['public_key'] ?? ''));
+
+                if ($added === '') {
+                    throw new Exception($this->text('ssh_key_required'));
+                }
+
+                $keys[] = $added;
+                break;
+            case 'delete':
+                $fingerprint = (string) ($data['fingerprint'] ?? '');
+                $keys = array_column(array_filter($current, static fn (array $key): bool => $key['fingerprint'] !== $fingerprint), 'public_key');
+
+                if (count($keys) === count($current)) {
+                    throw new Exception($this->text('ssh_key_unknown'));
+                }
+                break;
+            default:
+                throw new Exception('Unknown action: ' . $action);
+        }
+
+        $this->api->updateSshKeys($id, $keys, $this->idempotencyKey('ssh-keys'));
+
+        return ['status' => 'successful', 'message' => $this->text('ssh_keys_saved'), 'successToast' => true];
+    }
+
+    /**
+     * The keys of GET /servers/{id}/ssh-keys.
+     *
+     * @param array<string, mixed> $data
+     * @return list<array{type: string, fingerprint: string, comment: string, public_key: string}>
+     */
+    private static function sshKeyList(array $data): array
+    {
+        $keys = [];
+
+        foreach (is_array($data['ssh_keys'] ?? null) ? $data['ssh_keys'] : [] as $key) {
+            if (is_array($key) && isset($key['public_key'], $key['fingerprint'])) {
+                $keys[] = [
+                    'type' => (string) ($key['type'] ?? ''),
+                    'fingerprint' => (string) $key['fingerprint'],
+                    'comment' => (string) ($key['comment'] ?? ''),
+                    'public_key' => (string) $key['public_key'],
+                ];
+            }
+        }
+
+        return $keys;
     }
 
     /**

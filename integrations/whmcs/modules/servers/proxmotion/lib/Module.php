@@ -333,9 +333,41 @@ class Module
         $osTemplate = isset($input['os_template']) ? (string) $input['os_template'] : '';
         $app = isset($input['app']) ? trim((string) $input['app']) : '';
 
-        $this->client->reinstall((string) $server['id'], $osTemplate, $sshKey === '' ? [] : [$sshKey], $app === '' ? null : $app);
+        $id = (string) $server['id'];
+
+        // The new system keeps the server's keys (docs/adr/0049); a typed key joins them.
+        $this->client->reinstall($id, $osTemplate, $sshKey === '' ? null : $this->keysWith($id, $sshKey), $app === '' ? null : $app);
 
         return 'success';
+    }
+
+    /**
+     * The server's keys and one more, for a reinstall. A panel that does not
+     * manage keys yet (404) reinstalls with the typed key alone, as before.
+     *
+     * @return list<string>
+     */
+    private function keysWith(string $id, string $added): array
+    {
+        try {
+            $current = self::sshKeyList($this->client->sshKeys($id));
+        } catch (ApiException $e) {
+            if ($e->status() === 404) {
+                return [$added];
+            }
+
+            throw $e;
+        }
+
+        $keys = [];
+
+        foreach ($current as $key) {
+            $keys[] = $key['public_key'];
+        }
+
+        $keys[] = $added;
+
+        return $keys;
     }
 
     /**
@@ -478,6 +510,131 @@ class Module
         $this->client->updateFirewall($id, $policy, $rules, $this->idempotencyKey('firewall'));
 
         return 'success';
+    }
+
+    /**
+     * Add or delete an SSH key of the server (docs/adr/0049). $input "op" is
+     * "add" (public_key: one key per line) or "delete" (fingerprint).
+     * Proxmotion takes the whole list of keys, so the current ones are read first.
+     *
+     * @param array<string, mixed> $input from the form
+     */
+    public function sshKeys(array $input): string
+    {
+        $server = $this->requireActiveServer();
+        $id = (string) $server['id'];
+        $op = isset($input['op']) ? (string) $input['op'] : '';
+        $current = self::sshKeyList($this->client->sshKeys($id));
+        $keys = [];
+
+        foreach ($current as $key) {
+            $keys[] = $key['public_key'];
+        }
+
+        if ($op === 'add') {
+            $added = isset($input['public_key']) ? trim((string) $input['public_key']) : '';
+
+            if ($added === '') {
+                return $this->lang->get('ssh_key_required');
+            }
+
+            $keys[] = $added;
+        } elseif ($op === 'delete') {
+            $fingerprint = isset($input['fingerprint']) ? (string) $input['fingerprint'] : '';
+            $keys = [];
+
+            foreach ($current as $key) {
+                if ($key['fingerprint'] !== $fingerprint) {
+                    $keys[] = $key['public_key'];
+                }
+            }
+
+            if (count($keys) === count($current)) {
+                return $this->lang->get('ssh_key_unknown');
+            }
+        } else {
+            return $this->lang->get('ssh_key_unknown');
+        }
+
+        $this->client->updateSshKeys($id, $keys, $this->idempotencyKey('ssh-keys'));
+
+        return 'success';
+    }
+
+    /**
+     * Take, roll back to or delete a snapshot (docs/adr/0051); the form's
+     * "op" says which. Proxmotion checks the server's state and slots and
+     * answers with the reason when it refuses.
+     *
+     * @param array<string, mixed> $input from the form
+     */
+    public function snapshots(array $input): string
+    {
+        $op = isset($input['op']) ? (string) $input['op'] : '';
+        $snapshot = isset($input['snapshot']) ? (string) $input['snapshot'] : '';
+
+        if ($op === 'take') {
+            $label = isset($input['label']) ? trim((string) $input['label']) : '';
+            $this->client->createSnapshot((string) $this->requireActiveServer()['id'], $label, $this->idempotencyKey('snapshot'));
+        } elseif ($op === 'rollback' && $snapshot !== '') {
+            $this->client->rollbackSnapshot((string) $this->requireActiveServer()['id'], $snapshot, $this->idempotencyKey('snapshot-rollback'));
+        } elseif ($op === 'delete' && $snapshot !== '') {
+            $this->client->deleteSnapshot((string) $this->requireServer()['id'], $snapshot, $this->idempotencyKey('snapshot-delete'));
+        } else {
+            return $this->lang->get('snapshot_unknown');
+        }
+
+        return 'success';
+    }
+
+    /**
+     * Take, restore or delete a backup (docs/adr/0051 §4); the form's "op"
+     * says which. Proxmotion checks the server's state, slots and backup
+     * storage and answers with the reason when it refuses.
+     *
+     * @param array<string, mixed> $input from the form
+     */
+    public function backups(array $input): string
+    {
+        $op = isset($input['op']) ? (string) $input['op'] : '';
+        $backup = isset($input['backup']) ? (string) $input['backup'] : '';
+
+        if ($op === 'take') {
+            $label = isset($input['label']) ? trim((string) $input['label']) : '';
+            $this->client->createBackup((string) $this->requireActiveServer()['id'], $label, $this->idempotencyKey('backup'));
+        } elseif ($op === 'restore' && $backup !== '') {
+            $this->client->restoreBackup((string) $this->requireActiveServer()['id'], $backup, $this->idempotencyKey('backup-restore'));
+        } elseif ($op === 'delete' && $backup !== '') {
+            $this->client->deleteBackup((string) $this->requireServer()['id'], $backup, $this->idempotencyKey('backup-delete'));
+        } else {
+            return $this->lang->get('backup_unknown');
+        }
+
+        return 'success';
+    }
+
+    /**
+     * The keys of GET /servers/{id}/ssh-keys.
+     *
+     * @param array<string, mixed> $data
+     * @return list<array{type: string, fingerprint: string, comment: string, public_key: string}>
+     */
+    private static function sshKeyList(array $data): array
+    {
+        $keys = [];
+
+        foreach (isset($data['ssh_keys']) && is_array($data['ssh_keys']) ? $data['ssh_keys'] : [] as $key) {
+            if (is_array($key) && isset($key['public_key'], $key['fingerprint'])) {
+                $keys[] = [
+                    'type' => isset($key['type']) ? (string) $key['type'] : '',
+                    'fingerprint' => (string) $key['fingerprint'],
+                    'comment' => isset($key['comment']) ? (string) $key['comment'] : '',
+                    'public_key' => (string) $key['public_key'],
+                ];
+            }
+        }
+
+        return $keys;
     }
 
     /**
@@ -691,16 +848,18 @@ class Module
     }
 
     /**
-     * The client area overview: server details and actions.
+     * The client area overview: server details and actions, and the usage
+     * history over $range (day, week, month or year; docs/adr/0050).
      *
      * @return array<string, mixed>
      */
-    public function clientArea(): array
+    public function clientArea(string $range = 'day'): array
     {
         $vars = [
             'lang' => $this->lang->all(),
             'server' => null,
             'error' => null,
+            'usage' => null,
             'osTemplates' => [],
             'apps' => [],
             'reinstallApps' => [],
@@ -708,6 +867,9 @@ class Module
             'installations' => [],
             'appsBusy' => false,
             'firewall' => null,
+            'sshKeys' => null,
+            'snapshots' => null,
+            'backups' => null,
         ];
 
         try {
@@ -739,6 +901,13 @@ class Module
                         return $installation['busy'];
                     })) > 0;
                     $vars['firewall'] = $this->presentFirewall($this->client->firewall((string) $server['id']), $this->client->firewallRulesets());
+                    $vars['sshKeys'] = $this->presentSshKeys((string) $server['id']);
+                    $vars['snapshots'] = $this->presentSnapshots((string) $server['id']);
+                    $vars['backups'] = $this->presentBackups((string) $server['id']);
+                }
+
+                if ($server['status'] === 'active' || $server['status'] === 'suspended') {
+                    $vars['usage'] = $this->presentUsage((string) $server['id'], $range);
                 }
             }
         } catch (ApiException $e) {
@@ -921,6 +1090,217 @@ class Module
     private function idempotencyKey(string $operation): string
     {
         return 'whmcs-' . $this->params['serviceid'] . '-' . $operation . '-' . bin2hex(random_bytes(8));
+    }
+
+    /**
+     * The SSH keys for the template (docs/adr/0049), or null from a panel
+     * that does not manage keys yet.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function presentSshKeys(string $id): ?array
+    {
+        try {
+            $data = $this->client->sshKeys($id);
+        } catch (ApiException $e) {
+            if ($e->status() === 404) {
+                return null;
+            }
+
+            throw $e;
+        }
+
+        $keys = self::sshKeyList($data);
+        // Proxmotion's limit; without one the form stays and Proxmotion refuses what is too many.
+        $max = isset($data['max_keys']) && is_numeric($data['max_keys']) ? (int) $data['max_keys'] : null;
+
+        return [
+            'keys' => array_map(function (array $key) {
+                return [
+                    'fingerprint' => $key['fingerprint'],
+                    'type' => $key['type'],
+                    'comment' => $key['comment'],
+                ];
+            }, $keys),
+            'full' => $max !== null && count($keys) >= $max,
+        ];
+    }
+
+    /**
+     * The snapshots for the template (docs/adr/0051), or null when the
+     * server may have none or Proxmotion cannot say (a panel before
+     * snapshots, or an error): the rest of the page still shows.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function presentSnapshots(string $id): ?array
+    {
+        try {
+            $data = $this->client->snapshots($id);
+        } catch (ApiException $e) {
+            return null;
+        }
+
+        $slots = isset($data['slots']) ? (int) $data['slots'] : 0;
+
+        if ($slots === 0) {
+            return null;
+        }
+
+        $items = [];
+
+        foreach (isset($data['snapshots']) && is_array($data['snapshots']) ? $data['snapshots'] : [] as $snapshot) {
+            if (is_array($snapshot) && isset($snapshot['id'])) {
+                $items[] = [
+                    'id' => (string) $snapshot['id'],
+                    'label' => isset($snapshot['label']) && is_string($snapshot['label']) && $snapshot['label'] !== '' ? $snapshot['label'] : $this->lang->get('snapshot_no_label'),
+                    // Date and time as Proxmotion sent them (its own time zone).
+                    'time' => isset($snapshot['created_at']) ? substr(str_replace('T', ' ', (string) $snapshot['created_at']), 0, 16) : '',
+                ];
+            }
+        }
+
+        $unavailable = isset($data['unavailable_reason']) && is_string($data['unavailable_reason']) ? $data['unavailable_reason'] : null;
+
+        return [
+            'items' => $items,
+            'count' => $this->lang->get('snapshots_count', ['count' => count($items), 'slots' => $slots]),
+            'canTake' => $unavailable === null && count($items) < $slots,
+            'unavailable' => $unavailable,
+        ];
+    }
+
+    /**
+     * The backups for the template (docs/adr/0051 §4), or null when the
+     * server may have none or Proxmotion cannot say (a panel before
+     * backups, or an error): the rest of the page still shows.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function presentBackups(string $id): ?array
+    {
+        try {
+            $data = $this->client->backups($id);
+        } catch (ApiException $e) {
+            return null;
+        }
+
+        $slots = isset($data['slots']) ? (int) $data['slots'] : 0;
+
+        if ($slots === 0) {
+            return null;
+        }
+
+        $items = [];
+
+        foreach (isset($data['backups']) && is_array($data['backups']) ? $data['backups'] : [] as $backup) {
+            if (is_array($backup) && isset($backup['id'])) {
+                $items[] = [
+                    'id' => (string) $backup['id'],
+                    'label' => isset($backup['label']) && is_string($backup['label']) && $backup['label'] !== '' ? $backup['label'] : $this->lang->get('snapshot_no_label'),
+                    // Date and time as Proxmotion sent them (its own time zone).
+                    'time' => isset($backup['created_at']) ? substr(str_replace('T', ' ', (string) $backup['created_at']), 0, 16) : '',
+                    'size' => isset($backup['size_bytes']) ? self::bytes((int) $backup['size_bytes']) : '',
+                    'system' => isset($backup['os_template']) && is_string($backup['os_template']) ? $backup['os_template'] : '',
+                    'restorable' => !isset($backup['restorable']) || $backup['restorable'] === true,
+                    'reason' => isset($backup['unrestorable_reason']) && is_string($backup['unrestorable_reason']) ? $backup['unrestorable_reason'] : '',
+                ];
+            }
+        }
+
+        $unavailable = isset($data['unavailable_reason']) && is_string($data['unavailable_reason']) ? $data['unavailable_reason'] : null;
+
+        return [
+            'items' => $items,
+            'count' => $this->lang->get('snapshots_count', ['count' => count($items), 'slots' => $slots]),
+            'canTake' => $unavailable === null && count($items) < $slots,
+            'unavailable' => $unavailable,
+        ];
+    }
+
+    /**
+     * The usage history for the template (docs/adr/0050): links to the
+     * ranges and the charts as SVG. Null when Proxmotion cannot say (a panel
+     * before usage history, or an error): the rest of the page still shows.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function presentUsage(string $id, string $range): ?array
+    {
+        $ranges = ['day', 'week', 'month', 'year'];
+        $range = in_array($range, $ranges, true) ? $range : 'day';
+
+        try {
+            $usage = $this->client->usage($id, $range);
+        } catch (ApiException $e) {
+            return null;
+        }
+
+        $points = isset($usage['points']) && is_array($usage['points']) ? array_values($usage['points']) : [];
+        $buckets = isset($usage['traffic']['buckets']) && is_array($usage['traffic']['buckets']) ? array_values($usage['traffic']['buckets']) : [];
+        $interval = isset($usage['traffic']['interval']) && in_array($usage['traffic']['interval'], ['hour', 'day', 'period'], true) ? (string) $usage['traffic']['interval'] : 'day';
+        $from = isset($usage['from']) ? (string) $usage['from'] : '';
+        $to = isset($usage['to']) ? (string) $usage['to'] : '';
+        $seconds = isset($usage['interval_seconds']) ? max(1, (int) $usage['interval_seconds']) : 300;
+        // Times as Proxmotion sent them (its own time zone), as precise as a point or bucket:
+        // the time of day for 5-minute samples and hours of the last day, date and time for
+        // the hours of a week or month, the date for days and the month for traffic periods.
+        $time = function ($iso) use ($range) {
+            if ($range === 'day') {
+                return (string) substr($iso, 11, 5);
+            }
+
+            return $range === 'year' ? (string) substr($iso, 0, 10) : substr($iso, 0, 10) . ' ' . substr($iso, 11, 5);
+        };
+        $bucketTime = function ($iso) use ($interval) {
+            if ($interval === 'hour') {
+                return (string) substr($iso, 11, 5);
+            }
+
+            return $interval === 'period' ? (string) substr($iso, 0, 7) : (string) substr($iso, 0, 10);
+        };
+        $percent = function ($value) {
+            return round($value, 1) . '%';
+        };
+        $traffic = function ($value) {
+            return Module::bytes((int) $value);
+        };
+        $in = 0;
+        $out = 0;
+
+        foreach ($buckets as $bucket) {
+            $in += isset($bucket['in_bytes']) ? (int) $bucket['in_bytes'] : 0;
+            $out += isset($bucket['out_bytes']) ? (int) $bucket['out_bytes'] : 0;
+        }
+
+        return [
+            'ranges' => array_map(function ($value) use ($range) {
+                return ['value' => $value, 'label' => $this->lang->get('usage_range_' . $value), 'active' => $value === $range];
+            }, $ranges),
+            'empty' => $points === [],
+            'cpu' => UsageChart::line($points, ['cpu_percent' => $this->lang->get('usage_cpu')], $from, $to, $seconds, 100.0, $percent, $time),
+            'network' => UsageChart::line($points, ['net_in_rate' => $this->lang->get('usage_in'), 'net_out_rate' => $this->lang->get('usage_out')], $from, $to, $seconds, null, [self::class, 'bitRate'], $time),
+            'trafficTitle' => $this->lang->get('usage_traffic_' . $interval),
+            'traffic' => UsageChart::bars($buckets, ['in_bytes' => $this->lang->get('usage_in'), 'out_bytes' => $this->lang->get('usage_out')], $from, $to, $traffic, $bucketTime),
+            'trafficTotal' => $this->lang->get('usage_traffic_total', ['in' => self::bytes($in), 'out' => self::bytes($out)]),
+        ];
+    }
+
+    /**
+     * Bytes per second in bits like port speeds: "820 Kbps", "12.4 Mbps".
+     */
+    public static function bitRate(float $bytesPerSecond): string
+    {
+        $value = max(0.0, $bytesPerSecond) * 8;
+        $units = ['bps', 'Kbps', 'Mbps', 'Gbps', 'Tbps'];
+        $unit = 0;
+
+        while ($value >= 1000 && $unit < count($units) - 1) {
+            $value /= 1000;
+            $unit++;
+        }
+
+        return rtrim(rtrim(number_format($value, 1, '.', ''), '0'), '.') . ' ' . $units[$unit];
     }
 
     /**
