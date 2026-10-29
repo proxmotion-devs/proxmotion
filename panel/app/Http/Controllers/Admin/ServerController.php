@@ -368,12 +368,16 @@ class ServerController extends Controller
                 'unavailable' => ServerSnapshots::unavailable($server)?->translatedMessage(),
             ],
             // Backups of the VM (docs/adr/0051 §4), with where they are.
-            'backups' => fn () => [
-                'items' => ServerBackups::describe($server, withStorage: true),
-                'slots' => $server->backup_slots,
-                'unavailable' => ServerBackups::unavailable($server)?->translatedMessage(),
-                'storage' => ServerBackups::storageFor($server)?->name,
-            ],
+            'backups' => function () use ($server) {
+                $storage = ServerBackups::storageFor($server);
+
+                return [
+                    'items' => ServerBackups::describe($server, withStorage: true),
+                    'slots' => $server->backup_slots,
+                    'unavailable' => ServerBackups::unavailable($server, $storage)?->translatedMessage(),
+                    'storage' => $storage?->name,
+                ];
+            },
             // Pools addresses may be added from: same location, network model, bridge and VLAN (docs/adr/0028).
             'addressPools' => fn () => collect(IpVersion::cases())
                 ->flatMap(fn (IpVersion $version) => $ips->sameNetworkPools($server->location, $server->network_model, $version, $server->ipAddresses->first()?->pool))

@@ -18,6 +18,8 @@ use App\Provisioning\Stages\StagedPipeline;
 use App\Provisioning\Stages\StageRunner;
 use App\Provisioning\VmLabels;
 use App\Provisioning\VmState;
+use App\Proxmox\Data\BootDisk;
+use App\Proxmox\Data\Upid;
 use App\Proxmox\ProxmoxClientFactory;
 use RuntimeException;
 
@@ -42,7 +44,7 @@ final readonly class RestoreBackupPipeline implements HasOwnDeadline, StagedPipe
 
     public function stages(): array
     {
-        return ['stop', 'restore', 'configure', 'start', 'wait_agent', 'refresh'];
+        return ['stop', 'restore', 'configure', 'resize', 'firewall', 'start', 'wait_agent', 'refresh'];
     }
 
     public function deadlineMinutes(): int
@@ -58,6 +60,8 @@ final readonly class RestoreBackupPipeline implements HasOwnDeadline, StagedPipe
             'stop' => $this->stop($task, $server),
             'restore' => $this->restore($task, $server, $this->backup($task)),
             'configure' => $this->configure($task, $server),
+            'resize' => $this->resize($task, $server),
+            'firewall' => $this->firewall($task, $server),
             'start' => $this->start($task, $server),
             'wait_agent' => $this->wasRunning($task) ? $this->waitForAgent($task, $server) : null,
             'refresh' => $this->wasRunning($task) ? $this->refreshGuest($task, $server) : null,
@@ -67,7 +71,10 @@ final readonly class RestoreBackupPipeline implements HasOwnDeadline, StagedPipe
 
     /**
      * Remember whether it ran, then stop it: its disks are replaced next,
-     * so a clean shutdown gains nothing.
+     * so a clean shutdown gains nothing. A VM an earlier failed restore left
+     * without a configuration is restored from scratch (vm_missing). A task
+     * that still holds the VM (a shutdown, a backup) is waited for between
+     * runs.
      */
     private function stop(Task $task, Server $server): ?int
     {
@@ -75,8 +82,23 @@ final readonly class RestoreBackupPipeline implements HasOwnDeadline, StagedPipe
         $qemu = $client->qemu($server->node->name);
 
         if (! is_bool($task->input['was_running'] ?? null)) {
-            $client->taskWaiter()->waitForVm($server->node->name, $server->vmid);
+            if ($qemu->config($server->vmid) === null) {
+                $task->rememberInput('vm_missing', true);
+                $task->rememberInput('was_running', false);
+                $task->completeStep('stop', 'The VM has no configuration (an earlier restore failed): it is restored from scratch.');
+
+                return null;
+            }
+
+            if ($client->tasks()->activeForVm($server->node->name, $server->vmid) !== []) {
+                return 5;
+            }
+
             $task->rememberInput('was_running', $qemu->status($server->vmid)['status'] === 'running');
+        }
+
+        if (($task->input['vm_missing'] ?? false) === true) {
+            return null;
         }
 
         $delay = $this->stages->proxmoxTask(
@@ -101,7 +123,8 @@ final readonly class RestoreBackupPipeline implements HasOwnDeadline, StagedPipe
         $delay = $this->stages->proxmoxTask(
             $task,
             $client,
-            fn () => $qemu->restore($server->vmid, $backup->volume, $server->storage?->name),
+            // A VM restored from scratch joins the resource pool again (its pool privileges no longer reach it otherwise).
+            fn () => $qemu->restore($server->vmid, $backup->volume, $server->storage?->name, ($task->input['vm_missing'] ?? false) === true ? $server->cluster->resource_pool : null),
             timeoutSeconds: $this->deadlineMinutes() * 60,
             pollSeconds: 15,
         );
@@ -137,14 +160,46 @@ final readonly class RestoreBackupPipeline implements HasOwnDeadline, StagedPipe
      */
     private function configure(Task $task, Server $server): null
     {
-        $client = $this->clients->forCluster($server->cluster);
-        $qemu = $client->qemu($server->node->name);
+        $qemu = $this->clients->forCluster($server->cluster)->qemu($server->node->name);
 
         $this->vm->configure($server, $qemu);
         $task->completeStep('configure', VmLabels::apply($qemu, $server));
-        $task->rememberInput('grown', $this->vm->growDisk($server, $qemu, $client->taskWaiter()));
-        $task->completeStep('resize');
-        $this->vm->firewall($server, $qemu);
+
+        return null;
+    }
+
+    /**
+     * Grow the restored disk to the server's size, checked between runs.
+     * "grown" is only ever set, so a stage run again still runs the
+     * disk_resized script afterwards.
+     */
+    private function resize(Task $task, Server $server): ?int
+    {
+        $client = $this->clients->forCluster($server->cluster);
+        $qemu = $client->qemu($server->node->name);
+
+        $delay = $this->stages->proxmoxTask($task, $client, function () use ($task, $server, $qemu): ?Upid {
+            $disk = BootDisk::fromConfig($qemu->config($server->vmid) ?? []) ?? throw new RuntimeException('Could not find the boot disk of the VM.');
+
+            if ($disk->sizeMib >= $server->disk_mib) {
+                return null;
+            }
+
+            $task->rememberInput('grown', true);
+
+            return $qemu->resize($server->vmid, $disk->key, $server->disk_mib);
+        }, timeoutSeconds: 600);
+
+        if ($delay === null) {
+            $task->completeStep('resize');
+        }
+
+        return $delay;
+    }
+
+    private function firewall(Task $task, Server $server): null
+    {
+        $this->vm->firewall($server, $this->clients->forCluster($server->cluster)->qemu($server->node->name));
         $task->completeStep('firewall');
 
         return null;

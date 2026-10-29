@@ -25,8 +25,8 @@ use RuntimeException;
  */
 final readonly class CreateBackupPipeline implements HasOwnDeadline, StagedPipeline
 {
-    /** Seconds between checks of a running backup. */
-    private const POLL_SECONDS = 15;
+    /** Seconds between checks of a running backup: backups take minutes to hours. */
+    private const POLL_SECONDS = 60;
 
     public function __construct(
         private ProxmoxClientFactory $clients,
@@ -66,9 +66,12 @@ final readonly class CreateBackupPipeline implements HasOwnDeadline, StagedPipel
         $client = $this->clients->forCluster($server->cluster);
         $node = $server->node->name;
 
-        $delay = $this->stages->proxmoxTask($task, $client, function () use ($task, $client, $server, $node) {
-            $client->taskWaiter()->waitForVm($node, $server->vmid);
+        // A task that still holds the VM (a shutdown, a migration) is waited for between runs.
+        if ($task->stageValue('upid') === null && $client->tasks()->activeForVm($node, $server->vmid) !== []) {
+            return 5;
+        }
 
+        $delay = $this->stages->proxmoxTask($task, $client, function () use ($task, $client, $server, $node) {
             return $client->nodes()->vzdump(
                 $node,
                 $server->vmid,
@@ -114,6 +117,7 @@ final readonly class CreateBackupPipeline implements HasOwnDeadline, StagedPipel
             'node_id' => $server->node_id,
             'storage' => $storage,
             'volume' => $volume->volume,
+            'vmid' => $volume->vmid ?? $server->vmid,
             'kind' => BackupKind::tryFrom((string) ($task->input['kind'] ?? '')) ?? BackupKind::Manual,
             'label' => is_string($task->input['label'] ?? null) ? $task->input['label'] : null,
             'size_bytes' => $volume->sizeBytes,

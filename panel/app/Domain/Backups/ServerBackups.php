@@ -17,6 +17,7 @@ use App\Models\Task;
 use App\Models\User;
 use App\Provisioning\Exceptions\ProvisioningException;
 use App\Provisioning\TaskRunner;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Str;
 
 /**
@@ -52,30 +53,36 @@ final readonly class ServerBackups
     }
 
     /**
-     * Why the server cannot take backups at all (translatedMessage() for pages), or null.
+     * Why the server cannot take backups at all (translatedMessage() for
+     * pages), or null. $storage: what storageFor() found, when the caller
+     * already looked it up (false: look it up here).
      */
-    public static function unavailable(Server $server): ?BackupsUnavailable
+    public static function unavailable(Server $server, Storage|false|null $storage = false): ?BackupsUnavailable
     {
         if ($server->backup_slots === 0) {
             return BackupsUnavailable::notInPlan();
         }
 
-        return self::storageFor($server) === null ? BackupsUnavailable::noStorage() : null;
+        return ($storage === false ? self::storageFor($server) : $storage) === null ? BackupsUnavailable::noStorage() : null;
     }
 
     /**
      * Why the backup cannot be restored onto its server where it is now
      * (translatedMessage() for pages), or null: its node must reach the
      * backup's storage, which a move to another node or cluster may have
-     * changed.
+     * changed. $storages: the node's storages by name, when already loaded.
+     *
+     * @param  Collection<string, Storage>|null  $storages
      */
-    public static function notRestorable(Backup $backup, Server $server): ?BackupNotRestorable
+    public static function notRestorable(Backup $backup, Server $server, ?Collection $storages = null): ?BackupNotRestorable
     {
         if ($backup->cluster_id !== $server->cluster_id) {
             return new BackupNotRestorable('This backup is on another cluster than the server.');
         }
 
-        $storage = $server->node->storages()->where('name', $backup->storage)->first();
+        $storage = $storages !== null
+            ? $storages->get($backup->storage)
+            : $server->node->storages()->where('name', $backup->storage)->first();
         $reachable = $storage !== null && ($storage->is_shared || $backup->node_id === $server->node_id);
 
         return $reachable ? null : new BackupNotRestorable('The server\'s node cannot reach the storage of this backup.');
@@ -89,8 +96,10 @@ final readonly class ServerBackups
      */
     public static function describe(Server $server, bool $withStorage = false): array
     {
-        return array_values($server->backups()->with('osTemplate')->orderBy('id')->get()->map(function (Backup $backup) use ($server, $withStorage) {
-            $reason = self::notRestorable($backup, $server);
+        $storages = $server->node->storages()->get()->keyBy('name');
+
+        return array_values($server->backups()->with('osTemplate')->orderBy('id')->get()->map(function (Backup $backup) use ($server, $withStorage, $storages) {
+            $reason = self::notRestorable($backup, $server, $storages);
 
             return [
                 ...($withStorage ? ['storage' => $backup->storage] : []),
@@ -115,15 +124,19 @@ final readonly class ServerBackups
     {
         self::ensureActive($server);
 
-        if ($server->backup_slots === 0) {
-            throw BackupsUnavailable::notInPlan();
+        $storage = self::storageFor($server);
+        $unavailable = self::unavailable($server, $storage);
+
+        if ($unavailable !== null) {
+            throw $unavailable;
         }
 
         if ($server->backups()->count() >= $server->backup_slots) {
             throw new BackupSlotsFull('This server already has :count backups, as many as it may have. Delete one first.', ['count' => (string) $server->backup_slots]);
         }
 
-        $storage = self::storageFor($server) ?? throw BackupsUnavailable::noStorage();
+        // Not null: unavailable() said so.
+        $storage ??= throw BackupsUnavailable::noStorage();
         $label = $label === null || trim($label) === '' ? null : trim($label);
         $task = $this->tasks->start($server, TaskType::CreateBackup, $actor, input: [
             // The backup's uuid, also in its notes on the storage, so the volume can be told apart.

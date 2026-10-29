@@ -26,6 +26,7 @@ use App\Models\User;
 use App\Provisioning\Exceptions\ProvisioningException;
 use App\Provisioning\Pipelines\CreateBackupPipeline;
 use App\Provisioning\ServerCreator;
+use App\Provisioning\TaskFailer;
 use App\Provisioning\TaskRunner;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
@@ -112,6 +113,7 @@ class BackupTest extends TestCase
         $this->assertSame($this->server->os_template_id, $backup->os_template_id);
         $this->assertSame($this->server->hostname, $backup->hostname);
         $this->assertSame($this->node->id, $backup->node_id);
+        $this->assertSame($this->server->vmid, $backup->vmid);
 
         $vzdump = $this->proxmox->vzdumps[0];
         $this->assertSame('snapshot', $vzdump['mode'], 'The server keeps running.');
@@ -240,6 +242,34 @@ class BackupTest extends TestCase
         $this->assertTrue($this->server->refresh()->guest_refresh_pending, 'Its addresses, hostname and keys wait for the next start.');
     }
 
+    public function test_a_restore_after_one_that_left_no_vm_restores_it_from_scratch()
+    {
+        $this->take();
+        // An earlier restore failed after Proxmox had deleted the VM.
+        unset($this->proxmox->vms[$this->server->vmid]);
+
+        $task = $this->backups()->restore($this->server, Backup::query()->sole(), $this->admin, null)->refresh();
+
+        $this->assertSame(TaskStatus::Succeeded, $task->status, (string) $task->error);
+        $restore = collect($this->proxmox->writes)->first(fn (array $write) => $write['path'] === '/nodes/pve1/qemu');
+        $this->assertSame('proxmotion', $restore['data']['pool'], 'Back into the resource pool.');
+        $this->assertSame('proxmotion', $this->vm()['pool']);
+        $this->assertSame('stopped', $this->vm()['status'], 'It did not run before.');
+    }
+
+    public function test_a_disk_smaller_than_the_server_is_grown_and_grown_in_the_guest()
+    {
+        $this->take();
+        $this->proxmox->backupVolumes['backup-nfs'][0]['vm']['config']['scsi0'] = (string) preg_replace('/size=\d+M/', 'size=10240M', (string) $this->vm()['config']['scsi0']);
+
+        $task = $this->backups()->restore($this->server, Backup::query()->sole(), $this->admin, null)->refresh();
+
+        $this->assertSame(TaskStatus::Succeeded, $task->status, (string) $task->error);
+        $this->assertStringContainsString('size=40960M', (string) $this->vm()['config']['scsi0']);
+        $this->assertTrue($task->input['grown']);
+        $this->assertContains('guest_disk', array_column($task->steps, 'key'));
+    }
+
     public function test_no_restore_while_an_app_script_runs()
     {
         $this->take();
@@ -336,6 +366,34 @@ class BackupTest extends TestCase
         $this->assertSame($upid, $stop->upid);
         app()->call([$stop, 'handle']);
         $this->assertSame([$upid], $this->proxmox->stoppedTasks);
+    }
+
+    public function test_a_backup_vzdump_has_finished_cannot_be_cancelled_any_more()
+    {
+        Queue::fake([RunServerTask::class]);
+        $task = $this->backups()->take($this->server, null, $this->admin, null);
+        // vzdump has finished; recording it waits for the next run.
+        $task->forceFill(['status' => TaskStatus::Running, 'stage' => 'record', 'stage_state' => null])->save();
+
+        $this->assertFalse(app(TaskFailer::class)->canCancel($task));
+        $this->assertFalse(app(TaskFailer::class)->cancel($task, 'Cancelled by an administrator.'));
+        $this->assertSame(TaskStatus::Running, $task->refresh()->status);
+    }
+
+    public function test_a_backup_on_the_storage_of_a_node_that_is_gone_is_not_deleted_from_another_node()
+    {
+        $this->backupStorage->forceFill(['is_shared' => false])->save();
+        $this->take();
+        $backup = Backup::query()->sole();
+        // Its node left the panel; another node has a storage of the same name, its own.
+        $other = $this->addNode('pve2');
+        $other->storages()->forceCreate([...$this->backupStorage->only(['name', 'type', 'content', 'is_available', 'use_for_backups']), 'is_shared' => false]);
+        $backup->forceFill(['node_id' => null])->save();
+
+        $task = $this->backups()->delete($this->server, $backup, $this->admin, null)->refresh();
+
+        $this->assertSame(TaskStatus::Failed, $task->status);
+        $this->assertTrue(Backup::query()->exists(), 'Its row stays while its file may still be there.');
     }
 
     public function test_administrators_take_restore_and_delete_backups_on_the_server_page()

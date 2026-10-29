@@ -102,24 +102,18 @@ final readonly class NodesResource
     }
 
     /**
-     * The backups on a storage, or those of one VM.
+     * The backups of one VM on a storage.
      *
      * @return list<BackupVolume>
      */
-    public function backups(string $node, string $storage, ?int $vmid): array
+    public function backups(string $node, string $storage, int $vmid): array
     {
-        $query = ['content' => 'backup'];
-
-        if ($vmid !== null) {
-            $query['vmid'] = $vmid;
-        }
-
         return array_map(
             BackupVolume::fromArray(...),
             array_values(array_filter(
                 ClusterResource::listOfArrays($this->client->get(
                     '/nodes/'.rawurlencode($node).'/storage/'.rawurlencode($storage).'/content',
-                    $query,
+                    ['content' => 'backup', 'vmid' => $vmid],
                 )),
                 fn (array $entry) => is_string($entry['volid'] ?? null),
             )),

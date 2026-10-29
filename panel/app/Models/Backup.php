@@ -22,6 +22,7 @@ use Illuminate\Support\Carbon;
  * @property int|null $node_id the node it was taken on; with a storage that is not shared, the only node that reaches it
  * @property string $storage the storage's name
  * @property string $volume Proxmox's volume id
+ * @property int $vmid the VMID it was taken of
  * @property BackupKind $kind
  * @property string|null $label the customer's or administrator's text
  * @property int|null $size_bytes
@@ -49,6 +50,7 @@ class Backup extends Model
         return [
             'kind' => BackupKind::class,
             'size_bytes' => 'integer',
+            'vmid' => 'integer',
             'disk_mib' => 'integer',
         ];
     }

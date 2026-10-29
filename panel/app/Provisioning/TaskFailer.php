@@ -73,6 +73,8 @@ final class TaskFailer
             ->whereKey($task->id)
             ->whereIn('type', self::CANCELLABLE)
             ->whereIn('status', [TaskStatus::Queued, TaskStatus::Running])
+            // A backup vzdump has written is recorded, not left unlisted on its storage.
+            ->where(fn ($query) => $query->where('type', '!=', TaskType::CreateBackup)->orWhereNull('stage')->orWhere('stage', '!=', 'record'))
             ->update(['status' => TaskStatus::Failed, 'error' => $message, 'finished_at' => now()]);
 
         if ($cancelled === 0) {
@@ -131,11 +133,13 @@ final class TaskFailer
      * An administrator may cancel their run of a script (a guest_script task)
      * or a backup while it is queued or running: the task ends at once, and
      * the script is stopped inside the server (GuestScripts), the backup in
-     * Proxmox (docs/adr/0051 §4).
+     * Proxmox (docs/adr/0051 §4). Not once vzdump has finished: the backup
+     * exists then, and the task only records it.
      */
     public function canCancel(Task $task): bool
     {
         return in_array($task->type, self::CANCELLABLE, true)
-            && in_array($task->status, [TaskStatus::Queued, TaskStatus::Running], true);
+            && in_array($task->status, [TaskStatus::Queued, TaskStatus::Running], true)
+            && ! ($task->type === TaskType::CreateBackup && $task->stage === 'record');
     }
 }

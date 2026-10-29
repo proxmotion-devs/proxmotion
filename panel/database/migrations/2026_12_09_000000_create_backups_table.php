@@ -24,6 +24,8 @@ return new class extends Migration
             $table->string('storage', 100);
             // Proxmox's volume id, e.g. backup:backup/vzdump-qemu-100-2026_10_29-01_00_00.vma.zst.
             $table->string('volume');
+            // The VMID it was taken of, which a move to another cluster may change: lists the storage by it.
+            $table->unsignedInteger('vmid');
             $table->string('kind', 16)->default('manual');
             $table->string('label', 64)->nullable();
             $table->unsignedBigInteger('size_bytes')->nullable();

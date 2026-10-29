@@ -950,7 +950,7 @@ class FakeProxmoxCluster
             }
 
             $this->vms[$vmid] = [
-                ...($this->vms[$vmid] ?? ['node' => $node, 'pool' => null, 'template' => false]),
+                ...($this->vms[$vmid] ?? ['node' => $node, 'pool' => isset($data['pool']) ? (string) $data['pool'] : null, 'template' => false]),
                 'status' => 'stopped',
                 ...$volume['vm'],
                 'config' => $config,

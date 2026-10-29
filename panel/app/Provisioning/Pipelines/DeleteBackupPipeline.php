@@ -36,12 +36,13 @@ final readonly class DeleteBackupPipeline
     public function remove(Backup $backup): void
     {
         $client = $this->clients->forCluster($backup->cluster);
-        // A storage that is not shared is reached only from the node it belongs to.
+        // A storage that is not shared is reached only from the node it belongs to:
+        // once that node is gone, only a shared storage of the same name is the same storage.
         $node = $backup->node->name
-            ?? $backup->cluster->nodes()->whereHas('storages', fn ($query) => $query->where('name', $backup->storage))->value('name')
-            ?? throw new RuntimeException("No node of the cluster has the storage {$backup->storage} any more.");
+            ?? $backup->cluster->nodes()->whereHas('storages', fn ($query) => $query->where('name', $backup->storage)->where('is_shared', true))->value('name')
+            ?? throw new RuntimeException("The node that has the storage {$backup->storage} of this backup is gone.");
         $nodes = $client->nodes();
-        $present = collect($nodes->backups($node, $backup->storage, null))
+        $present = collect($nodes->backups($node, $backup->storage, $backup->vmid))
             ->contains(fn (BackupVolume $volume) => $volume->volume === $backup->volume);
 
         if ($present) {
