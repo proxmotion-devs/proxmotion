@@ -505,6 +505,46 @@ final class ApiClient
         return $this->dataOf($this->request('DELETE', '/servers/' . rawurlencode($id) . '/snapshots/' . rawurlencode($snapshot), null, $idempotencyKey));
     }
 
+    /**
+     * The server's backups: backups, slots, unavailable_reason (docs/adr/0051 §4).
+     *
+     * @return array<string, mixed>
+     */
+    public function backups(string $id): array
+    {
+        return $this->dataOf($this->request('GET', '/servers/' . rawurlencode($id) . '/backups'));
+    }
+
+    /**
+     * Take a backup; returns the task.
+     *
+     * @return array<string, mixed>
+     */
+    public function createBackup(string $id, string $label, string $idempotencyKey): array
+    {
+        return $this->dataOf($this->request('POST', '/servers/' . rawurlencode($id) . '/backups', ['label' => $label === '' ? null : $label], $idempotencyKey));
+    }
+
+    /**
+     * Restore a backup onto the server; returns the task.
+     *
+     * @return array<string, mixed>
+     */
+    public function restoreBackup(string $id, string $backup, string $idempotencyKey): array
+    {
+        return $this->dataOf($this->request('POST', '/servers/' . rawurlencode($id) . '/backups/' . rawurlencode($backup) . '/restore', null, $idempotencyKey));
+    }
+
+    /**
+     * Delete a backup; returns the task.
+     *
+     * @return array<string, mixed>
+     */
+    public function deleteBackup(string $id, string $backup, string $idempotencyKey): array
+    {
+        return $this->dataOf($this->request('DELETE', '/servers/' . rawurlencode($id) . '/backups/' . rawurlencode($backup), null, $idempotencyKey));
+    }
+
     public function consoleLink(string $id): string
     {
         $data = $this->dataOf($this->request('POST', '/servers/' . rawurlencode($id) . '/console'));

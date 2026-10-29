@@ -12,6 +12,7 @@ use App\Domain\Apps\LiveAppPolls;
 use App\Domain\Apps\OrderedAppOptions;
 use App\Domain\Apps\RecipeAction;
 use App\Domain\Apps\RecipeInput;
+use App\Domain\Backups\ServerBackups;
 use App\Domain\Backups\ServerSnapshots;
 use App\Domain\Firewall\ServerFirewalls;
 use App\Domain\Servers\GuestAgentProbe;
@@ -365,6 +366,13 @@ class ServerController extends Controller
                 'items' => ServerSnapshots::describe($server),
                 'slots' => $server->snapshot_slots,
                 'unavailable' => ServerSnapshots::unavailable($server)?->translatedMessage(),
+            ],
+            // Backups of the VM (docs/adr/0051 §4), with where they are.
+            'backups' => fn () => [
+                'items' => ServerBackups::describe($server, withStorage: true),
+                'slots' => $server->backup_slots,
+                'unavailable' => ServerBackups::unavailable($server)?->translatedMessage(),
+                'storage' => ServerBackups::storageFor($server)?->name,
             ],
             // Pools addresses may be added from: same location, network model, bridge and VLAN (docs/adr/0028).
             'addressPools' => fn () => collect(IpVersion::cases())

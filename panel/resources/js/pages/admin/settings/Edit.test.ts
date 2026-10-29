@@ -46,6 +46,7 @@ const settings = (overrides: Partial<PanelSettings> = {}): PanelSettings => ({
     move_bwlimit_kib: null,
     min_vmid: 0,
     provisioning_deadline_minutes: 120,
+    backup_deadline_minutes: 360,
     verify_dns_name: 'example.com',
     protected_networks: ['198.51.100.0/24', '203.0.113.7'],
     drift_stopped_grace_minutes: 60,

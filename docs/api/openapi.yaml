@@ -873,6 +873,114 @@ paths:
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
 
+  /servers/{server}/backups:
+    parameters:
+      - $ref: '#/components/parameters/Server'
+    get:
+      tags: [Servers]
+      summary: The server's backups
+      description: |
+        Scope: `servers:read`. Full copies of the server made by Proxmox (vzdump) on backup storage
+        (docs/adr/0051 §4), oldest first. They survive reinstalls and are deleted with the server
+        when it is terminated. A backup belongs to its server and can only be restored onto it;
+        after the server moved to another node or cluster, a backup it can no longer reach is
+        listed with `restorable: false` and the reason.
+      operationId: getServerBackups
+      responses:
+        '200':
+          description: The backups
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    required: [backups, slots, unavailable_reason]
+                    properties:
+                      backups: { type: array, items: { $ref: '#/components/schemas/Backup' } }
+                      slots: { type: integer, description: 'How many it may have (`resources.backup_slots`); 0: none.' }
+                      unavailable_reason: { type: [string, 'null'], description: 'Why it cannot take backups at all (none in its plan, or no backup storage its node reaches), in the language of the request; null when it can.' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    post:
+      tags: [Servers]
+      summary: Take a backup
+      description: |
+        Scope: `servers:write`. Active servers only; the server keeps running. Answers `202` with
+        the `create_backup` task, which may take hours on large servers; meanwhile the server takes
+        no other operation (`409`). The backup is listed once the task succeeded. `409` with
+        `error: backup_slots_full` when the server has as many as it may; `422` with
+        `error: backups_not_supported` when its plan has none, `error: no_backup_storage` when no
+        backup storage is available to it.
+      operationId: createServerBackup
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                label: { type: [string, 'null'], maxLength: 64, description: The customer's name for it; no control characters }
+      responses:
+        '202': { $ref: '#/components/responses/TaskAccepted' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /servers/{server}/backups/{backup}/restore:
+    parameters:
+      - $ref: '#/components/parameters/Server'
+      - { name: backup, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [Servers]
+      summary: Restore a backup onto the server
+      description: |
+        Scope: `servers:write`. Active servers only; destructive, so ask the customer to confirm.
+        The server's disks and snapshots are replaced by the backup, then Proxmotion writes its own
+        state back: resources, port speed, disk size, firewall, and inside the server its
+        addresses, hostname and SSH keys. A running server is started again; a stopped one stays
+        stopped and gets its addresses, hostname and SSH keys when it is next started through
+        Proxmotion. The server's operating system becomes the backup's, and its root password the
+        one of the backup's time, so `GET /servers/{id}/password` no longer has one. Apps installed
+        since the backup are removed. Answers `202` with the `restore_backup` task; webhook
+        `server.restored` when it succeeded. `409` with `error: backup_not_restorable` when the
+        server can no longer reach the backup (see `restorable`).
+      operationId: restoreServerBackup
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '202': { $ref: '#/components/responses/TaskAccepted' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /servers/{server}/backups/{backup}:
+    parameters:
+      - $ref: '#/components/parameters/Server'
+      - { name: backup, in: path, required: true, schema: { type: string, format: uuid } }
+    delete:
+      tags: [Servers]
+      summary: Delete a backup
+      description: |
+        Scope: `servers:write`. Active and suspended servers. Answers `202` with the
+        `delete_backup` task; the backup leaves the list once it succeeded.
+      operationId: deleteServerBackup
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '202': { $ref: '#/components/responses/TaskAccepted' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
   /servers/{server}/usage:
     parameters:
       - $ref: '#/components/parameters/Server'
@@ -1516,6 +1624,18 @@ components:
         id: { type: string, format: uuid }
         label: { type: [string, 'null'] }
         created_at: { type: [string, 'null'], format: date-time }
+    Backup:
+      type: object
+      required: [id, kind, label, size_bytes, os_template, created_at, restorable, unrestorable_reason]
+      properties:
+        id: { type: string, format: uuid }
+        kind: { type: string, enum: [manual, scheduled], description: 'Taken on request, or by a backup schedule (later).' }
+        label: { type: [string, 'null'] }
+        size_bytes: { type: [integer, 'null'] }
+        os_template: { type: [string, 'null'], description: "The name of the server's OS template when it was taken; a restore brings that system back." }
+        created_at: { type: [string, 'null'], format: date-time }
+        restorable: { type: boolean, description: "Whether the server's node can reach the backup's storage." }
+        unrestorable_reason: { type: [string, 'null'], description: 'Why it cannot be restored, in the language of the request; null when it can.' }
     ServerUsage:
       type: object
       required: [range, interval_seconds, from, to, points, traffic, current]
@@ -1783,7 +1903,7 @@ components:
       required: [id, type, status, server, steps, error, created_at, started_at, finished_at]
       properties:
         id: { type: string, format: uuid }
-        type: { type: string, enum: [create, suspend, unsuspend, terminate, adopt, start, shutdown, stop, reboot, reset_password, reinstall, change_resources, guest_script, change_primary_address, change_addresses, change_hostname, change_ssh_keys, install_app, app_run, verify, enable_anti_spoofing, apply_firewall, move, create_snapshot, rollback_snapshot, delete_snapshot] }
+        type: { type: string, enum: [create, suspend, unsuspend, terminate, adopt, start, shutdown, stop, reboot, reset_password, reinstall, change_resources, guest_script, change_primary_address, change_addresses, change_hostname, change_ssh_keys, install_app, app_run, verify, enable_anti_spoofing, apply_firewall, move, create_snapshot, rollback_snapshot, delete_snapshot, create_backup, restore_backup, delete_backup] }
         status: { type: string, enum: [queued, running, succeeded, failed] }
         server:
           type: object
@@ -2056,8 +2176,9 @@ webhooks:
         - `server.moved`: an administrator moved the server to another node, cluster or location
           (docs/adr/0037). After a move to another location the server has new addresses: read
           them with `GET /servers/{id}`.
-        - `server.restored`: the server went back to a snapshot (docs/adr/0051). Its root password
-          is the one of that time: the panel no longer knows it, so offer a password reset.
+        - `server.restored`: the server went back to a snapshot or was restored from a backup
+          (docs/adr/0051). Its root password is the one of that time: the panel no longer knows
+          it, so offer a password reset.
         - `server.failed`: creating, reinstalling or terminating failed; the server is in `error`.
         - `server.usage_exceeded`: the server went over its traffic quota or a usage limit
           (docs/adr/0039), whatever Proxmotion does about it; `data` has the server and the

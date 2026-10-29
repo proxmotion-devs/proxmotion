@@ -176,4 +176,12 @@ return [
     'snapshot_delete' => 'Delete',
     'snapshot_delete_confirm' => 'Delete this snapshot?',
     'snapshot_unknown' => 'This snapshot action is not possible.',
+    'backups' => 'Backups',
+    'backups_intro' => 'A backup is a full copy of the server on separate storage. It survives a reinstall. Restoring one replaces the whole disk: everything written since is lost, the snapshots are deleted, and the operating system and root password become those of the backup. A backup of a large server can take a long time.',
+    'backups_none' => 'No backups yet.',
+    'backup_take' => 'Take backup',
+    'backup_restore' => 'Restore',
+    'backup_restore_confirm' => 'Restore this backup onto the server? Everything written to the disk since is lost.',
+    'backup_delete_confirm' => 'Delete this backup?',
+    'backup_unknown' => 'This backup action is not possible.',
 ];

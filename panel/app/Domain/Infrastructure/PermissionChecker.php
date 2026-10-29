@@ -20,8 +20,8 @@ final readonly class PermissionChecker
         'VM.Config.Network', 'VM.Config.Cloudinit', 'VM.Config.Options',
         // Moving servers to other nodes and clusters (docs/adr/0037).
         'VM.Migrate',
-        // Snapshots (docs/adr/0051).
-        'VM.Snapshot', 'VM.Snapshot.Rollback',
+        // Snapshots and backups (docs/adr/0051).
+        'VM.Snapshot', 'VM.Snapshot.Rollback', 'VM.Backup',
     ];
 
     /**

@@ -26,6 +26,7 @@ import RdnsDialog from '@/components/servers/RdnsDialog.vue';
 import RebuildDialog from '@/components/servers/RebuildDialog.vue';
 import AntiSpoofingButton from '@/components/servers/AntiSpoofingButton.vue';
 import FirewallSection from '@/components/servers/FirewallSection.vue';
+import BackupsSection from '@/components/servers/BackupsSection.vue';
 import SnapshotsSection from '@/components/servers/SnapshotsSection.vue';
 import SshKeysSection from '@/components/servers/SshKeysSection.vue';
 import ReapplyAddressesButton from '@/components/servers/ReapplyAddressesButton.vue';
@@ -95,6 +96,7 @@ import type {
     ReinstallOptions,
     ResourceOptions,
     ServerFirewall,
+    ServerBackups,
     ServerSnapshots,
     ServerSshKeys,
     ServerAddress,
@@ -164,6 +166,8 @@ const props = withDefaults(
         sshKeys: ServerSshKeys;
         /** docs/adr/0051 */
         snapshots: ServerSnapshots;
+        /** docs/adr/0051 §4 */
+        backups: ServerBackups;
         /** Pools addresses may be added from (docs/adr/0028). */
         addressPools: AddressPoolOption[];
         drifts: Drift[];
@@ -370,7 +374,7 @@ const hasUsage = computed(
 );
 // SSH keys only while it is active: the guest agent writes them (docs/adr/0049).
 const hasSshKeys = computed(() => props.server.status === 'active');
-// Snapshots while its VM exists (docs/adr/0051).
+// Snapshots and backups while its VM exists (docs/adr/0051).
 const hasSnapshots = computed(() =>
     ['active', 'suspended'].includes(props.server.status),
 );
@@ -453,8 +457,9 @@ const tabs = computed(() => [
         ? [
               {
                   value: 'snapshots' as Tab,
-                  label: 'Snapshots',
-                  count: props.snapshots.items.length,
+                  label: 'Backups',
+                  count:
+                      props.snapshots.items.length + props.backups.items.length,
               },
           ]
         : []),
@@ -487,11 +492,19 @@ const SNAPSHOT_TASKS = [
 const snapshotBusy = computed(() =>
     runningTasks.value.some((task) => SNAPSHOT_TASKS.includes(task.type)),
 );
-watch(snapshotBusy, (busy, before) => {
-    if (before && !busy) {
-        router.reload({ only: ['snapshots', 'server', 'apps'] });
-    }
-});
+// Backups too (docs/adr/0051 §4); a restore also deletes the snapshots.
+const BACKUP_TASKS = ['create_backup', 'restore_backup', 'delete_backup'];
+const backupBusy = computed(() =>
+    runningTasks.value.some((task) => BACKUP_TASKS.includes(task.type)),
+);
+watch(
+    [snapshotBusy, backupBusy],
+    ([snapshot, backup], [before, backupBefore]) => {
+        if ((before && !snapshot) || (backupBefore && !backup)) {
+            router.reload({ only: ['snapshots', 'backups', 'server', 'apps'] });
+        }
+    },
+);
 
 const active = computed(() => props.server.status === 'active');
 // Where the VM is, as Proxmox says (only asked for active servers).
@@ -1254,14 +1267,22 @@ const resetAfterTrial = () => {
             :disabled="vmBlocked || agentDown"
         />
 
-        <SnapshotsSection
-            v-else-if="tab === 'snapshots'"
-            :server="server.uuid"
-            :hostname="server.hostname"
-            :snapshots="snapshots"
-            :busy="snapshotBusy"
-            :disabled="vmBlocked"
-        />
+        <div v-else-if="tab === 'snapshots'" class="flex flex-col gap-4">
+            <SnapshotsSection
+                :server="server.uuid"
+                :hostname="server.hostname"
+                :snapshots="snapshots"
+                :busy="snapshotBusy"
+                :disabled="vmBlocked || backupBusy"
+            />
+            <BackupsSection
+                :server="server.uuid"
+                :hostname="server.hostname"
+                :backups="backups"
+                :busy="backupBusy"
+                :disabled="vmBlocked || snapshotBusy"
+            />
+        </div>
 
         <TaskList v-else :tasks="tasks" />
     </div>

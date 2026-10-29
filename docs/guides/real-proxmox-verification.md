@@ -63,7 +63,7 @@ pveum user add proxmotion@pve --comment "Proxmotion panel"
 Role for managing servers in the pool. **Proxmox VE 9.x:**
 
 ```bash
-pveum role add ProxmotionServers --privs "VM.Audit,VM.Allocate,VM.Clone,VM.PowerMgmt,VM.Console,VM.Config.CPU,VM.Config.Memory,VM.Config.Disk,VM.Config.Network,VM.Config.Cloudinit,VM.Config.Options,VM.Snapshot,VM.Snapshot.Rollback,VM.GuestAgent.Unrestricted,Pool.Allocate"
+pveum role add ProxmotionServers --privs "VM.Audit,VM.Allocate,VM.Clone,VM.PowerMgmt,VM.Console,VM.Config.CPU,VM.Config.Memory,VM.Config.Disk,VM.Config.Network,VM.Config.Cloudinit,VM.Config.Options,VM.Snapshot,VM.Snapshot.Rollback,VM.Backup,VM.GuestAgent.Unrestricted,Pool.Allocate"
 ```
 
 **Proxmox VE 8.x:** the same, with `VM.Monitor` instead of `VM.GuestAgent.Unrestricted`.

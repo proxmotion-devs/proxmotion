@@ -28,4 +28,7 @@ export const TASK_TYPE_LABELS: Record<TaskType, string> = {
     create_snapshot: 'Take snapshot',
     rollback_snapshot: 'Roll back to snapshot',
     delete_snapshot: 'Delete snapshot',
+    create_backup: 'Take backup',
+    restore_backup: 'Restore backup',
+    delete_backup: 'Delete backup',
 };

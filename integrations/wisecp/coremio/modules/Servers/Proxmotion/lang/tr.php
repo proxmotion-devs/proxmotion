@@ -181,4 +181,12 @@ return [
     'snapshot_delete_confirm' => 'Bu snapshot silinsin mi?',
     'snapshot_unknown' => 'Bu snapshot işlemi yapılamaz.',
     'snapshot_started' => 'Başlatıldı; biraz sürer.',
+    'tool_backups' => 'Yedekler',
+    'backups_intro' => 'Yedek, sunucunun ayrı bir storage\'daki tam kopyasıdır. Yeniden kurulumdan etkilenmez. Bir yedeği geri yüklemek tüm diski değiştirir: sonradan yazılan her şey kaybolur, snapshot\'lar silinir, işletim sistemi ve root parolası yedeğin alındığı andaki olur. Büyük bir sunucunun yedeklenmesi uzun sürebilir.',
+    'backups_none' => 'Henüz yedek yok.',
+    'backup_take' => 'Yedek al',
+    'backup_restore' => 'Geri yükle',
+    'backup_restore_confirm' => 'Bu yedek sunucuya geri yüklensin mi? O andan sonra diske yazılan her şey kaybolur.',
+    'backup_delete_confirm' => 'Bu yedek silinsin mi?',
+    'backup_unknown' => 'Bu yedek işlemi yapılamaz.',
 ];

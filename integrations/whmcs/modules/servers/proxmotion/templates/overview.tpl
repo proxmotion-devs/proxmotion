@@ -322,6 +322,57 @@
                 {/if}
             {/if}
 
+            {if $pmx.backups}
+                {* Full copies of the server on backup storage (docs/adr/0051 §4). *}
+                <hr>
+                <h4>{$pmx.lang.backups|escape} <small>{$pmx.backups.count|escape}</small></h4>
+                <p class="text-muted">{$pmx.lang.backups_intro|escape}</p>
+                {if $pmx.backups.unavailable}
+                    <p class="text-muted">{$pmx.backups.unavailable|escape}</p>
+                {/if}
+                <table class="table table-condensed">
+                    <tbody>
+                        {foreach from=$pmx.backups.items item=backup}
+                            <tr>
+                                <td>
+                                    {$backup.label|escape}
+                                    {if $backup.reason}<br><small class="text-warning">{$backup.reason|escape}</small>{/if}
+                                </td>
+                                <td class="text-muted">{$backup.time|escape}</td>
+                                <td class="text-muted">{$backup.size|escape}</td>
+                                <td class="text-muted">{$backup.system|escape}</td>
+                                <td class="text-right">
+                                    {if $backup.restorable}
+                                        <form method="post" action="{$pmxAction}Backups" style="display: inline;" onsubmit="return confirm('{$pmx.lang.backup_restore_confirm|escape:'javascript'}');">
+                                            <input type="hidden" name="token" value="{$token}">
+                                            <input type="hidden" name="op" value="restore">
+                                            <input type="hidden" name="backup" value="{$backup.id|escape}">
+                                            <button type="submit" class="btn btn-warning btn-xs">{$pmx.lang.backup_restore|escape}</button>
+                                        </form>
+                                    {/if}
+                                    <form method="post" action="{$pmxAction}Backups" style="display: inline;" onsubmit="return confirm('{$pmx.lang.backup_delete_confirm|escape:'javascript'}');">
+                                        <input type="hidden" name="token" value="{$token}">
+                                        <input type="hidden" name="op" value="delete">
+                                        <input type="hidden" name="backup" value="{$backup.id|escape}">
+                                        <button type="submit" class="btn btn-danger btn-xs">{$pmx.lang.snapshot_delete|escape}</button>
+                                    </form>
+                                </td>
+                            </tr>
+                        {foreachelse}
+                            <tr><td class="text-muted">{$pmx.lang.backups_none|escape}</td></tr>
+                        {/foreach}
+                    </tbody>
+                </table>
+                {if $pmx.backups.canTake}
+                    <form method="post" action="{$pmxAction}Backups" class="form-inline" style="margin-bottom: 10px;">
+                        <input type="hidden" name="token" value="{$token}">
+                        <input type="hidden" name="op" value="take">
+                        <input type="text" name="label" class="form-control input-sm" maxlength="64" placeholder="{$pmx.lang.snapshot_label|escape}">
+                        <button type="submit" class="btn btn-default btn-sm">{$pmx.lang.backup_take|escape}</button>
+                    </form>
+                {/if}
+            {/if}
+
             {if $pmx.sshKeys}
                 <hr>
                 <h4>{$pmx.lang.ssh_keys|escape}</h4>

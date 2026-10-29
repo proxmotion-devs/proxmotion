@@ -32,7 +32,7 @@ class Proxmotion extends ServerModule
     private const BUSY = ['pending', 'provisioning', 'reinstalling', 'terminating'];
 
     /** Tools that need a running server, hidden while it is busy or not active. */
-    private const SERVER_TOOLS = ['start-server', 'stop-server', 'restart-server', 'poweroff-server', 'reset-password', 'reinstall-os', 'vnc-console', 'hostname-change', 'reverse-dns', 'apps', 'firewall', 'ssh-keys', 'snapshots'];
+    private const SERVER_TOOLS = ['start-server', 'stop-server', 'restart-server', 'poweroff-server', 'reset-password', 'reinstall-os', 'vnc-console', 'hostname-change', 'reverse-dns', 'apps', 'firewall', 'ssh-keys', 'snapshots', 'backups'];
 
     /** App installation statuses during which the installer still runs. */
     private const APP_BUSY = ['queued', 'installing', 'uninstalling', 'upgrading'];
@@ -125,6 +125,18 @@ class Proxmotion extends ServerModule
             'type' => 'page-loader',
             'capabilities' => ['list', 'take', 'rollback', 'delete'],
         ]);
+
+        // Backups of the server (docs/adr/0051 §4): pages/tools/backups.php.
+        $this->add_tool('backups', [
+            'name' => $this->text('tool_backups'),
+            'label' => $this->text('tool_backups'),
+            'group' => 'system',
+            'order' => 19,
+            'icon' => 'bi bi-archive',
+            'page' => 'backups',
+            'type' => 'page-loader',
+            'capabilities' => ['list', 'take', 'restore', 'delete'],
+        ]);
     }
 
     /**
@@ -143,6 +155,7 @@ class Proxmotion extends ServerModule
         $filters['ssh-keys'] = ['public_key' => null, 'fingerprint' => null];
         // Proxmotion validates the label.
         $filters['snapshots'] = ['snapshot' => 'route', 'label' => null];
+        $filters['backups'] = ['backup' => 'route', 'label' => null];
 
         return $filters;
     }
@@ -570,6 +583,10 @@ class Proxmotion extends ServerModule
             return $this->snapshotsData((string) $this->requireActiveServer()['id']);
         }
 
+        if ($tool === 'backups') {
+            return $this->backupsData((string) $this->requireActiveServer()['id']);
+        }
+
         $server = $this->api->server((string) $this->requireActiveServer()['id']);
 
         return match ($tool) {
@@ -630,6 +647,7 @@ class Proxmotion extends ServerModule
             'firewall' => $this->firewall($id, $action, $data),
             'ssh-keys' => $this->sshKeys($id, $action, $data),
             'snapshots' => $this->snapshots($id, $action, $data),
+            'backups' => $this->backups($id, $action, $data),
             default => throw new Exception('Unknown tool: ' . $tool),
         };
     }
@@ -1009,6 +1027,59 @@ class Proxmotion extends ServerModule
             $action === 'rollback' && $snapshot !== '' => $this->api->rollbackSnapshot($id, $snapshot, $this->idempotencyKey('snapshot-rollback')),
             $action === 'delete' && $snapshot !== '' => $this->api->deleteSnapshot($id, $snapshot, $this->idempotencyKey('snapshot-delete')),
             default => throw new Exception($this->text('snapshot_unknown')),
+        };
+
+        return ['status' => 'successful', 'message' => $this->text('snapshot_started'), 'successToast' => true];
+    }
+
+    /**
+     * The Backups tool's page (docs/adr/0051 §4): the backups, the slots and
+     * whether one more can be taken.
+     *
+     * @return array<string, mixed>
+     */
+    private function backupsData(string $id): array
+    {
+        $data = $this->api->backups($id);
+        $slots = is_int($data['slots'] ?? null) ? $data['slots'] : 0;
+        $unavailable = is_string($data['unavailable_reason'] ?? null) ? $data['unavailable_reason'] : null;
+        $items = array_values(array_map(static fn (array $backup): array => [
+            'id' => (string) $backup['id'],
+            'label' => is_string($backup['label'] ?? null) ? $backup['label'] : '',
+            // Date and time as Proxmotion sent them (its own time zone).
+            'time' => substr(str_replace('T', ' ', (string) ($backup['created_at'] ?? '')), 0, 16),
+            // Decimal GB like the traffic figures.
+            'size' => is_int($backup['size_bytes'] ?? null) ? rtrim(rtrim(number_format($backup['size_bytes'] / self::GB, 1, '.', ''), '0'), '.') . ' GB' : '',
+            'system' => is_string($backup['os_template'] ?? null) ? $backup['os_template'] : '',
+            'restorable' => ($backup['restorable'] ?? true) === true,
+            'reason' => is_string($backup['unrestorable_reason'] ?? null) ? $backup['unrestorable_reason'] : '',
+        ], array_filter(is_array($data['backups'] ?? null) ? $data['backups'] : [], static fn (mixed $backup): bool => is_array($backup) && isset($backup['id']))));
+
+        return [
+            'backups' => $items,
+            'slots' => $slots,
+            'unavailable' => $unavailable,
+            'can_take' => $unavailable === null && count($items) < $slots,
+        ];
+    }
+
+    /**
+     * Take (label), restore or delete (backup) a backup. Proxmotion checks
+     * the server's state, slots and backup storage and answers with the
+     * reason when it refuses.
+     *
+     * @param array<string, mixed> $data
+     * @return array<string, mixed>
+     */
+    private function backups(string $id, string $action, array $data): array
+    {
+        $backup = trim((string) ($data['backup'] ?? ''));
+
+        match (true) {
+            $action === 'take' => $this->api->createBackup($id, trim((string) ($data['label'] ?? '')), $this->idempotencyKey('backup')),
+            $action === 'restore' && $backup !== '' => $this->api->restoreBackup($id, $backup, $this->idempotencyKey('backup-restore')),
+            $action === 'delete' && $backup !== '' => $this->api->deleteBackup($id, $backup, $this->idempotencyKey('backup-delete')),
+            default => throw new Exception($this->text('backup_unknown')),
         };
 
         return ['status' => 'successful', 'message' => $this->text('snapshot_started'), 'successToast' => true];

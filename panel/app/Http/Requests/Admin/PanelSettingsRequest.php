@@ -41,6 +41,7 @@ class PanelSettingsRequest extends FormRequest
                 }
             }],
             'provisioning_deadline_minutes' => ['required', 'integer', 'min:15', 'max:1440'],
+            'backup_deadline_minutes' => ['required', 'integer', 'min:30', 'max:2880'],
             'verify_dns_name' => ['nullable', 'string', 'max:253', new Hostname],
             'protected_networks' => ['nullable', 'string', 'max:4000', new NetworkList],
             'drift_stopped_grace_minutes' => ['required', 'integer', 'min:0', 'max:10080'],
@@ -147,6 +148,7 @@ class PanelSettingsRequest extends FormRequest
             'move_bwlimit_kib' => fn () => $optionalInt('move_bwlimit_kib'),
             'min_vmid' => fn () => (int) $data['min_vmid'],
             'provisioning_deadline_minutes' => fn () => (int) $data['provisioning_deadline_minutes'],
+            'backup_deadline_minutes' => fn () => (int) $data['backup_deadline_minutes'],
             'verify_dns_name' => fn () => ($name = $optionalString('verify_dns_name')) === null ? null : strtolower($name),
             'protected_networks' => fn () => NetworkList::canonical($optionalString('protected_networks')),
             'drift_stopped_grace_minutes' => fn () => (int) $data['drift_stopped_grace_minutes'],

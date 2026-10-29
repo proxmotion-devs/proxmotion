@@ -22,6 +22,7 @@ export type PanelSettings = {
     move_bwlimit_kib: number | null;
     min_vmid: number;
     provisioning_deadline_minutes: number;
+    backup_deadline_minutes: number;
     verify_dns_name: string | null;
     protected_networks: string[];
     drift_stopped_grace_minutes: number;
@@ -117,7 +118,9 @@ export type Storage = {
     is_shared: boolean;
     is_available: boolean;
     use_for_servers: boolean;
+    use_for_backups: boolean;
     supports_vm_disks: boolean;
+    supports_backups: boolean;
     total_bytes: number | null;
     used_bytes: number | null;
     health: StorageHealth;
@@ -363,6 +366,9 @@ export type TaskType =
     | 'create_snapshot'
     | 'rollback_snapshot'
     | 'delete_snapshot'
+    | 'create_backup'
+    | 'restore_backup'
+    | 'delete_backup'
     | PowerAction;
 
 export type PowerAction = 'start' | 'shutdown' | 'stop' | 'reboot';
@@ -1034,6 +1040,32 @@ export type ServerSnapshots = {
     slots: number;
     /** Why it cannot have any at all (translated), or null. */
     unavailable: string | null;
+};
+
+/** A backup of a server made by vzdump (docs/adr/0051 §4). */
+export type ServerBackup = {
+    id: string;
+    kind: 'manual' | 'scheduled';
+    label: string | null;
+    size_bytes: number | null;
+    /** The OS template's name when it was taken. */
+    os_template: string | null;
+    created_at: string | null;
+    storage: string;
+    restorable: boolean;
+    /** Why the server cannot be restored from it (translated), or null. */
+    unrestorable_reason: string | null;
+};
+
+/** A server's backups on its page. */
+export type ServerBackups = {
+    items: ServerBackup[];
+    /** How many it may have; 0: none. */
+    slots: number;
+    /** Why it cannot have any at all (translated), or null. */
+    unavailable: string | null;
+    /** Where the next backup goes, or null. */
+    storage: string | null;
 };
 
 /** A server's firewall on its page, with the rule sets that can be applied. */

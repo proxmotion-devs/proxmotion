@@ -28,6 +28,7 @@ final class PanelSettings
         'move_bwlimit_kib' => 'moves.bwlimit_kib',
         'min_vmid' => 'provisioning.min_vmid',
         'provisioning_deadline_minutes' => 'provisioning.deadline_minutes',
+        'backup_deadline_minutes' => 'backups.deadline_minutes',
         'verify_dns_name' => 'provisioning.verify_dns_name',
         'protected_networks' => 'protected_networks',
         'drift_stopped_grace_minutes' => 'drift.stopped_grace_minutes',
@@ -63,6 +64,7 @@ final class PanelSettings
         'servers' => [
             'min_vmid',
             'provisioning_deadline_minutes',
+            'backup_deadline_minutes',
             'verify_dns_name',
             'password_length',
             'password_characters',

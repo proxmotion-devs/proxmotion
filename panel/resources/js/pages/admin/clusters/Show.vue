@@ -81,6 +81,13 @@ const toggleStorage = (storage: Storage, value: boolean | 'indeterminate') => {
         preserveScroll: true,
     });
 };
+// Backups go to the ticked storage with the most free room the server's node reaches (docs/adr/0051 §4).
+const toggleBackups = (storage: Storage, value: boolean | 'indeterminate') => {
+    router.visit(updateStorage(storage.id), {
+        data: { use_for_backups: value === true },
+        preserveScroll: true,
+    });
+};
 
 // Node placement settings
 const nodeDialogOpen = ref(false);
@@ -424,6 +431,9 @@ const submitNode = () => {
                                 <th class="px-3 py-2 font-medium">
                                     {{ $t('Use for servers') }}
                                 </th>
+                                <th class="px-3 py-2 font-medium">
+                                    {{ $t('Use for backups') }}
+                                </th>
                             </tr>
                         </thead>
                         <tbody>
@@ -531,10 +541,31 @@ const submitNode = () => {
                                         {{ $t('No VM disks') }}
                                     </span>
                                 </td>
+                                <td class="px-3 py-2">
+                                    <Checkbox
+                                        v-if="storage.supports_backups"
+                                        :model-value="storage.use_for_backups"
+                                        :aria-label="
+                                            $t('Use :name for backups', {
+                                                name: storage.name,
+                                            })
+                                        "
+                                        @update:model-value="
+                                            (value) =>
+                                                toggleBackups(storage, value)
+                                        "
+                                    />
+                                    <span
+                                        v-else
+                                        class="text-xs text-muted-foreground"
+                                    >
+                                        {{ $t('No backups') }}
+                                    </span>
+                                </td>
                             </tr>
                             <tr v-if="node.storages.length === 0">
                                 <td
-                                    colspan="6"
+                                    colspan="7"
                                     class="px-3 py-4 text-center text-muted-foreground"
                                 >
                                     {{ $t('No storages reported.') }}

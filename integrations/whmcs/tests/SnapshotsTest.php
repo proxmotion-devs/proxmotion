@@ -33,6 +33,7 @@ class SnapshotsTest extends ModuleTestCase
         $this->api->on('GET /servers/' . self::SERVER_ID . '/ssh-keys', 200, ['data' => ['ssh_keys' => [], 'max_keys' => 20]]);
         $this->api->on('GET /servers/' . self::SERVER_ID . '/usage?range=day', 404, ['message' => 'Not found.']);
         $this->api->on('GET /servers/' . self::SERVER_ID . '/snapshots', $status, $status === 200 ? ['data' => $snapshots] : ['message' => 'Not found.']);
+        $this->api->on('GET /servers/' . self::SERVER_ID . '/backups', 404, ['message' => 'Not found.']);
     }
 
     public function test_the_overview_lists_the_snapshots_with_the_slots()

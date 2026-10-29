@@ -58,6 +58,7 @@ const form = useForm({
     move_bwlimit_kib: (props.settings.move_bwlimit_kib ?? '') as OptionalNumber,
     min_vmid: props.settings.min_vmid,
     provisioning_deadline_minutes: props.settings.provisioning_deadline_minutes,
+    backup_deadline_minutes: props.settings.backup_deadline_minutes,
     verify_dns_name: props.settings.verify_dns_name ?? '',
     protected_networks: props.settings.protected_networks.join('\n'),
     drift_stopped_grace_minutes: props.settings.drift_stopped_grace_minutes,
@@ -216,6 +217,20 @@ const sectionClass = 'flex flex-col gap-4 rounded-xl border p-4';
                             type="number"
                             min="15"
                             max="1440"
+                        />
+                    </FormField>
+                    <FormField
+                        label="Time limit of a backup or restore (minutes)"
+                        for="backup_deadline_minutes"
+                        :error="form.errors.backup_deadline_minutes"
+                        hint="Backing up a large server can take hours."
+                    >
+                        <Input
+                            id="backup_deadline_minutes"
+                            v-model.number="form.backup_deadline_minutes"
+                            type="number"
+                            min="30"
+                            max="2880"
                         />
                     </FormField>
                     <FormField

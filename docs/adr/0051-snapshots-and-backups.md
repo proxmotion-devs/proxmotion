@@ -1,6 +1,6 @@
 # 51. Snapshots and backups
 
-- **Status:** Accepted (phase 1, snapshots, built 2026-10-28; backups not built)
+- **Status:** Accepted (phase 1, snapshots, built 2026-10-28; phase 2, manual backups and restore, built 2026-10-29; schedules not built)
 - **Date:** 2026-10-28
 
 ## Context
@@ -176,6 +176,27 @@ Snapshots are built as decided above, with these details settled while building 
 - **After a rollback** (§5): `VmState` (shared with resource changes) writes resources, port speed, the disk size and the firewall with exactly the server's addresses. The guest's addresses, hostname and SSH keys go back in with the `addresses_changed`, `hostname_changed` and `ssh_keys_changed` scripts (`GuestRefresh`) when the server starts: at once when it ran (the rollback starts it again), else at its first start through the panel (*Start*, *Reboot*, *Unsuspend*; `servers.guest_refresh_pending`, cleared once the address script ran), so a server its owner stopped stays stopped. A failing SSH key script leaves a note instead of failing the rollback or the start. Starts outside the panel (in Proxmox) miss the refresh; *Apply again* on the server page covers the addresses then. Apps installed after the snapshot are marked removed, and the stored root password is cleared. A rollback is refused while an app script is queued or running on the server (`AppInstallations::scriptRunning()`, shared with moves): app scripts run outside the server's tasks, and the rollback would take the disk away under them.
 - **Admin:** a *Snapshots* tab on the server page; it becomes *Backups* (with both lists) in phase 2. The custom create form and *Change resources* have the two slot fields.
 - **Billing:** WHMCS configurable options `snapshots` / `backups` set the slots and `extra_snapshots` / `extra_backups` add to the package's, like the other resources; WISECP takes the `extra_…` add-on values.
+
+## Phase 2 as built (2026-10-29)
+
+Manual backups and restore are built as decided in §4, with these details settled while building them. Tested with the faked Proxmox and billing systems only.
+
+- **Choosing the storage:** storages are synced once per node, shared ones included, so the server's node's own rows are the storages it reaches. Of those ticked *Use for backups*, available and taking content `backup`, the one with the most free room wins. It is chosen when the backup is requested and kept on the task. The flag can only be ticked on storages with content `backup`.
+- **Rows only for backups Proxmox has,** as for snapshots: the `creating`, `failed`, `deleting` and `missing` statuses of §4 are not stored. A running backup is its task, and a failed one leaves only its failed task. The row is written once vzdump has finished and its volume is found in the storage's content: by the backup's uuid, which goes into its notes (`notes-template`), else as the newest volume of the VM since the task started that no row records. A backup deleted outside the panel is noticed when it is deleted (nothing left counts as done) or restored (the task fails with Proxmox's message).
+- **`create_backup`** is staged with the deadline `backup_deadline_minutes` on *Panel settings* (default 360, `PROXMOTION_BACKUP_DEADLINE_MINUTES`). It checks the vzdump task every 15 seconds. `compress=zstd` is left out for Proxmox Backup Server storages. Administrators can stop a running backup from the task list, like their script runs (`TaskFailer::cancel()`): the task fails at once, and `StopProxmoxTask` stops the vzdump task (`DELETE /nodes/{node}/tasks/{upid}`) so its lock is released.
+- **`restore_backup`** is staged with the same deadline. Its stages:
+  1. **stop:** remember whether the VM ran, then stop it.
+  2. **restore:** `POST /nodes/{node}/qemu` with `archive`, `force=1`, `unique=0` and the server's storage. No `pool`: a restore over the existing VMID is believed to keep the pool membership, which needs checking. The VM's snapshots go with its disks, so their rows are dropped.
+  3. **configure:** `VmState` as after a rollback, and the VM's notes and tags written again (`VmLabels`), since the backup brings back those of its time.
+  4. **start, wait for the agent, refresh the guest:** only when it ran. **Unlike §4**, a server that was stopped stays stopped and gets its addresses, hostname and SSH keys at its first start through the panel, as after a rollback (phase 1).
+
+  The server's OS template becomes the backup's. Apps installed since the backup are marked removed, and the stored root password is cleared. A restore is refused while an app script runs, as a rollback is. A failed restore leaves the server `active`, not `error`, with the failed task and Proxmox's message. The customer can try again, restore another backup or reinstall. Checks from inside (`ServerVerifier`) do not run afterwards.
+- **Restorable:** a backup is restorable while it is on the server's cluster and the server's node has a storage of that name that is shared, or the backup was taken on that node. Otherwise it is listed with `restorable: false` and the reason, and a restore answers `409` `backup_not_restorable`.
+- **`delete_backup`** goes through the backup's own cluster and the node it was taken on, or any node that has the storage when that node is gone.
+- **Termination** deletes every backup's volume and row. One that cannot be deleted never stops the termination: the step's note names its volume, and its row is dropped. *Keep backups of terminated servers* (§4) is left for phase 3, which adds the daily job that would delete them later.
+- **API:** `GET /servers/{id}/backups` gives kind, label, size, OS template name, time and `restorable` with `unrestorable_reason`, never the storage or the volume. Refusals answer `422` `backups_not_supported` / `no_backup_storage`, `409` `backup_slots_full` / `backup_not_restorable`.
+- **Admin:** the server page's tab is now *Backups*, with the snapshots above the backups. Admins also see the storage of each backup and where the next one goes. The cluster page has a *Use for backups* column.
+- **Permissions:** `VM.Backup` is added to the pool's privileges (it is in `PVEVMAdmin`). `Datastore.AllocateSpace` on `/storage` and `Datastore.Audit` on `/` were already required. What a restore with `force=1` needs is still to verify (§8).
 
 ## Answered questions
 

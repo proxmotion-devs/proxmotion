@@ -744,7 +744,7 @@ class ServerManagementTest extends AdminTestCase
     {
         $this->proxmox->permissions = [
             '/' => ['Sys.Audit', 'Datastore.Audit', 'VM.Audit'],
-            '/pool/proxmotion' => ['VM.Audit', 'VM.Allocate', 'VM.Clone', 'VM.PowerMgmt', 'VM.Console', 'VM.Config.CPU', 'VM.Config.Memory', 'VM.Config.Disk', 'VM.Config.Network', 'VM.Config.Cloudinit', 'VM.Config.Options', 'VM.Migrate', 'VM.Snapshot', 'VM.Snapshot.Rollback', 'VM.GuestAgent.Unrestricted'],
+            '/pool/proxmotion' => ['VM.Audit', 'VM.Allocate', 'VM.Clone', 'VM.PowerMgmt', 'VM.Console', 'VM.Config.CPU', 'VM.Config.Memory', 'VM.Config.Disk', 'VM.Config.Network', 'VM.Config.Cloudinit', 'VM.Config.Options', 'VM.Migrate', 'VM.Snapshot', 'VM.Snapshot.Rollback', 'VM.Backup', 'VM.GuestAgent.Unrestricted'],
             '/storage' => ['Datastore.AllocateSpace'],
         ];
 

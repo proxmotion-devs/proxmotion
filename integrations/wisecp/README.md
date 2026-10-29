@@ -186,8 +186,20 @@ A **Snapshots** tool (`pages/tools/snapshots.php`, Proxmotion docs/adr/0051), sh
 the server is active, lists the snapshots of the server's disk and settings with *Roll back*
 and *Delete* (each confirmed), and a form to take one with an optional label while slots
 are free. How many a server may have comes from the package, plus the add-on value
-`extra_snapshots` (`extra_backups` for backups, which come later). Proxmotion refuses with
-its reason when a server is full or cannot have snapshots. Unverified whether WISECP shows it.
+`extra_snapshots`. Proxmotion refuses with its reason when a server is full or cannot have
+snapshots. Unverified whether WISECP shows it.
+
+### Backups
+
+A **Backups** tool (`pages/tools/backups.php`, Proxmotion docs/adr/0051 §4), shown while the
+server is active, lists the server's backups (full copies on separate storage made by
+Proxmox) with label, time, size and operating system, *Restore* and *Delete* (each
+confirmed), and a form to take one with an optional label while slots are free. How many a
+server may have comes from the package, plus the add-on value `extra_backups`. A restore
+replaces the whole disk and deletes the snapshots; the operating system and root password
+become those of the backup. A backup the server can no longer reach shows Proxmotion's
+reason instead of *Restore*. Proxmotion refuses with its reason when a server is full or
+has no backup storage. Unverified whether WISECP shows it.
 
 ## Webhooks
 

@@ -30,6 +30,7 @@ use App\Http\Controllers\Admin\PackageController;
 use App\Http\Controllers\Admin\PanelSettingsController;
 use App\Http\Controllers\Admin\PlacementGroupController;
 use App\Http\Controllers\Admin\ReportController;
+use App\Http\Controllers\Admin\ServerBackupController;
 use App\Http\Controllers\Admin\ServerController;
 use App\Http\Controllers\Admin\ServerFirewallController;
 use App\Http\Controllers\Admin\ServerMoveController;
@@ -205,6 +206,10 @@ Route::get('servers/{server}/ssh-keys/guest', [ServerSshKeyController::class, 'g
 Route::post('servers/{server}/snapshots', [ServerSnapshotController::class, 'store'])->middleware('throttle:20,1')->name('servers.snapshots.store');
 Route::post('servers/{server}/snapshots/{snapshot}/rollback', [ServerSnapshotController::class, 'rollback'])->middleware('throttle:10,1')->name('servers.snapshots.rollback');
 Route::delete('servers/{server}/snapshots/{snapshot}', [ServerSnapshotController::class, 'destroy'])->middleware('throttle:20,1')->name('servers.snapshots.destroy');
+// Backups (docs/adr/0051 §4).
+Route::post('servers/{server}/backups', [ServerBackupController::class, 'store'])->middleware('throttle:10,1')->name('servers.backups.store');
+Route::post('servers/{server}/backups/{backup}/restore', [ServerBackupController::class, 'restore'])->middleware('throttle:10,1')->name('servers.backups.restore');
+Route::delete('servers/{server}/backups/{backup}', [ServerBackupController::class, 'destroy'])->middleware('throttle:20,1')->name('servers.backups.destroy');
 Route::post('servers/{server}/anti-spoofing', [ServerController::class, 'enableAntiSpoofing'])->middleware('throttle:10,1')->name('servers.enable-anti-spoofing');
 Route::post('tasks/{task}/fail', [TaskController::class, 'fail'])->name('tasks.fail');
 Route::post('tasks/{task}/cancel', [TaskController::class, 'cancel'])->name('tasks.cancel');

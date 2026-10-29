@@ -34,6 +34,22 @@ class FakeProxmoxCluster
     /** When set, taking, rolling back or deleting a snapshot fails with this exit status. */
     public ?string $failSnapshot = null;
 
+    /**
+     * Backups per storage, in the order written, with the VM a restore brings back (docs/adr/0051 §4).
+     *
+     * @var array<string, list<array{volid: string, vmid: int, node: string, size: int, ctime: int, notes: string, vm: array<string, mixed>}>>
+     */
+    public array $backupVolumes = [];
+
+    /** @var list<array<string, mixed>> vzdump requests */
+    public array $vzdumps = [];
+
+    /** When set, backups, restores and deletes of backups fail with this exit status. */
+    public ?string $failBackup = null;
+
+    /** @var list<string> UPIDs stopped through DELETE /nodes/{node}/tasks/{upid} */
+    public array $stoppedTasks = [];
+
     /** @var array<string, list<string>> privileges per ACL path */
     public array $permissions = [];
 
@@ -270,6 +286,12 @@ class FakeProxmoxCluster
                 $this->activeTasks[(int) ($query['vmid'] ?? 0)] ?? [],
             )),
             (bool) preg_match('#^/nodes/([^/]+)/tasks/(.+)/status$#', $path, $m) => $this->taskStatus(urldecode($m[2])),
+            (bool) preg_match('#^/nodes/([^/]+)/tasks/([^/]+)$#', $path, $m) && $method === 'DELETE' => $this->stopTask(urldecode($m[2])),
+            // Backups (docs/adr/0051 §4).
+            (bool) preg_match('#^/nodes/([^/]+)/vzdump$#', $path, $m) && $method === 'POST' => $this->vzdump($m[1], $data),
+            (bool) preg_match('#^/nodes/([^/]+)/storage/([^/]+)/content$#', $path, $m) && $method === 'GET' => $this->backupList(urldecode($m[2]), $query),
+            (bool) preg_match('#^/nodes/([^/]+)/storage/([^/]+)/content/(.+)$#', $path, $m) && $method === 'DELETE' => $this->deleteBackupVolume($m[1], urldecode($m[2]), urldecode($m[3])),
+            (bool) preg_match('#^/nodes/([^/]+)/qemu$#', $path, $m) && $method === 'POST' => $this->restoreBackup($m[1], $data),
             (bool) preg_match('#^/nodes/([^/]+)/qemu/(\d+)(.*)$#', $path, $m) => $this->qemu($method, $m[1], (int) $m[2], $m[3], $data),
             default => Http::response(['data' => null], 501),
         };
@@ -617,6 +639,7 @@ class FakeProxmoxCluster
         $failure = match (true) {
             str_contains($upid, ':qmigrate-fail:') => $this->failMigration,
             (bool) preg_match('/:qm(snapshot|rollback|delsnapshot)-fail:/', $upid) => $this->failSnapshot,
+            (bool) preg_match('/:(vzdump|qmrestore|imgdel)-fail:/', $upid) => $this->failBackup,
             default => $this->failClone,
         };
 
@@ -835,6 +858,107 @@ class FakeProxmoxCluster
         }
 
         return $this->upid($node, $this->failSnapshot !== null ? 'qmdelsnapshot-fail' : 'qmdelsnapshot', $vmid);
+    }
+
+    private function stopTask(string $upid): PromiseInterface
+    {
+        $this->stoppedTasks[] = $upid;
+
+        return $this->ok(null);
+    }
+
+    /**
+     * A backup keeps the VM as it is, firewall included (vzdump backs up
+     * the VM's firewall file); its notes are the template as given.
+     *
+     * @param  array<string, mixed>  $data
+     */
+    private function vzdump(string $node, array $data): PromiseInterface
+    {
+        $this->vzdumps[] = $data;
+        $vmid = (int) $data['vmid'];
+
+        if ($this->failBackup === null) {
+            $storage = (string) $data['storage'];
+            $count = count($this->backupVolumes[$storage] ?? []);
+            $vm = $this->vms[$vmid];
+            $this->backupVolumes[$storage][] = [
+                'volid' => sprintf('%s:backup/vzdump-qemu-%d-2026_10_29-01_00_%02d.vma.zst', $storage, $vmid, $count),
+                'vmid' => $vmid,
+                'node' => $node,
+                'size' => 1024 ** 3 + $count,
+                'ctime' => now()->getTimestamp(),
+                'notes' => (string) ($data['notes-template'] ?? ''),
+                'vm' => ['config' => $vm['config'], 'firewall' => $vm['firewall'], 'rules' => $vm['rules'], 'ipset' => $vm['ipset']],
+            ];
+        }
+
+        return $this->upid($node, $this->failBackup !== null ? 'vzdump-fail' : 'vzdump', $vmid);
+    }
+
+    /**
+     * @param  array<string, mixed>  $query
+     */
+    private function backupList(string $storage, array $query): PromiseInterface
+    {
+        $list = [];
+
+        foreach ($this->backupVolumes[$storage] ?? [] as $volume) {
+            if (! isset($query['vmid']) || (int) $query['vmid'] === $volume['vmid']) {
+                $list[] = ['volid' => $volume['volid'], 'vmid' => $volume['vmid'], 'size' => $volume['size'], 'ctime' => $volume['ctime'], 'notes' => $volume['notes'], 'content' => 'backup', 'format' => 'vma.zst'];
+            }
+        }
+
+        return $this->ok($list);
+    }
+
+    private function deleteBackupVolume(string $node, string $storage, string $volid): PromiseInterface
+    {
+        if ($this->failBackup === null) {
+            $this->backupVolumes[$storage] = array_values(array_filter($this->backupVolumes[$storage] ?? [], fn (array $volume) => $volume['volid'] !== $volid));
+        }
+
+        return $this->upid($node, $this->failBackup !== null ? 'imgdel-fail' : 'imgdel', 0);
+    }
+
+    /**
+     * POST /nodes/{node}/qemu with an archive: the stopped VM (force=1) is
+     * replaced by the backup, its snapshots gone; disks go to the given storage.
+     *
+     * @param  array<string, mixed>  $data
+     */
+    private function restoreBackup(string $node, array $data): PromiseInterface
+    {
+        $vmid = (int) $data['vmid'];
+        $archive = (string) ($data['archive'] ?? '');
+        $volume = collect($this->backupVolumes)->flatten(1)->firstWhere('volid', $archive);
+
+        if (! is_array($volume)) {
+            return Create::promiseFor(new Psr7Response(500, ['Content-Type' => 'application/json'], '{"data":null}', '1.1', "can't find archive '{$archive}'"));
+        }
+
+        if (isset($this->vms[$vmid]) && ($this->vms[$vmid]['status'] === 'running' || (string) ($data['force'] ?? '0') !== '1')) {
+            return Create::promiseFor(new Psr7Response(500, ['Content-Type' => 'application/json'], '{"data":null}', '1.1', "unable to restore VM {$vmid} - VM is running or exists"));
+        }
+
+        if ($this->failBackup === null) {
+            $config = $volume['vm']['config'];
+            unset($config['parent']);
+
+            if (isset($data['storage'])) {
+                $config['scsi0'] = (string) preg_replace('/^[^:]+:/', $data['storage'].':', (string) $config['scsi0']);
+            }
+
+            $this->vms[$vmid] = [
+                ...($this->vms[$vmid] ?? ['node' => $node, 'pool' => null, 'template' => false]),
+                'status' => 'stopped',
+                ...$volume['vm'],
+                'config' => $config,
+            ];
+            unset($this->snapshots[$vmid]);
+        }
+
+        return $this->upid($node, $this->failBackup !== null ? 'qmrestore-fail' : 'qmrestore', $vmid);
     }
 
     private function destroyVm(string $node, int $vmid): PromiseInterface

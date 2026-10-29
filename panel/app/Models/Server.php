@@ -258,6 +258,14 @@ class Server extends Model
     }
 
     /**
+     * @return HasMany<Backup, $this>
+     */
+    public function backups(): HasMany
+    {
+        return $this->hasMany(Backup::class);
+    }
+
+    /**
      * @return HasMany<Snapshot, $this>
      */
     public function snapshots(): HasMany

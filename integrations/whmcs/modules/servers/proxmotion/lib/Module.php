@@ -588,6 +588,32 @@ class Module
     }
 
     /**
+     * Take, restore or delete a backup (docs/adr/0051 §4); the form's "op"
+     * says which. Proxmotion checks the server's state, slots and backup
+     * storage and answers with the reason when it refuses.
+     *
+     * @param array<string, mixed> $input from the form
+     */
+    public function backups(array $input): string
+    {
+        $op = isset($input['op']) ? (string) $input['op'] : '';
+        $backup = isset($input['backup']) ? (string) $input['backup'] : '';
+
+        if ($op === 'take') {
+            $label = isset($input['label']) ? trim((string) $input['label']) : '';
+            $this->client->createBackup((string) $this->requireActiveServer()['id'], $label, $this->idempotencyKey('backup'));
+        } elseif ($op === 'restore' && $backup !== '') {
+            $this->client->restoreBackup((string) $this->requireActiveServer()['id'], $backup, $this->idempotencyKey('backup-restore'));
+        } elseif ($op === 'delete' && $backup !== '') {
+            $this->client->deleteBackup((string) $this->requireServer()['id'], $backup, $this->idempotencyKey('backup-delete'));
+        } else {
+            return $this->lang->get('backup_unknown');
+        }
+
+        return 'success';
+    }
+
+    /**
      * The keys of GET /servers/{id}/ssh-keys.
      *
      * @param array<string, mixed> $data
@@ -843,6 +869,7 @@ class Module
             'firewall' => null,
             'sshKeys' => null,
             'snapshots' => null,
+            'backups' => null,
         ];
 
         try {
@@ -876,6 +903,7 @@ class Module
                     $vars['firewall'] = $this->presentFirewall($this->client->firewall((string) $server['id']), $this->client->firewallRulesets());
                     $vars['sshKeys'] = $this->presentSshKeys((string) $server['id']);
                     $vars['snapshots'] = $this->presentSnapshots((string) $server['id']);
+                    $vars['backups'] = $this->presentBackups((string) $server['id']);
                 }
 
                 if ($server['status'] === 'active' || $server['status'] === 'suspended') {
@@ -1128,6 +1156,54 @@ class Module
                     'label' => isset($snapshot['label']) && is_string($snapshot['label']) && $snapshot['label'] !== '' ? $snapshot['label'] : $this->lang->get('snapshot_no_label'),
                     // Date and time as Proxmotion sent them (its own time zone).
                     'time' => isset($snapshot['created_at']) ? substr(str_replace('T', ' ', (string) $snapshot['created_at']), 0, 16) : '',
+                ];
+            }
+        }
+
+        $unavailable = isset($data['unavailable_reason']) && is_string($data['unavailable_reason']) ? $data['unavailable_reason'] : null;
+
+        return [
+            'items' => $items,
+            'count' => $this->lang->get('snapshots_count', ['count' => count($items), 'slots' => $slots]),
+            'canTake' => $unavailable === null && count($items) < $slots,
+            'unavailable' => $unavailable,
+        ];
+    }
+
+    /**
+     * The backups for the template (docs/adr/0051 §4), or null when the
+     * server may have none or Proxmotion cannot say (a panel before
+     * backups, or an error): the rest of the page still shows.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function presentBackups(string $id): ?array
+    {
+        try {
+            $data = $this->client->backups($id);
+        } catch (ApiException $e) {
+            return null;
+        }
+
+        $slots = isset($data['slots']) ? (int) $data['slots'] : 0;
+
+        if ($slots === 0) {
+            return null;
+        }
+
+        $items = [];
+
+        foreach (isset($data['backups']) && is_array($data['backups']) ? $data['backups'] : [] as $backup) {
+            if (is_array($backup) && isset($backup['id'])) {
+                $items[] = [
+                    'id' => (string) $backup['id'],
+                    'label' => isset($backup['label']) && is_string($backup['label']) && $backup['label'] !== '' ? $backup['label'] : $this->lang->get('snapshot_no_label'),
+                    // Date and time as Proxmotion sent them (its own time zone).
+                    'time' => isset($backup['created_at']) ? substr(str_replace('T', ' ', (string) $backup['created_at']), 0, 16) : '',
+                    'size' => isset($backup['size_bytes']) ? self::bytes((int) $backup['size_bytes']) : '',
+                    'system' => isset($backup['os_template']) && is_string($backup['os_template']) ? $backup['os_template'] : '',
+                    'restorable' => !isset($backup['restorable']) || $backup['restorable'] === true,
+                    'reason' => isset($backup['unrestorable_reason']) && is_string($backup['unrestorable_reason']) ? $backup['unrestorable_reason'] : '',
                 ];
             }
         }

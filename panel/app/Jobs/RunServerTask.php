@@ -15,7 +15,9 @@ use App\Provisioning\Pipelines\AddressesPipeline;
 use App\Provisioning\Pipelines\AntiSpoofingPipeline;
 use App\Provisioning\Pipelines\AppRunPipeline;
 use App\Provisioning\Pipelines\ChangeResourcesPipeline;
+use App\Provisioning\Pipelines\CreateBackupPipeline;
 use App\Provisioning\Pipelines\CreateServerPipeline;
+use App\Provisioning\Pipelines\DeleteBackupPipeline;
 use App\Provisioning\Pipelines\FirewallPipeline;
 use App\Provisioning\Pipelines\HostnamePipeline;
 use App\Provisioning\Pipelines\InstallAppPipeline;
@@ -23,6 +25,7 @@ use App\Provisioning\Pipelines\MoveServerPipeline;
 use App\Provisioning\Pipelines\PowerPipeline;
 use App\Provisioning\Pipelines\ReinstallServerPipeline;
 use App\Provisioning\Pipelines\ResetPasswordPipeline;
+use App\Provisioning\Pipelines\RestoreBackupPipeline;
 use App\Provisioning\Pipelines\SnapshotPipeline;
 use App\Provisioning\Pipelines\SshKeysPipeline;
 use App\Provisioning\Pipelines\TerminateServerPipeline;
@@ -61,7 +64,7 @@ class RunServerTask implements ShouldQueue
      */
     public function __construct(public Task $task, public int $dispatch = 0) {}
 
-    public function handle(CreateServerPipeline $create, MoveServerPipeline $move, PowerPipeline $power, TerminateServerPipeline $terminate, ResetPasswordPipeline $resetPassword, ReinstallServerPipeline $reinstall, ChangeResourcesPipeline $changeResources, GuestScripts $guestScripts, AddressesPipeline $addresses, HostnamePipeline $hostname, SshKeysPipeline $sshKeys, InstallAppPipeline $installApp, AppRunPipeline $appRun, AntiSpoofingPipeline $antiSpoofing, FirewallPipeline $firewall, SnapshotPipeline $snapshots, ServerVerifier $verifier, StageRunner $stages, TaskFailer $failer): void
+    public function handle(CreateServerPipeline $create, MoveServerPipeline $move, PowerPipeline $power, TerminateServerPipeline $terminate, ResetPasswordPipeline $resetPassword, ReinstallServerPipeline $reinstall, ChangeResourcesPipeline $changeResources, GuestScripts $guestScripts, AddressesPipeline $addresses, HostnamePipeline $hostname, SshKeysPipeline $sshKeys, InstallAppPipeline $installApp, AppRunPipeline $appRun, AntiSpoofingPipeline $antiSpoofing, FirewallPipeline $firewall, SnapshotPipeline $snapshots, CreateBackupPipeline $createBackup, RestoreBackupPipeline $restoreBackup, DeleteBackupPipeline $deleteBackup, ServerVerifier $verifier, StageRunner $stages, TaskFailer $failer): void
     {
         $task = $this->task;
 
@@ -91,6 +94,8 @@ class RunServerTask implements ShouldQueue
                 TaskType::Create => $create,
                 TaskType::Reinstall => $reinstall,
                 TaskType::Move => $move,
+                TaskType::CreateBackup => $createBackup,
+                TaskType::RestoreBackup => $restoreBackup,
                 default => null,
             };
 
@@ -117,6 +122,7 @@ class RunServerTask implements ShouldQueue
                     TaskType::EnableAntiSpoofing => $antiSpoofing->run($task),
                     TaskType::ApplyFirewall => $firewall->run($task),
                     TaskType::CreateSnapshot, TaskType::RollbackSnapshot, TaskType::DeleteSnapshot => $snapshots->run($task),
+                    TaskType::DeleteBackup => $deleteBackup->run($task),
                 };
             }
         } catch (Throwable $e) {

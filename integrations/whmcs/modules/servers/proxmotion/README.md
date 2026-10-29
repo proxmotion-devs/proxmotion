@@ -200,6 +200,20 @@ disk back to that moment and Proxmotion puts its own settings back; the root pas
 is the one of that time, so the customer resets it. Proxmotion's message is shown when a
 server is full or cannot have snapshots. Hidden with a Proxmotion without snapshots, or when it answers with an error (the rest of the page still shows).
 
+### Backups
+
+Active servers whose package (or `backups` option) allows backups list them in a
+**Backups** section (Proxmotion docs/adr/0051 §4): label, time, size and operating system,
+*Restore* and *Delete*, each with a confirmation, and a form to take one with an optional
+label while slots are free (custom action `Backups` with `op` take, restore or delete).
+Backups are full copies on separate storage made by Proxmox; they survive reinstalls, and a
+backup of a large server can take a long time, during which the server takes no other
+action. A restore replaces the whole disk and deletes the snapshots; the operating system
+and root password become those of the backup, so the customer resets the password. A backup
+the server can no longer reach (after Proxmotion's administrators moved it) shows the reason
+instead of *Restore*. Proxmotion's message is shown when a server is full or has no backup
+storage. Hidden with a Proxmotion without backups, or when it answers with an error.
+
 ### SSH keys
 
 Active servers list the **SSH keys** Proxmotion manages for root (Administrator on Windows)

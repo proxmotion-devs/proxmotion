@@ -44,7 +44,7 @@ final readonly class TaskPlan
             TaskType::ChangeResources => ['configure', 'resize', 'addresses', 'apply'],
             TaskType::ChangePrimaryAddress, TaskType::ChangeAddresses => ['addresses', 'guest_addresses'],
             TaskType::Unsuspend => ['start', 'wait_agent'],
-            TaskType::Terminate => ['stop', 'destroy', 'release_ips'],
+            TaskType::Terminate => ['stop', 'destroy', ...($task->server->backups()->exists() ? ['delete_backups'] : []), 'release_ips'],
             TaskType::Verify => ['verify'],
             TaskType::ChangeSshKeys => [GuestScriptEvent::SshKeysChanged->step()],
             TaskType::EnableAntiSpoofing, TaskType::ApplyFirewall => ['firewall'],
@@ -53,6 +53,10 @@ final readonly class TaskPlan
             TaskType::CreateSnapshot => ['snapshot'],
             TaskType::RollbackSnapshot => ['rollback', 'configure', 'resize', 'firewall', 'start', GuestScriptEvent::AddressesChanged->step(), GuestScriptEvent::HostnameChanged->step(), GuestScriptEvent::SshKeysChanged->step()],
             TaskType::DeleteSnapshot => ['delete_snapshot'],
+            // Backups (docs/adr/0051 §4, §5).
+            TaskType::CreateBackup => ['backup', 'record_backup'],
+            TaskType::RestoreBackup => ['stop', 'restore', 'configure', 'resize', 'firewall', 'start', 'wait_agent', GuestScriptEvent::AddressesChanged->step(), GuestScriptEvent::HostnameChanged->step(), GuestScriptEvent::SshKeysChanged->step()],
+            TaskType::DeleteBackup => ['delete_backup'],
             default => [],
         };
     }

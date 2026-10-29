@@ -32,4 +32,7 @@ enum TaskType: string
     case CreateSnapshot = 'create_snapshot';
     case RollbackSnapshot = 'rollback_snapshot';
     case DeleteSnapshot = 'delete_snapshot';
+    case CreateBackup = 'create_backup';
+    case RestoreBackup = 'restore_backup';
+    case DeleteBackup = 'delete_backup';
 }

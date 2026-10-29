@@ -277,6 +277,22 @@ final readonly class QemuResource
     }
 
     /**
+     * Replace the stopped VM with a backup of it (docs/adr/0051 §4): same
+     * VMID, its disks and snapshots replaced, the backup's MAC address kept
+     * (unique=0). Without a storage, the disks go where they were.
+     */
+    public function restore(int $vmid, string $archive, ?string $storage): Upid
+    {
+        $params = ['vmid' => $vmid, 'archive' => $archive, 'force' => 1, 'unique' => 0];
+
+        if ($storage !== null) {
+            $params['storage'] = $storage;
+        }
+
+        return $this->upid($this->client->post('/nodes/'.rawurlencode($this->node).'/qemu', $params));
+    }
+
+    /**
      * Delete the VM and all of its disks.
      */
     public function destroy(int $vmid): Upid

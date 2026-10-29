@@ -21,7 +21,7 @@ enum WebhookEvent: string
     /** The server moved to another node, cluster or location (docs/adr/0037); its addresses may be new. */
     case ServerMoved = 'server.moved';
 
-    /** The server went back to a snapshot (docs/adr/0051); its root password is the one of that time. */
+    /** The server went back to a snapshot or was restored from a backup (docs/adr/0051); its root password is the one of that time. */
     case ServerRestored = 'server.restored';
 
     /** Creating, reinstalling or terminating failed; the server is in the error state. */
@@ -74,7 +74,7 @@ enum WebhookEvent: string
             TaskType::Reinstall => self::ServerReinstalled,
             TaskType::Terminate => self::ServerTerminated,
             TaskType::Move => self::ServerMoved,
-            TaskType::RollbackSnapshot => self::ServerRestored,
+            TaskType::RollbackSnapshot, TaskType::RestoreBackup => self::ServerRestored,
             default => null,
         };
     }
@@ -92,7 +92,7 @@ enum WebhookEvent: string
             self::ServerReinstalled => 'Server reinstalled',
             self::ServerTerminated => 'Server terminated',
             self::ServerMoved => 'Server moved',
-            self::ServerRestored => 'Server restored from a snapshot',
+            self::ServerRestored => 'Server restored from a snapshot or backup',
             self::ServerFailed => 'Server failed (create, reinstall or terminate)',
             self::ServerUsageExceeded => 'Server over its traffic quota or a usage limit',
             self::TaskSucceeded => 'Any task succeeded',

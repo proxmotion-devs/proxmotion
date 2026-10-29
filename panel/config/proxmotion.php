@@ -72,6 +72,20 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Backups (docs/adr/0051)
+    |--------------------------------------------------------------------------
+    |
+    | Taking or restoring a backup must finish within deadline_minutes of its
+    | start: large servers can take hours.
+    |
+    */
+
+    'backups' => [
+        'deadline_minutes' => (int) env('PROXMOTION_BACKUP_DEADLINE_MINUTES', 360),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Moving servers (docs/adr/0037)
     |--------------------------------------------------------------------------
     |
