@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Provisioning\Pipelines;
 
 use App\Domain\Servers\GuestScripts;
+use App\Domain\Servers\ServerVerifier;
 use App\Domain\Settings\PanelSettings;
 use App\Enums\AppInstallationStatus;
 use App\Enums\GuestScriptEvent;
@@ -28,7 +29,8 @@ use RuntimeException;
  * restore over the VM (same VMID, the backup's MAC address, the disks on
  * the server's storage) → the panel's state written back (§5): resources,
  * port speed, disk size, firewall, notes and tags → started again when it
- * ran → its addresses, hostname and SSH keys written into the guest.
+ * ran → its addresses, hostname and SSH keys written into the guest →
+ * checked from inside.
  * Cloud-init settings stay as the backup has them. The restore deletes the
  * VM's snapshots. Staged (docs/adr/0032) with the backup deadline.
  */
@@ -40,11 +42,12 @@ final readonly class RestoreBackupPipeline implements HasOwnDeadline, StagedPipe
         private VmState $vm,
         private GuestScripts $guestScripts,
         private GuestRefresh $refresh,
+        private ServerVerifier $verifier,
     ) {}
 
     public function stages(): array
     {
-        return ['stop', 'restore', 'configure', 'resize', 'firewall', 'start', 'wait_agent', 'refresh'];
+        return ['stop', 'restore', 'configure', 'resize', 'firewall', 'start', 'wait_agent', 'refresh', 'verify'];
     }
 
     public function deadlineMinutes(): int
@@ -65,6 +68,8 @@ final readonly class RestoreBackupPipeline implements HasOwnDeadline, StagedPipe
             'start' => $this->start($task, $server),
             'wait_agent' => $this->wasRunning($task) ? $this->waitForAgent($task, $server) : null,
             'refresh' => $this->wasRunning($task) ? $this->refreshGuest($task, $server) : null,
+            // Checked from inside like a new server (docs/adr/0051 §5); never fails the restore.
+            'verify' => $this->wasRunning($task) ? $this->verify($task, $server) : null,
             default => throw new RuntimeException("Unknown stage {$stage}."),
         };
     }
@@ -149,6 +154,8 @@ final readonly class RestoreBackupPipeline implements HasOwnDeadline, StagedPipe
             'root_password_unrevealed' => false,
             'reboot_required' => false,
             'guest_refresh_pending' => true,
+            // The last checks from inside describe the disk before the restore.
+            'verification' => null,
         ])->save();
         $task->completeStep('restore');
 
@@ -250,6 +257,13 @@ final readonly class RestoreBackupPipeline implements HasOwnDeadline, StagedPipe
         if (($task->input['grown'] ?? false) === true) {
             $this->guestScripts->run($task, $server, GuestScriptEvent::DiskResized);
         }
+
+        return null;
+    }
+
+    private function verify(Task $task, Server $server): null
+    {
+        $this->verifier->verifyStep($task, $server->refresh());
 
         return null;
     }

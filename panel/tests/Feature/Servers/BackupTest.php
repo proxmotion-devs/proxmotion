@@ -215,7 +215,7 @@ class BackupTest extends TestCase
         $this->assertNotContains('198.51.100.99', $this->vm()['ipset'], 'Exactly the server\'s addresses.');
         $this->assertStringContainsString("Server {$this->server->uuid}", (string) $this->vm()['config']['description']);
         $this->assertSame('running', $this->vm()['status'], 'Started again: it was running.');
-        $steps = ['stop', 'restore', 'configure', 'resize', 'firewall', 'start', 'wait_agent', 'guest_addresses', 'guest_hostname', 'guest_ssh_keys'];
+        $steps = ['stop', 'restore', 'configure', 'resize', 'firewall', 'start', 'wait_agent', 'guest_addresses', 'guest_hostname', 'guest_ssh_keys', 'verify'];
         $this->assertSame($steps, array_values(array_intersect(array_column($task->steps, 'key'), $steps)));
 
         $server = $this->server->refresh();
@@ -223,6 +223,8 @@ class BackupTest extends TestCase
         $this->assertNull($server->root_password, 'The guest has the password of the backup\'s time.');
         $this->assertFalse($server->root_password_unrevealed);
         $this->assertFalse($server->guest_refresh_pending);
+        $this->assertNotNull($server->verification, 'Checked from inside afterwards.');
+        $this->assertNull(collect($task->steps)->firstWhere('key', 'verify')['message'], 'Every check passed.');
         $this->assertSame(AppInstallationStatus::Removed, $app->refresh()->status, 'Installed after the backup: gone.');
         $this->assertSame(0, Snapshot::query()->count(), 'The restore replaced the disks and their snapshots.');
         $this->assertTrue(Backup::query()->exists(), 'The backup stays.');
@@ -233,12 +235,15 @@ class BackupTest extends TestCase
     {
         $this->take();
         $this->proxmox->vms[$this->server->vmid]['status'] = 'stopped';
+        $this->assertNotNull($this->server->refresh()->verification, 'Checked after its creation.');
 
         $task = $this->backups()->restore($this->server, Backup::query()->sole(), $this->admin, null)->refresh();
 
         $this->assertSame(TaskStatus::Succeeded, $task->status, (string) $task->error);
         $this->assertSame('stopped', $this->vm()['status']);
         $this->assertNotContains('guest_addresses', array_column($task->steps, 'key'));
+        $this->assertNotContains('verify', array_column($task->steps, 'key'));
+        $this->assertNull($this->server->refresh()->verification, 'The checks of the disk before the restore are gone.');
         $this->assertTrue($this->server->refresh()->guest_refresh_pending, 'Its addresses, hostname and keys wait for the next start.');
     }
 

@@ -55,7 +55,7 @@ final readonly class TaskPlan
             TaskType::DeleteSnapshot => ['delete_snapshot'],
             // Backups (docs/adr/0051 §4, §5).
             TaskType::CreateBackup => ['backup', 'record_backup'],
-            TaskType::RestoreBackup => ['stop', 'restore', 'configure', 'resize', 'firewall', 'start', 'wait_agent', GuestScriptEvent::AddressesChanged->step(), GuestScriptEvent::HostnameChanged->step(), GuestScriptEvent::SshKeysChanged->step()],
+            TaskType::RestoreBackup => ['stop', 'restore', 'configure', 'resize', 'firewall', 'start', 'wait_agent', GuestScriptEvent::AddressesChanged->step(), GuestScriptEvent::HostnameChanged->step(), GuestScriptEvent::SshKeysChanged->step(), 'verify'],
             TaskType::DeleteBackup => ['delete_backup'],
             default => [],
         };
