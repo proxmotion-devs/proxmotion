@@ -210,6 +210,8 @@ class BackupScheduleTest extends TestCase
 
     public function test_a_backup_that_cannot_be_pruned_leaves_a_note_but_the_backup_stays()
     {
+        config(['proxmotion.notifications.enabled' => true, 'proxmotion.notifications.recipients' => []]);
+        Notification::fake();
         $this->server->forceFill(['backup_slots' => 1])->save();
         $this->runOn('2026-11-03');
         $first = Backup::query()->sole();
@@ -223,6 +225,65 @@ class BackupScheduleTest extends TestCase
         $this->assertSame(TaskStatus::Succeeded, $task?->status, (string) $task?->error);
         $this->assertStringStartsWith('Older scheduled backups deleted: 0. Not deleted:', (string) collect($task->steps)->firstWhere('key', 'prune_backups')['message']);
         $this->assertSame(2, Backup::query()->count());
+
+        // Still over its slots: administrators are told, once per throttle window.
+        Notification::assertSentTo($this->admin, AdminAlert::class, fn (AdminAlert $alert) => $alert->event === NotificationEvent::BackupFailed
+            && str_contains($alert->toMail($this->admin)->subject, 'could not be deleted')
+            && str_contains($alert->toMail($this->admin)->introLines[0], 'has 1 more backups'));
+    }
+
+    public function test_package_less_servers_follow_only_their_own_schedule()
+    {
+        $this->server->forceFill(['package_id' => null])->save();
+        $this->server->unsetRelation('package');
+
+        $this->assertSame(BackupSchedule::None, BackupSchedules::of($this->server));
+        $this->assertNull(BackupSchedules::nextAt($this->server, now()));
+        $this->actingAs($this->admin)->get(route('admin.servers.show', $this->server))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('backups.schedule.package', null)
+                ->where('backups.schedule.effective', 'none'));
+        $this->assertSame(0, $this->runOn('2026-11-03'));
+
+        $this->server->forceFill(['backup_schedule' => BackupSchedule::Daily])->save();
+        $this->assertSame(1, $this->runOn('2026-11-04'));
+    }
+
+    public function test_servers_that_are_not_active_have_no_next_backup()
+    {
+        $this->travelTo(CarbonImmutable::parse('2026-11-03 00:30', 'UTC'));
+        $this->assertNotNull(BackupSchedules::nextAt($this->server, now()));
+
+        $this->server->forceFill(['status' => ServerStatus::Suspended])->save();
+
+        $this->assertNull(BackupSchedules::nextAt($this->server, now()));
+        $this->assertSame('server_not_active', BackupSchedules::blocked($this->server)?->error);
+        $this->actingAs($this->admin)->get(route('admin.servers.show', $this->server))
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('backups.schedule.next_at', null)
+                ->where('backups.schedule.blocked', 'Scheduled backups are taken only while the server is active.'));
+    }
+
+    public function test_lowered_slots_delete_several_scheduled_backups_one_per_run()
+    {
+        $this->server->forceFill(['backup_slots' => 3])->save();
+        $this->runOn('2026-11-03');
+        $this->runOn('2026-11-04');
+        $this->runOn('2026-11-05');
+        $old = Backup::query()->orderBy('id')->pluck('volume')->all();
+        $this->assertCount(3, $old);
+
+        // Down to one slot: the new backup stays, the three older ones go, oldest first.
+        $this->server->forceFill(['backup_slots' => 1])->save();
+        $this->runOn('2026-11-06');
+
+        $this->assertSame($old, $this->proxmox->deletedBackupVolumes);
+        $this->assertSame(1, Backup::query()->count());
+        $task = Task::query()->where('type', TaskType::CreateBackup)->latest('id')->first();
+        $this->assertSame(TaskStatus::Succeeded, $task?->status, (string) $task?->error);
+        $this->assertSame('Older scheduled backups deleted: 3.', collect($task->steps)->firstWhere('key', 'prune_backups')['message']);
+        $this->assertNull($task->stage_state);
     }
 
     public function test_manual_backups_filling_the_slots_stop_scheduled_ones()

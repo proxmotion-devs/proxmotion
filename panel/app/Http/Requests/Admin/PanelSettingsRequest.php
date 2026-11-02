@@ -25,6 +25,9 @@ class PanelSettingsRequest extends FormRequest
     /** Further notification recipients besides the administrators (docs/adr/0044). */
     private const int MAX_RECIPIENTS = 10;
 
+    /** The shortest backup window (docs/adr/0051 §6), three runs of backups:schedule. */
+    private const int MIN_BACKUP_WINDOW_MINUTES = 30;
+
     /**
      * @return array<string, ValidationRule|array<mixed>|string>
      */
@@ -44,7 +47,21 @@ class PanelSettingsRequest extends FormRequest
             'backup_deadline_minutes' => ['required', 'integer', 'min:30', 'max:2880'],
             // Scheduled backups (docs/adr/0051 §6); a window may end on the next day, but not where it starts.
             'backup_window_start' => ['required', 'string', 'date_format:H:i'],
-            'backup_window_end' => ['required', 'string', 'date_format:H:i', 'different:backup_window_start'],
+            // backups:schedule runs every 10 minutes: a shorter window could fall between two runs.
+            'backup_window_end' => ['required', 'string', 'date_format:H:i', function (string $attribute, mixed $value, Closure $fail) {
+                $start = $this->input('backup_window_start');
+
+                // A malformed time already fails date_format.
+                if (! is_string($start) || ! is_string($value) || preg_match('/^\d{2}:\d{2}$/', $start) !== 1 || preg_match('/^\d{2}:\d{2}$/', $value) !== 1) {
+                    return;
+                }
+
+                $minutes = fn (string $time): int => (int) substr($time, 0, 2) * 60 + (int) substr($time, 3, 2);
+
+                if (($minutes($value) - $minutes($start) + 1440) % 1440 < self::MIN_BACKUP_WINDOW_MINUTES) {
+                    $fail(__('The backup window must be at least :minutes minutes long.', ['minutes' => self::MIN_BACKUP_WINDOW_MINUTES]));
+                }
+            }],
             'backups_per_node' => ['required', 'integer', 'min:1', 'max:20'],
             'backups_per_storage' => ['required', 'integer', 'min:1', 'max:50'],
             'backups_keep_terminated_days' => ['required', 'integer', 'min:0', 'max:365'],

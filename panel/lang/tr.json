@@ -2597,5 +2597,9 @@
     "A scheduled backup failed": "Zamanlanmış bir yedekleme başarısız oldu",
     "Scheduled backup of :server failed": ":server için zamanlanmış yedekleme başarısız oldu",
     "The scheduled backup of server :server failed. The next one is taken in the next backup window.": ":server sunucusunun zamanlanmış yedeklemesi başarısız oldu. Bir sonraki, sonraki yedekleme penceresinde alınır.",
+    "Scheduled backups are taken only while the server is active.": "Zamanlanmış yedekler yalnızca sunucu aktifken alınır.",
+    "The backup window must be at least :minutes minutes long.": "Yedekleme penceresi en az :minutes dakika olmalıdır.",
+    "Old backups of :server could not be deleted": ":server sunucusunun eski yedekleri silinemedi",
+    "Server :server has :count more backups than it may have: older scheduled backups could not be deleted. Delete them by hand, or check their backup storage.": ":server sunucusunun izin verilenden :count fazla yedeği var: eski zamanlanmış yedekler silinemedi. Bunları elle silin veya yedekleme storage'larını kontrol edin.",
     "Manual backups fill every backup slot of this server, so no scheduled backup is taken. Delete one of them first.": "Bu sunucunun tüm yedek slotları elle alınan yedeklerle dolu, bu yüzden zamanlanmış yedek alınmıyor. Önce birini silin."
 }

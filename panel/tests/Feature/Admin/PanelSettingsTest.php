@@ -219,6 +219,18 @@ class PanelSettingsTest extends AdminTestCase
         $this->assertSame(array_keys(PanelSettings::KEYS), PanelSettings::unsaved());
     }
 
+    public function test_the_backup_window_is_at_least_thirty_minutes_long()
+    {
+        $this->saveCategory('backups', ['backup_window_start' => '01:00', 'backup_window_end' => '01:20'])
+            ->assertSessionHasErrors(['backup_window_end' => 'The backup window must be at least 30 minutes long.']);
+        $this->saveCategory('backups', ['backup_window_start' => '01:00', 'backup_window_end' => '01:00'])
+            ->assertSessionHasErrors('backup_window_end');
+        // Ending on the next day counts across midnight.
+        $this->saveCategory('backups', ['backup_window_start' => '23:50', 'backup_window_end' => '00:20'])
+            ->assertSessionHasNoErrors();
+        $this->assertSame('00:20', PanelSettings::get('backup_window_end'));
+    }
+
     public function test_a_generated_password_format_needs_three_kinds_of_characters()
     {
         // Letters and digits only: Windows would refuse such passwords.

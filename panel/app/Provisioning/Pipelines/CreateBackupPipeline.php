@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Provisioning\Pipelines;
 
+use App\Domain\Notifications\AdminNotifier;
 use App\Domain\Settings\PanelSettings;
 use App\Enums\BackupKind;
 use App\Enums\TaskStatus;
@@ -35,6 +36,7 @@ final readonly class CreateBackupPipeline implements HasOwnDeadline, StagedPipel
         private ProxmoxClientFactory $clients,
         private StageRunner $stages,
         private DeleteBackupPipeline $deletes,
+        private AdminNotifier $notifier,
     ) {}
 
     public function stages(): array
@@ -151,48 +153,110 @@ final readonly class CreateBackupPipeline implements HasOwnDeadline, StagedPipel
 
     /**
      * Retention (docs/adr/0051 §6): a scheduled backup deletes the oldest
-     * scheduled backups beyond the server's slots. Manual backups are never
-     * deleted here. A backup that cannot be deleted is noted and left for
-     * the next scheduled backup, without failing this one.
+     * scheduled backups beyond the server's slots, one at a time. Manual
+     * backups are never deleted here. Proxmox's delete task is checked
+     * between runs like the backup's (docs/adr/0032), so no run waits for
+     * it. A backup that cannot be deleted is noted and skipped, without
+     * failing this backup; when the server is still over its slots at the
+     * end, administrators get an email.
      */
-    private function prune(Task $task, Server $server): null
+    private function prune(Task $task, Server $server): ?int
     {
         if (($task->input['kind'] ?? null) !== BackupKind::Scheduled->value) {
             return null;
         }
 
-        $excess = $server->backups()->count() - $server->backup_slots;
+        $uuid = $task->stageValue('pruning');
+        $backup = is_string($uuid) ? $server->backups()->with(['cluster', 'node'])->where('uuid', $uuid)->first() : null;
 
-        if ($excess <= 0) {
-            $task->completeStep('prune_backups');
+        if ($backup === null) {
+            $backup = $this->nextToPrune($task, $server);
 
+            if ($backup === null) {
+                return $this->finishPruning($task, $server);
+            }
+
+            $task->rememberForStage(['pruning' => $backup->uuid]);
+        }
+
+        try {
+            $delay = $this->stages->proxmoxTask(
+                $task,
+                $this->clients->forCluster($backup->cluster),
+                fn () => $this->deletes->startRemoval($backup),
+                timeoutSeconds: DeleteBackupPipeline::TIMEOUT_SECONDS,
+                pollSeconds: 5,
+            );
+        } catch (Throwable $e) {
+            $task->rememberForStage([
+                'pruning' => null,
+                'upid' => null,
+                'upid_deadline' => null,
+                'failed' => [...$this->stageList($task, 'failed'), $backup->uuid],
+                'errors' => [...$this->stageList($task, 'errors'), $e->getMessage()],
+            ]);
+
+            return 0;
+        }
+
+        if ($delay !== null) {
+            return $delay;
+        }
+
+        $backup->delete();
+        $task->rememberForStage(['pruning' => null, 'deleted' => (int) $task->stageValue('deleted') + 1]);
+
+        // The next one in the next run.
+        return 0;
+    }
+
+    /**
+     * The oldest scheduled backup to delete while the server has more
+     * backups than slots: never the new one, nor one that failed already.
+     */
+    private function nextToPrune(Task $task, Server $server): ?Backup
+    {
+        if ($server->backups()->count() <= $server->backup_slots) {
             return null;
         }
 
-        $oldest = $server->backups()
+        return $server->backups()
             ->with(['cluster', 'node'])
             ->where('kind', BackupKind::Scheduled)
             ->where('uuid', '!=', (string) ($task->input['backup'] ?? ''))
+            ->whereNotIn('uuid', $this->stageList($task, 'failed'))
             ->orderBy('created_at')
             ->orderBy('id')
-            ->limit($excess)
-            ->get();
-        $deleted = 0;
-        $errors = [];
+            ->first();
+    }
 
-        foreach ($oldest as $backup) {
-            try {
-                $this->deletes->remove($backup);
-                $deleted++;
-            } catch (Throwable $e) {
-                $errors[] = $e->getMessage();
-            }
+    private function finishPruning(Task $task, Server $server): null
+    {
+        $deleted = (int) $task->stageValue('deleted');
+        $errors = $this->stageList($task, 'errors');
+        $excess = $server->backups()->count() - $server->backup_slots;
+
+        $task->completeStep('prune_backups', match (true) {
+            $errors !== [] => "Older scheduled backups deleted: {$deleted}. Not deleted: ".implode(' ', $errors),
+            $deleted > 0 => "Older scheduled backups deleted: {$deleted}.",
+            default => null,
+        });
+
+        // Backups that cannot be deleted would otherwise pile up unnoticed, one per scheduled backup.
+        if ($excess > 0) {
+            $this->notifier->backupsOverSlots($task, $excess, $errors);
         }
 
-        $task->completeStep('prune_backups', $errors === []
-            ? "Older scheduled backups deleted: {$deleted}."
-            : "Older scheduled backups deleted: {$deleted}. Not deleted: ".implode(' ', $errors));
-
         return null;
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function stageList(Task $task, string $key): array
+    {
+        $value = $task->stageValue($key);
+
+        return is_array($value) ? array_values(array_filter($value, is_string(...))) : [];
     }
 }

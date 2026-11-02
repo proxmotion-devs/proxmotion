@@ -54,6 +54,10 @@ final readonly class BackupSchedules
             return null;
         }
 
+        if ($server->status !== ServerStatus::Active) {
+            return BackupsUnavailable::notActive();
+        }
+
         return ServerBackups::unavailable($server)
             ?? ($server->backups()->where('kind', BackupKind::Manual)->count() >= $server->backup_slots ? BackupsUnavailable::manualSlotsFull() : null);
     }
@@ -81,13 +85,14 @@ final readonly class BackupSchedules
 
     /**
      * When the server's next scheduled backup is due, or null when it has
-     * no schedule. A time in the past: at the next run of backups:schedule.
+     * no schedule or is not active (queueDue() skips it then). A time in
+     * the past: at the next run of backups:schedule.
      */
     public static function nextAt(Server $server, CarbonInterface $now): ?CarbonImmutable
     {
         $schedule = self::of($server);
 
-        if ($schedule === BackupSchedule::None) {
+        if ($schedule === BackupSchedule::None || $server->status !== ServerStatus::Active) {
             return null;
         }
 

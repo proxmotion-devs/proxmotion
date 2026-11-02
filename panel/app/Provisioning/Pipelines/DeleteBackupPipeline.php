@@ -7,6 +7,7 @@ namespace App\Provisioning\Pipelines;
 use App\Models\Backup;
 use App\Models\Task;
 use App\Proxmox\Data\BackupVolume;
+use App\Proxmox\Data\Upid;
 use App\Proxmox\ProxmoxClientFactory;
 use RuntimeException;
 
@@ -17,6 +18,9 @@ use RuntimeException;
  */
 final readonly class DeleteBackupPipeline
 {
+    /** How long Proxmox may take to delete a backup file. */
+    public const int TIMEOUT_SECONDS = 600;
+
     public function __construct(private ProxmoxClientFactory $clients) {}
 
     public function run(Task $task): void
@@ -35,24 +39,33 @@ final readonly class DeleteBackupPipeline
      */
     public function remove(Backup $backup): void
     {
-        $client = $this->clients->forCluster($backup->cluster);
+        $upid = $this->startRemoval($backup);
+
+        if ($upid !== null) {
+            $this->clients->forCluster($backup->cluster)->taskWaiter()->wait($upid, timeoutSeconds: self::TIMEOUT_SECONDS);
+        }
+
+        $backup->delete();
+    }
+
+    /**
+     * Ask Proxmox to delete the volume, without waiting for it: the Proxmox
+     * task to wait for, or null when there is none (Proxmox no longer has
+     * the volume, or deleted it at once). The row stays; the caller deletes
+     * it once the task has finished. Staged callers check the task between
+     * runs (CreateBackupPipeline's retention).
+     */
+    public function startRemoval(Backup $backup): ?Upid
+    {
         // A storage that is not shared is reached only from the node it belongs to:
         // once that node is gone, only a shared storage of the same name is the same storage.
         $node = $backup->node->name
             ?? $backup->cluster->nodes()->whereHas('storages', fn ($query) => $query->where('name', $backup->storage)->where('is_shared', true))->value('name')
             ?? throw new RuntimeException("The node that has the storage {$backup->storage} of this backup is gone.");
-        $nodes = $client->nodes();
+        $nodes = $this->clients->forCluster($backup->cluster)->nodes();
         $present = collect($nodes->backups($node, $backup->storage, $backup->vmid))
             ->contains(fn (BackupVolume $volume) => $volume->volume === $backup->volume);
 
-        if ($present) {
-            $upid = $nodes->deleteVolume($node, $backup->storage, $backup->volume);
-
-            if ($upid !== null) {
-                $client->taskWaiter()->wait($upid, timeoutSeconds: 600);
-            }
-        }
-
-        $backup->delete();
+        return $present ? $nodes->deleteVolume($node, $backup->storage, $backup->volume) : null;
     }
 }

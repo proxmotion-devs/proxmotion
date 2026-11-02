@@ -77,6 +77,33 @@ final class AdminNotifier
     }
 
     /**
+     * A scheduled backup succeeded, but older ones could not be deleted, so
+     * the server has more backups than slots (docs/adr/0051 §6). Each later
+     * scheduled backup would add one more; manual backups are refused
+     * meanwhile. Once per server per throttle window.
+     *
+     * @param  list<string>  $errors
+     */
+    public function backupsOverSlots(Task $task, int $excess, array $errors): void
+    {
+        $this->send(NotificationEvent::BackupFailed, function () use ($task, $excess, $errors) {
+            $server = $task->server;
+            $replace = ['server' => $server->vmName()];
+
+            return new AdminAlert(
+                NotificationEvent::BackupFailed,
+                'Old backups of :server could not be deleted',
+                $replace,
+                [
+                    ['Server :server has :count more backups than it may have: older scheduled backups could not be deleted. Delete them by hand, or check their backup storage.', [...$replace, 'count' => (string) $excess]],
+                    ...($errors === [] ? [] : [['Error: :error', ['error' => self::error(implode(' ', $errors))]]]),
+                ],
+                route('admin.servers.show', $server),
+            );
+        }, throttle: "over-slots:{$task->server_id}");
+    }
+
+    /**
      * An installation attempt failed. Trials of drafts (docs/adr/0018 §7) are not reported.
      */
     public function appInstallFailed(AppInstallation $installation): void
