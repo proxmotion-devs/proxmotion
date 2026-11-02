@@ -32,6 +32,8 @@ class PackageResource extends JsonResource
             // How many snapshots and backups its servers may have; 0: none (docs/adr/0051).
             'snapshot_slots' => $this->snapshot_slots,
             'backup_slots' => $this->backup_slots,
+            // How often the panel backs its servers up: none, daily or weekly (docs/adr/0051 §6).
+            'backup_schedule' => $this->backup_schedule->value,
             // How often its servers may be reinstalled through the API; null for unlimited (docs/adr/0045).
             'reinstall_limit' => $this->reinstall_limit === null || $this->reinstall_period_days === null
                 ? null

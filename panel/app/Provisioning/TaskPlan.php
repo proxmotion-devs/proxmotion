@@ -8,6 +8,7 @@ use App\Domain\Servers\GuestAddresses;
 use App\Domain\Servers\GuestScripts;
 use App\Enums\AppInstallationStatus;
 use App\Enums\AppInstallMode;
+use App\Enums\BackupKind;
 use App\Enums\GuestScriptEvent;
 use App\Enums\OsPlatform;
 use App\Enums\PowerAction;
@@ -54,7 +55,7 @@ final readonly class TaskPlan
             TaskType::RollbackSnapshot => ['rollback', 'configure', 'resize', 'firewall', 'start', GuestScriptEvent::AddressesChanged->step(), GuestScriptEvent::HostnameChanged->step(), GuestScriptEvent::SshKeysChanged->step()],
             TaskType::DeleteSnapshot => ['delete_snapshot'],
             // Backups (docs/adr/0051 §4, §5).
-            TaskType::CreateBackup => ['backup', 'record_backup'],
+            TaskType::CreateBackup => ['backup', 'record_backup', ...(($task->input['kind'] ?? null) === BackupKind::Scheduled->value ? ['prune_backups'] : [])],
             TaskType::RestoreBackup => ['stop', 'restore', 'configure', 'resize', 'firewall', 'start', 'wait_agent', GuestScriptEvent::AddressesChanged->step(), GuestScriptEvent::HostnameChanged->step(), GuestScriptEvent::SshKeysChanged->step(), 'verify'],
             TaskType::DeleteBackup => ['delete_backup'],
             default => [],

@@ -214,6 +214,12 @@ the server can no longer reach (after Proxmotion's administrators moved it) show
 instead of *Restore*. Proxmotion's message is shown when a server is full or has no backup
 storage. Hidden with a Proxmotion without backups, or when it answers with an error.
 
+When the package (or Proxmotion's administrators) back the server up every day or week
+(Proxmotion docs/adr/0051 §6), the section says so with the time of the next one, and
+backups taken that way without a label are listed as *Automatic backup*. Once the slots are
+full, each automatic backup replaces the oldest automatic one; backups the customer took are
+never deleted automatically. The schedule is set in Proxmotion, not in WHMCS.
+
 ### SSH keys
 
 Active servers list the **SSH keys** Proxmotion manages for root (Administrator on Windows)

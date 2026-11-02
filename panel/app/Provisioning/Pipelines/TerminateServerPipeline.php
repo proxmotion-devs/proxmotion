@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Provisioning\Pipelines;
 
 use App\Domain\Apps\AppInstallations;
+use App\Domain\Settings\PanelSettings;
 use App\Enums\ServerStatus;
 use App\Jobs\DeleteBackupVolume;
 use App\Models\Server;
@@ -29,12 +30,22 @@ final readonly class TerminateServerPipeline
      * each by a job of its own: deleting one can take minutes, and the
      * termination must not wait for all of them in one run. A backup that
      * cannot be deleted never stops the termination (DeleteBackupVolume).
+     * With *Keep backups of terminated servers* they stay until
+     * backups:prune deletes them (docs/adr/0051 §6).
      */
     private function deleteBackups(Task $task, Server $server): void
     {
         $backups = $server->backups()->pluck('id');
 
         if ($backups->isEmpty()) {
+            return;
+        }
+
+        $days = (int) PanelSettings::get('backups_keep_terminated_days');
+
+        if ($days > 0) {
+            $task->completeStep('delete_backups', "Its backups are kept for {$days} days: ".$backups->count().'.');
+
             return;
         }
 

@@ -12,20 +12,34 @@ vi.mock('@inertiajs/vue3', async () => {
     const { reactive } = await import('vue');
 
     return {
-        useForm: (data: Record<string, unknown>) => {
+        useForm: (initial: Record<string, unknown>) => {
+            let data = { ...initial };
+            let transformer = (values: Record<string, unknown>) => values;
             const form: Record<string, unknown> = reactive({
                 ...data,
                 errors: {},
                 processing: false,
+                defaults: (values: Record<string, unknown>) => {
+                    data = { ...data, ...values };
+                },
                 reset: () => Object.assign(form, data),
                 clearErrors: () => {
                     form.errors = {};
+                },
+                transform: (
+                    callback: (
+                        values: Record<string, unknown>,
+                    ) => Record<string, unknown>,
+                ) => {
+                    transformer = callback;
+
+                    return form;
                 },
                 submit: (
                     route: unknown,
                     options: { onSuccess?: () => void } = {},
                 ) => {
-                    submitted.value = { ...form };
+                    submitted.value = transformer({ ...form });
                     submit(route, options);
                     options.onSuccess?.();
                 },
@@ -35,6 +49,21 @@ vi.mock('@inertiajs/vue3', async () => {
         },
     };
 });
+
+vi.mock('laravel-vue-i18n', () => ({
+    trans: (key: string, replace: Record<string, string> = {}) =>
+        Object.entries(replace).reduce(
+            (text, [name, value]) => text.replace(`:${name}`, value),
+            key,
+        ),
+}));
+
+vi.mock('@/routes/admin/servers', () => ({
+    backupSchedule: (server: string) => ({
+        url: `/admin/servers/${server}/backup-schedule`,
+        method: 'put',
+    }),
+}));
 
 vi.mock('@/composables/useDateTime', () => ({
     useDateTime: () => ({ formatDateTime: (iso: string) => iso }),
@@ -71,10 +100,21 @@ const backup = (
     ...overrides,
 });
 
+const schedule = (
+    overrides: Partial<ServerBackups['schedule']> = {},
+): ServerBackups['schedule'] => ({
+    own: null,
+    package: 'none',
+    effective: 'none',
+    next_at: null,
+    blocked: null,
+    ...overrides,
+});
+
 const mountSection = (
     items: ServerBackup[],
     overrides: Partial<ServerBackups> = {},
-    props: { busy?: boolean } = {},
+    props: { busy?: boolean; terminated?: boolean } = {},
 ) =>
     mount(BackupsSection, {
         props: {
@@ -85,9 +125,11 @@ const mountSection = (
                 slots: 2,
                 unavailable: null,
                 storage: 'backup-nfs',
+                schedule: schedule(),
                 ...overrides,
             },
             busy: props.busy ?? false,
+            terminated: props.terminated ?? false,
         },
         global: {
             mocks: { $t: (text: string) => text },
@@ -176,5 +218,96 @@ describe('BackupsSection', () => {
             },
             expect.anything(),
         );
+    });
+
+    it('shows the schedule that applies and when the next backup is due', () => {
+        const wrapper = mountSection(
+            [backup(1, { kind: 'scheduled', label: null })],
+            {
+                schedule: schedule({
+                    package: 'daily',
+                    effective: 'daily',
+                    next_at: '2026-11-03T01:10:00+00:00',
+                }),
+            },
+        );
+
+        const row = wrapper.find('[data-test="backup-schedule"]');
+        expect(row.text()).toContain('Every day');
+        expect(row.text()).toContain("package's schedule");
+        expect(wrapper.find('[data-test="backup-schedule-next"]').text()).toBe(
+            'Next scheduled backup: :time',
+        );
+        expect(wrapper.find('[data-test="backup"]').text()).toContain(
+            'Scheduled backup',
+        );
+        expect(wrapper.find('[data-test="backup-scheduled"]').exists()).toBe(
+            true,
+        );
+    });
+
+    it('says why no scheduled backup is taken', () => {
+        const wrapper = mountSection([backup(1), backup(2)], {
+            schedule: schedule({
+                own: 'weekly',
+                effective: 'weekly',
+                blocked: 'Manual backups fill every backup slot.',
+            }),
+        });
+
+        expect(
+            wrapper.find('[data-test="backup-schedule-source"]').text(),
+        ).toContain("server's own schedule");
+        expect(
+            wrapper.find('[data-test="backup-schedule-blocked"]').text(),
+        ).toBe('Manual backups fill every backup slot.');
+        expect(
+            wrapper.find('[data-test="backup-schedule-next"]').exists(),
+        ).toBe(false);
+    });
+
+    it("saves the server's own schedule, or none for its package's", async () => {
+        const wrapper = mountSection([], {
+            schedule: schedule({ own: 'weekly', effective: 'weekly' }),
+        });
+
+        await wrapper
+            .find('[data-test="change-backup-schedule"]')
+            .trigger('click');
+        expect(
+            (wrapper.find('#backup_schedule').element as HTMLSelectElement)
+                .value,
+        ).toBe('weekly');
+
+        await wrapper.find('#backup_schedule').setValue('');
+        await wrapper
+            .find('form[data-dialog="Backup schedule"]')
+            .trigger('submit');
+
+        expect(submitted.value).toEqual({ schedule: null });
+        expect(submit).toHaveBeenCalledWith(
+            {
+                url: '/admin/servers/server-uuid/backup-schedule',
+                method: 'put',
+            },
+            expect.anything(),
+        );
+    });
+
+    it('only offers deleting the kept backups of a terminated server', () => {
+        const wrapper = mountSection(
+            [backup(1)],
+            { schedule: schedule({ package: 'daily', effective: 'daily' }) },
+            { terminated: true },
+        );
+
+        expect(wrapper.find('[data-test="take-backup"]').exists()).toBe(false);
+        expect(wrapper.find('[data-test="restore-backup"]').exists()).toBe(
+            false,
+        );
+        expect(wrapper.find('[data-test="backup-schedule"]').exists()).toBe(
+            false,
+        );
+        expect(wrapper.findAll('[data-test="backup"]')).toHaveLength(1);
     });
 });

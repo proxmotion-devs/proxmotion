@@ -16,6 +16,8 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { backupScheduleOptions } from '@/lib/backupSchedules';
+import type { BackupSchedule } from '@/lib/backupSchedules';
 import { formatMib, formatTraffic } from '@/lib/format';
 import { optionalNumber } from '@/lib/forms';
 import type { OptionalNumber } from '@/lib/forms';
@@ -102,6 +104,7 @@ const form = useForm({
     ipv6_count: 1,
     snapshot_slots: 1,
     backup_slots: 1,
+    backup_schedule: 'none' as BackupSchedule,
     network_models: ['bridged'] as NetworkModel[],
     is_active: true,
     sort_order: 0,
@@ -135,6 +138,7 @@ const openForm = (pkg: Package | null) => {
                   ipv6_count: pkg.ipv6_count,
                   snapshot_slots: pkg.snapshot_slots,
                   backup_slots: pkg.backup_slots,
+                  backup_schedule: pkg.backup_schedule,
                   network_models: [...pkg.network_models],
                   is_active: pkg.is_active,
                   sort_order: pkg.sort_order,
@@ -159,6 +163,7 @@ const openForm = (pkg: Package | null) => {
                   ipv6_count: 1,
                   snapshot_slots: 1,
                   backup_slots: 1,
+                  backup_schedule: 'none',
                   network_models: ['bridged'],
                   is_active: true,
                   sort_order: 0,
@@ -546,6 +551,18 @@ const modelLabel = (value: string) =>
                 />
             </FormField>
         </div>
+        <FormField
+            label="Scheduled backups"
+            for="backup_schedule"
+            :error="form.errors.backup_schedule"
+            hint="Taken in the backup window of Panel settings. The oldest scheduled backups beyond the backup slots are deleted; manual backups never are."
+        >
+            <NativeSelect
+                id="backup_schedule"
+                v-model="form.backup_schedule"
+                :options="backupScheduleOptions()"
+            />
+        </FormField>
         <div class="grid gap-2">
             <Label>{{ $t('Network models') }}</Label>
             <div class="flex flex-wrap gap-4">

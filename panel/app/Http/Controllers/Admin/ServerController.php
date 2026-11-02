@@ -12,6 +12,7 @@ use App\Domain\Apps\LiveAppPolls;
 use App\Domain\Apps\OrderedAppOptions;
 use App\Domain\Apps\RecipeAction;
 use App\Domain\Apps\RecipeInput;
+use App\Domain\Backups\BackupSchedules;
 use App\Domain\Backups\ServerBackups;
 use App\Domain\Backups\ServerSnapshots;
 use App\Domain\Firewall\ServerFirewalls;
@@ -243,7 +244,7 @@ class ServerController extends Controller
 
     public function show(Request $request, Server $server, MoveOptions $moves, GuestAgentProbe $agent, ServerLiveState $state, AppEligibility $eligibility, AppUpgrades $upgrades, TaskFailer $failer, LiveAppPolls $live, IpAllocator $ips, TaskPlan $plan, TaskEstimates $estimates): Response
     {
-        $server->load(['node:id,uuid,name', 'cluster:id,uuid,name', 'location:id,name', 'package:id,name,reinstall_limit,reinstall_period_days', 'billingSystem:id,name', 'osTemplate:id,operating_system_version_id,name,distribution,version,family,platform', 'storage:id,name', 'ipAddresses.pool:id,uuid,name,version,bridge,vlan_tag']);
+        $server->load(['node:id,uuid,name', 'cluster:id,uuid,name', 'location:id,name', 'package:id,name,reinstall_limit,reinstall_period_days,backup_schedule', 'billingSystem:id,name', 'osTemplate:id,operating_system_version_id,name,distribution,version,family,platform', 'storage:id,name', 'ipAddresses.pool:id,uuid,name,version,bridge,vlan_tag']);
 
         // The page's refreshes while an app script runs ask the guest, so step and progress show live (docs/adr/0021).
         if (in_array('apps', explode(',', (string) $request->header('X-Inertia-Partial-Data')), true)) {
@@ -376,6 +377,14 @@ class ServerController extends Controller
                     'slots' => $server->backup_slots,
                     'unavailable' => ServerBackups::unavailable($server, $storage)?->translatedMessage(),
                     'storage' => $storage?->name,
+                    // Scheduled backups (docs/adr/0051 §6).
+                    'schedule' => [
+                        'own' => $server->backup_schedule,
+                        'package' => $server->package?->backup_schedule,
+                        'effective' => BackupSchedules::of($server),
+                        'next_at' => BackupSchedules::nextAt($server, now())?->toIso8601String(),
+                        'blocked' => BackupSchedules::blocked($server)?->translatedMessage(),
+                    ],
                 ];
             },
             // Pools addresses may be added from: same location, network model, bridge and VLAN (docs/adr/0028).

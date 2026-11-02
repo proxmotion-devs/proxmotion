@@ -1053,13 +1053,18 @@ class Proxmotion extends ServerModule
             'system' => is_string($backup['os_template'] ?? null) ? $backup['os_template'] : '',
             'restorable' => ($backup['restorable'] ?? true) === true,
             'reason' => is_string($backup['unrestorable_reason'] ?? null) ? $backup['unrestorable_reason'] : '',
+            'scheduled' => ($backup['kind'] ?? null) === 'scheduled',
         ], array_filter(is_array($data['backups'] ?? null) ? $data['backups'] : [], static fn (mixed $backup): bool => is_array($backup) && isset($backup['id']))));
+        // Scheduled backups (docs/adr/0051 §6); a panel before them sends no schedule.
+        $schedule = in_array($data['schedule'] ?? null, ['daily', 'weekly'], true) ? $data['schedule'] : null;
 
         return [
             'backups' => $items,
             'slots' => $slots,
             'unavailable' => $unavailable,
             'can_take' => $unavailable === null && count($items) < $slots,
+            'schedule' => $schedule,
+            'next' => $schedule !== null && is_string($data['next_scheduled_at'] ?? null) ? substr(str_replace('T', ' ', $data['next_scheduled_at']), 0, 16) : null,
         ];
     }
 

@@ -2,10 +2,13 @@
 
 namespace Tests\Feature\Api\V1;
 
+use App\Domain\Backups\BackupSchedules;
+use App\Enums\BackupSchedule;
 use App\Enums\TaskType;
 use App\Models\Backup;
 use App\Models\Cluster;
 use App\Models\Server;
+use Carbon\CarbonImmutable;
 
 /**
  * Backups through the billing API (docs/adr/0051 §7).
@@ -43,7 +46,9 @@ class BackupApiTest extends ApiTestCase
             ->assertOk()
             ->assertJsonPath('data.backups', [])
             ->assertJsonPath('data.slots', 1)
-            ->assertJsonPath('data.unavailable_reason', null);
+            ->assertJsonPath('data.unavailable_reason', null)
+            ->assertJsonPath('data.schedule', 'none')
+            ->assertJsonPath('data.next_scheduled_at', null);
 
         $this->api('POST', $this->url(), ['label' => 'Before PHP 8.4'])
             ->assertAccepted()
@@ -69,6 +74,25 @@ class BackupApiTest extends ApiTestCase
             ->assertAccepted()
             ->assertJsonPath('data.type', TaskType::DeleteBackup->value);
         $this->assertSame(0, Backup::query()->count());
+    }
+
+    public function test_the_schedule_and_the_next_scheduled_backup_are_listed()
+    {
+        config(['proxmotion.backups.window_start' => '01:00', 'proxmotion.backups.window_end' => '06:00']);
+        $this->package->forceFill(['backup_schedule' => BackupSchedule::Daily])->save();
+        $this->travelTo(CarbonImmutable::parse('2026-11-03 00:30', 'UTC'));
+
+        $this->api('GET', $this->url())
+            ->assertOk()
+            ->assertJsonPath('data.schedule', 'daily')
+            ->assertJsonPath('data.next_scheduled_at', BackupSchedules::nextAt($this->server->refresh(), now())?->toIso8601String());
+        $this->api('GET', '/api/v1/packages')->assertJsonPath('data.0.backup_schedule', 'daily');
+
+        // The server's own wins; none is due while none can be taken.
+        $this->server->forceFill(['backup_schedule' => BackupSchedule::Weekly, 'backup_slots' => 0])->save();
+        $this->api('GET', $this->url())
+            ->assertJsonPath('data.schedule', 'weekly')
+            ->assertJsonPath('data.next_scheduled_at', null);
     }
 
     public function test_full_slots_servers_without_backups_and_unreachable_backups_answer_with_a_code()

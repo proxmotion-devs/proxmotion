@@ -17,6 +17,7 @@ use App\Proxmox\Data\BackupVolume;
 use App\Proxmox\Data\Upid;
 use App\Proxmox\ProxmoxClientFactory;
 use RuntimeException;
+use Throwable;
 
 /**
  * Backs a server up with vzdump to the storage chosen when it was requested
@@ -33,11 +34,12 @@ final readonly class CreateBackupPipeline implements HasOwnDeadline, StagedPipel
     public function __construct(
         private ProxmoxClientFactory $clients,
         private StageRunner $stages,
+        private DeleteBackupPipeline $deletes,
     ) {}
 
     public function stages(): array
     {
-        return ['backup', 'record'];
+        return ['backup', 'record', 'prune'];
     }
 
     public function deadlineMinutes(): int
@@ -50,6 +52,7 @@ final readonly class CreateBackupPipeline implements HasOwnDeadline, StagedPipel
         return match ($stage) {
             'backup' => $this->backup($task, $task->server),
             'record' => $this->record($task, $task->server),
+            'prune' => $this->prune($task, $task->server),
             default => throw new RuntimeException("Unknown stage {$stage}."),
         };
     }
@@ -142,6 +145,53 @@ final readonly class CreateBackupPipeline implements HasOwnDeadline, StagedPipel
         ])->save();
 
         $task->completeStep('record_backup');
+
+        return null;
+    }
+
+    /**
+     * Retention (docs/adr/0051 §6): a scheduled backup deletes the oldest
+     * scheduled backups beyond the server's slots. Manual backups are never
+     * deleted here. A backup that cannot be deleted is noted and left for
+     * the next scheduled backup, without failing this one.
+     */
+    private function prune(Task $task, Server $server): null
+    {
+        if (($task->input['kind'] ?? null) !== BackupKind::Scheduled->value) {
+            return null;
+        }
+
+        $excess = $server->backups()->count() - $server->backup_slots;
+
+        if ($excess <= 0) {
+            $task->completeStep('prune_backups');
+
+            return null;
+        }
+
+        $oldest = $server->backups()
+            ->with(['cluster', 'node'])
+            ->where('kind', BackupKind::Scheduled)
+            ->where('uuid', '!=', (string) ($task->input['backup'] ?? ''))
+            ->orderBy('created_at')
+            ->orderBy('id')
+            ->limit($excess)
+            ->get();
+        $deleted = 0;
+        $errors = [];
+
+        foreach ($oldest as $backup) {
+            try {
+                $this->deletes->remove($backup);
+                $deleted++;
+            } catch (Throwable $e) {
+                $errors[] = $e->getMessage();
+            }
+        }
+
+        $task->completeStep('prune_backups', $errors === []
+            ? "Older scheduled backups deleted: {$deleted}."
+            : "Older scheduled backups deleted: {$deleted}. Not deleted: ".implode(' ', $errors));
 
         return null;
     }

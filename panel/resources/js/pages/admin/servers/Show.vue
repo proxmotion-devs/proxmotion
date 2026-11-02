@@ -375,8 +375,12 @@ const hasUsage = computed(
 // SSH keys only while it is active: the guest agent writes them (docs/adr/0049).
 const hasSshKeys = computed(() => props.server.status === 'active');
 // Snapshots and backups while its VM exists (docs/adr/0051).
-const hasSnapshots = computed(() =>
-    ['active', 'suspended'].includes(props.server.status),
+// Also for a terminated server whose backups are kept for a while (docs/adr/0051 §6), to delete them.
+const hasSnapshots = computed(
+    () =>
+        ['active', 'suspended'].includes(props.server.status) ||
+        (props.server.status === 'terminated' &&
+            props.backups.items.length > 0),
 );
 
 const storedTab = (): Tab | null => {
@@ -1269,6 +1273,7 @@ const resetAfterTrial = () => {
 
         <div v-else-if="tab === 'snapshots'" class="flex flex-col gap-4">
             <SnapshotsSection
+                v-if="server.status !== 'terminated'"
                 :server="server.uuid"
                 :hostname="server.hostname"
                 :snapshots="snapshots"
@@ -1281,6 +1286,7 @@ const resetAfterTrial = () => {
                 :backups="backups"
                 :busy="backupBusy"
                 :disabled="vmBlocked || snapshotBusy"
+                :terminated="server.status === 'terminated'"
             />
         </div>
 

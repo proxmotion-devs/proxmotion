@@ -1,3 +1,5 @@
+import type { BackupSchedule } from '@/lib/backupSchedules';
+
 export type NetworkModel = 'bridged' | 'routed' | 'nat';
 export type NodeStatus = 'online' | 'offline' | 'unknown';
 
@@ -23,6 +25,12 @@ export type PanelSettings = {
     min_vmid: number;
     provisioning_deadline_minutes: number;
     backup_deadline_minutes: number;
+    /** Scheduled backups (docs/adr/0051 §6): HH:MM in the panel's time zone. */
+    backup_window_start: string;
+    backup_window_end: string;
+    backups_per_node: number;
+    backups_per_storage: number;
+    backups_keep_terminated_days: number;
     verify_dns_name: string | null;
     protected_networks: string[];
     drift_stopped_grace_minutes: number;
@@ -303,6 +311,8 @@ export type Package = ResourceLimitValues & {
     ipv6_count: number;
     snapshot_slots: number;
     backup_slots: number;
+    /** Not copied: its servers follow it unless they have their own (docs/adr/0051 §6). */
+    backup_schedule: BackupSchedule;
     network_models: NetworkModel[];
     is_active: boolean;
     sort_order: number;
@@ -1066,6 +1076,19 @@ export type ServerBackups = {
     unavailable: string | null;
     /** Where the next backup goes, or null. */
     storage: string | null;
+    /** Scheduled backups (docs/adr/0051 §6). */
+    schedule: {
+        /** The server's own schedule; null: its package's. */
+        own: BackupSchedule | null;
+        /** Its package's, or null without a package. */
+        package: BackupSchedule | null;
+        /** The one that applies. */
+        effective: BackupSchedule;
+        /** When the next one is due (in the past: at the next run), or null. */
+        next_at: string | null;
+        /** Why no scheduled backup is taken (translated), or null. */
+        blocked: string | null;
+    };
 };
 
 /** A server's firewall on its page, with the rule sets that can be applied. */

@@ -22,6 +22,11 @@ class PanelSettingsTest extends AdminTestCase
             'min_vmid' => 5000,
             'provisioning_deadline_minutes' => 90,
             'backup_deadline_minutes' => 240,
+            'backup_window_start' => '22:30',
+            'backup_window_end' => '04:00',
+            'backups_per_node' => 2,
+            'backups_per_storage' => 3,
+            'backups_keep_terminated_days' => 14,
             'verify_dns_name' => 'Example.org',
             'protected_networks' => "198.51.100.0/24\n203.0.113.7, 198.51.100.0/24",
             'drift_stopped_grace_minutes' => 30,
@@ -122,6 +127,8 @@ class PanelSettingsTest extends AdminTestCase
         $this->assertSame(30, PanelSettings::get('ssh_keys_max'));
         $this->assertSame(80, PanelSettings::get('storage_warning_percent'));
         $this->assertSame(90, PanelSettings::get('storage_critical_percent'));
+        $this->assertSame('22:30', PanelSettings::get('backup_window_start'));
+        $this->assertSame(14, PanelSettings::get('backups_keep_terminated_days'));
         $this->assertSame([], PanelSettings::unsaved());
 
         // .env no longer decides once the page was saved.
@@ -129,7 +136,7 @@ class PanelSettingsTest extends AdminTestCase
         $this->assertTrue(ServerMover::crossClusterEnabled());
 
         $entries = AuditLog::query()->where('action', 'settings.updated')->orderBy('id')->get();
-        $this->assertCount(5, $entries);
+        $this->assertCount(6, $entries);
         $this->assertSame(['from' => false, 'to' => true], $entries->first()->properties['changes']['cross_cluster_moves']);
     }
 
@@ -187,6 +194,10 @@ class PanelSettingsTest extends AdminTestCase
             'min_vmid' => 50,
             'move_deadline_minutes' => 5,
             'backup_deadline_minutes' => 5,
+            'backup_window_start' => '25:00',
+            'backup_window_end' => '1 am',
+            'backups_per_node' => 0,
+            'backups_keep_terminated_days' => 400,
             'verify_dns_name' => 'not a name',
             'protected_networks' => "198.51.100.0/24\nnope",
             'docs_url' => 'http://docs.example.com',
@@ -199,7 +210,8 @@ class PanelSettingsTest extends AdminTestCase
             'storage_critical_percent' => 90,
         ];
 
-        $this->saveCategory('servers', $invalid)->assertSessionHasErrors(['min_vmid', 'move_deadline_minutes', 'backup_deadline_minutes', 'verify_dns_name']);
+        $this->saveCategory('servers', $invalid)->assertSessionHasErrors(['min_vmid', 'move_deadline_minutes', 'verify_dns_name']);
+        $this->saveCategory('backups', $invalid)->assertSessionHasErrors(['backup_deadline_minutes', 'backup_window_start', 'backup_window_end', 'backups_per_node', 'backups_keep_terminated_days']);
         $this->saveCategory('network', $invalid)->assertSessionHasErrors(['protected_networks']);
         $this->saveCategory('general', $invalid)->assertSessionHasErrors(['docs_url', 'storage_critical_percent']);
         $this->saveCategory('usage', $invalid)->assertSessionHasErrors(['traffic_reset_day', 'traffic_action', 'usage_cpu_percent', 'usage_window_minutes']);

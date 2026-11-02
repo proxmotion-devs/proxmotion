@@ -53,6 +53,30 @@ final class AdminNotifier
     }
 
     /**
+     * A backup of a server's schedule failed (docs/adr/0051 §6); nobody
+     * started it, so nobody saw it fail. Its own event instead of
+     * task_failed.
+     */
+    public function backupFailed(Task $task): void
+    {
+        $this->send(NotificationEvent::BackupFailed, function () use ($task) {
+            $server = $task->server;
+            $replace = ['server' => $server->vmName()];
+
+            return new AdminAlert(
+                NotificationEvent::BackupFailed,
+                'Scheduled backup of :server failed',
+                $replace,
+                [
+                    ['The scheduled backup of server :server failed. The next one is taken in the next backup window.', $replace],
+                    ['Error: :error', ['error' => self::error($task->error)]],
+                ],
+                route('admin.servers.show', $server),
+            );
+        });
+    }
+
+    /**
      * An installation attempt failed. Trials of drafts (docs/adr/0018 §7) are not reported.
      */
     public function appInstallFailed(AppInstallation $installation): void

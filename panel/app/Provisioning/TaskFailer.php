@@ -6,6 +6,7 @@ namespace App\Provisioning;
 
 use App\Domain\Notifications\AdminNotifier;
 use App\Domain\Webhooks\Webhooks;
+use App\Enums\BackupKind;
 use App\Enums\ServerStatus;
 use App\Enums\TaskStatus;
 use App\Enums\TaskType;
@@ -54,7 +55,12 @@ final class TaskFailer
         }
 
         $this->notify($task);
-        $this->notifier->taskFailed($task);
+
+        if ($task->type === TaskType::CreateBackup && ($task->input['kind'] ?? null) === BackupKind::Scheduled->value) {
+            $this->notifier->backupFailed($task);
+        } else {
+            $this->notifier->taskFailed($task);
+        }
     }
 
     /**

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Controllers\Api\V1;
 
 use App\Domain\Backups\BackupNotRestorable;
+use App\Domain\Backups\BackupSchedules;
 use App\Domain\Backups\BackupSlotsFull;
 use App\Domain\Backups\BackupsUnavailable;
 use App\Domain\Backups\ServerBackups;
@@ -34,6 +35,9 @@ class BackupController extends ApiController
             'slots' => $server->backup_slots,
             // Why none can be taken at all, or null.
             'unavailable_reason' => ServerBackups::unavailable($server)?->translatedMessage(),
+            // Scheduled backups (docs/adr/0051 §6): none, daily or weekly, and when the next is due.
+            'schedule' => BackupSchedules::of($server)->value,
+            'next_scheduled_at' => BackupSchedules::blocked($server) === null ? BackupSchedules::nextAt($server, now())?->toIso8601String() : null,
         ]]);
     }
 

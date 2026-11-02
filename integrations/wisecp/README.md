@@ -199,7 +199,10 @@ server may have comes from the package, plus the add-on value `extra_backups`. A
 replaces the whole disk and deletes the snapshots; the operating system and root password
 become those of the backup. A backup the server can no longer reach shows Proxmotion's
 reason instead of *Restore*. Proxmotion refuses with its reason when a server is full or
-has no backup storage. Unverified whether WISECP shows it.
+has no backup storage. Unverified whether WISECP shows it. With a daily or weekly backup
+schedule in Proxmotion (docs/adr/0051 §6) the tool says so with the time of the next one,
+and backups taken that way without a label are listed as *Automatic backup*; the schedule is
+set in Proxmotion, not in WISECP.
 
 ## Webhooks
 

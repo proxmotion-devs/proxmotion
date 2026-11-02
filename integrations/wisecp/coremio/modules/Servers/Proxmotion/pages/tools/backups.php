@@ -30,6 +30,8 @@ $backups = is_array($data['backups'] ?? null) ? $data['backups'] : [];
 $slots = is_int($data['slots'] ?? null) ? $data['slots'] : 0;
 $unavailable = is_string($data['unavailable'] ?? null) ? $data['unavailable'] : null;
 $canTake = ($data['can_take'] ?? false) === true;
+$schedule = is_string($data['schedule'] ?? null) ? $data['schedule'] : null;
+$next = is_string($data['next'] ?? null) ? $data['next'] : null;
 ?>
 <div id="pmx-backups">
 <div class="card bg-gradient border-0 mb-2">
@@ -38,6 +40,9 @@ $canTake = ($data['can_take'] ?? false) === true;
     </div>
     <div class="card-body py-2">
         <p class="text-muted small mb-0"><?= $t('backups_intro') ?></p>
+        <?php if ($schedule !== null): ?>
+            <p class="small mb-0 mt-2" id="pmx-backup-schedule"><i class="bi bi-calendar-check me-1"></i><?= $t('backups_schedule_' . $schedule) ?><?php if ($next !== null): ?> <span class="text-muted"><?= str_replace(':time', $e($next), $t('backups_schedule_next')) ?></span><?php endif; ?></p>
+        <?php endif; ?>
     </div>
 </div>
 
@@ -57,7 +62,7 @@ $canTake = ($data['can_take'] ?? false) === true;
                     <?php foreach ($backups as $backup): ?>
                         <tr>
                             <td>
-                                <?= ($backup['label'] ?? '') !== '' ? $e($backup['label']) : '<span class="text-muted">' . $t('snapshot_no_label') . '</span>' ?>
+                                <?= ($backup['label'] ?? '') !== '' ? $e($backup['label']) : '<span class="text-muted">' . $t(($backup['scheduled'] ?? false) === true ? 'backup_scheduled' : 'snapshot_no_label') . '</span>' ?>
                                 <?php if (($backup['reason'] ?? '') !== ''): ?>
                                     <div class="small text-warning"><?= $e($backup['reason']) ?></div>
                                 <?php endif; ?>

@@ -27,6 +27,11 @@ Schedule::command('usage:collect')->everyFiveMinutes()->withoutOverlapping(10);
 Schedule::command('model:prune', ['--model' => [UsageSample::class]])->hourly();
 Schedule::command('model:prune', ['--model' => [UsageViolation::class, UsageRollup::class]])->daily();
 
+// Scheduled backups in the backup window, and backups of servers terminated longer ago than
+// Keep backups of terminated servers (docs/adr/0051 §6).
+Schedule::command('backups:schedule')->everyTenMinutes()->withoutOverlapping(10);
+Schedule::command('backups:prune')->daily();
+
 // Follow app installers running inside servers (docs/adr/0015).
 Schedule::command('apps:poll')->everyMinute()->withoutOverlapping();
 

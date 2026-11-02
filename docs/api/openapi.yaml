@@ -885,6 +885,11 @@ paths:
         when it is terminated. A backup belongs to its server and can only be restored onto it;
         after the server moved to another node or cluster, a backup it can no longer reach is
         listed with `restorable: false` and the reason.
+
+        Scheduled backups (`kind: scheduled`, docs/adr/0051 §6) are taken by the panel in its backup
+        window when the server's package or its own schedule (set by administrators) asks for them.
+        Once the slots are full, each one deletes the oldest scheduled backup; manual backups are
+        never deleted automatically, and while they fill every slot no scheduled backup is taken.
       operationId: getServerBackups
       responses:
         '200':
@@ -897,11 +902,13 @@ paths:
                 properties:
                   data:
                     type: object
-                    required: [backups, slots, unavailable_reason]
+                    required: [backups, slots, unavailable_reason, schedule, next_scheduled_at]
                     properties:
                       backups: { type: array, items: { $ref: '#/components/schemas/Backup' } }
                       slots: { type: integer, description: 'How many it may have (`resources.backup_slots`); 0: none.' }
                       unavailable_reason: { type: [string, 'null'], description: 'Why it cannot take backups at all (none in its plan, or no backup storage its node reaches), in the language of the request; null when it can.' }
+                      schedule: { type: string, enum: [none, daily, weekly], description: 'How often the panel backs the server up by itself.' }
+                      next_scheduled_at: { type: [string, 'null'], format: date-time, description: 'When the next scheduled backup is due (approximately; a time in the past means within minutes); null without a schedule or while none can be taken.' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
@@ -1629,7 +1636,7 @@ components:
       required: [id, kind, label, size_bytes, os_template, created_at, restorable, unrestorable_reason]
       properties:
         id: { type: string, format: uuid }
-        kind: { type: string, enum: [manual, scheduled], description: 'Taken on request, or by a backup schedule (later).' }
+        kind: { type: string, enum: [manual, scheduled], description: 'Taken on request, or by the server''s backup schedule (pruned beyond the slots, oldest first).' }
         label: { type: [string, 'null'] }
         size_bytes: { type: [integer, 'null'] }
         os_template: { type: [string, 'null'], description: "The name of the server's OS template when it was taken; a restore brings that system back." }
@@ -1690,7 +1697,7 @@ components:
             quota_bytes: { type: [integer, 'null'], description: Null is unlimited }
     Package:
       type: object
-      required: [id, name, cpu_cores, memory_mib, disk_mib, ipv4_count, ipv6_count, port_speed_mbps, traffic_bytes, snapshot_slots, backup_slots, network_models]
+      required: [id, name, cpu_cores, memory_mib, disk_mib, ipv4_count, ipv6_count, port_speed_mbps, traffic_bytes, snapshot_slots, backup_slots, backup_schedule, network_models]
       properties:
         id: { type: string, format: uuid }
         name: { type: string }
@@ -1703,6 +1710,7 @@ components:
         traffic_bytes: { type: [integer, 'null'] }
         snapshot_slots: { type: integer, description: 'How many snapshots its servers may have (docs/adr/0051); 0: none.' }
         backup_slots: { type: integer, description: 'How many backups its servers may have; 0: none.' }
+        backup_schedule: { type: string, enum: [none, daily, weekly], description: 'How often the panel backs its servers up by itself (docs/adr/0051 §6); administrators may give a server its own.' }
         reinstall_limit:
           type: [object, 'null']
           description: 'How often its servers may be reinstalled through the API: `count` times (0: never) within the last `period_days` days; null is unlimited (docs/adr/0045).'

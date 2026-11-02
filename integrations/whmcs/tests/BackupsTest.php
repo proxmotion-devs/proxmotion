@@ -80,6 +80,29 @@ class BackupsTest extends ModuleTestCase
         $this->assertSame('Bu yedek sunucudan farklı bir cluster\'da.', $backups['items'][1]['reason']);
     }
 
+    public function test_the_schedule_and_automatic_backups_are_shown()
+    {
+        $this->showsBackups([
+            'backups' => [$this->backup(['kind' => 'scheduled', 'label' => null])],
+            'slots' => 2,
+            'unavailable_reason' => null,
+            'schedule' => 'daily',
+            'next_scheduled_at' => '2026-11-03T01:10:00+00:00',
+        ]);
+
+        $backups = $this->module()->clientArea()['templateVariables']['pmx']['backups'];
+
+        $this->assertSame('Automatic backup', $backups['items'][0]['label']);
+        $this->assertStringStartsWith('The server is backed up automatically every day', $backups['schedule']);
+        $this->assertSame('Next: 2026-11-03 01:10', $backups['next']);
+
+        // No schedule, or a panel before schedules: nothing about it.
+        $this->showsBackups(['backups' => [], 'slots' => 2, 'unavailable_reason' => null, 'schedule' => 'none', 'next_scheduled_at' => null]);
+        $backups = $this->module()->clientArea()['templateVariables']['pmx']['backups'];
+        $this->assertSame('', $backups['schedule']);
+        $this->assertSame('', $backups['next']);
+    }
+
     public function test_full_slots_and_unavailable_backups_hide_the_form()
     {
         $this->showsBackups(['backups' => [$this->backup()], 'slots' => 1, 'unavailable_reason' => null]);

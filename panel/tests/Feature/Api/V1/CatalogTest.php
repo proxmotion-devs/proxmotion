@@ -26,6 +26,7 @@ class CatalogTest extends ApiTestCase
                 'traffic_bytes' => $this->package->traffic_bytes,
                 'snapshot_slots' => 1,
                 'backup_slots' => 1,
+                'backup_schedule' => 'none',
                 'reinstall_limit' => null,
                 'network_models' => ['bridged', 'routed'],
                 'os_templates' => [],

@@ -14,7 +14,8 @@ use Throwable;
 /**
  * Deletes one backup of a terminated server from its storage
  * (docs/adr/0051 §4), queued by TerminateServerPipeline so the termination
- * does not wait for every backup. Tried again later when the storage does
+ * does not wait for every backup, or by backups:prune once the days of
+ * *Keep backups of terminated servers* are over (§6). Tried again later when the storage does
  * not answer; a backup that still cannot be deleted keeps its row (under
  * the terminated server) and is logged, so it can be found and removed by
  * hand.

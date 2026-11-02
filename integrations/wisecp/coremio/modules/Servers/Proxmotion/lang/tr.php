@@ -189,4 +189,8 @@ return [
     'backup_restore_confirm' => 'Bu yedek sunucuya geri yüklensin mi? O andan sonra diske yazılan her şey kaybolur.',
     'backup_delete_confirm' => 'Bu yedek silinsin mi?',
     'backup_unknown' => 'Bu yedek işlemi yapılamaz.',
+    'backup_scheduled' => 'Otomatik yedek',
+    'backups_schedule_daily' => 'Sunucu her gün otomatik yedeklenir; yedekler dolunca en eski otomatik yedeğin yerini yenisi alır.',
+    'backups_schedule_weekly' => 'Sunucu her hafta otomatik yedeklenir; yedekler dolunca en eski otomatik yedeğin yerini yenisi alır.',
+    'backups_schedule_next' => 'Sonraki: :time',
 ];

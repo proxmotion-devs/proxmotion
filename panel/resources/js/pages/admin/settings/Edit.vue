@@ -59,6 +59,11 @@ const form = useForm({
     min_vmid: props.settings.min_vmid,
     provisioning_deadline_minutes: props.settings.provisioning_deadline_minutes,
     backup_deadline_minutes: props.settings.backup_deadline_minutes,
+    backup_window_start: props.settings.backup_window_start,
+    backup_window_end: props.settings.backup_window_end,
+    backups_per_node: props.settings.backups_per_node,
+    backups_per_storage: props.settings.backups_per_storage,
+    backups_keep_terminated_days: props.settings.backups_keep_terminated_days,
     verify_dns_name: props.settings.verify_dns_name ?? '',
     protected_networks: props.settings.protected_networks.join('\n'),
     drift_stopped_grace_minutes: props.settings.drift_stopped_grace_minutes,
@@ -217,20 +222,6 @@ const sectionClass = 'flex flex-col gap-4 rounded-xl border p-4';
                             type="number"
                             min="15"
                             max="1440"
-                        />
-                    </FormField>
-                    <FormField
-                        label="Time limit of a backup or restore (minutes)"
-                        for="backup_deadline_minutes"
-                        :error="form.errors.backup_deadline_minutes"
-                        hint="Backing up a large server can take hours."
-                    >
-                        <Input
-                            id="backup_deadline_minutes"
-                            v-model.number="form.backup_deadline_minutes"
-                            type="number"
-                            min="30"
-                            max="2880"
                         />
                     </FormField>
                     <FormField
@@ -407,6 +398,102 @@ const sectionClass = 'flex flex-col gap-4 rounded-xl border p-4';
                             v-model.number="form.move_bwlimit_kib"
                             type="number"
                             min="1"
+                        />
+                    </FormField>
+                </div>
+            </section>
+        </template>
+
+        <template v-if="category === 'backups'">
+            <section :class="sectionClass" data-test="settings-backup-window">
+                <Heading
+                    variant="small"
+                    title="Scheduled backups"
+                    description="Packages and servers with a daily or weekly backup schedule are backed up in this window, spread over its first half. A server that is busy is tried again until the window ends."
+                />
+                <div class="grid gap-4 sm:grid-cols-2">
+                    <FormField
+                        label="Backup window starts"
+                        for="backup_window_start"
+                        :error="form.errors.backup_window_start"
+                        hint="In the panel's time zone."
+                    >
+                        <Input
+                            id="backup_window_start"
+                            v-model="form.backup_window_start"
+                            type="time"
+                        />
+                    </FormField>
+                    <FormField
+                        label="Backup window ends"
+                        for="backup_window_end"
+                        :error="form.errors.backup_window_end"
+                        hint="Before the start: the window ends on the next day. No scheduled backup starts after it."
+                    >
+                        <Input
+                            id="backup_window_end"
+                            v-model="form.backup_window_end"
+                            type="time"
+                        />
+                    </FormField>
+                    <FormField
+                        label="Backups at once per node"
+                        for="backups_per_node"
+                        :error="form.errors.backups_per_node"
+                        hint="Manual backups count too."
+                    >
+                        <Input
+                            id="backups_per_node"
+                            v-model.number="form.backups_per_node"
+                            type="number"
+                            min="1"
+                            max="20"
+                        />
+                    </FormField>
+                    <FormField
+                        label="Backups at once per backup storage"
+                        for="backups_per_storage"
+                        :error="form.errors.backups_per_storage"
+                    >
+                        <Input
+                            id="backups_per_storage"
+                            v-model.number="form.backups_per_storage"
+                            type="number"
+                            min="1"
+                            max="50"
+                        />
+                    </FormField>
+                </div>
+            </section>
+            <section :class="sectionClass" data-test="settings-backups">
+                <Heading variant="small" title="Backups" />
+                <div class="grid gap-4 sm:grid-cols-2">
+                    <FormField
+                        label="Time limit of a backup or restore (minutes)"
+                        for="backup_deadline_minutes"
+                        :error="form.errors.backup_deadline_minutes"
+                        hint="Backing up a large server can take hours."
+                    >
+                        <Input
+                            id="backup_deadline_minutes"
+                            v-model.number="form.backup_deadline_minutes"
+                            type="number"
+                            min="30"
+                            max="2880"
+                        />
+                    </FormField>
+                    <FormField
+                        label="Keep backups of terminated servers (days)"
+                        for="backups_keep_terminated_days"
+                        :error="form.errors.backups_keep_terminated_days"
+                        hint="0: deleted with the server. Otherwise they stay listed under the terminated server until then."
+                    >
+                        <Input
+                            id="backups_keep_terminated_days"
+                            v-model.number="form.backups_keep_terminated_days"
+                            type="number"
+                            min="0"
+                            max="365"
                         />
                     </FormField>
                 </div>

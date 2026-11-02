@@ -138,18 +138,49 @@ final readonly class ServerBackups
         // Not null: unavailable() said so.
         $storage ??= throw BackupsUnavailable::noStorage();
         $label = $label === null || trim($label) === '' ? null : trim($label);
-        $task = $this->tasks->start($server, TaskType::CreateBackup, $actor, input: [
-            // The backup's uuid, also in its notes on the storage, so the volume can be told apart.
-            'backup' => (string) Str::uuid(),
-            'storage' => $storage->name,
-            'storage_type' => $storage->type,
-            'kind' => BackupKind::Manual->value,
-            'label' => $label,
-        ]);
+        $task = $this->queue($server, $storage, BackupKind::Manual, $label, $actor);
 
         AuditLog::record('server.backup_requested', $actor, $server, ['hostname' => $server->hostname, 'storage' => $storage->name, 'label' => $label], $ipAddress);
 
         return $task;
+    }
+
+    /**
+     * Queue a backup of the server's schedule (BackupSchedules) to $storage.
+     * Scheduled backups may go over the slots by one: the task then deletes
+     * the oldest scheduled ones (docs/adr/0051 §6). Never while manual
+     * backups fill every slot, since those are never deleted automatically.
+     *
+     * @throws ProvisioningException
+     */
+    public function takeScheduled(Server $server, Storage $storage): Task
+    {
+        self::ensureActive($server);
+
+        if ($server->backup_slots === 0) {
+            throw BackupsUnavailable::notInPlan();
+        }
+
+        if ($server->backups()->where('kind', BackupKind::Manual)->count() >= $server->backup_slots) {
+            throw BackupsUnavailable::manualSlotsFull();
+        }
+
+        return $this->queue($server, $storage, BackupKind::Scheduled, null, null);
+    }
+
+    /**
+     * @throws ProvisioningException
+     */
+    private function queue(Server $server, Storage $storage, BackupKind $kind, ?string $label, User|ApiToken|null $actor): Task
+    {
+        return $this->tasks->start($server, TaskType::CreateBackup, $actor, input: [
+            // The backup's uuid, also in its notes on the storage, so the volume can be told apart.
+            'backup' => (string) Str::uuid(),
+            'storage' => $storage->name,
+            'storage_type' => $storage->type,
+            'kind' => $kind->value,
+            'label' => $label,
+        ]);
     }
 
     /**
@@ -182,13 +213,15 @@ final readonly class ServerBackups
     }
 
     /**
-     * Queue deleting a backup; also while the server is suspended, to free its storage.
+     * Queue deleting a backup; also while the server is suspended, to free
+     * its storage, and once it is terminated, for backups kept after it
+     * (docs/adr/0051 §6).
      *
      * @throws ProvisioningException
      */
     public function delete(Server $server, Backup $backup, User|ApiToken $actor, ?string $ipAddress): Task
     {
-        if (! in_array($server->status, [ServerStatus::Active, ServerStatus::Suspended], true)) {
+        if (! in_array($server->status, [ServerStatus::Active, ServerStatus::Suspended, ServerStatus::Terminated], true)) {
             throw new ProvisioningException('This action is not possible while the server is :status.', ['status' => $server->status->value]);
         }
 

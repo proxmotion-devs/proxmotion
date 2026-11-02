@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace App\Http\Controllers\Admin;
 
 use App\Domain\Backups\ServerBackups;
+use App\Enums\BackupSchedule;
 use App\Http\Controllers\Controller;
+use App\Models\AuditLog;
 use App\Models\Backup;
 use App\Models\Server;
 use App\Models\User;
@@ -14,6 +16,7 @@ use Closure;
 use Illuminate\Container\Attributes\CurrentUser;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 
 /**
@@ -48,6 +51,30 @@ class ServerBackupController extends Controller
         $this->ensureBelongs($server, $backup);
 
         return $this->attempt(fn () => $this->backups->delete($server, $backup, $admin, $request->ip()), 'Deleting the backup…');
+    }
+
+    /**
+     * The server's own backup schedule (docs/adr/0051 §6); empty: its package's.
+     */
+    public function schedule(Request $request, Server $server, #[CurrentUser] User $admin): RedirectResponse
+    {
+        $value = $request->validate(['schedule' => ['nullable', Rule::enum(BackupSchedule::class)]])['schedule'] ?? null;
+        $schedule = $value === null ? null : BackupSchedule::from((string) $value);
+        $from = $server->backup_schedule;
+
+        if ($from !== $schedule) {
+            $server->forceFill(['backup_schedule' => $schedule])->save();
+
+            AuditLog::record('server.backup_schedule_changed', $admin, $server, [
+                'hostname' => $server->hostname,
+                'from' => $from?->value,
+                'to' => $schedule?->value,
+            ], $request->ip());
+        }
+
+        $this->toast('success', 'Backup schedule saved.');
+
+        return back();
     }
 
     /**

@@ -11,6 +11,12 @@ export const SETTINGS_CATEGORIES = [
             'Creating, reinstalling and moving servers, and the root passwords the panel makes up.',
     },
     {
+        key: 'backups',
+        title: 'Backups',
+        description:
+            'When scheduled backups run, how many at once, and how long backups of terminated servers are kept.',
+    },
+    {
         key: 'network',
         title: 'Network security',
         description: 'Networks no server may open connections to.',

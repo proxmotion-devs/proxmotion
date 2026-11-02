@@ -119,6 +119,7 @@ const stepLabels: Record<string, string> = {
     // Backups (docs/adr/0051 §4).
     backup: 'Back up the VM (Proxmox)',
     record_backup: 'Record the backup',
+    prune_backups: 'Delete older scheduled backups',
     restore: 'Restore the backup (Proxmox)',
     delete_backup: 'Delete the backup (Proxmox)',
     delete_backups: "Delete the server's backups",

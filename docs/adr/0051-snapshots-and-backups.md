@@ -1,6 +1,6 @@
 # 51. Snapshots and backups
 
-- **Status:** Accepted (phase 1, snapshots, built 2026-10-28; phase 2, manual backups and restore, built 2026-10-29; schedules not built)
+- **Status:** Accepted (phase 1, snapshots, built 2026-10-28; phase 2, manual backups and restore, built 2026-10-29; phase 3, schedules and retention, built 2026-11-02)
 - **Date:** 2026-10-28
 
 ## Context
@@ -197,6 +197,19 @@ Manual backups and restore are built as decided in §4, with these details settl
 - **API:** `GET /servers/{id}/backups` gives kind, label, size, OS template name, time and `restorable` with `unrestorable_reason`, never the storage or the volume. Refusals answer `422` `backups_not_supported` / `no_backup_storage`, `409` `backup_slots_full` / `backup_not_restorable`.
 - **Admin:** the server page's tab is now *Backups*, with the snapshots above the backups. Admins also see the storage of each backup and where the next one goes. The cluster page has a *Use for backups* column.
 - **Permissions:** `VM.Backup` is added to the pool's privileges (it is in `PVEVMAdmin`). `Datastore.AllocateSpace` on `/storage` and `Datastore.Audit` on `/` were already required. What a restore with `force=1` needs is still to verify (§8).
+
+## Phase 3 as built (2026-11-02)
+
+Scheduled backups and retention are built as decided in §6, with these details settled while building them. Tested with the faked Proxmox and billing systems only.
+
+- **Schedule:** `packages.backup_schedule` (`none`, `daily`, `weekly`; default `none`, so nothing starts on its own after the upgrade) is not copied to servers: a server follows its package's unless an administrator gives it its own on its *Backups* tab (`servers.backup_schedule`, null: the package's; audited as `server.backup_schedule_changed`). This follows reinstall limits (ADR 0045) rather than the slots: the schedule is an operating choice of the provider, not a resource the customer bought. Billing systems only read it (`schedule` and `next_scheduled_at` in `GET /servers/{id}/backups`, `backup_schedule` in `GET /packages`); setting it through the API is left for later.
+- **Window and spreading:** the window is `backup_window_start` / `backup_window_end` on a new *Backups* page of *Panel settings* (HH:MM in the panel's time zone; an end before the start ends on the next day), where the backup time limit moved too. `backups:schedule` runs every 10 minutes. A server is due `(id × 10 minutes) mod half the window` after the window's start, so servers are spread over the **first half** of the window and the second half is left for the servers that had to wait for a busy node, storage or server. Weekly servers are backed up on the weekday `id mod 7` (Monday = 0) of the window's start, without catching up a missed week.
+- **Once per window:** `servers.backup_scheduled_at` records when the schedule queued a backup; a server queued in the current window is not queued again in it, also when its backup failed (a failing storage would otherwise be hit every 10 minutes). A server that is busy (another task), whose manual backups fill its slots, or that has no reachable backup storage is not marked and is tried again at the next run until the window ends.
+- **Concurrency:** `backups_per_node` (default 1) and `backups_per_storage` (default 2) count every queued or running `create_backup` task, manual ones included. A shared storage counts once per cluster; any other storage is its node's own.
+- **Retention:** a scheduled backup's task has a third stage, `prune`, after it recorded the backup: when the server has more backups than slots, the oldest scheduled ones beyond them (oldest first, never the new one, never a manual one) are deleted in that stage (`DeleteBackupPipeline::remove()`), so the server stays busy until the deletion is done and nothing can restore a backup being deleted. A backup that cannot be deleted leaves a note on the step and is tried again by the next scheduled backup; the new backup is kept either way. A scheduled backup may thus go over the slots by one for the length of its task.
+- **Manual backups** are refused while the slots are full as before, scheduled ones included in the count: the customer deletes one first. While manual backups alone fill every slot, no scheduled backup is taken, and the server page says so (`BackupsUnavailable::manualSlotsFull()`).
+- **Notifications:** a failed scheduled backup sends the new event `backup_failed` (*A scheduled backup failed*, on by default) instead of `task_failed`, and the usual `task.failed` webhook. Scheduled backups are not audited (nobody started them); their tasks have no user or token.
+- **Kept backups of terminated servers:** with `backups_keep_terminated_days` above 0, termination leaves the backups in place (noted on its `delete_backups` step). They stay listed on the terminated server's *Backups* tab, where administrators can delete them but not restore them (the billing API still refuses every backup action on a terminated server). `backups:prune` runs daily and queues `DeleteBackupVolume` for every backup of a server terminated longer ago than that; with 0 days it also retries the backups whose deletion at termination gave up.
 
 ## Answered questions
 

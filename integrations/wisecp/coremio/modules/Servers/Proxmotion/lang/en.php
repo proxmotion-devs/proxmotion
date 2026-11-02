@@ -189,4 +189,8 @@ return [
     'backup_restore_confirm' => 'Restore this backup onto the server? Everything written to the disk since is lost.',
     'backup_delete_confirm' => 'Delete this backup?',
     'backup_unknown' => 'This backup action is not possible.',
+    'backup_scheduled' => 'Automatic backup',
+    'backups_schedule_daily' => 'The server is backed up automatically every day; once the backups are full, the oldest automatic one is replaced.',
+    'backups_schedule_weekly' => 'The server is backed up automatically every week; once the backups are full, the oldest automatic one is replaced.',
+    'backups_schedule_next' => 'Next: :time',
 ];

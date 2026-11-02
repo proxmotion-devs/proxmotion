@@ -210,6 +210,7 @@ Route::delete('servers/{server}/snapshots/{snapshot}', [ServerSnapshotController
 Route::post('servers/{server}/backups', [ServerBackupController::class, 'store'])->middleware('throttle:10,1')->name('servers.backups.store');
 Route::post('servers/{server}/backups/{backup}/restore', [ServerBackupController::class, 'restore'])->middleware('throttle:10,1')->name('servers.backups.restore');
 Route::delete('servers/{server}/backups/{backup}', [ServerBackupController::class, 'destroy'])->middleware('throttle:20,1')->name('servers.backups.destroy');
+Route::put('servers/{server}/backup-schedule', [ServerBackupController::class, 'schedule'])->name('servers.backup-schedule');
 Route::post('servers/{server}/anti-spoofing', [ServerController::class, 'enableAntiSpoofing'])->middleware('throttle:10,1')->name('servers.enable-anti-spoofing');
 Route::post('tasks/{task}/fail', [TaskController::class, 'fail'])->name('tasks.fail');
 Route::post('tasks/{task}/cancel', [TaskController::class, 'cancel'])->name('tasks.cancel');

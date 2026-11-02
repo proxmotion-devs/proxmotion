@@ -1197,9 +1197,11 @@ class Module
             if (is_array($backup) && isset($backup['id'])) {
                 $items[] = [
                     'id' => (string) $backup['id'],
-                    'label' => isset($backup['label']) && is_string($backup['label']) && $backup['label'] !== '' ? $backup['label'] : $this->lang->get('snapshot_no_label'),
+                    'label' => isset($backup['label']) && is_string($backup['label']) && $backup['label'] !== ''
+                        ? $backup['label']
+                        : $this->lang->get(isset($backup['kind']) && $backup['kind'] === 'scheduled' ? 'backup_scheduled' : 'snapshot_no_label'),
                     // Date and time as Proxmotion sent them (its own time zone).
-                    'time' => isset($backup['created_at']) ? substr(str_replace('T', ' ', (string) $backup['created_at']), 0, 16) : '',
+                    'time' => isset($backup['created_at']) ? self::panelTime((string) $backup['created_at']) : '',
                     'size' => isset($backup['size_bytes']) ? self::bytes((int) $backup['size_bytes']) : '',
                     'system' => isset($backup['os_template']) && is_string($backup['os_template']) ? $backup['os_template'] : '',
                     'restorable' => !isset($backup['restorable']) || $backup['restorable'] === true,
@@ -1209,13 +1211,26 @@ class Module
         }
 
         $unavailable = isset($data['unavailable_reason']) && is_string($data['unavailable_reason']) ? $data['unavailable_reason'] : null;
+        // Scheduled backups (docs/adr/0051 §6); a panel before them sends no schedule.
+        $schedule = isset($data['schedule']) && in_array($data['schedule'], ['daily', 'weekly'], true) ? $data['schedule'] : null;
+        $next = isset($data['next_scheduled_at']) && is_string($data['next_scheduled_at']) ? self::panelTime($data['next_scheduled_at']) : '';
 
         return [
             'items' => $items,
             'count' => $this->lang->get('snapshots_count', ['count' => count($items), 'slots' => $slots]),
             'canTake' => $unavailable === null && count($items) < $slots,
             'unavailable' => $unavailable,
+            'schedule' => $schedule === null ? '' : $this->lang->get('backups_schedule_' . $schedule),
+            'next' => $schedule === null || $next === '' ? '' : $this->lang->get('backups_schedule_next', ['time' => $next]),
         ];
+    }
+
+    /**
+     * Date and time as Proxmotion sent them (its own time zone), e.g. 2026-11-03 01:10.
+     */
+    private static function panelTime(string $iso): string
+    {
+        return substr(str_replace('T', ' ', $iso), 0, 16);
     }
 
     /**

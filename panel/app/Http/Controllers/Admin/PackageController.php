@@ -41,6 +41,7 @@ class PackageController extends Controller
                     'ipv6_count' => $package->ipv6_count,
                     'snapshot_slots' => $package->snapshot_slots,
                     'backup_slots' => $package->backup_slots,
+                    'backup_schedule' => $package->backup_schedule,
                     'network_models' => $package->network_models,
                     'is_active' => $package->is_active,
                     'sort_order' => $package->sort_order,

@@ -61,11 +61,38 @@ final class BackupsTest extends ModuleTestCase
             'system' => 'Ubuntu 24.04',
             'restorable' => true,
             'reason' => '',
+            'scheduled' => false,
         ], $data['backups'][0]);
         $this->assertFalse($data['backups'][1]['restorable']);
         $this->assertSame('This backup is on another cluster than the server.', $data['backups'][1]['reason']);
         $this->assertSame(3, $data['slots']);
         $this->assertTrue($data['can_take']);
+        // A panel before backup schedules.
+        $this->assertNull($data['schedule']);
+        $this->assertNull($data['next']);
+    }
+
+    public function test_the_schedule_and_automatic_backups_are_shown(): void
+    {
+        $this->serviceHas($this->server());
+        $this->api->on('GET ' . self::SERVER . '/backups', 200, ['data' => [
+            'backups' => [['id' => self::BACKUP, 'kind' => 'scheduled', 'label' => null, 'restorable' => true]],
+            'slots' => 2,
+            'unavailable_reason' => null,
+            'schedule' => 'weekly',
+            'next_scheduled_at' => '2026-11-03T01:10:00+00:00',
+        ]]);
+
+        $data = $this->module()->tool_data('backups', 'index');
+
+        $this->assertTrue($data['backups'][0]['scheduled']);
+        $this->assertSame('weekly', $data['schedule']);
+        $this->assertSame('2026-11-03 01:10', $data['next']);
+
+        $html = $this->page($data);
+        $this->assertStringContainsString('Automatic backup', $html);
+        $this->assertStringContainsString('The server is backed up automatically every week', $html);
+        $this->assertStringContainsString('Next: 2026-11-03 01:10', $html);
     }
 
     public function test_full_slots_or_unavailable_backups_cannot_take_more(): void

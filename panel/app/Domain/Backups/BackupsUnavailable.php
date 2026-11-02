@@ -14,7 +14,7 @@ use App\Provisioning\Exceptions\ProvisioningException;
 final class BackupsUnavailable extends ProvisioningException
 {
     /**
-     * @param  'backups_not_supported'|'no_backup_storage'  $error
+     * @param  'backups_not_supported'|'no_backup_storage'|'backup_slots_full'  $error
      */
     private function __construct(string $message, public readonly string $error)
     {
@@ -29,5 +29,13 @@ final class BackupsUnavailable extends ProvisioningException
     public static function noStorage(): self
     {
         return new self('No storage that this server\'s node reaches is marked for backups.', 'no_backup_storage');
+    }
+
+    /**
+     * Scheduled backups only (docs/adr/0051 §6): they never delete a manual backup.
+     */
+    public static function manualSlotsFull(): self
+    {
+        return new self('Manual backups fill every backup slot of this server, so no scheduled backup is taken. Delete one of them first.', 'backup_slots_full');
     }
 }

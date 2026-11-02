@@ -44,6 +44,9 @@ class FakeProxmoxCluster
     /** @var list<array<string, mixed>> vzdump requests */
     public array $vzdumps = [];
 
+    /** @var list<string> volume ids of backups deleted through the storage content */
+    public array $deletedBackupVolumes = [];
+
     /** When set, backups, restores and deletes of backups fail with this exit status. */
     public ?string $failBackup = null;
 
@@ -894,7 +897,8 @@ class FakeProxmoxCluster
             $count = count($this->backupVolumes[$storage] ?? []);
             $vm = $this->vms[$vmid];
             $this->backupVolumes[$storage][] = [
-                'volid' => sprintf('%s:backup/vzdump-qemu-%d-2026_10_29-01_00_%02d.vma.zst', $storage, $vmid, $count),
+                // Numbered by vzdump requests: unique also after backups were deleted.
+                'volid' => sprintf('%s:backup/vzdump-qemu-%d-2026_10_29-01_00_%02d.vma.zst', $storage, $vmid, count($this->vzdumps) - 1),
                 'vmid' => $vmid,
                 'node' => $node,
                 'size' => 1024 ** 3 + $count,
@@ -926,6 +930,7 @@ class FakeProxmoxCluster
     private function deleteBackupVolume(string $node, string $storage, string $volid): PromiseInterface
     {
         if ($this->failBackup === null) {
+            $this->deletedBackupVolumes[] = $volid;
             $this->backupVolumes[$storage] = array_values(array_filter($this->backupVolumes[$storage] ?? [], fn (array $volume) => $volume['volid'] !== $volid));
         }
 

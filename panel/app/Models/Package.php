@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use App\Enums\BackupSchedule;
 use App\Enums\NetworkModel;
 use App\Models\Concerns\HasPublicUuid;
 use Database\Factories\PackageFactory;
@@ -39,6 +40,7 @@ use Illuminate\Support\Collection;
  * @property int $ipv6_count
  * @property int $snapshot_slots
  * @property int $backup_slots
+ * @property BackupSchedule $backup_schedule how often the panel backs its servers up (docs/adr/0051 §6); not copied: servers follow it unless they have their own
  * @property Collection<int, NetworkModel> $network_models
  * @property bool $is_active
  * @property int $sort_order
@@ -49,12 +51,17 @@ use Illuminate\Support\Collection;
  */
 #[Fillable([
     'name', 'cpu_cores', 'memory_mib', 'disk_mib', 'traffic_bytes', 'port_speed_mbps', 'cpu_limit', 'cpu_units', 'disk_mb_s', 'disk_iops', 'reinstall_limit', 'reinstall_period_days', 'firewall_ruleset_id',
-    'ipv4_count', 'ipv6_count', 'snapshot_slots', 'backup_slots', 'network_models', 'is_active', 'sort_order',
+    'ipv4_count', 'ipv6_count', 'snapshot_slots', 'backup_slots', 'backup_schedule', 'network_models', 'is_active', 'sort_order',
 ])]
 class Package extends Model
 {
     /** @use HasFactory<PackageFactory> */
     use HasFactory, HasPublicUuid;
+
+    /** @var array<string, mixed> */
+    protected $attributes = [
+        'backup_schedule' => 'none',
+    ];
 
     /**
      * @return array<string, string>
@@ -77,6 +84,7 @@ class Package extends Model
             'ipv6_count' => 'integer',
             'snapshot_slots' => 'integer',
             'backup_slots' => 'integer',
+            'backup_schedule' => BackupSchedule::class,
             'network_models' => AsEnumCollection::of(NetworkModel::class),
             'is_active' => 'boolean',
             'sort_order' => 'integer',

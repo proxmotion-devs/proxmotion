@@ -42,6 +42,12 @@ class PanelSettingsRequest extends FormRequest
             }],
             'provisioning_deadline_minutes' => ['required', 'integer', 'min:15', 'max:1440'],
             'backup_deadline_minutes' => ['required', 'integer', 'min:30', 'max:2880'],
+            // Scheduled backups (docs/adr/0051 §6); a window may end on the next day, but not where it starts.
+            'backup_window_start' => ['required', 'string', 'date_format:H:i'],
+            'backup_window_end' => ['required', 'string', 'date_format:H:i', 'different:backup_window_start'],
+            'backups_per_node' => ['required', 'integer', 'min:1', 'max:20'],
+            'backups_per_storage' => ['required', 'integer', 'min:1', 'max:50'],
+            'backups_keep_terminated_days' => ['required', 'integer', 'min:0', 'max:365'],
             'verify_dns_name' => ['nullable', 'string', 'max:253', new Hostname],
             'protected_networks' => ['nullable', 'string', 'max:4000', new NetworkList],
             'drift_stopped_grace_minutes' => ['required', 'integer', 'min:0', 'max:10080'],
@@ -149,6 +155,11 @@ class PanelSettingsRequest extends FormRequest
             'min_vmid' => fn () => (int) $data['min_vmid'],
             'provisioning_deadline_minutes' => fn () => (int) $data['provisioning_deadline_minutes'],
             'backup_deadline_minutes' => fn () => (int) $data['backup_deadline_minutes'],
+            'backup_window_start' => fn () => (string) $data['backup_window_start'],
+            'backup_window_end' => fn () => (string) $data['backup_window_end'],
+            'backups_per_node' => fn () => (int) $data['backups_per_node'],
+            'backups_per_storage' => fn () => (int) $data['backups_per_storage'],
+            'backups_keep_terminated_days' => fn () => (int) $data['backups_keep_terminated_days'],
             'verify_dns_name' => fn () => ($name = $optionalString('verify_dns_name')) === null ? null : strtolower($name),
             'protected_networks' => fn () => NetworkList::canonical($optionalString('protected_networks')),
             'drift_stopped_grace_minutes' => fn () => (int) $data['drift_stopped_grace_minutes'],
@@ -177,6 +188,6 @@ class PanelSettingsRequest extends FormRequest
         ];
 
         // Only the page's category: the other settings keep their values.
-        return array_map(fn (Closure $value): mixed => $value(), array_intersect_key($values, array_flip($this->fields())));
+        return array_map(fn (callable $value): mixed => $value(), array_intersect_key($values, array_flip($this->fields())));
     }
 }

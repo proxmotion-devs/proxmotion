@@ -78,10 +78,21 @@ return [
     | Taking or restoring a backup must finish within deadline_minutes of its
     | start: large servers can take hours.
     |
+    | Scheduled backups (packages' or servers' backup schedule) start between
+    | window_start and window_end (HH:MM in the panel's time zone; an end
+    | before the start ends on the next day), at most per_node at a time on
+    | a node and per_storage on a backup storage. Backups of terminated
+    | servers are kept keep_terminated_days (0: deleted with the server).
+    |
     */
 
     'backups' => [
         'deadline_minutes' => (int) env('PROXMOTION_BACKUP_DEADLINE_MINUTES', 360),
+        'window_start' => (string) env('PROXMOTION_BACKUP_WINDOW_START', '01:00'),
+        'window_end' => (string) env('PROXMOTION_BACKUP_WINDOW_END', '06:00'),
+        'per_node' => (int) env('PROXMOTION_BACKUPS_PER_NODE', 1),
+        'per_storage' => (int) env('PROXMOTION_BACKUPS_PER_STORAGE', 2),
+        'keep_terminated_days' => (int) env('PROXMOTION_BACKUPS_KEEP_TERMINATED_DAYS', 0),
     ],
 
     /*

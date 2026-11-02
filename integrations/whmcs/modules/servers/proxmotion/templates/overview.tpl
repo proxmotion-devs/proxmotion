@@ -327,6 +327,9 @@
                 <hr>
                 <h4>{$pmx.lang.backups|escape} <small>{$pmx.backups.count|escape}</small></h4>
                 <p class="text-muted">{$pmx.lang.backups_intro|escape}</p>
+                {if $pmx.backups.schedule}
+                    <p>{$pmx.backups.schedule|escape}{if $pmx.backups.next} <span class="text-muted">{$pmx.backups.next|escape}</span>{/if}</p>
+                {/if}
                 {if $pmx.backups.unavailable}
                     <p class="text-muted">{$pmx.backups.unavailable|escape}</p>
                 {/if}
