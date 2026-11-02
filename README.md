@@ -47,6 +47,17 @@ Or with Docker:
 docker compose -f deploy/docker/compose.yml up -d
 ```
 
+## Production
+
+Production images and a native installer are being built (Phase 8). Both run the same commands, which you can also run by hand inside `panel/` once the code, `.env` and the dependencies are in place:
+
+```bash
+php artisan proxmotion:install   # checks requirements, migrates, creates the first administrator
+php artisan proxmotion:upgrade   # after updating the code: migrations in maintenance mode, worker restarts
+```
+
+See [ADR 0052](docs/adr/0052-install-and-upgrade-commands.md) for what each step does.
+
 ## Contributing
 
 Contributions are welcome — please read [CONTRIBUTING.md](CONTRIBUTING.md) and our [Code of Conduct](CODE_OF_CONDUCT.md). To report a security issue, follow [SECURITY.md](SECURITY.md); do not open a public issue.
