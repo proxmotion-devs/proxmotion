@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Domain\Settings\Branding;
 use App\Support\Locales;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\App;
@@ -39,7 +40,9 @@ class HandleInertiaRequests extends Middleware
     {
         return [
             ...parent::share($request),
-            'name' => config('app.name'),
+            'name' => Branding::name(),
+            // docs/adr/0053; the root view reads the colour and favicon from it too.
+            'branding' => Branding::forPages(),
             'locale' => App::getLocale(),
             'availableLocales' => Locales::SUPPORTED,
             'auth' => [

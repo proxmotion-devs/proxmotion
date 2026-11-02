@@ -37,6 +37,27 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Branding (docs/adr/0053)
+    |--------------------------------------------------------------------------
+    |
+    | The panel's name (empty: APP_NAME), its colour as #rrggbb (empty: the
+    | default theme) and where customers on the console page get help. The
+    | logo and favicon can only be uploaded on Panel settings.
+    |
+    */
+
+    'branding' => [
+        'name' => env('PROXMOTION_BRAND_NAME') ?: null,
+        'color' => env('PROXMOTION_BRAND_COLOR') ?: null,
+        'support_email' => env('PROXMOTION_SUPPORT_EMAIL') ?: null,
+        'support_url' => env('PROXMOTION_SUPPORT_URL') ?: null,
+        'logo' => null,
+        'logo_dark' => null,
+        'favicon' => null,
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Browser console
     |--------------------------------------------------------------------------
     |

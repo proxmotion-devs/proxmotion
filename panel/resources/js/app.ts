@@ -1,4 +1,4 @@
-import { createInertiaApp } from '@inertiajs/vue3';
+import { createInertiaApp, usePage } from '@inertiajs/vue3';
 import { provideSSRWidth } from '@vueuse/core';
 import { trans } from 'laravel-vue-i18n';
 import { initializeTheme } from '@/composables/useAppearance';
@@ -8,11 +8,12 @@ import SettingsLayout from '@/layouts/settings/Layout.vue';
 import { initializeFlashToast } from '@/lib/flashToast';
 import { installI18n } from '@/lib/i18n';
 
-const appName = import.meta.env.VITE_APP_NAME || 'Proxmotion';
+// The name of Panel settings > Branding (docs/adr/0053), read on every title.
+const appName = () => usePage().props?.name || 'Proxmotion';
 
 void createInertiaApp({
     // Page titles are passed as English keys and translated here.
-    title: (title) => (title ? `${trans(title)} - ${appName}` : appName),
+    title: (title) => (title ? `${trans(title)} - ${appName()}` : appName()),
     layout: (name) => {
         switch (true) {
             case name.startsWith('auth/'):

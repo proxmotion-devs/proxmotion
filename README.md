@@ -56,7 +56,7 @@ php artisan proxmotion:install   # checks requirements, migrates, creates the fi
 php artisan proxmotion:upgrade   # after updating the code: migrations in maintenance mode, worker restarts
 ```
 
-See [ADR 0052](docs/adr/0052-install-and-upgrade-commands.md) for what each step does.
+See [ADR 0052](docs/adr/0052-install-and-upgrade-commands.md) for what each step does. The panel's name, colour, logo and support contacts are set under *Panel settings → Branding* ([ADR 0053](docs/adr/0053-branding.md)).
 
 ## Contributing
 

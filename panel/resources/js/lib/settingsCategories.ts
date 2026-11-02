@@ -39,6 +39,12 @@ export const SETTINGS_CATEGORIES = [
         description: 'Email to administrators about failures and other events.',
     },
     {
+        key: 'branding',
+        title: 'Branding',
+        description:
+            "The panel's name, colour, logo and favicon, and where customers on the console page get help.",
+    },
+    {
         // Shown only: these stay in .env.
         key: 'environment',
         title: 'Set in .env only',

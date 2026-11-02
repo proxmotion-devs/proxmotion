@@ -109,6 +109,11 @@ class PanelSettingsRequest extends FormRequest
                 }
             }],
             'notification_throttle_minutes' => ['required', 'integer', 'min:5', 'max:1440'],
+            // Branding (docs/adr/0053); empty: APP_NAME, the default theme, no support contact.
+            'brand_name' => ['nullable', 'string', 'max:60'],
+            'brand_color' => ['nullable', 'string', Rule::regex('/^#[0-9a-fA-F]{6}$/')],
+            'support_email' => ['nullable', 'string', 'max:255', 'email'],
+            'support_url' => ['nullable', 'string', 'max:255', 'url:https'],
         ], array_flip($this->fields()));
     }
 
@@ -202,6 +207,10 @@ class PanelSettingsRequest extends FormRequest
             'notifications_enabled' => fn () => (bool) $data['notifications_enabled'],
             'notification_recipients' => fn () => self::addresses((string) ($data['notification_recipients'] ?? '')),
             'notification_throttle_minutes' => fn () => (int) $data['notification_throttle_minutes'],
+            'brand_name' => fn () => $optionalString('brand_name'),
+            'brand_color' => fn () => ($color = $optionalString('brand_color')) === null ? null : strtolower($color),
+            'support_email' => fn () => ($email = $optionalString('support_email')) === null ? null : strtolower($email),
+            'support_url' => fn () => $optionalString('support_url'),
         ];
 
         // Only the page's category: the other settings keep their values.

@@ -30,15 +30,37 @@
             }
         </style>
 
-        <link rel="icon" href="/favicon.ico" sizes="any">
-        <link rel="icon" href="/favicon.svg" type="image/svg+xml">
-        <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+        @php($branding = $page['props']['branding'] ?? [])
+
+        @if (! empty($branding['favicon_url']))
+            <link rel="icon" href="{{ $branding['favicon_url'] }}">
+            <link rel="apple-touch-icon" href="{{ $branding['favicon_url'] }}">
+        @else
+            <link rel="icon" href="/favicon.ico" sizes="any">
+            <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+            <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+        @endif
 
         @fonts
 
         @vite(['resources/css/app.css', 'resources/js/app.ts', "resources/js/pages/{$page['component']}.vue"])
+
+        {{-- The colour of Panel settings > Branding (docs/adr/0053), validated as #rrggbb, in both modes. --}}
+        @if (! empty($branding['color']))
+            <style>
+                /* html: more specific than app.css, wherever the stylesheets end up. */
+                html:root, html.dark {
+                    --primary: {{ $branding['color'] }};
+                    --primary-foreground: {{ $branding['color_foreground'] }};
+                    --sidebar-primary: {{ $branding['color'] }};
+                    --sidebar-primary-foreground: {{ $branding['color_foreground'] }};
+                    --ring: {{ $branding['color'] }};
+                }
+            </style>
+        @endif
+
         <x-inertia::head>
-            <title>{{ config('app.name', 'Laravel') }}</title>
+            <title>{{ $page['props']['name'] ?? config('app.name') }}</title>
         </x-inertia::head>
     </head>
     <body class="font-sans antialiased">

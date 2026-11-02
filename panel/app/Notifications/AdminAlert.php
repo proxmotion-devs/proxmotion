@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Notifications;
 
+use App\Domain\Settings\Branding;
 use App\Enums\NotificationEvent;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -51,7 +52,7 @@ class AdminAlert extends Notification implements ShouldQueue
     public function toMail(object $notifiable): MailMessage
     {
         $mail = (new MailMessage)
-            ->subject('['.config('app.name').'] '.__($this->subject, self::translated($this->replace)));
+            ->subject('['.Branding::name().'] '.__($this->subject, self::translated($this->replace)));
 
         foreach ($this->lines as $line) {
             $mail->line(__($line[0], self::literal(self::translated($line[1] ?? []))));

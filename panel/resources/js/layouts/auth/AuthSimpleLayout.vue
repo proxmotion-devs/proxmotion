@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Link } from '@inertiajs/vue3';
-import AppLogoIcon from '@/components/AppLogoIcon.vue';
+import BrandMark from '@/components/BrandMark.vue';
 import LanguageSwitcher from '@/components/LanguageSwitcher.vue';
 import { home } from '@/routes';
 
@@ -27,7 +27,7 @@ defineProps<{
                         <div
                             class="mb-1 flex h-9 w-9 items-center justify-center rounded-md"
                         >
-                            <AppLogoIcon
+                            <BrandMark
                                 class="size-9 fill-current text-[var(--foreground)] dark:text-white"
                             />
                         </div>

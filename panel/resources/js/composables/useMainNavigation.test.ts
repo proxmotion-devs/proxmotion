@@ -52,6 +52,7 @@ describe('useMainNavigation', () => {
             '/admin/settings/usage',
             '/admin/settings/general',
             '/admin/settings/notifications',
+            '/admin/settings/branding',
             '/admin/settings/environment',
         ]);
     });

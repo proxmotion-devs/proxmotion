@@ -1,14 +1,23 @@
 <script setup lang="ts">
-import { Head, Link, router } from '@inertiajs/vue3';
+import { Head, Link, router, usePage } from '@inertiajs/vue3';
 import type RFB from '@novnc/novnc';
 import {
     ArrowLeft,
     ClipboardPaste,
     Keyboard,
+    LifeBuoy,
     Maximize,
     RotateCcw,
 } from '@lucide/vue';
-import { onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue';
+import {
+    computed,
+    onBeforeUnmount,
+    onMounted,
+    ref,
+    shallowRef,
+    watch,
+} from 'vue';
+import BrandMark from '@/components/BrandMark.vue';
 import { Button } from '@/components/ui/button';
 import { textToKeyPresses, XK_SHIFT_L } from '@/lib/keysyms';
 
@@ -27,6 +36,29 @@ const props = defineProps<{
     /** null on the customer console opened from the billing system */
     backUrl: string | null;
 }>();
+
+// The only page customers see (docs/adr/0007): it carries the branding of
+// Panel settings and where to get help (docs/adr/0053).
+const page = usePage();
+const branding = computed(() => page.props.branding);
+// Only for customers: administrators come from the panel (backUrl).
+const supportHref = computed(() => {
+    if (props.backUrl !== null) {
+        return null;
+    }
+
+    return (
+        branding.value.support_url ??
+        (branding.value.support_email
+            ? `mailto:${branding.value.support_email}`
+            : null)
+    );
+});
+
+// A page opens in a new tab, beside the console; an email address in the mail client.
+const supportTarget = computed(() =>
+    branding.value.support_url ? '_blank' : undefined,
+);
 
 const screen = ref<HTMLElement>();
 const container = ref<HTMLElement>();
@@ -211,6 +243,13 @@ watch(
                 <ArrowLeft class="h-4 w-4" />
                 {{ $t('Back') }}
             </Link>
+            <span
+                class="inline-flex items-center gap-2 text-sm text-neutral-300"
+                data-test="console-brand"
+            >
+                <BrandMark class="size-6 fill-current text-white" />
+                <span class="max-sm:sr-only">{{ branding.name }}</span>
+            </span>
             <span class="font-mono text-sm font-semibold">{{
                 server.hostname
             }}</span>
@@ -227,6 +266,19 @@ watch(
             </span>
 
             <div class="ml-auto flex flex-wrap gap-2">
+                <Button
+                    v-if="supportHref"
+                    as="a"
+                    size="sm"
+                    variant="secondary"
+                    :href="supportHref"
+                    :target="supportTarget"
+                    rel="noopener noreferrer"
+                    data-test="console-support"
+                >
+                    <LifeBuoy class="h-4 w-4" />
+                    {{ $t('Support') }}
+                </Button>
                 <Button
                     size="sm"
                     variant="secondary"
@@ -295,6 +347,23 @@ watch(
             role="alert"
         >
             {{ error }}
+            <template v-if="supportHref">
+                <br />
+                <a
+                    :href="supportHref"
+                    :target="supportTarget"
+                    rel="noopener noreferrer"
+                    class="underline"
+                    data-test="console-error-support"
+                    >{{
+                        branding.support_email && !branding.support_url
+                            ? $t('Need help? Write to :email.', {
+                                  email: branding.support_email,
+                              })
+                            : $t('Need help? Contact support.')
+                    }}</a
+                >
+            </template>
         </p>
 
         <div ref="screen" class="min-h-0 flex-1 overflow-hidden" />

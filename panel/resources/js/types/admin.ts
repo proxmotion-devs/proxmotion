@@ -57,6 +57,14 @@ export type PanelSettings = {
     notifications_enabled: boolean;
     notification_recipients: string[];
     notification_throttle_minutes: number;
+    /** Branding (docs/adr/0053); the images are file names, shown through the shared branding prop. */
+    brand_name: string | null;
+    brand_color: string | null;
+    support_email: string | null;
+    support_url: string | null;
+    brand_logo: string | null;
+    brand_logo_dark: string | null;
+    brand_favicon: string | null;
 };
 
 export type Cluster = {

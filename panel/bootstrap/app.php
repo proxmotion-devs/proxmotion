@@ -1,5 +1,7 @@
 <?php
 
+use App\Domain\Settings\Branding;
+use App\Http\Controllers\BrandingFileController;
 use App\Http\Middleware\AuthenticateApiToken;
 use App\Http\Middleware\AuthenticateConsoleProxy;
 use App\Http\Middleware\EnsureTwoFactorIsEnabled;
@@ -28,6 +30,13 @@ return Application::configure(basePath: dirname(__DIR__))
                 ->prefix('api/v1')
                 ->name('api.v1.')
                 ->group(base_path('routes/api.php'));
+
+            // Uploaded logos and favicon (docs/adr/0053), also on the sign-in pages and the customer
+            // console. Without the web group: a publicly cached image must never carry a session or
+            // XSRF cookie, and needs none of the page middleware.
+            Route::get('branding/{file}', BrandingFileController::class)
+                ->where('file', Branding::FILE_PATTERN)
+                ->name('branding.image');
 
             Route::middleware(['throttle:120,1', AuthenticateConsoleProxy::class])
                 ->prefix('internal')

@@ -52,6 +52,10 @@ class PanelSettingsTest extends AdminTestCase
             'notifications_enabled' => true,
             'notification_recipients' => 'ops@example.com',
             'notification_throttle_minutes' => 30,
+            'brand_name' => 'Example Cloud',
+            'brand_color' => '#2563EB',
+            'support_email' => 'Support@Example.com',
+            'support_url' => 'https://help.example.com',
             ...$overrides,
         ];
     }
@@ -71,7 +75,8 @@ class PanelSettingsTest extends AdminTestCase
         $listed = array_merge(...array_values(PanelSettings::CATEGORIES));
 
         $this->assertSame(count($listed), count(array_unique($listed)));
-        $this->assertEqualsCanonicalizing(array_keys(PanelSettings::KEYS), $listed);
+        // The images are saved by uploading them (docs/adr/0053).
+        $this->assertEqualsCanonicalizing(array_keys(PanelSettings::KEYS), [...$listed, ...PanelSettings::UPLOADS]);
     }
 
     public function test_it_opens_the_first_page()
@@ -129,14 +134,17 @@ class PanelSettingsTest extends AdminTestCase
         $this->assertSame(90, PanelSettings::get('storage_critical_percent'));
         $this->assertSame('22:30', PanelSettings::get('backup_window_start'));
         $this->assertSame(14, PanelSettings::get('backups_keep_terminated_days'));
-        $this->assertSame([], PanelSettings::unsaved());
+        $this->assertSame('Example Cloud', PanelSettings::get('brand_name'));
+        $this->assertSame('#2563eb', PanelSettings::get('brand_color'));
+        $this->assertSame('support@example.com', PanelSettings::get('support_email'));
+        $this->assertSame(PanelSettings::UPLOADS, PanelSettings::unsaved());
 
         // .env no longer decides once the page was saved.
         config(['proxmotion.moves.cross_cluster' => false]);
         $this->assertTrue(ServerMover::crossClusterEnabled());
 
         $entries = AuditLog::query()->where('action', 'settings.updated')->orderBy('id')->get();
-        $this->assertCount(6, $entries);
+        $this->assertCount(7, $entries);
         $this->assertSame(['from' => false, 'to' => true], $entries->first()->properties['changes']['cross_cluster_moves']);
     }
 
@@ -208,6 +216,10 @@ class PanelSettingsTest extends AdminTestCase
             // Critical must be above the warning.
             'storage_warning_percent' => 90,
             'storage_critical_percent' => 90,
+            'brand_name' => str_repeat('x', 61),
+            'brand_color' => '#25e;}',
+            'support_email' => 'nope',
+            'support_url' => 'http://help.example.com',
         ];
 
         $this->saveCategory('servers', $invalid)->assertSessionHasErrors(['min_vmid', 'move_deadline_minutes', 'verify_dns_name']);
@@ -215,6 +227,7 @@ class PanelSettingsTest extends AdminTestCase
         $this->saveCategory('network', $invalid)->assertSessionHasErrors(['protected_networks']);
         $this->saveCategory('general', $invalid)->assertSessionHasErrors(['docs_url', 'storage_critical_percent']);
         $this->saveCategory('usage', $invalid)->assertSessionHasErrors(['traffic_reset_day', 'traffic_action', 'usage_cpu_percent', 'usage_window_minutes']);
+        $this->saveCategory('branding', $invalid)->assertSessionHasErrors(['brand_name', 'brand_color', 'support_email', 'support_url']);
 
         $this->assertSame(array_keys(PanelSettings::KEYS), PanelSettings::unsaved());
     }

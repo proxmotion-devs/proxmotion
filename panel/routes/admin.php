@@ -1,6 +1,7 @@
 <?php
 
 use App\Domain\Reports\Reports;
+use App\Domain\Settings\Branding;
 use App\Domain\Settings\PanelSettings;
 use App\Http\Controllers\Admin\AdoptionController;
 use App\Http\Controllers\Admin\ApiTokenController;
@@ -10,6 +11,7 @@ use App\Http\Controllers\Admin\AppLogController;
 use App\Http\Controllers\Admin\AppPackageController;
 use App\Http\Controllers\Admin\AppRecipeController;
 use App\Http\Controllers\Admin\BillingSystemController;
+use App\Http\Controllers\Admin\BrandingImageController;
 use App\Http\Controllers\Admin\ClusterController;
 use App\Http\Controllers\Admin\CustomScriptController;
 use App\Http\Controllers\Admin\DashboardController;
@@ -61,6 +63,11 @@ Route::get('settings/{category}', [PanelSettingsController::class, 'edit'])->nam
     ->whereIn('category', array_keys(PanelSettings::CATEGORIES));
 Route::put('settings/{category}', [PanelSettingsController::class, 'update'])->name('settings.update')
     ->whereIn('category', array_keys(array_filter(PanelSettings::CATEGORIES)));
+// Logo and favicon (docs/adr/0053).
+Route::post('settings/branding/images/{image}', [BrandingImageController::class, 'store'])->name('settings.branding.store')
+    ->whereIn('image', array_keys(Branding::IMAGES))->middleware('throttle:20,1');
+Route::delete('settings/branding/images/{image}', [BrandingImageController::class, 'destroy'])->name('settings.branding.destroy')
+    ->whereIn('image', array_keys(Branding::IMAGES));
 
 // Reports (docs/adr/0046): each table also as CSV.
 Route::get('reports', [ReportController::class, 'index'])->name('reports.index');

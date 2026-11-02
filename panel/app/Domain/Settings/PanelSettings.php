@@ -59,7 +59,20 @@ final class PanelSettings
         'notifications_enabled' => 'notifications.enabled',
         'notification_recipients' => 'notifications.recipients',
         'notification_throttle_minutes' => 'notifications.throttle_minutes',
+        'brand_name' => 'branding.name',
+        'brand_color' => 'branding.color',
+        'support_email' => 'branding.support_email',
+        'support_url' => 'branding.support_url',
+        'brand_logo' => 'branding.logo',
+        'brand_logo_dark' => 'branding.logo_dark',
+        'brand_favicon' => 'branding.favicon',
     ];
+
+    /**
+     * Settings saved by uploading a file on the Branding page, not with its
+     * form: the file names of Branding::IMAGES (docs/adr/0053).
+     */
+    public const array UPLOADS = ['brand_logo', 'brand_logo_dark', 'brand_favicon'];
 
     /**
      * The pages of Panel settings, listed under it in the menu, and the
@@ -101,6 +114,7 @@ final class PanelSettings
         ],
         'general' => ['console_max_minutes', 'console_idle_minutes', 'drift_stopped_grace_minutes', 'storage_warning_percent', 'storage_critical_percent', 'docs_url'],
         'notifications' => ['notifications_enabled', 'notification_recipients', 'notification_throttle_minutes'],
+        'branding' => ['brand_name', 'brand_color', 'support_email', 'support_url'],
         'environment' => [],
     ];
 
