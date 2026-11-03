@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import AppSystemsPicker from '@/components/admin/AppSystemsPicker.vue';
+import ConfirmDialog from '@/components/admin/ConfirmDialog.vue';
 import Notice from '@/components/admin/Notice.vue';
 import type { AppOsVersion } from '@/components/admin/AppSystemsPicker.vue';
 import { Head, Link, router, useForm, usePage, usePoll } from '@inertiajs/vue3';
@@ -363,18 +364,9 @@ const saveDraft = () => {
     );
 };
 
-const revertToBundled = () => {
-    if (
-        window.confirm(
-            trans(
-                'Go back to the bundled version :version? Your changes stay in the history; installations keep their version.',
-                { version: props.app.bundled_version ?? '' },
-            ),
-        )
-    ) {
-        router.post(revertRoute(props.app.slug), {}, { preserveScroll: true });
-    }
-};
+const confirmingRevert = ref(false);
+const revertToBundled = () =>
+    router.post(revertRoute(props.app.slug), {}, { preserveScroll: true });
 
 const discardDraft = () =>
     router.delete(discard(props.app.slug), {
@@ -539,15 +531,27 @@ const importDraft = (event: Event) => {
     const archive = input.files?.item(0) ?? null;
     input.value = '';
 
-    if (
-        archive === null ||
-        !window.confirm(
-            trans(
-                'Replace the draft with the recipe in :file? The published version stays as it is.',
-                { file: archive.name },
-            ),
-        )
-    ) {
+    if (archive === null) {
+        return;
+    }
+
+    // Asked in the panel's dialog; the import runs once it is confirmed.
+    pendingArchive.value = archive;
+};
+
+const pendingArchive = ref<File | null>(null);
+const confirmingImport = computed({
+    get: () => pendingArchive.value !== null,
+    set: (open: boolean) => {
+        if (!open) {
+            pendingArchive.value = null;
+        }
+    },
+});
+const runImport = () => {
+    const archive = pendingArchive.value;
+
+    if (archive === null) {
         return;
     }
 
@@ -681,7 +685,7 @@ const statusLabels = {
                     v-if="app.modified"
                     variant="outline"
                     data-test="revert"
-                    @click="revertToBundled"
+                    @click="confirmingRevert = true"
                 >
                     <RotateCcw class="h-4 w-4" />
                     {{ $t('Back to bundled version') }}
@@ -1614,4 +1618,31 @@ const statusLabels = {
             <Input id="copy_name" v-model="copyForm.name" />
         </FormField>
     </FormDialog>
+
+    <ConfirmDialog
+        v-model:open="confirmingRevert"
+        title="Back to bundled version?"
+        :description="
+            $t(
+                'Go back to the bundled version :version? Your changes stay in the history; installations keep their version.',
+                { version: app.bundled_version ?? '' },
+            )
+        "
+        confirm-label="Back to bundled version"
+        @confirm="revertToBundled"
+    />
+
+    <ConfirmDialog
+        v-model:open="confirmingImport"
+        title="Replace the draft?"
+        :description="
+            $t(
+                'Replace the draft with the recipe in :file? The published version stays as it is.',
+                { file: pendingArchive?.name ?? '' },
+            )
+        "
+        confirm-label="Replace draft"
+        destructive
+        @confirm="runImport"
+    />
 </template>

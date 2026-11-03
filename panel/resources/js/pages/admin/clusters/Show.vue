@@ -11,6 +11,7 @@ import FormDialog from '@/components/admin/FormDialog.vue';
 import FormField from '@/components/admin/FormField.vue';
 import HealthProblems from '@/components/admin/HealthProblems.vue';
 import NodeDisksTable from '@/components/admin/NodeDisksTable.vue';
+import Notice from '@/components/admin/Notice.vue';
 import StatusBadge from '@/components/admin/StatusBadge.vue';
 import Heading from '@/components/Heading.vue';
 import { useClusterSync } from '@/composables/useClusterSync';
@@ -132,6 +133,14 @@ const submitNode = () => {
             onSuccess: () => (nodeDialogOpen.value = false),
         });
 };
+
+// Ceph's own health words in plain ones (English keys); the raw value stays in the title.
+const cephLabel = (health: string) =>
+    ({
+        HEALTH_OK: 'Healthy',
+        HEALTH_WARN: 'Warning',
+        HEALTH_ERR: 'Error',
+    })[health] ?? health;
 </script>
 
 <template>
@@ -170,22 +179,12 @@ const submitNode = () => {
             </div>
         </div>
 
-        <div
-            v-if="cluster.last_sync_error"
-            class="flex gap-3 rounded-lg border border-destructive/40 bg-status-danger p-4 text-sm text-status-danger-foreground"
-        >
-            <AlertTriangle class="mt-0.5 h-4 w-4 shrink-0" />
-            <div>
-                <div class="font-medium">{{ $t('The last sync failed') }}</div>
-                <div class="break-all">{{ cluster.last_sync_error }}</div>
-            </div>
-        </div>
+        <Notice v-if="cluster.last_sync_error" tone="danger">
+            <div class="font-medium">{{ $t('The last sync failed') }}</div>
+            <div class="break-all">{{ cluster.last_sync_error }}</div>
+        </Notice>
 
-        <div
-            v-if="cluster.firewall_problem"
-            class="flex gap-3 rounded-lg border border-status-warning-border bg-status-warning p-4 text-sm text-status-warning-foreground"
-        >
-            <AlertTriangle class="mt-0.5 h-4 w-4 shrink-0" />
+        <Notice v-if="cluster.firewall_problem">
             <div class="flex flex-col gap-1">
                 <div class="font-medium">
                     {{ $t('Anti-spoofing does not work on this cluster') }}
@@ -199,7 +198,7 @@ const submitNode = () => {
                     }}
                 </div>
             </div>
-        </div>
+        </Notice>
 
         <dl
             class="grid gap-4 rounded-xl border p-4 text-sm sm:grid-cols-2 lg:grid-cols-4"
@@ -289,7 +288,8 @@ const submitNode = () => {
                               ? 'danger'
                               : 'warning'
                     "
-                    :label="cluster.ceph_health"
+                    :label="cephLabel(cluster.ceph_health)"
+                    :title="cluster.ceph_health"
                 />
             </div>
             <ul

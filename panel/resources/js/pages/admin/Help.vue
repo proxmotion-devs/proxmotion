@@ -134,11 +134,16 @@ const topics = [
                     <CircleCheck
                         v-if="step.done"
                         class="mt-0.5 h-4 w-4 shrink-0 text-status-success-foreground"
+                        aria-hidden="true"
                     />
                     <Circle
                         v-else
                         class="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground"
+                        aria-hidden="true"
                     />
+                    <span class="sr-only">{{
+                        step.done ? $t('Done:') : $t('Not done yet:')
+                    }}</span>
                     <div>
                         <Link
                             :href="step.href"

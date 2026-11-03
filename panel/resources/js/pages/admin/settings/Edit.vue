@@ -12,6 +12,7 @@ import { computed, ref } from 'vue';
 import BrandingImageField from '@/components/admin/BrandingImageField.vue';
 import FormField from '@/components/admin/FormField.vue';
 import NativeSelect from '@/components/admin/NativeSelect.vue';
+import Notice from '@/components/admin/Notice.vue';
 import StatusBadge from '@/components/admin/StatusBadge.vue';
 import Heading from '@/components/Heading.vue';
 import { Button } from '@/components/ui/button';
@@ -853,9 +854,8 @@ const sectionClass = 'flex flex-col gap-4 rounded-xl border p-4';
                         >
                     </span>
                 </div>
-                <p
+                <Notice
                     v-if="brandColorLowContrast.length > 0"
-                    class="rounded-md border border-status-warning-border bg-status-warning px-3 py-2 text-sm"
                     data-test="brand-color-contrast"
                 >
                     {{
@@ -867,7 +867,7 @@ const sectionClass = 'flex flex-col gap-4 rounded-xl border p-4';
                                   'This colour hardly stands out from the dark page background: buttons will be hard to see in dark mode.',
                               )
                     }}
-                </p>
+                </Notice>
             </section>
 
             <section :class="sectionClass" data-test="settings-branding-images">

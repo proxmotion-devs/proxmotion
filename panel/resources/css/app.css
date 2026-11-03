@@ -253,6 +253,12 @@
     ::selection {
         background: color-mix(in oklab, var(--primary) 22%, transparent);
     }
+    /* Spinners stand still for people who asked for less motion; the icon still says "busy". */
+    @media (prefers-reduced-motion: reduce) {
+        .animate-spin {
+            animation: none;
+        }
+    }
     /* Figures in table cells line up (DESIGN.md, The Tabular Figures Rule). */
     td {
         font-variant-numeric: tabular-nums;

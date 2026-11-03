@@ -2678,5 +2678,11 @@
     "More": "Diğer",
     "Nothing failed inside the server.": "Sunucunun içinde başarısız olan bir şey yok.",
     "Show checks": "Kontrolleri göster",
-    "Hide checks": "Kontrolleri gizle"
+    "Hide checks": "Kontrolleri gizle",
+    "Reset after trial?": "Test sonrası sıfırlansın mı?",
+    "Back to bundled version?": "Dahili sürüme dönülsün mü?",
+    "Replace the draft?": "Taslak değiştirilsin mi?",
+    "Replace draft": "Taslağı değiştir",
+    "Done:": "Tamamlandı:",
+    "Not done yet:": "Henüz yapılmadı:"
 }

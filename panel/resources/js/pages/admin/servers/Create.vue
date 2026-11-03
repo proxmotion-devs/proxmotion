@@ -311,7 +311,13 @@ const summary = computed(() => {
             trans('Operating system'),
             optionLabel(props.osTemplates, form.os_template),
         ],
-        [trans('App'), form.app === '' ? trans('No app') : form.app],
+        [
+            trans('App'),
+            form.app === ''
+                ? trans('No app')
+                : (props.apps.find((app) => app.slug === form.app)?.name ??
+                  form.app),
+        ],
         [
             trans('IP addresses'),
             `${r.ipv4_count}× IPv4, ${r.ipv6_count}× IPv6` +

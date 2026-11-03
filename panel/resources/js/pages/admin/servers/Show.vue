@@ -8,8 +8,8 @@ import {
     usePoll,
 } from '@inertiajs/vue3';
 import { Eye, LoaderCircle, Monitor, RotateCcw, Trash2 } from '@lucide/vue';
-import { trans } from 'laravel-vue-i18n';
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
+import ConfirmDialog from '@/components/admin/ConfirmDialog.vue';
 import TypedConfirmDialog from '@/components/admin/TypedConfirmDialog.vue';
 import Notice from '@/components/admin/Notice.vue';
 import DriftList from '@/components/admin/DriftList.vue';
@@ -614,25 +614,9 @@ const toggleTestServer = () =>
     });
 
 // Reinstall the test server from its template after trials (docs/adr/0018 §7).
-const resetAfterTrial = () => {
-    if (
-        window.confirm(
-            trans(
-                'Reinstall :hostname from :template? Its disks are wiped and every app on it is removed. IP addresses and SSH keys stay; the root password is new.',
-                {
-                    hostname: props.server.hostname,
-                    template: props.server.os_template ?? '—',
-                },
-            ),
-        )
-    ) {
-        router.post(
-            trialReset(props.server.uuid),
-            {},
-            { preserveScroll: true },
-        );
-    }
-};
+const confirmingTrialReset = ref(false);
+const resetAfterTrial = () =>
+    router.post(trialReset(props.server.uuid), {}, { preserveScroll: true });
 </script>
 
 <template>
@@ -810,6 +794,7 @@ const resetAfterTrial = () => {
                 <LoaderCircle
                     v-if="item.value === 'tasks' && runningTasks.length"
                     class="size-3.5 text-muted-foreground motion-safe:animate-spin"
+                    role="img"
                     :aria-label="$t('A task is running')"
                 />
             </button>
@@ -1034,7 +1019,7 @@ const resetAfterTrial = () => {
                                 {{
                                     server.port_speed_mbps
                                         ? `${server.port_speed_mbps} Mbps`
-                                        : '∞ Mbps'
+                                        : $t('unlimited')
                                 }}
                                 · {{ formatTraffic(server.traffic_bytes) }}
                             </dd>
@@ -1350,7 +1335,7 @@ const resetAfterTrial = () => {
                         size="sm"
                         :disabled="vmBlocked"
                         data-test="trial-reset"
-                        @click="resetAfterTrial"
+                        @click="confirmingTrialReset = true"
                     >
                         <RotateCcw class="h-4 w-4" />
                         {{ $t('Reset after trial') }}
@@ -1368,6 +1353,22 @@ const resetAfterTrial = () => {
                     </Button>
                 </div>
             </section>
+            <ConfirmDialog
+                v-model:open="confirmingTrialReset"
+                title="Reset after trial?"
+                :description="
+                    $t(
+                        'Reinstall :hostname from :template? Its disks are wiped and every app on it is removed. IP addresses and SSH keys stay; the root password is new.',
+                        {
+                            hostname: server.hostname,
+                            template: server.os_template ?? '—',
+                        },
+                    )
+                "
+                confirm-label="Reset after trial"
+                destructive
+                @confirm="resetAfterTrial"
+            />
         </template>
 
         <UsageHistorySection
