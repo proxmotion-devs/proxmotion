@@ -105,7 +105,10 @@ if command -v cmp > /dev/null 2>&1 && cmp -s "$tmp" "$file"; then
 fi
 
 # The new file takes the old one's place in one step, with its owner and
-# group; sshd wants it writable by its owner only.
+# group; sshd wants it writable by its owner only. `ls -ln` because GNU and
+# BSD stat take different options (FreeBSD runs this script too); only the
+# numeric owner and group are read, never the file name.
+# shellcheck disable=SC2012
 owner=$(ls -ln "$file" | awk '{ print $3 ":" $4 }')
 chmod 600 "$tmp"
 chown "$owner" "$tmp"
