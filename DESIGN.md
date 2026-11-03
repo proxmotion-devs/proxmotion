@@ -285,6 +285,9 @@ The panel's main signal. `StatusBadge` takes a tone (`StatusTone`: success, warn
 ### Guide Box (signature)
 `GuideBox` opens explanatory pages with a calm how-to: 12px corners, sky border at 30%, sky fill at 5% (`border-guide/30`, `bg-guide/5`), a sky lightbulb icon (`text-guide-icon`), a medium title, muted body text with styled lists and inline code, and a "More in Help" link (`text-guide-link`). A 32px ghost × hides it, which is remembered per browser; hidden guides leave a 32px-high "Show guide" text button. Every control in it shows the focus ring. It is the panel's reassurance made visible.
 
+### Attention list
+The dashboard's first panel lists only the problems that exist right now (failed tasks of the last 24 hours, servers in error, clusters that failed to sync, nodes not online, unhealthy storages and disks, drift, usage limits), one 12px × 16px row each: a 16px icon in the danger or warning text tone, the label, the count in tabular figures and a chevron when the row links somewhere. Details (the failed tasks, the servers over their limits) sit indented under their row. The panel's border turns red at 40% when a danger row is present and amber when only warnings are; with nothing to show it says so in one calm line with a green check. Counts that are not problems (servers by status, the inventory) live in a gap-px stat strip and a divided list, never in rows of same-size cards.
+
 ### Browser surfaces
 Text selection is the provider colour at 22%, the page scrollbar uses muted grey at 40% on a transparent track, and every table cell uses tabular numerals (`app.css` base layer).
 
