@@ -7,6 +7,7 @@ namespace App\Http\Requests\Api\V1;
 use App\Enums\IpVersion;
 use App\Models\Package;
 use App\Models\Server;
+use App\Provisioning\BackupSlots;
 use App\Provisioning\ResourceChange;
 use App\Provisioning\ResourceLimits;
 use App\Provisioning\ServerSpec;
@@ -39,6 +40,9 @@ class ChangeResourcesRequest extends FormRequest
             'resources.ipv6_count' => ['nullable', 'integer', 'between:0,64'],
             'resources.port_speed_mbps' => ['nullable', 'integer', 'between:1,400000'],
             'resources.traffic_bytes' => ['nullable', 'integer', 'between:1,10000000000000000'],
+            // Snapshots and backups a server may have (docs/adr/0051 §2).
+            'resources.snapshot_slots' => ['nullable', 'integer', 'between:0,'.BackupSlots::MAX],
+            'resources.backup_slots' => ['nullable', 'integer', 'between:0,'.BackupSlots::MAX],
             // Restart right away if CPU or memory changes wait for a restart.
             'reboot' => ['nullable', 'boolean'],
         ];
@@ -71,6 +75,7 @@ class ChangeResourcesRequest extends FormRequest
             portSpeedMbps: $server->port_speed_mbps,
             trafficBytes: $server->traffic_bytes,
             limits: ResourceLimits::of($server),
+            slots: BackupSlots::of($server),
         );
         $value = fn (string $key, ?int $default): ?int => $this->filled("resources.{$key}") ? $this->integer("resources.{$key}") : $default;
 
@@ -85,6 +90,10 @@ class ChangeResourcesRequest extends FormRequest
                 trafficBytes: $value('traffic_bytes', $base->trafficBytes),
                 // From the package, or kept: the API takes no overrides (docs/adr/0034).
                 limits: $base->limits,
+                slots: new BackupSlots(
+                    snapshots: (int) $value('snapshot_slots', $base->slots->snapshots),
+                    backups: (int) $value('backup_slots', $base->slots->backups),
+                ),
             ),
             package: $package,
             reboot: $this->boolean('reboot'),

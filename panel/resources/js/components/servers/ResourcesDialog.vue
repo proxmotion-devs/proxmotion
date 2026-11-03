@@ -6,6 +6,7 @@ import { computed, ref } from 'vue';
 import FormField from '@/components/admin/FormField.vue';
 import NativeSelect from '@/components/admin/NativeSelect.vue';
 import LimitFields from '@/components/servers/LimitFields.vue';
+import SlotFields from '@/components/servers/SlotFields.vue';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
@@ -48,6 +49,8 @@ const fromResources = (resources: ResourceValues) => ({
     cpu_units: (resources.cpu_units ?? '') as OptionalNumber,
     disk_mb_s: (resources.disk_mb_s ?? '') as OptionalNumber,
     disk_iops: (resources.disk_iops ?? '') as OptionalNumber,
+    snapshot_slots: resources.snapshot_slots,
+    backup_slots: resources.backup_slots,
 });
 
 const form = useForm({
@@ -234,6 +237,12 @@ const submit = () =>
                     v-model:cpu-units="form.cpu_units"
                     v-model:disk-mb-s="form.disk_mb_s"
                     v-model:disk-iops="form.disk_iops"
+                    :errors="form.errors"
+                />
+
+                <SlotFields
+                    v-model:snapshots="form.snapshot_slots"
+                    v-model:backups="form.backup_slots"
                     :errors="form.errors"
                 />
 

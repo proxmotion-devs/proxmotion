@@ -28,6 +28,12 @@ final class PanelSettings
         'move_bwlimit_kib' => 'moves.bwlimit_kib',
         'min_vmid' => 'provisioning.min_vmid',
         'provisioning_deadline_minutes' => 'provisioning.deadline_minutes',
+        'backup_deadline_minutes' => 'backups.deadline_minutes',
+        'backup_window_start' => 'backups.window_start',
+        'backup_window_end' => 'backups.window_end',
+        'backups_per_node' => 'backups.per_node',
+        'backups_per_storage' => 'backups.per_storage',
+        'backups_keep_terminated_days' => 'backups.keep_terminated_days',
         'verify_dns_name' => 'provisioning.verify_dns_name',
         'protected_networks' => 'protected_networks',
         'drift_stopped_grace_minutes' => 'drift.stopped_grace_minutes',
@@ -49,10 +55,24 @@ final class PanelSettings
         'password_characters' => 'passwords.characters',
         'password_prefix' => 'passwords.prefix',
         'password_suffix' => 'passwords.suffix',
+        'ssh_keys_max' => 'ssh_keys.max',
         'notifications_enabled' => 'notifications.enabled',
         'notification_recipients' => 'notifications.recipients',
         'notification_throttle_minutes' => 'notifications.throttle_minutes',
+        'brand_name' => 'branding.name',
+        'brand_color' => 'branding.color',
+        'support_email' => 'branding.support_email',
+        'support_url' => 'branding.support_url',
+        'brand_logo' => 'branding.logo',
+        'brand_logo_dark' => 'branding.logo_dark',
+        'brand_favicon' => 'branding.favicon',
     ];
+
+    /**
+     * Settings saved by uploading a file on the Branding page, not with its
+     * form: the file names of Branding::IMAGES (docs/adr/0053).
+     */
+    public const array UPLOADS = ['brand_logo', 'brand_logo_dark', 'brand_favicon'];
 
     /**
      * The pages of Panel settings, listed under it in the menu, and the
@@ -67,9 +87,18 @@ final class PanelSettings
             'password_characters',
             'password_prefix',
             'password_suffix',
+            'ssh_keys_max',
             'cross_cluster_moves',
             'move_deadline_minutes',
             'move_bwlimit_kib',
+        ],
+        'backups' => [
+            'backup_window_start',
+            'backup_window_end',
+            'backups_per_node',
+            'backups_per_storage',
+            'backup_deadline_minutes',
+            'backups_keep_terminated_days',
         ],
         'network' => ['protected_networks'],
         'usage' => [
@@ -85,6 +114,7 @@ final class PanelSettings
         ],
         'general' => ['console_max_minutes', 'console_idle_minutes', 'drift_stopped_grace_minutes', 'storage_warning_percent', 'storage_critical_percent', 'docs_url'],
         'notifications' => ['notifications_enabled', 'notification_recipients', 'notification_throttle_minutes'],
+        'branding' => ['brand_name', 'brand_color', 'support_email', 'support_url'],
         'environment' => [],
     ];
 

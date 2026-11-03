@@ -11,6 +11,12 @@ export const SETTINGS_CATEGORIES = [
             'Creating, reinstalling and moving servers, and the root passwords the panel makes up.',
     },
     {
+        key: 'backups',
+        title: 'Backups',
+        description:
+            'When scheduled backups run, how many at once, and how long backups of terminated servers are kept.',
+    },
+    {
         key: 'network',
         title: 'Network security',
         description: 'Networks no server may open connections to.',
@@ -31,6 +37,12 @@ export const SETTINGS_CATEGORIES = [
         key: 'notifications',
         title: 'Notifications',
         description: 'Email to administrators about failures and other events.',
+    },
+    {
+        key: 'branding',
+        title: 'Branding',
+        description:
+            "The panel's name, colour, logo and favicon, and where customers on the console page get help.",
     },
     {
         // Shown only: these stay in .env.

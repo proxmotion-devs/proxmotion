@@ -9,6 +9,7 @@ use App\Enums\PowerAction;
 use App\Enums\ServerStatus;
 use App\Models\Server;
 use App\Models\Task;
+use App\Provisioning\GuestRefresh;
 use App\Proxmox\ProxmoxClientFactory;
 use App\Proxmox\Resources\QemuResource;
 use Illuminate\Support\Carbon;
@@ -34,6 +35,7 @@ final readonly class PowerPipeline
     public function __construct(
         private ProxmoxClientFactory $clients,
         private GuestScripts $guestScripts,
+        private GuestRefresh $refresh,
     ) {}
 
     public function power(Task $task, PowerAction $action): void
@@ -68,6 +70,18 @@ final readonly class PowerPipeline
 
         if ($action === PowerAction::Start || $action === PowerAction::Reboot) {
             $this->clearRebootRequired($server, $qemu);
+            $this->refreshGuest($task, $server);
+        }
+    }
+
+    /**
+     * A server rolled back to a snapshot gets its addresses, hostname and
+     * SSH keys back at its first start through the panel (docs/adr/0051 §5).
+     */
+    private function refreshGuest(Task $task, Server $server): void
+    {
+        if ($server->refresh()->guest_refresh_pending) {
+            $this->refresh->run($task, $server);
         }
     }
 
@@ -130,5 +144,6 @@ final readonly class PowerPipeline
         $this->guestScripts->waitForAgentStep($task, $server, self::UNSUSPEND_AGENT_SECONDS);
         $server->forceFill(['status' => ServerStatus::Active, 'suspension_reason' => null, 'suspension_cause' => null])->save();
         $this->clearRebootRequired($server, $qemu);
+        $this->refreshGuest($task, $server);
     }
 }

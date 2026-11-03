@@ -1,0 +1,79 @@
+# nginx of the production images (docs/adr/0054). PROXMOTION_FPM, PROXMOTION_REVERB,
+# PROXMOTION_CONSOLE_PROXY and PROXMOTION_RESOLVER are filled in when the container starts
+# (the image's defaults are the services of compose.yml and Docker's DNS). TLS ends in
+# front of it: see TRUSTED_PROXIES.
+server {
+    listen 80 default_server;
+    server_name _;
+    root /var/www/panel/public;
+    index index.php;
+    server_tokens off;
+
+    client_max_body_size 64m;
+
+    # Looked up again every 10 seconds, not once at start: a recreated container (an upgrade,
+    # a changed .env) comes back with a new address.
+    resolver ${PROXMOTION_RESOLVER} valid=10s ipv6=off;
+    set $fpm ${PROXMOTION_FPM};
+    set $reverb ${PROXMOTION_REVERB};
+    set $console_proxy ${PROXMOTION_CONSOLE_PROXY};
+
+    location = /nginx-health {
+        access_log off;
+        default_type text/plain;
+        return 200 "ok\n";
+    }
+
+    # Built assets carry their hash in the name.
+    location /build/ {
+        access_log off;
+        add_header Cache-Control "public, max-age=31536000, immutable";
+        try_files $uri =404;
+    }
+
+    location / {
+        try_files $uri $uri/ /index.php?$query_string;
+    }
+
+    # Browser console WebSocket (deploy/console-proxy, docs/adr/0002).
+    location = /console-ws {
+        proxy_pass http://$console_proxy;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_read_timeout 3700s;
+        proxy_send_timeout 3700s;
+        access_log off;  # the query string holds a (single-use) ticket
+    }
+
+    # Reverb, the WebSocket server of live server statistics (docs/adr/0036): /app/<key>.
+    location /app/ {
+        proxy_pass http://$reverb;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_read_timeout 3700s;
+    }
+
+    # The panel's only PHP file; no other PHP file is ever run.
+    location = /index.php {
+        fastcgi_pass $fpm;
+        fastcgi_param SCRIPT_FILENAME $realpath_root$fastcgi_script_name;
+        include fastcgi_params;
+        fastcgi_read_timeout 300s;
+        # The Link headers of preloaded assets outgrow the default 4 KB.
+        fastcgi_buffer_size 32k;
+        fastcgi_buffers 16 16k;
+    }
+
+    location ~ \.php$ {
+        return 404;
+    }
+
+    location ~ /\.(?!well-known).* {
+        deny all;
+    }
+}

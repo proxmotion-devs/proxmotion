@@ -18,6 +18,20 @@ vi.mock('@inertiajs/vue3', async () => {
         Head: { template: '<div />' },
         setLayoutProps: layoutProps,
         router: { visit },
+        usePage: () => ({
+            props: {
+                branding: {
+                    name: 'Proxmotion',
+                    color: null,
+                    color_foreground: null,
+                    logo_url: '/branding/logo.png',
+                    logo_dark_url: null,
+                    favicon_url: null,
+                    support_email: null,
+                    support_url: null,
+                },
+            },
+        }),
         useForm: (data: Record<string, unknown>) => {
             const form = reactive({
                 ...data,
@@ -46,6 +60,12 @@ const settings = (overrides: Partial<PanelSettings> = {}): PanelSettings => ({
     move_bwlimit_kib: null,
     min_vmid: 0,
     provisioning_deadline_minutes: 120,
+    backup_deadline_minutes: 360,
+    backup_window_start: '01:00',
+    backup_window_end: '06:00',
+    backups_per_node: 1,
+    backups_per_storage: 2,
+    backups_keep_terminated_days: 0,
     verify_dns_name: 'example.com',
     protected_networks: ['198.51.100.0/24', '203.0.113.7'],
     drift_stopped_grace_minutes: 60,
@@ -67,9 +87,17 @@ const settings = (overrides: Partial<PanelSettings> = {}): PanelSettings => ({
     password_characters: 'mixed',
     password_prefix: null,
     password_suffix: null,
+    ssh_keys_max: 20,
     notifications_enabled: false,
     notification_recipients: [],
     notification_throttle_minutes: 60,
+    brand_name: null,
+    brand_color: null,
+    support_email: null,
+    support_url: null,
+    brand_logo: null,
+    brand_logo_dark: null,
+    brand_favicon: null,
     ...overrides,
 });
 
@@ -243,6 +271,54 @@ describe('Panel settings page', () => {
         expect(visit.mock.calls[0][0]).toMatchObject({
             url: '/admin/settings/notifications/test',
             method: 'post',
+        });
+    });
+
+    it('sends the branding and warns about colours that hardly stand out', async () => {
+        const fields = [
+            'brand_name',
+            'brand_color',
+            'support_email',
+            'support_url',
+        ];
+        const wrapper = mountPage('branding', fields, [], {
+            brand_color: '#2563eb',
+        });
+        const warning = () =>
+            wrapper.find('[data-test="brand-color-contrast"]').exists();
+
+        expect(wrapper.find('[data-test="brand-color-preview"]').exists()).toBe(
+            true,
+        );
+        expect(warning()).toBe(false);
+        // The uploaded logo of the shared branding is shown.
+        expect(
+            wrapper.find('[data-test="branding-logo"] img').attributes('src'),
+        ).toBe('/branding/logo.png');
+        expect(
+            wrapper.find('[data-test="branding-favicon"] img').exists(),
+        ).toBe(false);
+
+        await wrapper.find('#brand_color').setValue('#fef08a');
+        expect(warning()).toBe(true);
+
+        await wrapper.find('#brand_color').setValue('#fef');
+        expect(warning()).toBe(false);
+        expect(wrapper.find('[data-test="brand-color-preview"]').exists()).toBe(
+            false,
+        );
+
+        await wrapper.find('#brand_name').setValue('Example Cloud');
+        await wrapper.find('form').trigger('submit');
+
+        expect(submit.mock.calls[0][0]).toMatchObject({
+            url: '/admin/settings/branding',
+        });
+        expect(transformed.value).toEqual({
+            brand_name: 'Example Cloud',
+            brand_color: '#fef',
+            support_email: '',
+            support_url: '',
         });
     });
 });

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Requests\Admin;
 
 use App\Domain\Servers\ReinstallLimits;
+use App\Enums\BackupSchedule;
 use App\Enums\NetworkModel;
 use App\Models\FirewallRuleset;
 use App\Provisioning\ResourceLimits;
@@ -40,6 +41,8 @@ class PackageRequest extends FormRequest
             'ipv6_count' => ['required', 'integer', 'between:0,64'],
             'snapshot_slots' => ['required', 'integer', 'between:0,100'],
             'backup_slots' => ['required', 'integer', 'between:0,100'],
+            // How often the panel backs its servers up (docs/adr/0051 §6); left out: unchanged.
+            'backup_schedule' => ['nullable', Rule::enum(BackupSchedule::class)],
             'network_models' => ['required', 'array', 'min:1'],
             'network_models.*' => ['distinct', Rule::enum(NetworkModel::class)],
             'is_active' => ['required', 'boolean'],
@@ -81,6 +84,10 @@ class PackageRequest extends FormRequest
         $data['port_speed_mbps'] = $this->filled('port_speed_mbps') ? $this->integer('port_speed_mbps') : null;
         $data['reinstall_limit'] = $this->filled('reinstall_limit') ? $this->integer('reinstall_limit') : null;
         $data['reinstall_period_days'] = $data['reinstall_limit'] === null ? null : $this->integer('reinstall_period_days');
+
+        if (array_key_exists('backup_schedule', $data)) {
+            $data['backup_schedule'] ??= BackupSchedule::None->value;
+        }
 
         return [...$data, ...ResourceLimits::fromRequest($this)->columns()];
     }

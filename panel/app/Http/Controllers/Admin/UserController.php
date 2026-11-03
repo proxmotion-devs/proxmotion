@@ -4,14 +4,13 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Admin;
 
+use App\Actions\CreateAdministrator;
 use App\Domain\Notifications\AdminNotifier;
 use App\Http\Controllers\Controller;
-use App\Models\AuditLog;
 use App\Models\User;
 use Illuminate\Container\Attributes\CurrentUser;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Validation\Rules\Password;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -37,22 +36,12 @@ class UserController extends Controller
         ]);
     }
 
-    public function store(Request $request, #[CurrentUser] User $admin, AdminNotifier $notifier): RedirectResponse
+    public function store(Request $request, #[CurrentUser] User $admin, CreateAdministrator $creator, AdminNotifier $notifier): RedirectResponse
     {
-        $validated = $request->validate([
-            'name' => ['required', 'string', 'max:255'],
-            'email' => ['required', 'string', 'email', 'max:255', 'unique:users,email'],
-            'password' => ['required', 'string', Password::defaults()],
-        ]);
+        /** @var array{name: string, email: string, password: string} $validated */
+        $validated = $request->validate(CreateAdministrator::rules());
 
-        $user = new User;
-        $user->forceFill([
-            ...$validated,
-            // Created by an admin: the address doesn't need to be confirmed again.
-            'email_verified_at' => now(),
-        ])->save();
-
-        AuditLog::record('user.created', $admin, $user, ['email' => $user->email], $request->ip());
+        $user = $creator->create($validated, $admin, $request->ip());
         $notifier->adminCreated($user, $admin);
 
         $this->toast('success', 'Administrator :name created.', ['name' => $user->name]);

@@ -166,16 +166,15 @@ final class ApiClient
     }
 
     /**
-     * @param list<string> $sshKeys
+     * @param list<string>|null $sshKeys the new system's keys; null keeps the server's keys (ADR 0049 in the Proxmotion repository)
      * @param string|null $app an app installed on the new system with its defaults (ADR 0016 §5 in the Proxmotion repository)
      * @return array<string, mixed> the queued task
      */
-    public function reinstall(string $id, string $osTemplate, array $sshKeys, ?string $app = null): array
+    public function reinstall(string $id, string $osTemplate, ?array $sshKeys, ?string $app = null): array
     {
-        return $this->dataOf($this->request('POST', '/servers/' . rawurlencode($id) . '/reinstall', [
-            'os_template' => $osTemplate,
-            'ssh_keys' => $sshKeys,
-        ] + ($app === null ? [] : ['app' => $app])));
+        return $this->dataOf($this->request('POST', '/servers/' . rawurlencode($id) . '/reinstall', ['os_template' => $osTemplate]
+            + ($sshKeys === null ? [] : ['ssh_keys' => $sshKeys])
+            + ($app === null ? [] : ['app' => $app])));
     }
 
     /**
@@ -443,6 +442,107 @@ final class ApiClient
     public function firewallRulesets(): array
     {
         return $this->listOf($this->request('GET', '/firewall-rulesets'));
+    }
+
+    /**
+     * The SSH keys Proxmotion manages on the server: ssh_keys, max_keys (docs/adr/0049).
+     *
+     * @return array<string, mixed>
+     */
+    public function sshKeys(string $id): array
+    {
+        return $this->dataOf($this->request('GET', '/servers/' . rawurlencode($id) . '/ssh-keys'));
+    }
+
+    /**
+     * Replace the server's SSH keys with these public keys; returns the task.
+     *
+     * @param list<string> $keys
+     * @return array<string, mixed>
+     */
+    public function updateSshKeys(string $id, array $keys, string $idempotencyKey): array
+    {
+        return $this->dataOf($this->request('PUT', '/servers/' . rawurlencode($id) . '/ssh-keys', ['ssh_keys' => $keys], $idempotencyKey));
+    }
+
+    /**
+     * The server's snapshots: snapshots, slots, unavailable_reason (docs/adr/0051).
+     *
+     * @return array<string, mixed>
+     */
+    public function snapshots(string $id): array
+    {
+        return $this->dataOf($this->request('GET', '/servers/' . rawurlencode($id) . '/snapshots'));
+    }
+
+    /**
+     * Take a snapshot; returns the task.
+     *
+     * @return array<string, mixed>
+     */
+    public function createSnapshot(string $id, string $label, string $idempotencyKey): array
+    {
+        return $this->dataOf($this->request('POST', '/servers/' . rawurlencode($id) . '/snapshots', ['label' => $label === '' ? null : $label], $idempotencyKey));
+    }
+
+    /**
+     * Roll the server back to a snapshot; returns the task.
+     *
+     * @return array<string, mixed>
+     */
+    public function rollbackSnapshot(string $id, string $snapshot, string $idempotencyKey): array
+    {
+        return $this->dataOf($this->request('POST', '/servers/' . rawurlencode($id) . '/snapshots/' . rawurlencode($snapshot) . '/rollback', null, $idempotencyKey));
+    }
+
+    /**
+     * Delete a snapshot; returns the task.
+     *
+     * @return array<string, mixed>
+     */
+    public function deleteSnapshot(string $id, string $snapshot, string $idempotencyKey): array
+    {
+        return $this->dataOf($this->request('DELETE', '/servers/' . rawurlencode($id) . '/snapshots/' . rawurlencode($snapshot), null, $idempotencyKey));
+    }
+
+    /**
+     * The server's backups: backups, slots, unavailable_reason (docs/adr/0051 §4).
+     *
+     * @return array<string, mixed>
+     */
+    public function backups(string $id): array
+    {
+        return $this->dataOf($this->request('GET', '/servers/' . rawurlencode($id) . '/backups'));
+    }
+
+    /**
+     * Take a backup; returns the task.
+     *
+     * @return array<string, mixed>
+     */
+    public function createBackup(string $id, string $label, string $idempotencyKey): array
+    {
+        return $this->dataOf($this->request('POST', '/servers/' . rawurlencode($id) . '/backups', ['label' => $label === '' ? null : $label], $idempotencyKey));
+    }
+
+    /**
+     * Restore a backup onto the server; returns the task.
+     *
+     * @return array<string, mixed>
+     */
+    public function restoreBackup(string $id, string $backup, string $idempotencyKey): array
+    {
+        return $this->dataOf($this->request('POST', '/servers/' . rawurlencode($id) . '/backups/' . rawurlencode($backup) . '/restore', null, $idempotencyKey));
+    }
+
+    /**
+     * Delete a backup; returns the task.
+     *
+     * @return array<string, mixed>
+     */
+    public function deleteBackup(string $id, string $backup, string $idempotencyKey): array
+    {
+        return $this->dataOf($this->request('DELETE', '/servers/' . rawurlencode($id) . '/backups/' . rawurlencode($backup), null, $idempotencyKey));
     }
 
     public function consoleLink(string $id): string

@@ -1,8 +1,15 @@
 <script setup lang="ts">
-import { Head, router, setLayoutProps, useForm } from '@inertiajs/vue3';
+import {
+    Head,
+    router,
+    setLayoutProps,
+    useForm,
+    usePage,
+} from '@inertiajs/vue3';
 import { Mail, Save } from '@lucide/vue';
 import { trans } from 'laravel-vue-i18n';
 import { computed, ref } from 'vue';
+import BrandingImageField from '@/components/admin/BrandingImageField.vue';
 import FormField from '@/components/admin/FormField.vue';
 import NativeSelect from '@/components/admin/NativeSelect.vue';
 import StatusBadge from '@/components/admin/StatusBadge.vue';
@@ -10,6 +17,7 @@ import Heading from '@/components/Heading.vue';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
+import { foreground, isBrandColor, lowContrastModes } from '@/lib/brandColor';
 import { optionalNumber } from '@/lib/forms';
 import type { OptionalNumber } from '@/lib/forms';
 import { fitsCloudInit, passwordExample } from '@/lib/passwordExample';
@@ -58,6 +66,12 @@ const form = useForm({
     move_bwlimit_kib: (props.settings.move_bwlimit_kib ?? '') as OptionalNumber,
     min_vmid: props.settings.min_vmid,
     provisioning_deadline_minutes: props.settings.provisioning_deadline_minutes,
+    backup_deadline_minutes: props.settings.backup_deadline_minutes,
+    backup_window_start: props.settings.backup_window_start,
+    backup_window_end: props.settings.backup_window_end,
+    backups_per_node: props.settings.backups_per_node,
+    backups_per_storage: props.settings.backups_per_storage,
+    backups_keep_terminated_days: props.settings.backups_keep_terminated_days,
     verify_dns_name: props.settings.verify_dns_name ?? '',
     protected_networks: props.settings.protected_networks.join('\n'),
     drift_stopped_grace_minutes: props.settings.drift_stopped_grace_minutes,
@@ -82,10 +96,31 @@ const form = useForm({
     password_characters: props.settings.password_characters,
     password_prefix: props.settings.password_prefix ?? '',
     password_suffix: props.settings.password_suffix ?? '',
+    ssh_keys_max: props.settings.ssh_keys_max,
     notifications_enabled: props.settings.notifications_enabled,
     notification_recipients: props.settings.notification_recipients.join('\n'),
     notification_throttle_minutes: props.settings.notification_throttle_minutes,
+    brand_name: props.settings.brand_name ?? '',
+    brand_color: props.settings.brand_color ?? '',
+    support_email: props.settings.support_email ?? '',
+    support_url: props.settings.support_url ?? '',
 });
+
+// Branding (docs/adr/0053): the images in use come with every page.
+const page = usePage();
+const branding = computed(() => page.props.branding);
+
+const brandColorValid = computed(() => isBrandColor(form.brand_color));
+
+// The native colour picker needs a colour even while the field is empty.
+const brandColorPicker = computed({
+    get: () => (brandColorValid.value ? form.brand_color : '#000000'),
+    set: (value: string) => (form.brand_color = value),
+});
+
+const brandColorLowContrast = computed(() =>
+    brandColorValid.value ? lowContrastModes(form.brand_color) : [],
+);
 
 // Email notifications (docs/adr/0044): a test mail through the mailer of .env.
 const sendingTest = ref(false);
@@ -315,6 +350,30 @@ const sectionClass = 'flex flex-col gap-4 rounded-xl border p-4';
                 </p>
             </section>
 
+            <section :class="sectionClass" data-test="settings-ssh-keys">
+                <Heading
+                    variant="small"
+                    title="SSH keys"
+                    description="Keys that can log in as root (Administrator on Windows), given when a server is created or reinstalled and changed on its SSH keys tab, also through billing systems."
+                />
+                <div class="grid gap-4 sm:grid-cols-2">
+                    <FormField
+                        label="Most keys per server"
+                        for="ssh_keys_max"
+                        :error="form.errors.ssh_keys_max"
+                        hint="1 to 100. Together the keys may be at most 20 KB, so the guest agent can write them at once. Servers keep the keys they have when this is lowered."
+                    >
+                        <Input
+                            id="ssh_keys_max"
+                            v-model.number="form.ssh_keys_max"
+                            type="number"
+                            min="1"
+                            max="100"
+                        />
+                    </FormField>
+                </div>
+            </section>
+
             <section :class="sectionClass" data-test="settings-moves">
                 <Heading
                     variant="small"
@@ -367,6 +426,102 @@ const sectionClass = 'flex flex-col gap-4 rounded-xl border p-4';
                             v-model.number="form.move_bwlimit_kib"
                             type="number"
                             min="1"
+                        />
+                    </FormField>
+                </div>
+            </section>
+        </template>
+
+        <template v-if="category === 'backups'">
+            <section :class="sectionClass" data-test="settings-backup-window">
+                <Heading
+                    variant="small"
+                    title="Scheduled backups"
+                    description="Packages and servers with a daily or weekly backup schedule are backed up in this window, spread over its first half. A server that is busy is tried again until the window ends."
+                />
+                <div class="grid gap-4 sm:grid-cols-2">
+                    <FormField
+                        label="Backup window starts"
+                        for="backup_window_start"
+                        :error="form.errors.backup_window_start"
+                        hint="In the panel's time zone."
+                    >
+                        <Input
+                            id="backup_window_start"
+                            v-model="form.backup_window_start"
+                            type="time"
+                        />
+                    </FormField>
+                    <FormField
+                        label="Backup window ends"
+                        for="backup_window_end"
+                        :error="form.errors.backup_window_end"
+                        hint="Before the start: the window ends on the next day. No scheduled backup starts after it."
+                    >
+                        <Input
+                            id="backup_window_end"
+                            v-model="form.backup_window_end"
+                            type="time"
+                        />
+                    </FormField>
+                    <FormField
+                        label="Backups at once per node"
+                        for="backups_per_node"
+                        :error="form.errors.backups_per_node"
+                        hint="Manual backups count too."
+                    >
+                        <Input
+                            id="backups_per_node"
+                            v-model.number="form.backups_per_node"
+                            type="number"
+                            min="1"
+                            max="20"
+                        />
+                    </FormField>
+                    <FormField
+                        label="Backups at once per backup storage"
+                        for="backups_per_storage"
+                        :error="form.errors.backups_per_storage"
+                    >
+                        <Input
+                            id="backups_per_storage"
+                            v-model.number="form.backups_per_storage"
+                            type="number"
+                            min="1"
+                            max="50"
+                        />
+                    </FormField>
+                </div>
+            </section>
+            <section :class="sectionClass" data-test="settings-backups">
+                <Heading variant="small" title="Backups" />
+                <div class="grid gap-4 sm:grid-cols-2">
+                    <FormField
+                        label="Time limit of a backup or restore (minutes)"
+                        for="backup_deadline_minutes"
+                        :error="form.errors.backup_deadline_minutes"
+                        hint="Backing up a large server can take hours."
+                    >
+                        <Input
+                            id="backup_deadline_minutes"
+                            v-model.number="form.backup_deadline_minutes"
+                            type="number"
+                            min="30"
+                            max="2880"
+                        />
+                    </FormField>
+                    <FormField
+                        label="Keep backups of terminated servers (days)"
+                        for="backups_keep_terminated_days"
+                        :error="form.errors.backups_keep_terminated_days"
+                        hint="0: deleted with the server. Otherwise they stay listed under the terminated server until then."
+                    >
+                        <Input
+                            id="backups_keep_terminated_days"
+                            v-model.number="form.backups_keep_terminated_days"
+                            type="number"
+                            min="0"
+                            max="365"
                         />
                     </FormField>
                 </div>
@@ -618,6 +773,161 @@ const sectionClass = 'flex flex-col gap-4 rounded-xl border p-4';
                         <Input
                             id="docs_url"
                             v-model="form.docs_url"
+                            type="url"
+                            placeholder="https://"
+                            autocomplete="off"
+                        />
+                    </FormField>
+                </div>
+            </section>
+        </template>
+
+        <template v-if="category === 'branding'">
+            <section :class="sectionClass" data-test="settings-branding">
+                <Heading
+                    variant="small"
+                    title="Name and colour"
+                    description="Shown in the menu, page titles, emails and on the customer console."
+                />
+                <div class="grid gap-4 sm:grid-cols-2">
+                    <FormField
+                        label="Panel name"
+                        for="brand_name"
+                        :error="form.errors.brand_name"
+                        hint="Empty: APP_NAME of .env."
+                    >
+                        <Input
+                            id="brand_name"
+                            v-model="form.brand_name"
+                            maxlength="60"
+                            autocomplete="off"
+                        />
+                    </FormField>
+                    <FormField
+                        label="Colour"
+                        for="brand_color"
+                        :error="form.errors.brand_color"
+                        hint="Buttons, the menu's logo square and focus rings, as #rrggbb. Empty: the default black and white theme."
+                    >
+                        <div class="flex gap-2">
+                            <input
+                                v-model="brandColorPicker"
+                                type="color"
+                                class="h-9 w-12 shrink-0 cursor-pointer rounded-md border bg-transparent p-1"
+                                :aria-label="$t('Pick a colour')"
+                            />
+                            <Input
+                                id="brand_color"
+                                v-model="form.brand_color"
+                                class="font-mono"
+                                placeholder="#2563eb"
+                                maxlength="7"
+                                autocomplete="off"
+                            />
+                        </div>
+                    </FormField>
+                </div>
+                <div
+                    v-if="brandColorValid"
+                    class="flex flex-wrap items-center gap-3"
+                    data-test="brand-color-preview"
+                >
+                    <span
+                        class="inline-flex h-9 items-center rounded-md px-4 text-sm font-medium"
+                        :style="{
+                            backgroundColor: form.brand_color,
+                            color: foreground(form.brand_color),
+                        }"
+                        >{{ $t('Save settings') }}</span
+                    >
+                    <span
+                        class="inline-flex h-9 items-center rounded-md bg-neutral-950 px-3"
+                    >
+                        <span
+                            class="inline-flex h-7 items-center rounded px-3 text-sm font-medium"
+                            :style="{
+                                backgroundColor: form.brand_color,
+                                color: foreground(form.brand_color),
+                            }"
+                            >{{ $t('Dark mode') }}</span
+                        >
+                    </span>
+                </div>
+                <p
+                    v-if="brandColorLowContrast.length > 0"
+                    class="rounded-md border border-amber-500/40 bg-amber-500/5 px-3 py-2 text-sm"
+                    data-test="brand-color-contrast"
+                >
+                    {{
+                        brandColorLowContrast.includes('light')
+                            ? $t(
+                                  'This colour hardly stands out from the white page background: buttons will be hard to see in light mode.',
+                              )
+                            : $t(
+                                  'This colour hardly stands out from the dark page background: buttons will be hard to see in dark mode.',
+                              )
+                    }}
+                </p>
+            </section>
+
+            <section :class="sectionClass" data-test="settings-branding-images">
+                <Heading
+                    variant="small"
+                    title="Logo and favicon"
+                    description="PNG, JPEG or WebP. Uploaded at once, without saving the page."
+                />
+                <div class="grid gap-6 md:grid-cols-3">
+                    <BrandingImageField
+                        image="logo"
+                        label="Logo"
+                        hint="Square works best: shown at 32 pixels in the menu and on the sign-in page. Up to 1 MB and 2048 pixels."
+                        :url="branding.logo_url"
+                    />
+                    <BrandingImageField
+                        image="logo_dark"
+                        label="Logo in dark mode"
+                        hint="Optional, for a logo that does not show on a dark background."
+                        :url="branding.logo_dark_url"
+                        dark
+                    />
+                    <BrandingImageField
+                        image="favicon"
+                        label="Favicon"
+                        hint="Square, 32 to 512 pixels, up to 256 KB. Also the icon of bookmarks on phones."
+                        :url="branding.favicon_url"
+                    />
+                </div>
+            </section>
+
+            <section :class="sectionClass" data-test="settings-support">
+                <Heading
+                    variant="small"
+                    title="Support"
+                    description="Customers see these on the console page, e.g. when their console link has expired. Your own support address or page, not the panel's."
+                />
+                <div class="grid gap-4 sm:grid-cols-2">
+                    <FormField
+                        label="Support email"
+                        for="support_email"
+                        :error="form.errors.support_email"
+                    >
+                        <Input
+                            id="support_email"
+                            v-model="form.support_email"
+                            type="email"
+                            placeholder="support@example.com"
+                            autocomplete="off"
+                        />
+                    </FormField>
+                    <FormField
+                        label="Support page"
+                        for="support_url"
+                        :error="form.errors.support_url"
+                        hint="Linked instead of the email when both are set."
+                    >
+                        <Input
+                            id="support_url"
+                            v-model="form.support_url"
                             type="url"
                             placeholder="https://"
                             autocomplete="off"

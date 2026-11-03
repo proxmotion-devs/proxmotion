@@ -116,7 +116,7 @@ The admin panel is for staff. **Every panel user is an administrator**; there ar
 | **Reports** | Capacity (nodes, storages, IP pools after over-commit), traffic and usage of a monthly period (per server, location, package, billing system; usage violations), server inventory (by status, location, package, OS template, billing system; created and deleted per month), operations (tasks and app installations of the last 7–365 days with failure rates and median durations, failed tasks); every table as CSV (ADR 0046) |
 | **Billing systems** | Billing systems, API tokens, webhook endpoints and delivery log |
 | **Users** | Administrators |
-| **Panel settings** | Panel-wide settings: cross-cluster moves, deadlines, lowest VMID, DNS check name, protected networks, drift grace period, storage health thresholds, console limits, documentation address, format of generated root passwords (ADR 0038); shows the `.env`-only security settings read-only |
+| **Panel settings** | Panel-wide settings: cross-cluster moves, deadlines, lowest VMID, DNS check name, protected networks, drift grace period, storage health thresholds, console limits, documentation address, format of generated root passwords (ADR 0038), the backup window and how many backups run at once, how long backups of terminated servers are kept (ADR 0051 §6), branding: the panel's name, colour, logo, dark-mode logo, favicon and the support email and page customers see on the console page (ADR 0053); shows the `.env`-only security settings read-only |
 
 Pages that need explaining start with a **guide box**: a short how-to that administrators can hide (remembered per browser) with a link into *Help*.
 
@@ -262,6 +262,16 @@ Every VPS gets the Proxmox firewall with **`ipfilter` and `macfilter`** enabled 
 - **App ports**: the `firewall` ports of the server's apps (e.g. WireGuard's UDP port) are opened while it blocks by default, as soon as the installer starts, and closed once the app is uninstalled.
 - **How**: the panel writes one block of rules on top of the VM firewall (isolation, DHCP, app ports, the server's rules), all with comments starting with `Proxmotion`, and rewrites it whenever it differs; rules added in Proxmox by hand stay below it. The firewall check reports changed rules and an open policy as a firewall drift.
 - The console never goes through the network: a customer who locks themselves out can still get in.
+
+#### 6.4.3 SSH keys
+
+([ADR 0049](../adr/0049-ssh-keys-on-running-servers.md)) The public keys root (Administrator on Windows) logs in with, managed on a running server by customers (billing API and modules) and administrators (the *SSH keys* tab of an active server's page: a table of the keys with name, type, fingerprint, copy and delete, a filter for long lists, and a note while a change runs):
+
+- **The list** starts with the keys of the server's creation or last reinstall; keys are added (one or several, at most 20 per server unless *Panel settings → Servers* allows more, up to 100) and deleted from it. ed25519, ECDSA and RSA (2048 bits or more) keys; DSA keys are refused.
+- **How**: every change is a `change_ssh_keys` task that runs the `ssh_keys_changed` guest script (defaults for Linux, FreeBSD and Windows, `ssh-keys.sh` / `ssh-keys.ps1`, which administrators may replace per OS template): deleted keys are removed from `authorized_keys` (Windows: `administrators_authorized_keys`, and the Administrator's own file), new ones appended; lines the panel does not know stay. Proxmox's cloud-init `sshkeys` are left alone, so the server keeps its SSH host keys.
+- **Only once it worked**: the list changes when the script succeeded. A failing script or an agent that does not answer fails the task, and the same change can simply be sent again.
+- Keys added inside the server by its owner are not touched. **Read from the server** (admin only) reads root's `authorized_keys` through the guest agent: managed keys missing there are marked *Not in the server*, and keys only the server has are listed with **Manage**, which lets the panel list and delete them without changing the server.
+- A reinstall keeps the keys unless it is given others (an empty list removes them).
 
 ### 6.5 Changing the primary address
 
@@ -457,6 +467,14 @@ Moves to other clusters need *Allow moves to other clusters and locations* on *P
 
 **Traffic quotas and usage limits** ([ADR 0039](../adr/0039-usage-limits.md)): `usage:collect` reads `/cluster/resources` of every cluster every 5 minutes and adds each server's traffic since the previous run to its month (from the *traffic reset day* of *Panel settings* on; counted in + out, out or in). A server over its quota gets a violation and, when *When a server is over its quota* is *Suspend the server*, is suspended with the reason; the panel unsuspends it again when the next month starts or its quota is raised, and an administrator or billing system that unsuspends it earlier lets it run for the rest of the month. Optional **usage limits** (CPU and memory in per cent, disk I/O in MB/s, network in Mbps) apply to the average over a time window (15–1440 minutes): over one, the server is only recorded, stopped (the customer may start it again) or suspended (until someone unsuspends it). The server page shows the month's traffic against the quota, the latest violations and why the panel suspended it, with *Exempt from usage limits* (recorded, never acted on); the dashboard lists servers over their limits. Billing systems get `server.usage_exceeded`, the usual `server.suspended` / `server.unsuspended`, and the month's traffic and `suspension_cause` on every server; a billing system that suspends a server the panel suspended takes the suspension over. Everything is off until set on *Panel settings*. Tested with a faked Proxmox only.
 
+**Usage history** ([ADR 0050](../adr/0050-usage-history.md)): every collection also rolls its samples up into hours (kept 35 days) and days (kept 400 days). The *Usage* tab of a server page shows CPU, memory, network and disk I/O over the last 24 hours, 7 days, 30 days or 12 months as line charts, and the traffic per hour, day or month as bars. Billing systems read the same with `GET /servers/{id}/usage`; the WHMCS client area draws CPU, network and traffic for the chosen range. Tested with a faked Proxmox only.
+
+**Snapshots** ([ADR 0051](../adr/0051-snapshots-and-backups.md)): a server may have as many snapshots as its package's *snapshot slots* (or its own, for custom servers and billing options). A snapshot keeps the disk and settings, not the memory, on the server's own storage (thin LVM, ZFS, Ceph RBD, qcow2). The *Backups* tab of a server page takes one with an optional label, rolls back to one (the hostname typed to confirm) and deletes one; billing systems do the same through the API, the WHMCS client area and a WISECP tool. After a rollback the panel writes back the current resources, port speed, disk size and firewall, and inside the server its addresses, hostname and SSH keys; the root password is the one of the snapshot's time. A reinstall deletes the snapshots, the disk cannot grow while there are any, and *Reset after trial* rolls a test server back to its snapshot labelled `trial base`. Tested with a faked Proxmox only.
+
+**Backups** ([ADR 0051](../adr/0051-snapshots-and-backups.md) §4): a server may have as many backups as its *backup slots*. A backup is a full copy made by Proxmox's vzdump (snapshot mode, so the server keeps running) on a storage ticked *Use for backups* on the cluster page (a directory, NFS or CIFS storage, or Proxmox Backup Server); the backup goes to the ticked storage with the most free room that the server's node reaches. The *Backups* tab lists them next to the snapshots with size and operating system, takes one, restores one (the hostname typed to confirm) and deletes one; a running backup can be stopped from the task list. Billing systems do the same through the API, the WHMCS client area and a WISECP tool. A restore replaces the VM's disks (and deletes its snapshots), then the panel writes back its state as after a rollback; the operating system and root password become those of the backup. Backups survive reinstalls and are deleted when the server is terminated; one the server can no longer reach after a move is listed as not restorable. Backups and restores have their own time limit on *Panel settings → Backups* (6 hours by default).
+
+**Scheduled backups** ([ADR 0051](../adr/0051-snapshots-and-backups.md) §6): a package backs its servers up *every day* or *every week* (weekly servers each on a weekday of their own), and administrators can give a server its own schedule on its *Backups* tab. The panel queues them every ten minutes in the *backup window* of *Panel settings → Backups* (01:00–06:00 by default, panel time zone; a window may end on the next day), spread over its first half, with at most a set number running at once per node (1) and per backup storage (2), manual backups included; a busy server is tried again until the window ends. Once the slots are full, each scheduled backup deletes the oldest scheduled ones; manual backups are never deleted automatically, and while they fill every slot no scheduled backup is taken (the server page says so). A failed scheduled backup emails administrators (event *A scheduled backup failed*). *Keep backups of terminated servers* keeps them for some days after a termination (0 by default: deleted with the server), listed under the terminated server where administrators can delete them; `backups:prune` deletes them daily afterwards. Billing systems see the schedule and the next one in `GET /servers/{id}/backups` and the package's in `GET /packages`; the WHMCS client area and the WISECP tool show them. Tested with a faked Proxmox only.
+
 ### 9.5 Windows guests
 
 Windows templates are supported by the data model and default guest scripts exist (`addresses.ps1`, `disk.ps1`, `hostname.ps1`, password for `Administrator`), with a [Windows template guide](../guides/windows-templates.md). They have **not run on a real Windows guest yet**.
@@ -619,7 +637,9 @@ Every change is audited with a version diff. A custom recipe can never override 
 | **Apps** | `POST`/`GET /servers/{id}/apps`, `GET /servers/{id}/apps/{installation}`, `POST …/retry`, `POST …/cancel`, `DELETE …` (uninstall), `POST …/upgrade`, `POST …/actions/{key}`, `GET …/runs`, `GET …/runs/{run}`, `POST …/runs/{run}/cancel` |
 | **Entitlements** | `POST`/`GET /servers/{id}/app-entitlements`, `DELETE /servers/{id}/app-entitlements/{app}` |
 | **Tasks** | `GET /tasks/{id}` |
-| **Usage** | The current month's traffic and `suspension_cause` on every server ([ADR 0039](../adr/0039-usage-limits.md)); `GET /servers/{id}/usage` with history **(planned, Phase 6)** |
+| **Snapshots** | `GET`/`POST /servers/{id}/snapshots`, `POST …/snapshots/{snapshot}/rollback`, `DELETE …/snapshots/{snapshot}` ([ADR 0051](../adr/0051-snapshots-and-backups.md)) |
+| **Backups** | `GET`/`POST /servers/{id}/backups`, `POST …/backups/{backup}/restore`, `DELETE …/backups/{backup}` ([ADR 0051](../adr/0051-snapshots-and-backups.md) §4) |
+| **Usage** | The current month's traffic and `suspension_cause` on every server ([ADR 0039](../adr/0039-usage-limits.md)); `GET /servers/{id}/usage?range=day\|week\|month\|year`: CPU, memory, network and disk averages and traffic per hour, day or month ([ADR 0050](../adr/0050-usage-history.md)) |
 
 Tasks and audit log entries record the API token that started them.
 
@@ -661,6 +681,7 @@ Both modules are thin clients of the API: business logic stays in the panel, and
 - **Paid apps**: module setting *Paid app addons* maps WHMCS addons to apps; `hooks.php` grants on `AddonActivation` and revokes on `AddonCancelled` / `AddonTerminated`.
 - **Admin**: services tab fields and custom buttons.
 - **Traffic** ([ADR 0039](../adr/0039-usage-limits.md)): `UsageUpdate` writes each service's traffic of the month and its quota into WHMCS's usage statistics (`bwusage`, `bwlimit`) with the daily cron; the client area shows the traffic against the quota and why the panel suspended a server over its quota or a usage limit.
+- **Usage history** ([ADR 0050](../adr/0050-usage-history.md)): the client area charts CPU, network and traffic over the last 24 hours, 7 days, 30 days or 12 months (SVG drawn by the module, values on hover).
 - **Webhook receiver** (`webhook.php`): verifies signature and timestamp, drops repeats, sets a pending service *Active* on `server.provisioned`, keeps *Active* ⇄ *Suspended* in step, notifies administrators on terminations and failures. The signing secret goes into the WHMCS server's **Access Hash**.
 - Writes carry an `Idempotency-Key` and are retried once after a lost connection.
 - **Not done**: graphs (Phase 6). **Not run in a real WHMCS yet.**
@@ -695,7 +716,7 @@ Blesta, HostBill, Paymenter and FOSSBilling modules **(planned, Phase 9)**.
 
 ### 15.3 Virtualizor import
 
-**(planned, Phase 8)** — import users, VPS, IPs and plans from the Virtualizor Admin API with a dry-run report and idempotent re-runs, plus a guide to switch WHMCS services to the Proxmotion module while keeping service ids. Imports never delete anything.
+**(planned, Phase 8; on hold since 2026-11-03)** — import users, VPS, IPs and plans from the Virtualizor Admin API with a dry-run report and idempotent re-runs, plus a guide to switch WHMCS services to the Proxmotion module while keeping service ids. Imports never delete anything.
 
 ---
 
@@ -721,7 +742,7 @@ All features are covered by automated tests with faked HTTP (an in-memory Proxmo
 
 **Checked on a real Proxmox VE 9.2** (October 2026): connection, cluster sync, permission check for a pool-limited token, task tracking, provisioning on the test storage, suspend/unsuspend/terminate, adoption, power actions, console ticket, guest agent basics, reinstall, drift detection, resource changes, additional addresses, disk growth, primary address swap, hostname change (Debian 13 test template).
 
-**Not yet checked on real systems** (among others): Proxmox VE 8, shared storage and cross-node clones, routed `/32` and IPv6 inside the guest, the console relay end to end, PowerDNS, every bundled app recipe, Windows guests, the WHMCS module, most of the WISECP module, real webhook receivers, MariaDB/MySQL-specific migrations, the Docker Compose stack.
+**Not yet checked on real systems** (among others): Proxmox VE 8, shared storage and cross-node clones, routed `/32` and IPv6 inside the guest, the console relay end to end, PowerDNS, every bundled app recipe, Windows guests, the WHMCS module, most of the WISECP module, real webhook receivers, MySQL 8, migrations over existing data on MariaDB, the published Docker images and a TLS proxy in front of them.
 
 ---
 
@@ -766,15 +787,18 @@ The **scheduler** and a **queue worker** must run; `composer dev` starts both lo
 |---|---|
 | `PROXMOTION_REQUIRE_ADMIN_2FA` | Enforce TOTP for administrators (default `true`; turn off for local development only) |
 | `CONSOLE_PROXY_SECRET`, `CONSOLE_WEBSOCKET_URL` | Shared secret and public address of the console proxy |
-| `BROADCAST_CONNECTION`, `REVERB_*`, `VITE_REVERB_*` | `reverb` and its settings push live server figures; `log` makes the server page poll instead |
+| `BROADCAST_CONNECTION`, `REVERB_*`, `REVERB_PUBLIC_*` | `reverb` and its settings push live server figures (`REVERB_PUBLIC_*`: where browsers reach it, sent with each page, ADR 0054); `log` makes the server page poll instead |
 
 See `panel/.env.example` for the full list (database, Redis, mail, …).
 
 ### 18.3 Deployment
 
-- **Docker Compose** (`deploy/docker/compose.yml`): app (php-fpm + nginx), console-proxy, queue/Horizon, scheduler, Reverb (nginx forwards `/app`), MariaDB, Redis. Not yet run end to end.
+- **Docker Compose for production** (`deploy/docker/production/`, ADR 0054): images on GHCR for the panel (roles web, worker, scheduler, reverb, migrate, install), nginx and the console proxy, with MariaDB and Redis; `docker compose run --rm migrate install` once, then `up -d`; upgrades by a new `PROXMOTION_VERSION`, `pull` and `up -d`. TLS ends at a proxy in front (`TRUSTED_PROXIES`). Guide: `docs/guides/docker-install.md`. Run on Docker Desktop with locally built images only.
+- **Docker Compose for development** (`deploy/docker/compose.yml`): the source mounted into php-fpm, nginx, a queue worker, scheduler, Reverb, Vite, MariaDB, Redis. Not yet run end to end.
 - **Local development**: SQLite works out of the box (WAL mode and immediate transactions so web, worker and scheduler can write at once). See the [README](../../README.md#development).
-- **Native Debian/Ubuntu installer**, production images on GHCR, `proxmotion:install` / `proxmotion:upgrade` commands and admin branding settings **(planned, Phase 8)**.
+- **`proxmotion:install` / `proxmotion:upgrade`** (ADR 0052), shared by every install path. Install checks PHP, its extensions, the database and Redis, writes a missing application key, migrates, creates the first administrator (password asked for, or generated and shown once) and caches the configuration in production. Upgrade runs the new migrations in maintenance mode, which stays on when a migration fails, then tells queue workers and Reverb to restart before the panel opens again. Run against MariaDB 11.8 and Redis in the Docker images (ADR 0054), not yet on MySQL or a native install.
+- **Branding** (ADR 0053): name, colour, logos, favicon and support contacts on *Panel settings → Branding*, shown in the panel, on the sign-in pages, on the customer console and in mail. Without it the panel is called `APP_NAME` and looks like Proxmotion.
+- **Native installer** (`deploy/installer/install.sh`, ADR 0055): Debian 12/13 and Ubuntu 22.04/24.04 with nginx, PHP 8.4, MariaDB, Redis and Node.js 22; optional Let's Encrypt; releases under `/opt/proxmotion/releases` with a `current` link; running it again upgrades (maintenance mode, migrations, restarts). Guide: `docs/guides/native-install.md`. Run in containers only.
 
 ---
 
@@ -788,9 +812,9 @@ See `panel/.env.example` for the full list (database, Redis, mail, …).
 | 3 | Server operations, console, reinstall, rDNS, drift | Done |
 | 4 | Billing API, WHMCS and WISECP modules, webhooks | Done |
 | 5 | App Marketplace: install, order-time apps, paid apps, uninstall/upgrade/actions, logs, editor, trials, import/export, 16 recipes | Mostly done; catalogs and signing (ADR 0017) open |
-| 6 | Usage and quotas: traffic collection, graphs, throttle/suspend, `UsageUpdate` | Resource changes, guest scripts, primary address and hostname changes done early; traffic collection, quotas and usage limits with suspend/stop, WHMCS `UsageUpdate` and traffic in the billing modules done (ADR 0039); graphs and throttling not started |
-| 7 | Snapshots and backups, Proxmox Backup Server | Planned |
-| 8 | Virtualizor import, native installer, production images, branding | Planned |
+| 6 | Usage and quotas: traffic collection, graphs, throttle/suspend, `UsageUpdate` | Resource changes, guest scripts, primary address and hostname changes done early; traffic collection, quotas and usage limits with suspend/stop, WHMCS `UsageUpdate` and traffic in the billing modules done (ADR 0039); usage history with graphs in the admin panel, the API and the WHMCS client area done (ADR 0050); throttling not started |
+| 7 | Snapshots and backups, Proxmox Backup Server | Snapshots, manual backups and restore, schedules and retention done (ADR 0051, phases 1–3); Proxmox Backup Server unverified |
+| 8 | Virtualizor import, native installer, production images, branding | Install and upgrade commands (ADR 0052), branding (ADR 0053), production images (ADR 0054) and the native installer (ADR 0055) done; the Virtualizor import on hold |
 | 9 | NAT VPS, LXC, ISO mount, rescue mode, customer firewall, moving servers (pulled forward, see 9.4), reseller system, more billing modules | Planned |
 
 ---

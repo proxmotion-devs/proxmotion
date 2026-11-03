@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Controllers\Admin;
 
 use App\Domain\Servers\GuestScripts;
+use App\Enums\TaskType;
 use App\Http\Controllers\Controller;
 use App\Models\AuditLog;
 use App\Models\Task;
@@ -43,9 +44,10 @@ class TaskController extends Controller
     }
 
     /**
-     * Cancel an administrator's run of a script: the task fails at once and
-     * the server takes operations again; the job running it stops the
-     * script inside the server within a few seconds (GuestScripts).
+     * Cancel an administrator's run of a script or a backup: the task fails
+     * at once and the server takes operations again; the job running a
+     * script stops it inside the server within a few seconds (GuestScripts),
+     * a backup is stopped in Proxmox (docs/adr/0051 §4).
      */
     public function cancel(Request $request, Task $task, #[CurrentUser] User $admin, TaskFailer $failer): RedirectResponse
     {
@@ -63,7 +65,9 @@ class TaskController extends Controller
             'status' => $status,
         ], $request->ip());
 
-        $this->toast('success', 'The script was cancelled and is being stopped inside the server.');
+        $this->toast('success', $task->type === TaskType::CreateBackup
+            ? 'The backup was cancelled and is being stopped in Proxmox.'
+            : 'The script was cancelled and is being stopped inside the server.');
 
         return back();
     }

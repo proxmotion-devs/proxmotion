@@ -7,6 +7,7 @@ use App\Support\Broadcasting\ReverbFallback;
 use App\Support\Database\SqliteConnector;
 use Carbon\CarbonImmutable;
 use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Foundation\Console\AboutCommand;
 use Illuminate\Foundation\Console\ServeCommand;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Date;
@@ -40,6 +41,8 @@ class AppServiceProvider extends ServiceProvider
 
         // Before the channels are registered (bootstrap/app.php, after boot): an unconfigured Reverb must not stop the panel.
         ReverbFallback::apply(config());
+
+        AboutCommand::add('Proxmotion', fn (): array => ['Version' => config('proxmotion.version')]);
 
         // Billing API (docs/adr/0008): per token, set by AuthenticateApiToken.
         RateLimiter::for('api', function (Request $request): Limit {

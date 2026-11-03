@@ -80,6 +80,8 @@ class ChangeResourcesTest extends TestCase
                     'cpu_units' => null,
                     'disk_mb_s' => null,
                     'disk_iops' => null,
+                    'snapshot_slots' => 1,
+                    'backup_slots' => 1,
                 ]));
     }
 

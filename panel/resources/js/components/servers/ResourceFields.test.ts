@@ -15,6 +15,8 @@ const values: NewServerResources = {
     cpu_units: '',
     disk_mb_s: '',
     disk_iops: '',
+    snapshot_slots: 0,
+    backup_slots: 0,
 };
 
 const mountFields = () => {

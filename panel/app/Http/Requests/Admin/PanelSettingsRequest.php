@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Requests\Admin;
 
 use App\Domain\Servers\PasswordGenerator;
+use App\Domain\Servers\ServerSshKeys;
 use App\Domain\Settings\PanelSettings;
 use App\Rules\Hostname;
 use App\Rules\NetworkList;
@@ -24,6 +25,9 @@ class PanelSettingsRequest extends FormRequest
     /** Further notification recipients besides the administrators (docs/adr/0044). */
     private const int MAX_RECIPIENTS = 10;
 
+    /** The shortest backup window (docs/adr/0051 §6), three runs of backups:schedule. */
+    private const int MIN_BACKUP_WINDOW_MINUTES = 30;
+
     /**
      * @return array<string, ValidationRule|array<mixed>|string>
      */
@@ -40,6 +44,27 @@ class PanelSettingsRequest extends FormRequest
                 }
             }],
             'provisioning_deadline_minutes' => ['required', 'integer', 'min:15', 'max:1440'],
+            'backup_deadline_minutes' => ['required', 'integer', 'min:30', 'max:2880'],
+            // Scheduled backups (docs/adr/0051 §6); a window may end on the next day, but not where it starts.
+            'backup_window_start' => ['required', 'string', 'date_format:H:i'],
+            // backups:schedule runs every 10 minutes: a shorter window could fall between two runs.
+            'backup_window_end' => ['required', 'string', 'date_format:H:i', function (string $attribute, mixed $value, Closure $fail) {
+                $start = $this->input('backup_window_start');
+
+                // A malformed time already fails date_format.
+                if (! is_string($start) || ! is_string($value) || preg_match('/^\d{2}:\d{2}$/', $start) !== 1 || preg_match('/^\d{2}:\d{2}$/', $value) !== 1) {
+                    return;
+                }
+
+                $minutes = fn (string $time): int => (int) substr($time, 0, 2) * 60 + (int) substr($time, 3, 2);
+
+                if (($minutes($value) - $minutes($start) + 1440) % 1440 < self::MIN_BACKUP_WINDOW_MINUTES) {
+                    $fail(__('The backup window must be at least :minutes minutes long.', ['minutes' => self::MIN_BACKUP_WINDOW_MINUTES]));
+                }
+            }],
+            'backups_per_node' => ['required', 'integer', 'min:1', 'max:20'],
+            'backups_per_storage' => ['required', 'integer', 'min:1', 'max:50'],
+            'backups_keep_terminated_days' => ['required', 'integer', 'min:0', 'max:365'],
             'verify_dns_name' => ['nullable', 'string', 'max:253', new Hostname],
             'protected_networks' => ['nullable', 'string', 'max:4000', new NetworkList],
             'drift_stopped_grace_minutes' => ['required', 'integer', 'min:0', 'max:10080'],
@@ -64,6 +89,8 @@ class PanelSettingsRequest extends FormRequest
             'password_characters' => ['required', 'string', 'in:lower,mixed,symbols'],
             'password_prefix' => ['nullable', 'string', 'max:32', Rule::regex('/^[A-Za-z0-9!@#%+=.,:_-]+$/')],
             'password_suffix' => ['nullable', 'string', 'max:32', Rule::regex('/^[A-Za-z0-9!@#%+=.,:_-]+$/')],
+            // SSH keys per server (docs/adr/0049 §12); servers keep what they have when it is lowered.
+            'ssh_keys_max' => ['required', 'integer', 'min:1', 'max:'.ServerSshKeys::CEILING],
             // Email notifications (docs/adr/0044): recipients one per line or comma-separated.
             'notifications_enabled' => ['required', 'boolean'],
             'notification_recipients' => ['nullable', 'string', 'max:2550', function (string $attribute, mixed $value, Closure $fail) {
@@ -82,6 +109,11 @@ class PanelSettingsRequest extends FormRequest
                 }
             }],
             'notification_throttle_minutes' => ['required', 'integer', 'min:5', 'max:1440'],
+            // Branding (docs/adr/0053); empty: APP_NAME, the default theme, no support contact.
+            'brand_name' => ['nullable', 'string', 'max:60'],
+            'brand_color' => ['nullable', 'string', Rule::regex('/^#[0-9a-fA-F]{6}$/')],
+            'support_email' => ['nullable', 'string', 'max:255', 'email'],
+            'support_url' => ['nullable', 'string', 'max:255', 'url:https'],
         ], array_flip($this->fields()));
     }
 
@@ -144,6 +176,12 @@ class PanelSettingsRequest extends FormRequest
             'move_bwlimit_kib' => fn () => $optionalInt('move_bwlimit_kib'),
             'min_vmid' => fn () => (int) $data['min_vmid'],
             'provisioning_deadline_minutes' => fn () => (int) $data['provisioning_deadline_minutes'],
+            'backup_deadline_minutes' => fn () => (int) $data['backup_deadline_minutes'],
+            'backup_window_start' => fn () => (string) $data['backup_window_start'],
+            'backup_window_end' => fn () => (string) $data['backup_window_end'],
+            'backups_per_node' => fn () => (int) $data['backups_per_node'],
+            'backups_per_storage' => fn () => (int) $data['backups_per_storage'],
+            'backups_keep_terminated_days' => fn () => (int) $data['backups_keep_terminated_days'],
             'verify_dns_name' => fn () => ($name = $optionalString('verify_dns_name')) === null ? null : strtolower($name),
             'protected_networks' => fn () => NetworkList::canonical($optionalString('protected_networks')),
             'drift_stopped_grace_minutes' => fn () => (int) $data['drift_stopped_grace_minutes'],
@@ -165,12 +203,17 @@ class PanelSettingsRequest extends FormRequest
             'password_characters' => fn () => (string) $data['password_characters'],
             'password_prefix' => fn () => $optionalString('password_prefix'),
             'password_suffix' => fn () => $optionalString('password_suffix'),
+            'ssh_keys_max' => fn () => (int) $data['ssh_keys_max'],
             'notifications_enabled' => fn () => (bool) $data['notifications_enabled'],
             'notification_recipients' => fn () => self::addresses((string) ($data['notification_recipients'] ?? '')),
             'notification_throttle_minutes' => fn () => (int) $data['notification_throttle_minutes'],
+            'brand_name' => fn () => $optionalString('brand_name'),
+            'brand_color' => fn () => ($color = $optionalString('brand_color')) === null ? null : strtolower($color),
+            'support_email' => fn () => ($email = $optionalString('support_email')) === null ? null : strtolower($email),
+            'support_url' => fn () => $optionalString('support_url'),
         ];
 
         // Only the page's category: the other settings keep their values.
-        return array_map(fn (Closure $value): mixed => $value(), array_intersect_key($values, array_flip($this->fields())));
+        return array_map(fn (callable $value): mixed => $value(), array_intersect_key($values, array_flip($this->fields())));
     }
 }

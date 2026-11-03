@@ -14,6 +14,7 @@ use App\Enums\AppInstallationStatus;
 use App\Enums\AppRecipeVersionStatus;
 use App\Enums\AppRunKind;
 use App\Enums\AppRunStatus;
+use App\Enums\TaskType;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\Api\V1\AppInstallationResource;
 use App\Models\AppInstallation;
@@ -149,14 +150,14 @@ class AppController extends Controller
     public function resetTestServer(Request $request, Server $server, #[CurrentUser] User $admin, AppTrials $trials): RedirectResponse
     {
         try {
-            $trials->resetTestServer($server, $admin, $request->ip());
+            $task = $trials->resetTestServer($server, $admin, $request->ip());
         } catch (ProvisioningException $e) {
             $this->toast('error', $e->translatedMessage());
 
             return back();
         }
 
-        $this->toast('info', 'Reinstalling the server…');
+        $this->toast('info', $task->type === TaskType::RollbackSnapshot ? 'Rolling back to the "trial base" snapshot…' : 'Reinstalling the server…');
 
         return back();
     }

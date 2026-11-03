@@ -1,5 +1,7 @@
 <?php
 
+use App\Domain\Settings\Branding;
+use App\Http\Controllers\BrandingFileController;
 use App\Http\Middleware\AuthenticateApiToken;
 use App\Http\Middleware\AuthenticateConsoleProxy;
 use App\Http\Middleware\EnsureTwoFactorIsEnabled;
@@ -9,10 +11,12 @@ use App\Http\Middleware\HandleInertiaRequests;
 use App\Http\Middleware\RequireApiScope;
 use App\Http\Middleware\ScopeToBillingSystem;
 use App\Http\Middleware\SetLocale;
+use App\Http\Middleware\TrustProxies;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\Middleware\AddLinkHeadersForPreloadedAssets;
+use Illuminate\Http\Middleware\TrustProxies as BaseTrustProxies;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Middleware\SubstituteBindings;
 use Illuminate\Routing\Middleware\ThrottleRequests;
@@ -29,6 +33,13 @@ return Application::configure(basePath: dirname(__DIR__))
                 ->name('api.v1.')
                 ->group(base_path('routes/api.php'));
 
+            // Uploaded logos and favicon (docs/adr/0053), also on the sign-in pages and the customer
+            // console. Without the web group: a publicly cached image must never carry a session or
+            // XSRF cookie, and needs none of the page middleware.
+            Route::get('branding/{file}', BrandingFileController::class)
+                ->where('file', Branding::FILE_PATTERN)
+                ->name('branding.image');
+
             Route::middleware(['throttle:120,1', AuthenticateConsoleProxy::class])
                 ->prefix('internal')
                 ->name('internal.')
@@ -38,6 +49,8 @@ return Application::configure(basePath: dirname(__DIR__))
     // Private channels are for administrators only, behind the same checks as admin pages (docs/adr/0036).
     ->withBroadcasting(__DIR__.'/../routes/channels.php', ['middleware' => ['web', 'auth', 'verified', '2fa']])
     ->withMiddleware(function (Middleware $middleware): void {
+        // Forwarded headers only from TRUSTED_PROXIES (docs/adr/0054).
+        $middleware->replace(BaseTrustProxies::class, TrustProxies::class);
         $middleware->encryptCookies(except: ['appearance', 'sidebar_state']);
         // Guest scripts (admin OS template page) are stored exactly as typed.
         $middleware->trimStrings(except: ['script']);

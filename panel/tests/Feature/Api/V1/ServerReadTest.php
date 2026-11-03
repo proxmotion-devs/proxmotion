@@ -37,6 +37,8 @@ class ServerReadTest extends ApiTestCase
                     'disk_mib' => 40960,
                     'port_speed_mbps' => 1000,
                     'traffic_bytes' => $server->traffic_bytes,
+                    'snapshot_slots' => 1,
+                    'backup_slots' => 1,
                 ],
                 'traffic' => [
                     'period_start' => TrafficPeriods::start()->toIso8601String(),

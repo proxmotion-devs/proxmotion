@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use App\Enums\BackupSchedule;
 use App\Enums\NetworkModel;
 use App\Enums\ServerOrigin;
 use App\Enums\ServerStatus;
@@ -53,6 +54,11 @@ use Illuminate\Support\Carbon;
  * @property int|null $cpu_units relative CPU weight on a busy node
  * @property int|null $disk_mb_s read and write throughput of the boot disk, MB/s each
  * @property int|null $disk_iops read and write operations per second of the boot disk, each
+ * @property int $snapshot_slots how many snapshots it may have (docs/adr/0051); 0: none
+ * @property int $backup_slots how many backups it may have; 0: none
+ * @property BackupSchedule|null $backup_schedule its own backup schedule (docs/adr/0051 §6); null: its package's
+ * @property Carbon|null $backup_scheduled_at when the schedule last queued a backup of it
+ * @property bool $guest_refresh_pending rolled back while stopped: addresses, hostname and SSH keys go into the guest at its next start (docs/adr/0051 §5)
  * @property string|null $root_password
  * @property bool $root_password_unrevealed the billing system has not fetched the current root password yet
  * @property bool $reboot_required changed CPU or memory waits for the VM's next restart
@@ -108,6 +114,11 @@ class Server extends Model
             'cpu_units' => 'integer',
             'disk_mb_s' => 'integer',
             'disk_iops' => 'integer',
+            'snapshot_slots' => 'integer',
+            'backup_slots' => 'integer',
+            'backup_schedule' => BackupSchedule::class,
+            'backup_scheduled_at' => 'datetime',
+            'guest_refresh_pending' => 'boolean',
             'root_password' => 'encrypted',
             'root_password_unrevealed' => 'boolean',
             'reboot_required' => 'boolean',
@@ -249,6 +260,30 @@ class Server extends Model
     public function trafficPeriods(): HasMany
     {
         return $this->hasMany(TrafficPeriod::class);
+    }
+
+    /**
+     * @return HasMany<Backup, $this>
+     */
+    public function backups(): HasMany
+    {
+        return $this->hasMany(Backup::class);
+    }
+
+    /**
+     * @return HasMany<Snapshot, $this>
+     */
+    public function snapshots(): HasMany
+    {
+        return $this->hasMany(Snapshot::class);
+    }
+
+    /**
+     * @return HasMany<UsageRollup, $this>
+     */
+    public function usageRollups(): HasMany
+    {
+        return $this->hasMany(UsageRollup::class);
     }
 
     /**

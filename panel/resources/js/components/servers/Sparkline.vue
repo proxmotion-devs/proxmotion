@@ -2,6 +2,7 @@
 import { usePage } from '@inertiajs/vue3';
 import { computed, ref } from 'vue';
 import { HISTORY_MS } from '@/composables/useServerStats';
+import { linePath, nearestPoint } from '@/lib/charts';
 import type { ServerStatsPoint } from '@/types/admin';
 
 type Key = Exclude<keyof ServerStatsPoint, 'time'>;
@@ -49,25 +50,10 @@ const y = (value: number) =>
     HEIGHT - 1 - (Math.min(value, top.value) / top.value) * (HEIGHT - 2);
 
 const paths = computed(() =>
-    props.series.map((series) => {
-        let d = '';
-        let previous: number | null = null;
-
-        for (const point of visible.value) {
-            const value = point[series.key];
-
-            if (value === null) {
-                previous = null;
-                continue;
-            }
-
-            const joined = previous !== null && point.time - previous <= GAP_MS;
-            d += `${joined ? 'L' : 'M'}${x(point.time).toFixed(1)},${y(value).toFixed(1)}`;
-            previous = point.time;
-        }
-
-        return { ...series, d };
-    }),
+    props.series.map((series) => ({
+        ...series,
+        d: linePath(visible.value, (point) => point[series.key], x, y, GAP_MS),
+    })),
 );
 
 const hovered = ref<ServerStatsPoint | null>(null);
@@ -76,18 +62,8 @@ const hover = (event: PointerEvent) => {
     const box = (event.currentTarget as SVGElement).getBoundingClientRect();
     const time =
         start.value + ((event.clientX - box.left) / box.width) * HISTORY_MS;
-    let nearest: ServerStatsPoint | null = null;
 
-    for (const point of visible.value) {
-        if (
-            nearest === null ||
-            Math.abs(point.time - time) < Math.abs(nearest.time - time)
-        ) {
-            nearest = point;
-        }
-    }
-
-    hovered.value = nearest;
+    hovered.value = nearestPoint(visible.value, time, (point) => point.time);
 };
 
 const hoverTime = computed(() =>

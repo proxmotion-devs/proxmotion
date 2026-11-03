@@ -47,10 +47,12 @@ describe('useMainNavigation', () => {
 
         expect(settings?.items?.map((item) => toUrl(item.href))).toEqual([
             '/admin/settings/servers',
+            '/admin/settings/backups',
             '/admin/settings/network',
             '/admin/settings/usage',
             '/admin/settings/general',
             '/admin/settings/notifications',
+            '/admin/settings/branding',
             '/admin/settings/environment',
         ]);
     });

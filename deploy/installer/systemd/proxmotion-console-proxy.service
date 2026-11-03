@@ -1,0 +1,24 @@
+# Proxmotion console proxy (docs/adr/0002, 0055), written by install.sh on every run.
+# nginx forwards /console-ws to it; it reaches the panel on 127.0.0.1:8081.
+[Unit]
+Description=Proxmotion console proxy
+After=network-online.target nginx.service
+Wants=network-online.target
+
+[Service]
+User=proxmotion
+Group=proxmotion
+WorkingDirectory=@PREFIX@/current/console-proxy
+Environment=NODE_ENV=production HOST=127.0.0.1 PORT=8090 PANEL_URL=http://127.0.0.1:8081
+# CONSOLE_PROXY_SECRET, copied from the panel's .env by install.sh.
+EnvironmentFile=@PREFIX@/shared/console-proxy.env
+ExecStart=/usr/bin/node src/server.js
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target

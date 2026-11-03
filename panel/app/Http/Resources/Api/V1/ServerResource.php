@@ -88,6 +88,9 @@ class ServerResource extends JsonResource
                 'disk_mib' => $this->disk_mib,
                 'port_speed_mbps' => $this->port_speed_mbps,
                 'traffic_bytes' => $this->traffic_bytes,
+                // How many snapshots and backups it may have; 0: none (docs/adr/0051).
+                'snapshot_slots' => $this->snapshot_slots,
+                'backup_slots' => $this->backup_slots,
             ],
             // The current traffic period (docs/adr/0039).
             'traffic' => $this->traffic(),

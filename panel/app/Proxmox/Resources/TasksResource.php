@@ -26,6 +26,14 @@ final readonly class TasksResource
     }
 
     /**
+     * Stop a running task, such as a backup an administrator cancelled (docs/adr/0051 §4).
+     */
+    public function stop(Upid $upid): void
+    {
+        $this->client->delete('/nodes/'.rawurlencode($upid->node).'/tasks/'.rawurlencode($upid->value));
+    }
+
+    /**
      * Tasks still running for one guest (e.g. a shutdown started from the
      * Proxmox UI). They hold the VM lock until they finish.
      *

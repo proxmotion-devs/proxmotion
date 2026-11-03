@@ -10,6 +10,7 @@ use App\Enums\AppInstallationStatus;
 use App\Enums\AppInstallMode;
 use App\Enums\AppRunStatus;
 use App\Models\AppInstallation;
+use App\Models\AppRun;
 use App\Models\Server;
 use Illuminate\Support\Str;
 use Throwable;
@@ -27,6 +28,17 @@ final readonly class AppInstallations
         private AppLogs $logs,
         private AppRuns $runs,
     ) {}
+
+    /**
+     * Whether an app script is queued or running on the server: an
+     * installation, uninstall or upgrade, or a run. Operations that replace
+     * the server's disk or stop it (moves, snapshot rollbacks) wait for it.
+     */
+    public static function scriptRunning(Server $server): bool
+    {
+        return $server->appInstallations()->whereIn('status', [AppInstallationStatus::Queued, AppInstallationStatus::Installing, AppInstallationStatus::Uninstalling, AppInstallationStatus::Upgrading])->exists()
+            || AppRun::query()->whereIn('status', [AppRunStatus::Queued, AppRunStatus::Running])->whereHas('installation', fn ($query) => $query->where('server_id', $server->id))->exists();
+    }
 
     /**
      * @param  array<string, array{type: string, value: string, filename?: string|null}>  $outputs

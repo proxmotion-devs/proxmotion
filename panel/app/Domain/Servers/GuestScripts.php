@@ -22,6 +22,7 @@ use App\Proxmox\Exceptions\GuestCommandDisabled;
 use App\Proxmox\Exceptions\ProxmoxException;
 use App\Proxmox\ProxmoxClientFactory;
 use App\Proxmox\Resources\GuestAgentResource;
+use App\Support\Ssh\PublicKey;
 use Closure;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Sleep;
@@ -267,7 +268,8 @@ final readonly class GuestScripts
     /**
      * The panel's own script of the event: resources/guest/<platform>, or
      * resources/guest/freebsd for a FreeBSD template, whose platform is
-     * Linux (root, sh scripts) but whose tools are not (docs/adr/0048).
+     * Linux (root, sh scripts) but whose tools are not (docs/adr/0048);
+     * events with a portable Linux default share it.
      */
     public static function defaultScript(OsPlatform $platform, GuestScriptEvent $event, ?string $distribution = null): ?string
     {
@@ -275,7 +277,8 @@ final readonly class GuestScripts
             return null;
         }
 
-        $directory = $platform === OsPlatform::Linux && $distribution === Distributions::FREEBSD ? Distributions::FREEBSD : $platform->value;
+        $freebsd = $platform === OsPlatform::Linux && $distribution === Distributions::FREEBSD && ! $event->hasPortableDefault();
+        $directory = $freebsd ? Distributions::FREEBSD : $platform->value;
         $file = resource_path('guest/'.$directory.'/'.$event->name().($platform === OsPlatform::Windows ? '.ps1' : '.sh'));
 
         return is_file($file) ? (string) file_get_contents($file) : null;
@@ -472,6 +475,11 @@ final readonly class GuestScripts
         }
 
         $this->runOrThrow($task, ScriptSlot::event($event), fn () => $this->run($task, $server, $event, draft: $draft, trace: $trace));
+
+        // A critical script leaves its step to the caller.
+        if ($event->isCritical()) {
+            $task->completeStep($event->step());
+        }
     }
 
     /**
@@ -820,6 +828,12 @@ final readonly class GuestScripts
             GuestScriptEvent::DiskResized => ['disk_mib' => $server->disk_mib],
             GuestScriptEvent::PasswordReset => ['username' => $platform->administrator()],
             GuestScriptEvent::HostnameChanged => ['previous_hostname' => is_string($task?->input['previous_hostname'] ?? null) ? $task->input['previous_hostname'] : null],
+            // authorized_keys lines the panel validated and stored (docs/adr/0049).
+            GuestScriptEvent::SshKeysChanged => [
+                'username' => $platform->administrator(),
+                'ssh_keys' => array_map(fn (PublicKey $key) => $key->toString(), ServerSshKeys::wanted($server, $task)),
+                'removed_ssh_keys' => ServerSshKeys::removedLines($server, $task),
+            ],
         };
     }
 

@@ -17,6 +17,7 @@ use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Testing\TestResponse;
+use Inertia\Testing\AssertableInertia as Assert;
 use Tests\Concerns\BuildsInfrastructure;
 use Tests\Support\FakeProxmoxCluster;
 use Tests\TestCase;
@@ -363,6 +364,27 @@ class LiveStatsTest extends TestCase
 
         $this->assertSame('reverb', config('broadcasting.default'));
         $this->assertSame([], ReverbFallback::missing(config()));
+    }
+
+    public function test_pages_tell_administrators_where_browsers_reach_reverb()
+    {
+        $this->actingAs($this->admin)->get(route('admin.dashboard'))
+            ->assertInertia(fn (Assert $page) => $page->where('reverb', null));
+
+        config([
+            'broadcasting.default' => 'reverb',
+            'broadcasting.connections.reverb.key' => 'test-key',
+            'broadcasting.connections.reverb.secret' => 'test-secret',
+            'proxmotion.reverb_public' => ['host' => null, 'port' => '8443', 'scheme' => 'wss'],
+        ]);
+
+        // Read when the page loads, not built into the frontend (docs/adr/0054); the secret stays on the server.
+        $this->actingAs($this->admin)->get(route('admin.dashboard'))
+            ->assertDontSee('test-secret')
+            ->assertInertia(fn (Assert $page) => $page->where('reverb', ['key' => 'test-key', 'host' => null, 'port' => 8443, 'scheme' => null]));
+
+        auth()->logout();
+        $this->get(route('login'))->assertInertia(fn (Assert $page) => $page->where('reverb', null));
     }
 
     public function test_the_servers_channel_is_open_to_administrators_with_two_factor_only()

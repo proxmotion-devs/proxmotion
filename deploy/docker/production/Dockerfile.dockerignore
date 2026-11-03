@@ -1,0 +1,26 @@
+# What the production images and the release archive are built from (docs/adr/0054, 0055):
+# the panel, the console proxy, the installer and these files only, never an .env file,
+# dependencies, built assets or local data.
+**
+!panel/
+!deploy/docker/production/
+!deploy/console-proxy/
+!deploy/installer/
+deploy/console-proxy/node_modules/
+deploy/console-proxy/test/
+panel/.env
+panel/.env.*
+!panel/.env.example
+panel/.phpunit.cache/
+panel/.phpunit.result.cache
+panel/bootstrap/cache/*.php
+panel/database/*.sqlite*
+panel/node_modules/
+panel/public/build/
+panel/public/hot
+panel/resources/js/actions/
+panel/resources/js/routes/
+panel/resources/js/wayfinder/
+panel/storage/
+panel/tests/
+panel/vendor/

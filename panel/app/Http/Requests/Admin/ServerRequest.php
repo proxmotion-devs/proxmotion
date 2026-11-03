@@ -14,12 +14,14 @@ use App\Models\Node;
 use App\Models\OsTemplate;
 use App\Models\Package;
 use App\Models\PlacementGroup;
+use App\Provisioning\BackupSlots;
 use App\Provisioning\HostnameGenerator;
 use App\Provisioning\NewServer;
 use App\Provisioning\ResourceLimits;
 use App\Provisioning\ServerCreator;
 use App\Provisioning\ServerSpec;
 use App\Rules\Hostname;
+use App\Rules\SshKeyLimit;
 use App\Rules\SshPublicKeys;
 use App\Support\Ssh\PublicKey;
 use Illuminate\Contracts\Validation\ValidationRule;
@@ -58,6 +60,8 @@ class ServerRequest extends FormRequest
             'traffic_gb' => ['nullable', 'integer', 'between:1,10000000'],
             // Custom servers only, empty: unlimited (docs/adr/0034).
             ...ResourceLimits::rules(),
+            // Custom servers only, empty: none (docs/adr/0051 §2).
+            ...BackupSlots::rules(),
             // Custom servers only: "group", the best node of a placement group (docs/adr/0020);
             // "node", the node (and optionally storage) chosen here.
             'placement' => [Rule::requiredIf($custom), Rule::prohibitedIf(! $custom), 'nullable', Rule::in(['group', 'node'])],
@@ -77,7 +81,7 @@ class ServerRequest extends FormRequest
             'ipv4_addresses.*' => ['ipv4', 'distinct'],
             // Empty: a random password is generated.
             'root_password' => ['nullable', 'string', 'min:12', 'max:128'],
-            'ssh_keys' => ['nullable', 'string', 'max:16384', new SshPublicKeys],
+            'ssh_keys' => ['nullable', 'string', 'max:16384', new SshPublicKeys, new SshKeyLimit],
             // An app installed once the server has booted (docs/adr/0016 §5); checked by the creator.
             'app' => ['nullable', 'string', Rule::exists('app_recipes', 'slug')],
             'app_inputs' => ['nullable', 'array'],
@@ -207,6 +211,7 @@ class ServerRequest extends FormRequest
             portSpeedMbps: $this->filled('port_speed_mbps') ? $this->integer('port_speed_mbps') : null,
             trafficBytes: $this->filled('traffic_gb') ? $this->integer('traffic_gb') * 1000 ** 3 : null,
             limits: ResourceLimits::fromRequest($this),
+            slots: BackupSlots::fromRequest($this),
         );
     }
 }

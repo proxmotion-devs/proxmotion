@@ -55,8 +55,14 @@ final readonly class ResourceChanger
                     throw new ProvisioningException("The server's node does not have enough free capacity for these resources.");
                 }
 
-                $release = $this->reserveAddresses($server, $target);
                 $growsDisk = $target->diskMib > $server->disk_mib;
+
+                // Resizing a disk with snapshots is not verified per storage type (docs/adr/0051 §3).
+                if ($growsDisk && $server->snapshots()->exists()) {
+                    throw new ProvisioningException('The disk cannot grow while the server has snapshots. Delete them first.');
+                }
+
+                $release = $this->reserveAddresses($server, $target);
 
                 $server->forceFill([
                     'package_id' => $change->package?->id,
@@ -66,6 +72,7 @@ final readonly class ResourceChanger
                     'port_speed_mbps' => $target->portSpeedMbps,
                     'traffic_bytes' => $target->trafficBytes,
                     ...$target->limits->columns(),
+                    ...$target->slots->columns(),
                 ])->save();
 
                 return $this->tasks->start($server, TaskType::ChangeResources, $actor, input: [
@@ -99,6 +106,7 @@ final readonly class ResourceChanger
             portSpeedMbps: $spec->portSpeedMbps,
             trafficBytes: $spec->trafficBytes,
             limits: $spec->limits,
+            slots: $spec->slots,
         );
     }
 
@@ -149,6 +157,7 @@ final readonly class ResourceChanger
             'port_speed_mbps' => $server->port_speed_mbps,
             'traffic_bytes' => $server->traffic_bytes,
             ...ResourceLimits::of($server)->columns(),
+            ...BackupSlots::of($server)->columns(),
         ];
     }
 }

@@ -140,7 +140,7 @@ final class ClientAreaTest extends ModuleTestCase
         $this->assertFalse($data['password_supported']);
 
         $this->module()->tool_action('reinstall-os', 'create', ['os_template' => 'debian-uuid']);
-        $this->assertSame(['os_template' => 'debian-uuid', 'ssh_keys' => []], $this->api->body('POST ' . self::SERVER . '/reinstall'));
+        $this->assertSame(['os_template' => 'debian-uuid'], $this->api->body('POST ' . self::SERVER . '/reinstall'));
 
         try {
             $this->module()->tool_action('reinstall-os', 'create', ['os_template' => 'someone-elses']);

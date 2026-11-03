@@ -1,3 +1,5 @@
+import type { BackupSchedule } from '@/lib/backupSchedules';
+
 export type NetworkModel = 'bridged' | 'routed' | 'nat';
 export type NodeStatus = 'online' | 'offline' | 'unknown';
 
@@ -22,6 +24,13 @@ export type PanelSettings = {
     move_bwlimit_kib: number | null;
     min_vmid: number;
     provisioning_deadline_minutes: number;
+    backup_deadline_minutes: number;
+    /** Scheduled backups (docs/adr/0051 §6): HH:MM in the panel's time zone. */
+    backup_window_start: string;
+    backup_window_end: string;
+    backups_per_node: number;
+    backups_per_storage: number;
+    backups_keep_terminated_days: number;
     verify_dns_name: string | null;
     protected_networks: string[];
     drift_stopped_grace_minutes: number;
@@ -43,9 +52,19 @@ export type PanelSettings = {
     password_characters: 'lower' | 'mixed' | 'symbols';
     password_prefix: string | null;
     password_suffix: string | null;
+    /** docs/adr/0049 */
+    ssh_keys_max: number;
     notifications_enabled: boolean;
     notification_recipients: string[];
     notification_throttle_minutes: number;
+    /** Branding (docs/adr/0053); the images are file names, shown through the shared branding prop. */
+    brand_name: string | null;
+    brand_color: string | null;
+    support_email: string | null;
+    support_url: string | null;
+    brand_logo: string | null;
+    brand_logo_dark: string | null;
+    brand_favicon: string | null;
 };
 
 export type Cluster = {
@@ -115,7 +134,9 @@ export type Storage = {
     is_shared: boolean;
     is_available: boolean;
     use_for_servers: boolean;
+    use_for_backups: boolean;
     supports_vm_disks: boolean;
+    supports_backups: boolean;
     total_bytes: number | null;
     used_bytes: number | null;
     health: StorageHealth;
@@ -221,7 +242,8 @@ export type GuestScriptEvent =
     | 'addresses_changed'
     | 'disk_resized'
     | 'password_reset'
-    | 'hostname_changed';
+    | 'hostname_changed'
+    | 'ssh_keys_changed';
 
 export type GuestScriptSlot = {
     event: GuestScriptEvent;
@@ -297,6 +319,8 @@ export type Package = ResourceLimitValues & {
     ipv6_count: number;
     snapshot_slots: number;
     backup_slots: number;
+    /** Not copied: its servers follow it unless they have their own (docs/adr/0051 §6). */
+    backup_schedule: BackupSchedule;
     network_models: NetworkModel[];
     is_active: boolean;
     sort_order: number;
@@ -352,10 +376,17 @@ export type TaskType =
     | 'enable_anti_spoofing'
     | 'apply_firewall'
     | 'change_hostname'
+    | 'change_ssh_keys'
     | 'install_app'
     | 'app_run'
     | 'verify'
     | 'move'
+    | 'create_snapshot'
+    | 'rollback_snapshot'
+    | 'delete_snapshot'
+    | 'create_backup'
+    | 'restore_backup'
+    | 'delete_backup'
     | PowerAction;
 
 export type PowerAction = 'start' | 'shutdown' | 'stop' | 'reboot';
@@ -430,6 +461,9 @@ export type ResourceValues = ResourceLimitValues & {
     ipv6_count: number;
     port_speed_mbps: number | null;
     traffic_gb: number | null;
+    /** docs/adr/0051 */
+    snapshot_slots: number;
+    backup_slots: number;
 };
 
 /** Choices for ResourcesDialog: packages for the server's network model, and its current resources. */
@@ -546,6 +580,42 @@ export type ServerUsage = {
         quota_bytes: number | null;
     };
     violations: UsageViolation[];
+};
+
+/** The ranges of a server's usage history (docs/adr/0050). */
+export type UsageRange = 'day' | 'week' | 'month' | 'year';
+
+/** One sample, hour or day of a server's usage; rates in bytes per second. */
+export type UsagePoint = {
+    time: string;
+    cpu_percent: number | null;
+    memory_percent: number | null;
+    net_in_rate: number | null;
+    net_out_rate: number | null;
+    disk_read_rate: number | null;
+    disk_write_rate: number | null;
+    in_bytes: number;
+    out_bytes: number;
+};
+
+/** A server's traffic in one hour, day or traffic period. */
+export type TrafficBucket = {
+    start: string;
+    end: string;
+    in_bytes: number;
+    out_bytes: number;
+    counted_bytes: number;
+};
+
+/** A server's usage over a range (UsageHistory, docs/adr/0050); missing points are left out. */
+export type UsageHistory = {
+    range: UsageRange;
+    interval_seconds: number;
+    from: string;
+    to: string;
+    points: UsagePoint[];
+    traffic: { interval: 'hour' | 'day' | 'period'; buckets: TrafficBucket[] };
+    current: ServerUsage['traffic'];
 };
 
 /** How often a server's billing system may reinstall it (ReinstallLimits, docs/adr/0045). */
@@ -880,6 +950,9 @@ export type PackageOption = Option &
         ipv6_count: number;
         port_speed_mbps: number | null;
         traffic_gb: number | null;
+        /** docs/adr/0051 */
+        snapshot_slots: number;
+        backup_slots: number;
     };
 
 /** A placement group (docs/adr/0020): nodes, and optionally storages, of one location. */
@@ -916,6 +989,9 @@ export type NewServerResources = {
     cpu_units: number | '';
     disk_mb_s: number | '';
     disk_iops: number | '';
+    /** docs/adr/0051 */
+    snapshot_slots: number;
+    backup_slots: number;
 };
 
 /** One inbound firewall rule (docs/adr/0035); null port, source or comment: none. */
@@ -932,6 +1008,95 @@ export type AppFirewallRule = {
     app: string;
     protocol: 'tcp' | 'udp';
     port: number;
+};
+
+/** A public SSH key the panel manages on a server (docs/adr/0049). */
+export type SshKey = {
+    type: string;
+    fingerprint: string;
+    comment: string;
+    /** The normalized authorized_keys line. */
+    public_key: string;
+};
+
+/** A key found in the server's authorized_keys (docs/adr/0049 §11). */
+export type GuestSshKey = SshKey & {
+    /** The file it was found in. */
+    file: string;
+    /** Its line starts with options (command="…", no-pty, …). */
+    options: boolean;
+    /** The panel manages it. */
+    managed: boolean;
+};
+
+/** What reading the keys inside a server found. */
+export type GuestSshKeys = {
+    keys: GuestSshKey[];
+    /** Fingerprints of managed keys found in no file. */
+    missing: string[];
+    /** Key lines the panel cannot manage (e.g. DSA, short RSA keys). */
+    unsupported: number;
+};
+
+export type ServerSshKeys = {
+    keys: SshKey[];
+    /** How many keys a server can have. */
+    max: number;
+};
+
+/** A snapshot of a server's disk and configuration (docs/adr/0051). */
+export type ServerSnapshot = {
+    id: string;
+    label: string | null;
+    created_at: string | null;
+};
+
+/** A server's snapshots on its page. */
+export type ServerSnapshots = {
+    items: ServerSnapshot[];
+    /** How many it may have; 0: none. */
+    slots: number;
+    /** Why it cannot have any at all (translated), or null. */
+    unavailable: string | null;
+};
+
+/** A backup of a server made by vzdump (docs/adr/0051 §4). */
+export type ServerBackup = {
+    id: string;
+    kind: 'manual' | 'scheduled';
+    label: string | null;
+    size_bytes: number | null;
+    /** The OS template's name when it was taken. */
+    os_template: string | null;
+    created_at: string | null;
+    storage: string;
+    restorable: boolean;
+    /** Why the server cannot be restored from it (translated), or null. */
+    unrestorable_reason: string | null;
+};
+
+/** A server's backups on its page. */
+export type ServerBackups = {
+    items: ServerBackup[];
+    /** How many it may have; 0: none. */
+    slots: number;
+    /** Why it cannot have any at all (translated), or null. */
+    unavailable: string | null;
+    /** Where the next backup goes, or null. */
+    storage: string | null;
+    /** Scheduled backups (docs/adr/0051 §6). */
+    schedule: {
+        /** The server's own schedule; null: its package's. */
+        own: BackupSchedule | null;
+        /** Its package's, or null without a package. */
+        package: BackupSchedule | null;
+        /** The one that applies. */
+        effective: BackupSchedule;
+        /** When the next one is due (in the past: at the next run), or null. */
+        next_at: string | null;
+        /** Why no scheduled backup is taken (translated), or null. */
+        blocked: string | null;
+    };
 };
 
 /** A server's firewall on its page, with the rule sets that can be applied. */

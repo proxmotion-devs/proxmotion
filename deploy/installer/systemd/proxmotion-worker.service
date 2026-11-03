@@ -1,0 +1,24 @@
+# Proxmotion queue worker (docs/adr/0055), written by install.sh on every run.
+[Unit]
+Description=Proxmotion queue worker
+After=network-online.target mariadb.service redis-server.service
+Wants=network-online.target
+
+[Service]
+User=proxmotion
+Group=proxmotion
+WorkingDirectory=@PREFIX@/current/panel
+# Recycled every hour; `php artisan queue:restart` (upgrades) also ends it after its job.
+ExecStart=/usr/bin/php@PHP_VERSION@ artisan queue:work --sleep=3 --max-time=3600
+Restart=always
+RestartSec=5
+# A stopped worker finishes its job first; longer than the longest job timeout (30 minutes).
+TimeoutStopSec=31min
+KillMode=mixed
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target

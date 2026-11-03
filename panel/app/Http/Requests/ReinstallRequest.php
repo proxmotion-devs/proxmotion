@@ -8,6 +8,7 @@ use App\Domain\Servers\ServerReinstaller;
 use App\Models\AppRecipe;
 use App\Models\OsTemplate;
 use App\Models\Server;
+use App\Rules\SshKeyLimit;
 use App\Rules\SshPublicKeys;
 use App\Support\Ssh\PublicKey;
 use Closure;
@@ -39,7 +40,7 @@ class ReinstallRequest extends FormRequest
 
         return [
             'os_template' => ['required', 'string', Rule::in(app(ServerReinstaller::class)->eligibleTemplates($server)->pluck('uuid')->all())],
-            'ssh_keys' => ['nullable', 'string', 'max:16384', new SshPublicKeys],
+            'ssh_keys' => ['nullable', 'string', 'max:16384', new SshPublicKeys, new SshKeyLimit],
             'confirm_hostname' => ['required', 'string', function (string $attribute, mixed $value, Closure $fail) use ($server) {
                 if (! is_string($value) || strcasecmp(trim($value), $server->hostname) !== 0) {
                     $fail(__('Type the hostname of the server to confirm.'));

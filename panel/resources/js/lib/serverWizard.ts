@@ -28,6 +28,8 @@ export const WIZARD_STEPS = [
             'cpu_units',
             'disk_mb_s',
             'disk_iops',
+            'snapshot_slots',
+            'backup_slots',
             'placement',
             'placement_group',
             'node',

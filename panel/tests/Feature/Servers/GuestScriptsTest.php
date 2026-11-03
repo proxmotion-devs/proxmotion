@@ -322,7 +322,7 @@ class GuestScriptsTest extends TestCase
             ->assertInertia(fn (Assert $page) => $page
                 ->component('admin/os-templates/Scripts')
                 ->where('template.platform', 'linux')
-                ->has('scripts', 5)
+                ->has('scripts', 6)
                 ->where('scripts.0.event', 'provisioned')
                 ->where('scripts.0.content', 'echo hi')
                 ->where('scripts.0.default', null)
@@ -333,6 +333,10 @@ class GuestScriptsTest extends TestCase
                 ->where('scripts.2.inputs', ['server', 'hostname', 'mac', 'disk_mib'])
                 ->where('scripts.3.can_be_tried', false)
                 ->where('scripts.3.critical', true)
+                ->where('scripts.5.event', 'ssh_keys_changed')
+                ->where('scripts.5.default', file_get_contents(resource_path('guest/linux/ssh-keys.sh')))
+                ->where('scripts.5.inputs', ['server', 'hostname', 'mac', 'username', 'ssh_keys', 'removed_ssh_keys'])
+                ->where('scripts.5.critical', true)
                 ->where('servers', [['value' => $this->server->uuid, 'label' => $this->server->hostname]]));
     }
 

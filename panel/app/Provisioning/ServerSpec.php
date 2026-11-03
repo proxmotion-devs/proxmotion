@@ -21,6 +21,7 @@ final readonly class ServerSpec
         public ?int $portSpeedMbps = null,
         public ?int $trafficBytes = null,
         public ResourceLimits $limits = new ResourceLimits,
+        public BackupSlots $slots = new BackupSlots,
     ) {}
 
     public static function fromPackage(Package $package): self
@@ -34,6 +35,7 @@ final readonly class ServerSpec
             portSpeedMbps: $package->port_speed_mbps,
             trafficBytes: $package->traffic_bytes,
             limits: ResourceLimits::of($package),
+            slots: BackupSlots::of($package),
         );
     }
 }

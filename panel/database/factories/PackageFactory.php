@@ -2,6 +2,7 @@
 
 namespace Database\Factories;
 
+use App\Enums\BackupSchedule;
 use App\Enums\NetworkModel;
 use App\Models\Package;
 use Illuminate\Database\Eloquent\Factories\Factory;
@@ -27,6 +28,7 @@ class PackageFactory extends Factory
             'ipv6_count' => 1,
             'snapshot_slots' => 1,
             'backup_slots' => 1,
+            'backup_schedule' => BackupSchedule::None,
             'network_models' => [NetworkModel::Bridged, NetworkModel::Routed],
             'is_active' => true,
             'sort_order' => 0,

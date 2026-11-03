@@ -1,5 +1,6 @@
 import type { Directive } from 'vue';
 import type { Auth } from '@/types/auth';
+import type { Branding, ReverbClient } from '@/types/ui';
 
 // Extend ImportMeta interface for Vite...
 declare module 'vite/client' {
@@ -18,9 +19,12 @@ declare module '@inertiajs/core' {
     export interface InertiaConfig {
         sharedPageProps: {
             name: string;
+            branding: Branding;
             locale: string;
             availableLocales: string[];
             auth: Auth;
+            /** Only on the pages of signed-in administrators. */
+            reverb?: ReverbClient | null;
             sidebarOpen: boolean;
             [key: string]: unknown;
         };

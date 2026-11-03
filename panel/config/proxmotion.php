@@ -1,13 +1,26 @@
 <?php
 
 /*
-| Everything here except require_admin_two_factor, console.proxy_secret,
-| console.websocket_url and console.ticket_seconds is only a default: once
-| the Panel settings page is saved, its values are used
-| (App\Domain\Settings\PanelSettings, docs/adr/0038).
+| Everything here except version, require_admin_two_factor, trusted_proxies,
+| reverb_public, console.proxy_secret, console.websocket_url and
+| console.ticket_seconds is only a default: once the Panel settings page is
+| saved, its values are used (App\Domain\Settings\PanelSettings,
+| docs/adr/0038).
 */
 
 return [
+
+    /*
+    |--------------------------------------------------------------------------
+    | Version (docs/adr/0054)
+    |--------------------------------------------------------------------------
+    |
+    | From the VERSION file next to composer.json. A release is tagged
+    | v<version>, and its images are tagged with the version.
+    |
+    */
+
+    'version' => is_file(base_path('VERSION')) ? trim((string) file_get_contents(base_path('VERSION'))) : 'dev',
 
     /*
     |--------------------------------------------------------------------------
@@ -24,6 +37,21 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Trusted proxies (docs/adr/0054)
+    |--------------------------------------------------------------------------
+    |
+    | A TLS proxy in front of the panel: comma-separated addresses or CIDRs
+    | whose X-Forwarded-For, -Proto, -Host and -Port headers are believed, or
+    | * for any. Empty: none, which is right when nginx faces the internet;
+    | trusting more lets clients choose the address that API token address
+    | limits and rate limits see.
+    |
+    */
+
+    'trusted_proxies' => env('TRUSTED_PROXIES'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Documentation
     |--------------------------------------------------------------------------
     |
@@ -34,6 +62,27 @@ return [
 
     // `?: null`: an empty PROXMOTION_DOCS_URL= (as in .env.example) means unset.
     'docs_url' => env('PROXMOTION_DOCS_URL') ?: null,
+
+    /*
+    |--------------------------------------------------------------------------
+    | Branding (docs/adr/0053)
+    |--------------------------------------------------------------------------
+    |
+    | The panel's name (empty: APP_NAME), its colour as #rrggbb (empty: the
+    | default theme) and where customers on the console page get help. The
+    | logo and favicon can only be uploaded on Panel settings.
+    |
+    */
+
+    'branding' => [
+        'name' => env('PROXMOTION_BRAND_NAME') ?: null,
+        'color' => env('PROXMOTION_BRAND_COLOR') ?: null,
+        'support_email' => env('PROXMOTION_SUPPORT_EMAIL') ?: null,
+        'support_url' => env('PROXMOTION_SUPPORT_URL') ?: null,
+        'logo' => null,
+        'logo_dark' => null,
+        'favicon' => null,
+    ],
 
     /*
     |--------------------------------------------------------------------------
@@ -68,6 +117,31 @@ return [
         'min_vmid' => (int) env('PROXMOTION_MIN_VMID', 0),
         'deadline_minutes' => (int) env('PROXMOTION_PROVISIONING_DEADLINE_MINUTES', 120),
         'verify_dns_name' => (string) env('PROXMOTION_VERIFY_DNS_NAME', 'example.com'),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Backups (docs/adr/0051)
+    |--------------------------------------------------------------------------
+    |
+    | Taking or restoring a backup must finish within deadline_minutes of its
+    | start: large servers can take hours.
+    |
+    | Scheduled backups (packages' or servers' backup schedule) start between
+    | window_start and window_end (HH:MM in the panel's time zone; an end
+    | before the start ends on the next day), at most per_node at a time on
+    | a node and per_storage on a backup storage. Backups of terminated
+    | servers are kept keep_terminated_days (0: deleted with the server).
+    |
+    */
+
+    'backups' => [
+        'deadline_minutes' => (int) env('PROXMOTION_BACKUP_DEADLINE_MINUTES', 360),
+        'window_start' => (string) env('PROXMOTION_BACKUP_WINDOW_START', '01:00'),
+        'window_end' => (string) env('PROXMOTION_BACKUP_WINDOW_END', '06:00'),
+        'per_node' => (int) env('PROXMOTION_BACKUPS_PER_NODE', 1),
+        'per_storage' => (int) env('PROXMOTION_BACKUPS_PER_STORAGE', 2),
+        'keep_terminated_days' => (int) env('PROXMOTION_BACKUPS_KEEP_TERMINATED_DAYS', 0),
     ],
 
     /*
@@ -131,6 +205,23 @@ return [
         'critical_percent' => (int) env('PROXMOTION_STORAGE_CRITICAL_PERCENT', 95),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Reverb as browsers reach it (docs/adr/0036, 0054)
+    |--------------------------------------------------------------------------
+    |
+    | Sent to the pages when they load, not built into the frontend. Empty:
+    | the panel's own host, scheme and port (behind nginx, Reverb is at /app).
+    | REVERB_HOST, REVERB_PORT and REVERB_SCHEME are where the panel reaches it.
+    |
+    */
+
+    'reverb_public' => [
+        'host' => env('REVERB_PUBLIC_HOST'),
+        'port' => env('REVERB_PUBLIC_PORT'),
+        'scheme' => env('REVERB_PUBLIC_SCHEME'),
+    ],
+
     'console' => [
         'proxy_secret' => env('CONSOLE_PROXY_SECRET'),
         'websocket_url' => env('CONSOLE_WEBSOCKET_URL'),
@@ -184,6 +275,21 @@ return [
         'characters' => (string) env('PROXMOTION_PASSWORD_CHARACTERS', 'mixed'),
         'prefix' => (string) env('PROXMOTION_PASSWORD_PREFIX', '') === '' ? null : (string) env('PROXMOTION_PASSWORD_PREFIX'),
         'suffix' => (string) env('PROXMOTION_PASSWORD_SUFFIX', '') === '' ? null : (string) env('PROXMOTION_PASSWORD_SUFFIX'),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | SSH keys of a server (docs/adr/0049)
+    |--------------------------------------------------------------------------
+    |
+    | How many public SSH keys a server may have (1–100), when it is created
+    | or reinstalled and on its SSH keys tab, through the API too. Together
+    | they may be at most 20 KB, so the guest agent can write them at once.
+    |
+    */
+
+    'ssh_keys' => [
+        'max' => (int) env('PROXMOTION_SSH_KEYS_MAX', 20),
     ],
 
     /*

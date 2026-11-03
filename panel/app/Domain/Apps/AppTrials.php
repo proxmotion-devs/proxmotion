@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Domain\Apps;
 
+use App\Domain\Backups\ServerSnapshots;
 use App\Domain\Servers\ServerReinstaller;
 use App\Enums\AppInstallationStatus;
 use App\Enums\AppRecipeVersionStatus;
@@ -13,6 +14,7 @@ use App\Models\AppRecipe;
 use App\Models\AppRecipeVersion;
 use App\Models\AuditLog;
 use App\Models\Server;
+use App\Models\Snapshot;
 use App\Models\Task;
 use App\Models\User;
 use App\Provisioning\Exceptions\ProvisioningException;
@@ -41,7 +43,20 @@ final readonly class AppTrials
         private AppInstaller $installer,
         private AppEligibility $eligibility,
         private ServerReinstaller $reinstaller,
+        private ServerSnapshots $snapshots,
     ) {}
+
+    /** The label of the snapshot a test server is reset to, when it has one (docs/adr/0051 §3). */
+    public const string TRIAL_BASE = 'trial base';
+
+    /**
+     * The test server's newest snapshot labelled TRIAL_BASE (any case), or null.
+     */
+    public static function trialBase(Server $server): ?Snapshot
+    {
+        return $server->snapshots()->latest('id')->get()
+            ->first(fn (Snapshot $snapshot) => mb_strtolower(trim((string) $snapshot->label)) === self::TRIAL_BASE);
+    }
 
     /**
      * Try the app's draft as it is saved now on a test server.
@@ -92,9 +107,10 @@ final readonly class AppTrials
     }
 
     /**
-     * Clean a test server after trials: reinstall it from its current OS
-     * template with the same SSH keys (a new root password), which removes
-     * every app on it. Snapshots (Phase 7) will make this a rollback.
+     * Clean a test server after trials: roll it back to its snapshot
+     * labelled "trial base" when it has one (docs/adr/0051 §3), otherwise
+     * reinstall it from its current OS template with the same SSH keys (a
+     * new root password). Either removes every app installed since.
      *
      * @throws ProvisioningException when it is not an active test server, its template is gone, or a task runs
      */
@@ -106,6 +122,15 @@ final readonly class AppTrials
 
         if ($server->status !== ServerStatus::Active) {
             throw new ProvisioningException('This action is not possible while the server is :status.', ['status' => $server->status->value]);
+        }
+
+        $base = self::trialBase($server);
+
+        if ($base !== null) {
+            $task = $this->snapshots->rollback($server, $base, $admin, $ipAddress);
+            AuditLog::record('server.trial_reset', $admin, $server, ['hostname' => $server->hostname, 'snapshot' => $base->label], $ipAddress);
+
+            return $task;
         }
 
         $template = $server->osTemplate;

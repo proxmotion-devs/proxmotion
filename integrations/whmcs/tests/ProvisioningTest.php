@@ -71,7 +71,7 @@ class ProvisioningTest extends ModuleTestCase
     {
         $this->serviceHas(null);
         $this->api->on('GET /packages', 200, ['data' => [
-            ['id' => self::PACKAGE_ID, 'name' => 'VPS M', 'cpu_cores' => 2, 'memory_mib' => 4096, 'disk_mib' => 40960, 'ipv4_count' => 1, 'ipv6_count' => 0, 'traffic_bytes' => 1000000000000],
+            ['id' => self::PACKAGE_ID, 'name' => 'VPS M', 'cpu_cores' => 2, 'memory_mib' => 4096, 'disk_mib' => 40960, 'ipv4_count' => 1, 'ipv6_count' => 0, 'traffic_bytes' => 1000000000000, 'snapshot_slots' => 1, 'backup_slots' => 2],
         ]]);
         $this->api->on('POST /servers', 202, $this->task('create'));
 
@@ -86,6 +86,9 @@ class ProvisioningTest extends ModuleTestCase
                 'extra_ipv4_count' => '2',
                 'extra_traffic_gb' => '500',
                 'extra_ipv6_count' => '0',
+                // Snapshots and backups (docs/adr/0051).
+                'snapshots' => '3',
+                'extra_backups' => '1',
             ],
             'customfields' => ['ssh_key' => " ssh-ed25519 AAAAC3Nza user@example.com \n"],
         ])->create();
@@ -98,9 +101,11 @@ class ProvisioningTest extends ModuleTestCase
         $this->assertSame([
             'cpu_cores' => 4,
             'memory_mib' => 8192,
+            'snapshot_slots' => 3,
             'disk_mib' => 40960 + 20 * 1024,
             'ipv4_count' => 3,
             'traffic_bytes' => 1000000000000 + 500 * 1000000000,
+            'backup_slots' => 2 + 1,
         ], $body['resources']);
     }
 

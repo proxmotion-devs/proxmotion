@@ -1,9 +1,9 @@
-# Local development environment.
+# Local development environment (production: production/compose.yml, docs/adr/0054).
 # Usage (from the repository root):
 #   docker compose -f deploy/docker/compose.yml up -d
 #   docker compose -f deploy/docker/compose.yml exec app composer install
 #   docker compose -f deploy/docker/compose.yml exec app php artisan migrate --seed
-name: proxmotion
+name: proxmotion-dev
 
 x-app: &app
   build:
@@ -33,9 +33,9 @@ services:
   app:
     <<: *app
 
-  horizon:
+  worker:
     <<: *app
-    command: php artisan horizon
+    command: php artisan queue:work
 
   scheduler:
     <<: *app

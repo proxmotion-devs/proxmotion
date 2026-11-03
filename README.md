@@ -22,7 +22,7 @@ See the [feature overview](docs/wiki/Features.md) for what Proxmotion can do tod
 
 ## Tech stack
 
-Laravel 13 · PHP 8.3 · Vue 3 + Inertia.js 3 + TypeScript · Tailwind CSS 4 · Vite+ · MariaDB · Redis · Horizon · Reverb
+Laravel 13 · PHP 8.3 · Vue 3 + Inertia.js 3 + TypeScript · Tailwind CSS 4 · Vite+ · MariaDB · Redis · Reverb
 
 ## Development
 
@@ -46,6 +46,17 @@ Or with Docker:
 ```bash
 docker compose -f deploy/docker/compose.yml up -d
 ```
+
+## Production
+
+With Docker Compose, from the images published to GHCR: follow [docs/guides/docker-install.md](docs/guides/docker-install.md) ([ADR 0054](docs/adr/0054-production-docker-images.md)). Directly on Debian 12/13 or Ubuntu 22.04/24.04: follow [docs/guides/native-install.md](docs/guides/native-install.md) ([ADR 0055](docs/adr/0055-native-installer.md)). Both run the same commands, which you can also run by hand inside `panel/` once the code, `.env` and the dependencies are in place:
+
+```bash
+php artisan proxmotion:install   # checks requirements, migrates, creates the first administrator
+php artisan proxmotion:upgrade   # after updating the code: migrations in maintenance mode, worker restarts
+```
+
+See [ADR 0052](docs/adr/0052-install-and-upgrade-commands.md) for what each step does. The panel's name, colour, logo and support contacts are set under *Panel settings → Branding* ([ADR 0053](docs/adr/0053-branding.md)).
 
 ## Contributing
 

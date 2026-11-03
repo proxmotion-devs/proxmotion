@@ -10,6 +10,7 @@ namespace App\Enums;
 enum NotificationEvent: string
 {
     case TaskFailed = 'task_failed';
+    case BackupFailed = 'backup_failed';
     case AppFailed = 'app_failed';
     case UsageExceeded = 'usage_exceeded';
     case DriftDetected = 'drift_detected';
@@ -25,7 +26,7 @@ enum NotificationEvent: string
      */
     public static function defaults(): array
     {
-        return [self::TaskFailed, self::ClusterUnreachable, self::StorageUnhealthy, self::WebhookFailed, self::AdminCreated];
+        return [self::TaskFailed, self::BackupFailed, self::ClusterUnreachable, self::StorageUnhealthy, self::WebhookFailed, self::AdminCreated];
     }
 
     /**
@@ -35,6 +36,7 @@ enum NotificationEvent: string
     {
         return match ($this) {
             self::TaskFailed => 'A server task failed',
+            self::BackupFailed => 'A scheduled backup failed',
             self::AppFailed => 'An app script failed',
             self::UsageExceeded => 'A server went over a quota or usage limit',
             self::DriftDetected => 'Drift was found between the panel and Proxmox',

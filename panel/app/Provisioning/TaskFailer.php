@@ -6,10 +6,12 @@ namespace App\Provisioning;
 
 use App\Domain\Notifications\AdminNotifier;
 use App\Domain\Webhooks\Webhooks;
+use App\Enums\BackupKind;
 use App\Enums\ServerStatus;
 use App\Enums\TaskStatus;
 use App\Enums\TaskType;
 use App\Jobs\RunServerTask;
+use App\Jobs\StopProxmoxTask;
 use App\Models\Task;
 use Throwable;
 
@@ -20,6 +22,9 @@ use Throwable;
  */
 final class TaskFailer
 {
+    /** Tasks an administrator may cancel while they run (canCancel()). */
+    private const array CANCELLABLE = [TaskType::GuestScript, TaskType::CreateBackup];
+
     public function __construct(
         private readonly Webhooks $webhooks,
         private readonly AdminNotifier $notifier,
@@ -50,14 +55,21 @@ final class TaskFailer
         }
 
         $this->notify($task);
-        $this->notifier->taskFailed($task);
+
+        if ($task->type === TaskType::CreateBackup && ($task->input['kind'] ?? null) === BackupKind::Scheduled->value) {
+            $this->notifier->backupFailed($task);
+        } else {
+            $this->notifier->taskFailed($task);
+        }
     }
 
     /**
-     * Cancel an administrator's run of a script (see canCancel()). The task
-     * ends only if it is still queued or running in the database, so a run
-     * that has just finished, or a job that has just started it, keeps its
-     * outcome. No "task failed" email: an administrator ended it on purpose.
+     * Cancel an administrator's run of a script or a backup (see
+     * canCancel()). The task ends only if it is still queued or running in
+     * the database, so a run that has just finished, or a job that has just
+     * started it, keeps its outcome. No "task failed" email: an
+     * administrator ended it on purpose. A backup's vzdump is stopped in
+     * Proxmox (StopProxmoxTask); a script stops through the job running it.
      *
      * @return bool whether it was cancelled
      */
@@ -65,8 +77,10 @@ final class TaskFailer
     {
         $cancelled = Task::query()
             ->whereKey($task->id)
-            ->where('type', TaskType::GuestScript)
+            ->whereIn('type', self::CANCELLABLE)
             ->whereIn('status', [TaskStatus::Queued, TaskStatus::Running])
+            // A backup vzdump has written is recorded, not left unlisted on its storage.
+            ->where(fn ($query) => $query->where('type', '!=', TaskType::CreateBackup)->orWhereNull('stage')->orWhere('stage', '!=', 'record'))
             ->update(['status' => TaskStatus::Failed, 'error' => $message, 'finished_at' => now()]);
 
         if ($cancelled === 0) {
@@ -74,6 +88,12 @@ final class TaskFailer
         }
 
         $task->refresh();
+        $upid = $task->stageValue('upid');
+
+        if ($task->type === TaskType::CreateBackup && is_string($upid)) {
+            StopProxmoxTask::dispatch($task->server->cluster_id, $upid);
+        }
+
         $this->notify($task);
 
         return true;
@@ -117,12 +137,15 @@ final class TaskFailer
 
     /**
      * An administrator may cancel their run of a script (a guest_script task)
-     * while it is queued or running: the task ends at once, and the job
-     * running it stops the script inside the server (GuestScripts).
+     * or a backup while it is queued or running: the task ends at once, and
+     * the script is stopped inside the server (GuestScripts), the backup in
+     * Proxmox (docs/adr/0051 §4). Not once vzdump has finished: the backup
+     * exists then, and the task only records it.
      */
     public function canCancel(Task $task): bool
     {
-        return $task->type === TaskType::GuestScript
-            && in_array($task->status, [TaskStatus::Queued, TaskStatus::Running], true);
+        return in_array($task->type, self::CANCELLABLE, true)
+            && in_array($task->status, [TaskStatus::Queued, TaskStatus::Running], true)
+            && ! ($task->type === TaskType::CreateBackup && $task->stage === 'record');
     }
 }

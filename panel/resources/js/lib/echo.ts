@@ -1,3 +1,4 @@
+import { usePage } from '@inertiajs/vue3';
 import Echo from 'laravel-echo';
 import Pusher from 'pusher-js';
 
@@ -19,26 +20,33 @@ export function echo(): Echo<'reverb'> | null {
         return instance;
     }
 
-    const key = import.meta.env.VITE_REVERB_APP_KEY;
+    // Sent with the page rather than built in, so one image fits every installation.
+    const settings =
+        typeof window === 'undefined' ? null : usePage().props.reverb;
 
-    if (typeof window === 'undefined' || typeof key !== 'string' || !key) {
+    if (!settings?.key) {
         instance = null;
 
         return instance;
     }
 
-    const scheme = String(import.meta.env.VITE_REVERB_SCHEME || 'https');
-    const port = Number(
-        import.meta.env.VITE_REVERB_PORT || (scheme === 'https' ? 443 : 80),
-    );
+    // Unset parts are the panel's own: behind nginx, Reverb is at /app. The page's
+    // port only fits the page's host and scheme.
+    const pageScheme = window.location.protocol === 'http:' ? 'http' : 'https';
+    const scheme = settings.scheme ?? pageScheme;
+    const port =
+        settings.port ??
+        (settings.host === null && scheme === pageScheme && window.location.port
+            ? Number(window.location.port)
+            : scheme === 'https'
+              ? 443
+              : 80);
 
     instance = new Echo({
         broadcaster: 'reverb',
-        key,
+        key: settings.key,
         Pusher,
-        wsHost: String(
-            import.meta.env.VITE_REVERB_HOST || window.location.hostname,
-        ),
+        wsHost: settings.host ?? window.location.hostname,
         wsPort: port,
         wssPort: port,
         forceTLS: scheme === 'https',

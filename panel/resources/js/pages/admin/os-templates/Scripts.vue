@@ -66,6 +66,7 @@ const eventTitles: Record<GuestScriptEvent, string> = {
     disk_resized: 'Disk grown',
     password_reset: 'Password reset',
     hostname_changed: 'Hostname changed',
+    ssh_keys_changed: 'SSH keys changed',
 };
 const eventDescriptions: Record<GuestScriptEvent, string> = {
     provisioned:
@@ -78,6 +79,8 @@ const eventDescriptions: Record<GuestScriptEvent, string> = {
         'Renames the system when the hostname is changed. On Windows the new name takes effect at the next restart.',
     password_reset:
         'Replaces the guest agent setting the password. The new password arrives on standard input; if the script fails, the reset fails and no new password is shown.',
+    ssh_keys_changed:
+        'Writes the SSH keys added and deleted on the server page or through the billing system into the authorized keys of root (Administrator on Windows). Lines it does not know stay. If the script fails, the change fails and the server keeps its list of keys.',
 };
 
 // When the scripts run (CreateServerPipeline::BUILD_STAGES, docs/adr/0010).
@@ -132,6 +135,11 @@ const laterStages: Stage[] = [
         title: 'Password reset',
         detail: 'When the root or Administrator password is reset.',
         event: 'password_reset',
+    },
+    {
+        title: 'SSH keys changed',
+        detail: 'When SSH keys are added or deleted.',
+        event: 'ssh_keys_changed',
     },
 ];
 

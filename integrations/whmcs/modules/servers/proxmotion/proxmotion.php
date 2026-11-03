@@ -246,7 +246,7 @@ function proxmotion_AdminCustomButtonArray()
  */
 function proxmotion_ClientAreaAllowedFunctions()
 {
-    return ['Start', 'Shutdown', 'Reboot', 'Stop', 'Console', 'ResetPassword', 'Reinstall', 'SetRdns', 'ChangeHostname', 'InstallApp', 'RetryApp', 'CancelApp', 'UninstallApp', 'UpgradeApp', 'RunAppAction', 'DownloadAppFile', 'Firewall'];
+    return ['Start', 'Shutdown', 'Reboot', 'Stop', 'Console', 'ResetPassword', 'Reinstall', 'SetRdns', 'ChangeHostname', 'InstallApp', 'RetryApp', 'CancelApp', 'UninstallApp', 'UpgradeApp', 'RunAppAction', 'DownloadAppFile', 'Firewall', 'SshKeys', 'Snapshots', 'Backups'];
 }
 
 /**
@@ -258,6 +258,42 @@ function proxmotion_Firewall(array $params): string
 {
     return proxmotion_run($params, function (Module $module) {
         return $module->firewall($_POST);
+    });
+}
+
+/**
+ * Add or delete an SSH key of the server (docs/adr/0049); the form's "op" says which.
+ *
+ * @param array<string, mixed> $params
+ */
+function proxmotion_SshKeys(array $params): string
+{
+    return proxmotion_run($params, function (Module $module) {
+        return $module->sshKeys($_POST);
+    });
+}
+
+/**
+ * Take, roll back to or delete a snapshot (docs/adr/0051); the form's "op" says which.
+ *
+ * @param array<string, mixed> $params
+ */
+function proxmotion_Snapshots(array $params): string
+{
+    return proxmotion_run($params, function (Module $module) {
+        return $module->snapshots($_POST);
+    });
+}
+
+/**
+ * Take, restore or delete a backup (docs/adr/0051 §4); the form's "op" says which.
+ *
+ * @param array<string, mixed> $params
+ */
+function proxmotion_Backups(array $params): string
+{
+    return proxmotion_run($params, function (Module $module) {
+        return $module->backups($_POST);
     });
 }
 
@@ -475,7 +511,8 @@ function proxmotion_UsageUpdate(array $params): string
  */
 function proxmotion_ClientArea(array $params)
 {
-    return Module::fromParams($params)->clientArea();
+    // The usage range is a link of the overview (docs/adr/0050).
+    return Module::fromParams($params)->clientArea(isset($_GET['pmxrange']) && is_string($_GET['pmxrange']) ? $_GET['pmxrange'] : 'day');
 }
 
 /**

@@ -6,6 +6,7 @@ namespace App\Http\Requests\Admin;
 
 use App\Models\Package;
 use App\Models\Server;
+use App\Provisioning\BackupSlots;
 use App\Provisioning\ResourceChange;
 use App\Provisioning\ResourceLimits;
 use App\Provisioning\ServerSpec;
@@ -37,6 +38,8 @@ class ChangeResourcesRequest extends FormRequest
             'traffic_gb' => ['nullable', 'integer', 'between:1,10000000'],
             // Empty: unlimited (docs/adr/0034).
             ...ResourceLimits::rules(),
+            // Empty: none (docs/adr/0051 §2).
+            ...BackupSlots::rules(),
             'reboot' => ['boolean'],
         ];
     }
@@ -67,6 +70,7 @@ class ChangeResourcesRequest extends FormRequest
                 portSpeedMbps: $this->filled('port_speed_mbps') ? $this->integer('port_speed_mbps') : null,
                 trafficBytes: $this->filled('traffic_gb') ? $this->integer('traffic_gb') * 1000 ** 3 : null,
                 limits: ResourceLimits::fromRequest($this),
+                slots: BackupSlots::fromRequest($this),
             ),
             package: $this->package(),
             reboot: $this->boolean('reboot'),

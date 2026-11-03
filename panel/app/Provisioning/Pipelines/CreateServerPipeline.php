@@ -149,6 +149,8 @@ final readonly class CreateServerPipeline implements StagedPipeline
         );
 
         if ($delay === null) {
+            // Its snapshots went with the VM (docs/adr/0051 §3).
+            $server->snapshots()->delete();
             $task->completeStep('destroy');
         }
 
