@@ -1,7 +1,8 @@
 name: Images
 
-# The production images still build (docs/adr/0054); release.yml publishes them. Only
-# for changes to what goes into them, since each build takes several minutes.
+# The production images and the native installer's release archive still build (docs/adr/0054,
+# 0055); release.yml publishes them. Only for changes to what goes into them, since each build
+# takes several minutes.
 on:
   push:
     branches: [main]
@@ -9,12 +10,14 @@ on:
       - 'panel/**'
       - 'deploy/docker/production/**'
       - 'deploy/console-proxy/**'
+      - 'deploy/installer/**'
       - '.github/workflows/images.yml'
   pull_request:
     paths:
       - 'panel/**'
       - 'deploy/docker/production/**'
       - 'deploy/console-proxy/**'
+      - 'deploy/installer/**'
       - '.github/workflows/images.yml'
 
 permissions:
@@ -40,6 +43,10 @@ jobs:
             context: .
             file: deploy/docker/production/Dockerfile
             target: nginx
+          - image: release-archive
+            context: .
+            file: deploy/docker/production/Dockerfile
+            target: release
           - image: proxmotion-console-proxy
             context: deploy/console-proxy
             file: deploy/console-proxy/Dockerfile

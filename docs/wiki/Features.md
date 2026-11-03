@@ -798,7 +798,7 @@ See `panel/.env.example` for the full list (database, Redis, mail, …).
 - **Local development**: SQLite works out of the box (WAL mode and immediate transactions so web, worker and scheduler can write at once). See the [README](../../README.md#development).
 - **`proxmotion:install` / `proxmotion:upgrade`** (ADR 0052), shared by every install path. Install checks PHP, its extensions, the database and Redis, writes a missing application key, migrates, creates the first administrator (password asked for, or generated and shown once) and caches the configuration in production. Upgrade runs the new migrations in maintenance mode, which stays on when a migration fails, then tells queue workers and Reverb to restart before the panel opens again. Run against MariaDB 11.8 and Redis in the Docker images (ADR 0054), not yet on MySQL or a native install.
 - **Branding** (ADR 0053): name, colour, logos, favicon and support contacts on *Panel settings → Branding*, shown in the panel, on the sign-in pages, on the customer console and in mail. Without it the panel is called `APP_NAME` and looks like Proxmotion.
-- **Native Debian/Ubuntu installer** **(planned, Phase 8)**.
+- **Native installer** (`deploy/installer/install.sh`, ADR 0055): Debian 12/13 and Ubuntu 22.04/24.04 with nginx, PHP 8.4, MariaDB, Redis and Node.js 22; optional Let's Encrypt; releases under `/opt/proxmotion/releases` with a `current` link; running it again upgrades (maintenance mode, migrations, restarts). Guide: `docs/guides/native-install.md`. Run in containers only.
 
 ---
 
@@ -814,7 +814,7 @@ See `panel/.env.example` for the full list (database, Redis, mail, …).
 | 5 | App Marketplace: install, order-time apps, paid apps, uninstall/upgrade/actions, logs, editor, trials, import/export, 16 recipes | Mostly done; catalogs and signing (ADR 0017) open |
 | 6 | Usage and quotas: traffic collection, graphs, throttle/suspend, `UsageUpdate` | Resource changes, guest scripts, primary address and hostname changes done early; traffic collection, quotas and usage limits with suspend/stop, WHMCS `UsageUpdate` and traffic in the billing modules done (ADR 0039); usage history with graphs in the admin panel, the API and the WHMCS client area done (ADR 0050); throttling not started |
 | 7 | Snapshots and backups, Proxmox Backup Server | Snapshots, manual backups and restore, schedules and retention done (ADR 0051, phases 1–3); Proxmox Backup Server unverified |
-| 8 | Virtualizor import, native installer, production images, branding | Install and upgrade commands (ADR 0052), branding (ADR 0053) and production images (ADR 0054) done; the rest planned |
+| 8 | Virtualizor import, native installer, production images, branding | Install and upgrade commands (ADR 0052), branding (ADR 0053), production images (ADR 0054) and the native installer (ADR 0055) done; the Virtualizor import planned |
 | 9 | NAT VPS, LXC, ISO mount, rescue mode, customer firewall, moving servers (pulled forward, see 9.4), reseller system, more billing modules | Planned |
 
 ---

@@ -1,0 +1,21 @@
+# Proxmotion Reverb, the WebSocket server of live server statistics (docs/adr/0036, 0055),
+# written by install.sh on every run. nginx forwards /app/ to it.
+[Unit]
+Description=Proxmotion Reverb
+After=network-online.target redis-server.service
+Wants=network-online.target
+
+[Service]
+User=proxmotion
+Group=proxmotion
+WorkingDirectory=@PREFIX@/current/panel
+ExecStart=/usr/bin/php@PHP_VERSION@ artisan reverb:start --host=127.0.0.1 --port=8080
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target

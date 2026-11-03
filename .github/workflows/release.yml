@@ -1,7 +1,9 @@
 name: Release
 
-# A tag v<version> whose version is panel/VERSION publishes the production images
-# to GHCR (docs/adr/0054): <version>, and for releases also <major>.<minor> and latest.
+# A tag v<version> whose version is panel/VERSION publishes the production images to GHCR
+# (docs/adr/0054): <version>, and for releases also <major>.<minor> and latest. The GitHub
+# release gets the archive the native installer installs, its checksum and install.sh
+# (docs/adr/0055).
 on:
   push:
     tags: ['v*.*.*']
@@ -31,6 +33,51 @@ jobs:
             exit 1
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
+
+  # The archive the native installer installs (docs/adr/0055), its checksum and the
+  # installer, attached to the GitHub release.
+  archive:
+    name: Release archive
+    needs: version
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/docker/production/Dockerfile
+          target: release
+          build-args: VERSION=${{ needs.version.outputs.version }}
+          outputs: type=local,dest=dist/proxmotion-${{ needs.version.outputs.version }}
+          cache-from: type=gha,scope=proxmotion
+
+      - name: Pack
+        working-directory: dist
+        run: |
+          tar --owner=0 --group=0 -czf "proxmotion-$VERSION.tar.gz" "proxmotion-$VERSION"
+          sha256sum "proxmotion-$VERSION.tar.gz" > "proxmotion-$VERSION.tar.gz.sha256"
+          cp "proxmotion-$VERSION/installer/install.sh" install.sh
+
+      - name: GitHub release
+        working-directory: dist
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          prerelease=()
+          case "$VERSION" in *-*) prerelease=(--prerelease) ;; esac
+          gh release create "$TAG" --verify-tag --title "Proxmotion $VERSION" --generate-notes "${prerelease[@]}" \
+            "proxmotion-$VERSION.tar.gz" "proxmotion-$VERSION.tar.gz.sha256" install.sh
 
   images:
     name: Image ${{ matrix.image }}

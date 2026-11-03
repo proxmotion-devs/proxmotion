@@ -1,8 +1,13 @@
-# What the production images are built from (docs/adr/0054): the panel and these files only,
-# never an .env file, dependencies, built assets or local data.
+# What the production images and the release archive are built from (docs/adr/0054, 0055):
+# the panel, the console proxy, the installer and these files only, never an .env file,
+# dependencies, built assets or local data.
 **
 !panel/
 !deploy/docker/production/
+!deploy/console-proxy/
+!deploy/installer/
+deploy/console-proxy/node_modules/
+deploy/console-proxy/test/
 panel/.env
 panel/.env.*
 !panel/.env.example

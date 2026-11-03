@@ -49,7 +49,7 @@ docker compose -f deploy/docker/compose.yml up -d
 
 ## Production
 
-With Docker Compose, from the images published to GHCR: follow [docs/guides/docker-install.md](docs/guides/docker-install.md) ([ADR 0054](docs/adr/0054-production-docker-images.md)). A native installer for Debian/Ubuntu is being built (Phase 8). Both run the same commands, which you can also run by hand inside `panel/` once the code, `.env` and the dependencies are in place:
+With Docker Compose, from the images published to GHCR: follow [docs/guides/docker-install.md](docs/guides/docker-install.md) ([ADR 0054](docs/adr/0054-production-docker-images.md)). Directly on Debian 12/13 or Ubuntu 22.04/24.04: follow [docs/guides/native-install.md](docs/guides/native-install.md) ([ADR 0055](docs/adr/0055-native-installer.md)). Both run the same commands, which you can also run by hand inside `panel/` once the code, `.env` and the dependencies are in place:
 
 ```bash
 php artisan proxmotion:install   # checks requirements, migrates, creates the first administrator

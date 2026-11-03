@@ -121,3 +121,21 @@ COPY --from=assets /var/www/panel/public /var/www/panel/public
 COPY deploy/docker/production/nginx.conf.template /etc/nginx/templates/default.conf.template
 
 HEALTHCHECK --interval=30s --timeout=5s CMD wget -qO /dev/null http://127.0.0.1/nginx-health || exit 1
+
+# The console proxy with its production dependencies, for the release archive.
+FROM node AS console-proxy
+
+WORKDIR /console-proxy
+COPY deploy/console-proxy/package.json deploy/console-proxy/package-lock.json ./
+RUN npm ci --omit=dev --no-audit --no-fund
+COPY deploy/console-proxy/src ./src
+
+# The release archive the native installer installs (docs/adr/0055): the panel as in the
+# panel image, the console proxy and the installer's templates. Exported, not run:
+#   docker build -f deploy/docker/production/Dockerfile --target release --output dist .
+FROM scratch AS release
+
+COPY --from=vendor /var/www/panel /panel
+COPY --from=assets /var/www/panel/public/build /panel/public/build
+COPY --from=console-proxy /console-proxy /console-proxy
+COPY deploy/installer /installer
