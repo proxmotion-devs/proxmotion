@@ -14,6 +14,7 @@ use App\Models\DnsProvider;
 use App\Models\IpAddress;
 use App\Models\IpPool;
 use App\Models\Location;
+use App\Support\Database\Like;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -104,7 +105,8 @@ class IpPoolController extends Controller
             'protected' => $protected->for($ipPool),
             'addresses' => $ipPool->addresses()
                 ->when($search !== '', fn ($query) => $query->where(
-                    fn ($query) => $query->where('address', 'like', "%{$search}%")->orWhere('notes', 'like', "%{$search}%"),
+                    fn ($query) => $query->whereRaw("address like ? escape '!'", [Like::contains($search)])
+                        ->orWhereRaw("notes like ? escape '!'", [Like::contains($search)]),
                 ))
                 ->with('server:id,uuid,hostname,mac_address')
                 ->orderBy('id')

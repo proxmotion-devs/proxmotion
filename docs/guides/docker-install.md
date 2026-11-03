@@ -1,6 +1,6 @@
 # Installing Proxmotion with Docker Compose
 
-The production images run the panel, its queue worker, scheduler, Reverb, the console proxy and nginx, with MariaDB and Redis next to them ([ADR 0054](../adr/0054-production-docker-images.md)). You need a Linux host with Docker Engine and the Compose plugin, and a TLS proxy in front of it (Caddy, Traefik, nginx, or your load balancer) for the panel's HTTPS address.
+The production images run the panel, its queue worker, scheduler, Reverb, the console proxy and nginx, with MariaDB and Redis next to them ([ADR 0054](../adr/0054-production-docker-images.md)). You need a Linux host with Docker Engine and the Compose plugin (2.23.1 or newer, for the inline `configs`), and a TLS proxy in front of it (Caddy, Traefik, nginx, or your load balancer) for the panel's HTTPS address.
 
 > Tested so far only with locally built images on Docker Desktop, not with a published release or behind a real TLS proxy.
 
@@ -71,3 +71,4 @@ The `migrate` service runs `php artisan proxmotion:upgrade --when-needed` first.
 - Artisan: `docker compose exec web php artisan about`.
 - Failed queue jobs: `docker compose exec web php artisan queue:failed`.
 - Back up the `mariadb` and `storage` volumes (database, uploaded logos, logs) and `.env`. `APP_KEY` decrypts the stored Proxmox tokens and passwords: without it, a restored database is unusable.
+- The panel's database user may only read and write rows and change the schema (`SELECT, INSERT, UPDATE, DELETE, CREATE, ALTER, DROP, INDEX, REFERENCES` on its database), set by the `mariadb-privileges` config when MariaDB creates the database. A stack whose database was created before that keeps the image's `ALL PRIVILEGES`; to narrow it, run the two statements of that config in `compose.yml` as root (`docker compose exec mariadb mariadb -uroot -p`, with the `GENERATED ROOT PASSWORD` from the first `docker compose logs mariadb`).

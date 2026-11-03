@@ -11,3 +11,7 @@ parameters:
         - routes/
 
     level: 8
+
+rules:
+    # SQL text only from literals; values are bound (AGENTS.md §7).
+    - Tests\PHPStan\LiteralSqlRule

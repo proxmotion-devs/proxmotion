@@ -85,6 +85,9 @@ services:
       MARIADB_RANDOM_ROOT_PASSWORD: "1"
     volumes:
       - mariadb:/var/lib/mysql
+    configs:
+      - source: mariadb-privileges
+        target: /docker-entrypoint-initdb.d/privileges.sql
     healthcheck:
       test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
       interval: 5s
@@ -108,3 +111,13 @@ volumes:
   storage:
   mariadb:
   redis:
+
+configs:
+  # Run by the MariaDB image once, when it creates the database: the panel's user may read
+  # and write rows and change the schema for migrations, nothing else (no triggers, events,
+  # routines, views or files), instead of the image's ALL PRIVILEGES.
+  mariadb-privileges:
+    content: |
+      REVOKE ALL PRIVILEGES, GRANT OPTION FROM '${DB_USERNAME:-proxmotion}'@'%';
+      GRANT SELECT, INSERT, UPDATE, DELETE, CREATE, ALTER, DROP, INDEX, REFERENCES
+        ON `${DB_DATABASE:-proxmotion}`.* TO '${DB_USERNAME:-proxmotion}'@'%';

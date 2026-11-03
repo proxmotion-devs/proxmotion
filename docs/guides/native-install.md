@@ -77,3 +77,4 @@ Files the installer writes are replaced on every run. Put your own nginx setting
 - Logs: `journalctl -u 'proxmotion-*'` and `/opt/proxmotion/shared/storage/logs/`.
 - Artisan: `cd /opt/proxmotion/current/panel && sudo -u proxmotion php artisan about`.
 - Back up the `proxmotion` database (`mariadb-dump proxmotion`), `/opt/proxmotion/shared/.env` and `/opt/proxmotion/shared/storage/`. `APP_KEY` in `.env` decrypts the stored Proxmox tokens and passwords: without it, a restored database is unusable.
+- The database user `proxmotion@localhost` may only read and write rows and change the schema (`SELECT, INSERT, UPDATE, DELETE, CREATE, ALTER, DROP, INDEX, REFERENCES` on `proxmotion.*`). Every run of the installer sets exactly these grants again, so extra ones you add to that user are removed.
