@@ -8,6 +8,7 @@ import type {
     ServerMove,
     ServerMoveKind,
     ServerMoveStatus,
+    StatusTone,
 } from '@/types/admin';
 import type { RouteDefinition } from '@/wayfinder';
 
@@ -35,12 +36,9 @@ const statusLabels: Record<ServerMoveStatus, string> = {
     succeeded: 'Succeeded',
     failed: 'Failed',
 };
-const statusTone: Record<
-    ServerMoveStatus,
-    'success' | 'warning' | 'danger' | 'neutral'
-> = {
+const statusTone: Record<ServerMoveStatus, StatusTone> = {
     queued: 'neutral',
-    running: 'warning',
+    running: 'progress',
     succeeded: 'success',
     failed: 'danger',
 };

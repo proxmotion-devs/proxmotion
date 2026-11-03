@@ -40,6 +40,7 @@ import type {
     AppRunStatus,
     AppText,
     RevealedAppOutputs,
+    StatusTone,
     UnavailableApp,
 } from '@/types/admin';
 import type { RouteDefinition } from '@/wayfinder';
@@ -78,17 +79,14 @@ const statusLabels: Record<AppInstallationStatus, string> = {
     upgrade_failed: 'Upgrade failed',
     removed: 'Removed',
 };
-const statusTone: Record<
-    AppInstallationStatus,
-    'success' | 'warning' | 'danger' | 'neutral'
-> = {
+const statusTone: Record<AppInstallationStatus, StatusTone> = {
     queued: 'neutral',
-    installing: 'warning',
+    installing: 'progress',
     installed: 'success',
     failed: 'danger',
-    uninstalling: 'warning',
+    uninstalling: 'progress',
     uninstall_failed: 'danger',
-    upgrading: 'warning',
+    upgrading: 'progress',
     upgrade_failed: 'danger',
     removed: 'neutral',
 };
@@ -98,12 +96,9 @@ const runStatusLabels: Record<AppRunStatus, string> = {
     succeeded: 'Succeeded',
     failed: 'Failed',
 };
-const runStatusTone: Record<
-    AppRunStatus,
-    'success' | 'warning' | 'danger' | 'neutral'
-> = {
+const runStatusTone: Record<AppRunStatus, StatusTone> = {
     queued: 'neutral',
-    running: 'warning',
+    running: 'progress',
     succeeded: 'success',
     failed: 'danger',
 };

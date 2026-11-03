@@ -1,19 +1,16 @@
 <script setup lang="ts">
 import StatusBadge from '@/components/admin/StatusBadge.vue';
-import type { ServerStatus } from '@/types/admin';
+import type { ServerStatus, StatusTone } from '@/types/admin';
 
 defineProps<{ status: ServerStatus }>();
 
-const tones: Record<
-    ServerStatus,
-    'success' | 'warning' | 'danger' | 'neutral'
-> = {
+const tones: Record<ServerStatus, StatusTone> = {
     pending: 'neutral',
-    provisioning: 'warning',
+    provisioning: 'progress',
     active: 'success',
     suspended: 'warning',
-    reinstalling: 'warning',
-    terminating: 'warning',
+    reinstalling: 'progress',
+    terminating: 'progress',
     terminated: 'neutral',
     error: 'danger',
 };

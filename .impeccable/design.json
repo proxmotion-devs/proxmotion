@@ -105,9 +105,9 @@
       "name": "Status Badges",
       "kind": "chip",
       "refersTo": "status-badge-success",
-      "description": "StatusBadge tones: success, warning, danger, neutral. Always a word, never colour alone.",
-      "html": "<div class=\"ds-badges\"><span class=\"ds-status ds-status-success\">Active</span><span class=\"ds-status ds-status-warning\">Suspended</span><span class=\"ds-status ds-status-danger\">Failed</span><span class=\"ds-status ds-status-neutral\">Recorded only</span></div>",
-      "css": ".ds-badges { display: flex; flex-wrap: wrap; gap: 8px; } .ds-status { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 6px; font: 500 0.75rem/1rem 'Instrument Sans', ui-sans-serif, system-ui, sans-serif; white-space: nowrap; } .ds-status-success { background: oklch(95% 0.052 163.051); color: oklch(43.2% 0.095 166.913); } .ds-status-warning { background: oklch(96.2% 0.059 95.617); color: oklch(47.3% 0.137 46.201); } .ds-status-danger { background: oklch(93.6% 0.032 17.717); color: oklch(44.4% 0.177 26.899); } .ds-status-neutral { background: oklch(97% 0 0); color: oklch(37.1% 0 0); }"
+      "description": "StatusBadge tones: success, warning, danger, neutral, progress (neutral with a spinner). Always a word, never colour alone.",
+      "html": "<div class=\"ds-badges\"><span class=\"ds-status ds-status-success\">Active</span><span class=\"ds-status ds-status-warning\">Suspended</span><span class=\"ds-status ds-status-danger\">Failed</span><span class=\"ds-status ds-status-neutral\">Recorded only</span><span class=\"ds-status ds-status-neutral\"><svg class=\"ds-spin\" width=\"12\" height=\"12\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M21 12a9 9 0 1 1-6.219-8.56\"/></svg>Provisioning</span></div>",
+      "css": ".ds-badges { display: flex; flex-wrap: wrap; gap: 8px; } @keyframes ds-spin { to { transform: rotate(360deg); } } @media (prefers-reduced-motion: no-preference) { .ds-spin { animation: ds-spin 1s linear infinite; } } .ds-status { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 6px; font: 500 0.75rem/1rem 'Instrument Sans', ui-sans-serif, system-ui, sans-serif; white-space: nowrap; } .ds-status-success { background: oklch(95% 0.052 163.051); color: oklch(43.2% 0.095 166.913); } .ds-status-warning { background: oklch(96.2% 0.059 95.617); color: oklch(47.3% 0.137 46.201); } .ds-status-danger { background: oklch(93.6% 0.032 17.717); color: oklch(44.4% 0.177 26.899); } .ds-status-neutral { background: oklch(97% 0 0); color: oklch(37.1% 0 0); }"
     },
     {
       "name": "Panel",
@@ -157,6 +157,7 @@
       { "name": "The Explanation Is Not State Rule", "body": "Sky belongs to guides only. Don't use it for info badges, links in general, or \"in progress\".", "section": "colors" },
       { "name": "The Tabular Figures Rule", "body": "Every number that is compared or updates live (capacity, traffic, counts, percentages, sizes) uses tabular numerals.", "section": "typography" },
       { "name": "The Machine Values Rule", "body": "Addresses, identifiers and code are monospace; human words never are.", "section": "typography" },
+      { "name": "The Busy Is Not Wrong Rule", "body": "Amber means \"needs a look\". Something that is merely in progress is `progress`, never `warning`.", "section": "components" },
       { "name": "The Flat-Room Rule", "body": "At rest nothing casts a shadow. If an element is not floating over other content, separate it with a border or a tonal step, not a shadow.", "section": "elevation" }
     ],
     "dos": [

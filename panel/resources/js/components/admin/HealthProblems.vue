@@ -13,8 +13,8 @@ defineProps<{ problems: HealthProblem[] }>();
             :key="index"
             :class="
                 problem.severity === 'critical'
-                    ? 'text-red-700 dark:text-red-400'
-                    : 'text-amber-700 dark:text-amber-400'
+                    ? 'text-status-danger-text'
+                    : 'text-status-warning-text'
             "
         >
             {{ problemText(problem) }}

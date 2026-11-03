@@ -46,12 +46,12 @@ const setOpen = (value: boolean) => {
 <template>
     <section
         v-if="open"
-        class="relative rounded-xl border border-sky-500/30 bg-sky-500/5 p-4 text-sm"
+        class="relative rounded-xl border border-guide/30 bg-guide/5 p-4 text-sm"
         :data-test="`guide-${id}`"
     >
         <button
             type="button"
-            class="absolute top-3 right-3 rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+            class="absolute top-2 right-2 inline-flex size-8 items-center justify-center rounded-md text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50"
             :aria-label="$t('Hide guide')"
             :title="$t('Hide guide')"
             data-test="guide-hide"
@@ -60,7 +60,7 @@ const setOpen = (value: boolean) => {
             <X class="h-4 w-4" />
         </button>
         <h3 class="flex items-center gap-2 pr-8 font-medium">
-            <Lightbulb class="h-4 w-4 text-sky-600 dark:text-sky-400" />
+            <Lightbulb class="h-4 w-4 shrink-0 text-guide-icon" />
             {{ $t(title) }}
         </h3>
         <div
@@ -71,7 +71,7 @@ const setOpen = (value: boolean) => {
         <Link
             v-if="topic"
             :href="`${help().url}#${topic}`"
-            class="mt-3 inline-flex items-center gap-1 text-sky-700 hover:underline dark:text-sky-400"
+            class="mt-3 inline-flex items-center gap-1 rounded-sm text-guide-link underline-offset-4 outline-none hover:underline focus-visible:ring-[3px] focus-visible:ring-ring/50"
         >
             <LifeBuoy class="h-4 w-4" />
             {{ $t('More in Help') }}
@@ -80,7 +80,7 @@ const setOpen = (value: boolean) => {
     <button
         v-else
         type="button"
-        class="flex items-center gap-1 self-start text-xs text-muted-foreground hover:text-foreground"
+        class="-mx-2 flex h-8 items-center gap-1 self-start rounded-md px-2 text-xs text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50"
         data-test="guide-show"
         @click="setOpen(true)"
     >

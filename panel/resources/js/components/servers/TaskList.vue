@@ -23,7 +23,7 @@ import { Spinner } from '@/components/ui/spinner';
 import { useDateTime } from '@/composables/useDateTime';
 import { TASK_TYPE_LABELS } from '@/lib/taskTypes';
 import { cancel, fail } from '@/routes/admin/tasks';
-import type { TaskProgress, TaskStatus } from '@/types/admin';
+import type { StatusTone, TaskProgress, TaskStatus } from '@/types/admin';
 
 /**
  * Tasks of one server with their steps, step messages and errors. A stuck
@@ -68,12 +68,9 @@ const stopScript = () => {
     });
 };
 
-const taskStatusTone: Record<
-    TaskStatus,
-    'success' | 'warning' | 'danger' | 'neutral'
-> = {
+const taskStatusTone: Record<TaskStatus, StatusTone> = {
     queued: 'neutral',
-    running: 'warning',
+    running: 'progress',
     succeeded: 'success',
     failed: 'danger',
 };

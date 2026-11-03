@@ -1,11 +1,8 @@
 import { trans } from 'laravel-vue-i18n';
-import type { HealthProblem, StorageHealth } from '@/types/admin';
+import type { HealthProblem, StatusTone, StorageHealth } from '@/types/admin';
 
 /** Badge tone per health (docs/adr/0047). */
-export const healthTone: Record<
-    StorageHealth,
-    'success' | 'warning' | 'danger' | 'neutral'
-> = {
+export const healthTone: Record<StorageHealth, StatusTone> = {
     ok: 'success',
     warning: 'warning',
     critical: 'danger',

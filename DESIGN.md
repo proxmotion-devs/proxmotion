@@ -173,8 +173,10 @@ A greyscale room with a single, swappable brand light and a fixed traffic-light 
 
 ### Secondary
 - **Status Green** (`status-success-*`, Tailwind emerald 100/800; dark: emerald 900 at 40% / emerald 300): healthy, active, succeeded.
-- **Status Amber** (`status-warning-*`, Tailwind amber 100/800, border amber 300; dark: amber 900 at 40% / amber 300, border amber 800): suspended, degraded, over a limit, needs a look. Also used for warning detail text (amber 700 / amber 400) and the border of a panel that needs attention.
-- **Status Red** (`status-danger-*`, Tailwind red 100/800; dark: red 900 at 40% / red 300) and **Destructive Red** (`destructive`): failed, error, and the buttons that delete or terminate.
+- **Status Amber** (`status-warning-*`, Tailwind amber 100/800, border amber 300; dark: amber 900 at 40% / amber 300, border amber 800): suspended, degraded, over a limit, needs a look. Also used for warning detail text (`--status-warning-text`: amber 700 / amber 400) and the border of a panel that needs attention (`--status-warning-border`).
+- **Status Red** (`status-danger-*`, Tailwind red 100/800; dark: red 900 at 40% / red 300; inline text `--status-danger-text`: red 700 / red 400) and **Destructive Red** (`destructive`): failed, error, and the buttons that delete or terminate.
+
+All status and guide colours live as CSS variables in `panel/resources/css/app.css` (`--status-*`, `--guide*`, light and `.dark`) and as Tailwind colours (`status-success`, `status-warning-text`, `guide`, …). Pages still using palette classes (`text-amber-700`, `bg-red-50`, …) move to them as each part of the panel is reworked.
 
 ### Tertiary
 - **Guide Sky** (`guide-accent`, Tailwind sky 500, used at 30% for borders and 5% for fills; icon sky 600 / 400, link sky 700 / 400): only for `GuideBox` how-tos and their "More in Help" link. It marks *explanation*, never state or action.
@@ -250,9 +252,12 @@ Steady and unhurried: full-height targets with one clear primary per area.
 - **Focus:** border turns to the ring colour plus a 3px ring at 50% opacity. Disabled is 50% opacity with no pointer events.
 
 ### Status badges
-The panel's main signal. `StatusBadge` takes a tone (success, warning, danger, neutral) and an English label key.
+The panel's main signal. `StatusBadge` takes a tone (`StatusTone`: success, warning, danger, neutral, progress) and an English label key. The colours are the `--status-*` tokens of `app.css` (`bg-status-success`, `text-status-success-foreground`, …), never Tailwind palette classes.
 - **Style:** 6px corners, 2px × 8px padding, 0.75rem medium text, a tinted fill with dark text of the same hue (light mode), or a 40% deep fill with light text (dark mode). No border.
+- **Progress:** work still running (provisioning, reinstalling, deleting, installing, a running task, run or move) uses the neutral colours with a 12px spinning loader before the label; with reduced motion the loader stays but does not spin. Queued work stays plain neutral.
 - **Rule:** always a word, never colour alone; "Recorded only" style neutral badges are as important as the coloured ones.
+
+**The Busy Is Not Wrong Rule.** Amber means "needs a look". Something that is merely in progress is `progress`, never `warning`.
 
 ### Panels / Cards
 - **Corner Style:** 12px.
@@ -278,7 +283,10 @@ The panel's main signal. `StatusBadge` takes a tone (success, warning, danger, n
 - **Wrapper:** 12px rounded hairline border with horizontal scroll on narrow screens.
 
 ### Guide Box (signature)
-`GuideBox` opens explanatory pages with a calm how-to: 12px corners, sky border at 30%, sky fill at 5%, a sky lightbulb icon, a medium title, muted body text with styled lists and inline code, and a "More in Help" link. A ghost × hides it, which is remembered per browser; hidden guides leave a small "Show guide" text button. It is the panel's reassurance made visible.
+`GuideBox` opens explanatory pages with a calm how-to: 12px corners, sky border at 30%, sky fill at 5% (`border-guide/30`, `bg-guide/5`), a sky lightbulb icon (`text-guide-icon`), a medium title, muted body text with styled lists and inline code, and a "More in Help" link (`text-guide-link`). A 32px ghost × hides it, which is remembered per browser; hidden guides leave a 32px-high "Show guide" text button. Every control in it shows the focus ring. It is the panel's reassurance made visible.
+
+### Browser surfaces
+Text selection is the provider colour at 22%, the page scrollbar uses muted grey at 40% on a transparent track, and every table cell uses tabular numerals (`app.css` base layer).
 
 ## Do's and Don'ts
 

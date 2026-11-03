@@ -430,10 +430,8 @@ const trialStatusTone = (status: AppInstallationStatus) =>
         ? 'success'
         : ['failed', 'uninstall_failed', 'upgrade_failed'].includes(status)
           ? 'danger'
-          : ['queued', 'installing', 'uninstalling', 'upgrading'].includes(
-                  status,
-              )
-            ? 'warning'
+          : ['installing', 'uninstalling', 'upgrading'].includes(status)
+            ? 'progress'
             : 'neutral';
 
 // The saved draft was installed without errors by a trial.
