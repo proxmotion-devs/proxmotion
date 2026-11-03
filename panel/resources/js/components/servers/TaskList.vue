@@ -9,6 +9,7 @@ import {
 } from '@lucide/vue';
 import { trans } from 'laravel-vue-i18n';
 import { ref } from 'vue';
+import Notice from '@/components/admin/Notice.vue';
 import StatusBadge from '@/components/admin/StatusBadge.vue';
 import { Button } from '@/components/ui/button';
 import {
@@ -275,7 +276,7 @@ const stepRows = (task: TaskProgress) => {
                 >
                     <CircleCheck
                         v-if="row.step?.status === 'done'"
-                        class="h-4 w-4 text-emerald-600"
+                        class="h-4 w-4 text-status-success-foreground"
                     />
                     <LoaderCircle
                         v-else-if="row.active"
@@ -311,12 +312,9 @@ const stepRows = (task: TaskProgress) => {
                 </li>
             </ol>
 
-            <p
-                v-if="task.error"
-                class="rounded-lg border border-red-200 bg-red-50 p-3 text-sm break-words text-red-800 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300"
-            >
+            <Notice v-if="task.error" tone="danger">
                 {{ task.error }}
-            </p>
+            </Notice>
         </article>
 
         <p v-if="tasks.length === 0" class="text-sm text-muted-foreground">

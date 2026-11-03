@@ -35,7 +35,7 @@ const barClass = computed(() =>
     percent.value === null || percent.value < 80
         ? 'bg-primary'
         : percent.value < 100
-          ? 'bg-amber-500'
+          ? 'bg-status-warning-fill'
           : 'bg-destructive',
 );
 

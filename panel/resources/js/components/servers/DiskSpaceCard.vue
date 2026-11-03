@@ -40,13 +40,13 @@ const rows = computed(() =>
 
 const barClass = {
     ok: 'bg-primary',
-    filling: 'bg-amber-500',
+    filling: 'bg-status-warning-fill',
     full: 'bg-destructive',
 } as const;
 
 const textClass = {
     ok: '',
-    filling: 'text-amber-700 dark:text-amber-400',
+    filling: 'text-status-warning-text',
     full: 'text-destructive',
 } as const;
 </script>

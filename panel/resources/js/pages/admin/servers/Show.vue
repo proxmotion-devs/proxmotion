@@ -7,10 +7,11 @@ import {
     useHttp,
     usePoll,
 } from '@inertiajs/vue3';
-import { Eye, Monitor, RotateCcw } from '@lucide/vue';
+import { Eye, LoaderCircle, Monitor, RotateCcw } from '@lucide/vue';
 import { trans } from 'laravel-vue-i18n';
-import { computed, onBeforeUnmount, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import ConfirmDelete from '@/components/admin/ConfirmDelete.vue';
+import Notice from '@/components/admin/Notice.vue';
 import DriftList from '@/components/admin/DriftList.vue';
 import ServerStatusBadge from '@/components/admin/ServerStatusBadge.vue';
 import StatusBadge from '@/components/admin/StatusBadge.vue';
@@ -470,6 +471,37 @@ const tabs = computed(() => [
     { value: 'tasks' as Tab, label: 'Tasks', count: null },
 ]);
 
+// Arrow keys, Home and End move between tabs (WAI-ARIA tabs pattern).
+const moveTab = (event: KeyboardEvent) => {
+    const keys = ['ArrowLeft', 'ArrowRight', 'Home', 'End'];
+
+    if (!keys.includes(event.key)) {
+        return;
+    }
+
+    event.preventDefault();
+    // currentTarget is gone once the event has been handled.
+    const list = event.currentTarget as HTMLElement;
+    const values = tabs.value.map((item) => item.value);
+    const current = values.indexOf(tab.value);
+    const next =
+        event.key === 'Home'
+            ? 0
+            : event.key === 'End'
+              ? values.length - 1
+              : (current +
+                    (event.key === 'ArrowRight' ? 1 : -1) +
+                    values.length) %
+                values.length;
+
+    tab.value = values[next];
+    nextTick(() =>
+        list
+            .querySelector<HTMLElement>(`[data-test="tab-${values[next]}"]`)
+            ?.focus(),
+    );
+};
+
 const runningTasks = computed(() =>
     props.tasks.filter(
         (task) => task.status === 'queued' || task.status === 'running',
@@ -643,23 +675,15 @@ const resetAfterTrial = () => {
             </div>
         </div>
 
-        <p
-            v-if="server.reboot_required"
-            class="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm"
-            data-test="reboot-required"
-        >
+        <Notice v-if="server.reboot_required" data-test="reboot-required">
             {{
                 $t(
                     'Some changes take effect when the server is restarted (Start or Reboot here).',
                 )
             }}
-        </p>
+        </Notice>
 
-        <p
-            v-if="server.status === 'suspended'"
-            class="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm"
-            data-test="suspension"
-        >
+        <Notice v-if="server.status === 'suspended'" data-test="suspension">
             <template v-if="server.suspension_cause === 'traffic'">
                 {{
                     $t(
@@ -678,11 +702,11 @@ const resetAfterTrial = () => {
             <span v-if="server.suspension_reason" class="block font-medium">{{
                 server.suspension_reason
             }}</span>
-        </p>
+        </Notice>
 
-        <p
+        <Notice
             v-if="vmState === 'missing'"
-            class="rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm"
+            tone="danger"
             data-test="vm-missing"
         >
             {{
@@ -691,11 +715,11 @@ const resetAfterTrial = () => {
                     { vmid: String(server.vmid) },
                 )
             }}
-        </p>
+        </Notice>
 
-        <p
+        <Notice
             v-else-if="vmState === 'elsewhere'"
-            class="rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm"
+            tone="danger"
             data-test="vm-elsewhere"
         >
             {{
@@ -708,36 +732,27 @@ const resetAfterTrial = () => {
                     },
                 )
             }}
-        </p>
+        </Notice>
 
-        <p
-            v-else-if="vmState === 'moving'"
-            class="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm"
-            data-test="vm-moving"
-        >
+        <Notice v-else-if="vmState === 'moving'" data-test="vm-moving">
             {{
                 $t(
                     'A move of this server has not finished: its VM is no longer on :node. If the move failed, Finish the move under Placement and billing completes it.',
                     { node: server.node },
                 )
             }}
-        </p>
+        </Notice>
 
-        <p
-            v-else-if="vmStopped"
-            class="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm"
-            data-test="vm-stopped"
-        >
+        <Notice v-else-if="vmStopped" data-test="vm-stopped">
             {{
                 $t(
                     'The server is not running in Proxmox. Start it to reset its password or install apps.',
                 )
             }}
-        </p>
+        </Notice>
 
-        <p
+        <Notice
             v-else-if="active && agent === false"
-            class="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm"
             data-test="agent-unreachable"
         >
             {{
@@ -745,22 +760,28 @@ const resetAfterTrial = () => {
                     'Password reset, reinstall and apps need a running qemu-guest-agent in the server.',
                 )
             }}
-        </p>
+        </Notice>
 
         <DriftList v-if="drifts.length > 0" :drifts="drifts" />
 
-        <div role="tablist" class="flex gap-1 border-b">
+        <!-- Scrolls sideways on phones; arrow keys move between tabs. -->
+        <div
+            role="tablist"
+            class="-mx-4 flex [scrollbar-width:none] gap-1 overflow-x-auto border-b px-4"
+            @keydown="moveTab"
+        >
             <button
                 v-for="item in tabs"
                 :key="item.value"
                 type="button"
                 role="tab"
                 :aria-selected="tab === item.value"
+                :tabindex="tab === item.value ? 0 : -1"
                 :data-test="`tab-${item.value}`"
-                class="-mb-px border-b-2 px-3 py-2 text-sm font-medium transition-colors"
+                class="-mb-px inline-flex shrink-0 items-center gap-1.5 border-b-2 px-3 py-2 text-sm font-medium whitespace-nowrap transition-colors outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:ring-inset"
                 :class="
                     tab === item.value
-                        ? 'border-primary text-foreground'
+                        ? 'border-foreground text-foreground'
                         : 'border-transparent text-muted-foreground hover:text-foreground'
                 "
                 @click="tab = item.value"
@@ -768,12 +789,13 @@ const resetAfterTrial = () => {
                 {{ $t(item.label) }}
                 <span
                     v-if="item.count"
-                    class="ml-1 rounded-full bg-muted px-1.5 text-xs"
+                    class="rounded-full bg-muted px-1.5 text-xs tabular-nums"
                     >{{ item.count }}</span
                 >
-                <span
+                <LoaderCircle
                     v-if="item.value === 'tasks' && runningTasks.length"
-                    class="ml-1 inline-block h-2 w-2 rounded-full bg-amber-500"
+                    class="size-3.5 text-muted-foreground motion-safe:animate-spin"
+                    :aria-label="$t('A task is running')"
                 />
             </button>
         </div>
@@ -1069,7 +1091,7 @@ const resetAfterTrial = () => {
                         >
                         <span
                             v-if="address.ptr_pending"
-                            class="text-amber-700 dark:text-amber-400"
+                            class="text-status-warning-text"
                         >
                             ({{ $t('pending') }})</span
                         >

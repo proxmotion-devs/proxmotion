@@ -182,7 +182,7 @@ const download = () => {
                 </span>
                 <span
                     v-if="failed"
-                    class="text-red-600 dark:text-red-400"
+                    class="text-status-danger-text"
                     role="alert"
                 >
                     {{ $t('The log could not be loaded. Trying again…') }}

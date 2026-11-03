@@ -213,7 +213,7 @@ const restore = () => {
                 </span>
                 <span
                     v-if="schedule.blocked"
-                    class="text-xs text-amber-700 dark:text-amber-400"
+                    class="text-xs text-status-warning-text"
                     data-test="backup-schedule-blocked"
                 >
                     {{ schedule.blocked }}
@@ -285,7 +285,7 @@ const restore = () => {
                     </span>
                     <span
                         v-if="backup.unrestorable_reason && !terminated"
-                        class="text-xs text-amber-700 dark:text-amber-400"
+                        class="text-xs text-status-warning-text"
                         data-test="backup-unrestorable"
                     >
                         {{ backup.unrestorable_reason }}

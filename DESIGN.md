@@ -176,6 +176,8 @@ A greyscale room with a single, swappable brand light and a fixed traffic-light 
 - **Status Amber** (`status-warning-*`, Tailwind amber 100/800, border amber 300; dark: amber 900 at 40% / amber 300, border amber 800): suspended, degraded, over a limit, needs a look. Also used for warning detail text (`--status-warning-text`: amber 700 / amber 400) and the border of a panel that needs attention (`--status-warning-border`).
 - **Status Red** (`status-danger-*`, Tailwind red 100/800; dark: red 900 at 40% / red 300; inline text `--status-danger-text`: red 700 / red 400) and **Destructive Red** (`destructive`): failed, error, and the buttons that delete or terminate.
 
+Solid marks (meter bars, live dots) use `--status-success-fill` (emerald 500) and `--status-warning-fill` (amber 500); a full meter uses `destructive`.
+
 All status and guide colours live as CSS variables in `panel/resources/css/app.css` (`--status-*`, `--guide*`, light and `.dark`) and as Tailwind colours (`status-success`, `status-warning-text`, `guide`, …). Pages still using palette classes (`text-amber-700`, `bg-red-50`, …) move to them as each part of the panel is reworked.
 
 ### Tertiary
@@ -287,6 +289,12 @@ The panel's main signal. `StatusBadge` takes a tone (`StatusTone`: success, warn
 
 ### Guide Box (signature)
 `GuideBox` opens explanatory pages with a calm how-to: 12px corners, sky border at 30%, sky fill at 5% (`border-guide/30`, `bg-guide/5`), a sky lightbulb icon (`text-guide-icon`), a medium title, muted body text with styled lists and inline code, and a "More in Help" link (`text-guide-link`). A 32px ghost × hides it, which is remembered per browser; hidden guides leave a 32px-high "Show guide" text button. Every control in it shows the focus ring. It is the panel's reassurance made visible.
+
+### Notices
+`Notice` (components/admin) is the one way to say something about the state of what a page shows ("restart to apply", "suspended over its quota", "the VM was deleted outside the panel", a task's error): 8px corners, 12px padding, a 16px icon before the text. `warning` (default) uses the amber tint and border with a triangle icon; `danger` uses the red tint, a red border at 40% and a circled exclamation. Body text stays in the foreground colour; bold lines inside carry the detail (the reason, the figures). Never hand-build an amber or red box.
+
+### Tabs
+Page tabs (the server page) sit on a hairline with a 2px underline in the foreground colour, not the accent, so a pale provider colour cannot hide the selection. Counts are small muted pills; running work shows a 14px spinner. Arrow keys, Home and End move between tabs, only the selected tab is in the tab order, focus shows the inset ring, and the row scrolls sideways on phones instead of widening the page.
 
 ### Attention list
 The dashboard's first panel lists only the problems that exist right now (failed tasks of the last 24 hours, servers in error, clusters that failed to sync, nodes not online, unhealthy storages and disks, drift, usage limits), one 12px × 16px row each: a 16px icon in the danger or warning text tone, the label, the count in tabular figures and a chevron when the row links somewhere. Details (the failed tasks, the servers over their limits) sit indented under their row. The panel's border turns red at 40% when a danger row is present and amber when only warnings are; with nothing to show it says so in one calm line with a green check. Counts that are not problems (servers by status, the inventory) live in a gap-px stat strip and a divided list, never in rows of same-size cards.

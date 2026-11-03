@@ -86,11 +86,11 @@ const checkAgain = () => {
             >
                 <CircleCheck
                     v-if="check.status === 'passed'"
-                    class="h-4 w-4 text-emerald-600"
+                    class="h-4 w-4 text-status-success-foreground"
                 />
                 <CircleAlert
                     v-else-if="check.status === 'failed'"
-                    class="h-4 w-4 text-amber-600"
+                    class="h-4 w-4 text-status-warning-text"
                 />
                 <CircleMinus v-else class="h-4 w-4 text-muted-foreground/60" />
                 <span

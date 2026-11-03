@@ -2656,5 +2656,6 @@
     "Page :page": "Sayfa :page",
     "Hostname, IP address, billing ID or VMID": "Hostname, IP adresi, faturalama ID'si veya VMID",
     "Search servers": "Sunucularda ara",
-    "No servers match the search.": "Aramayla eşleşen sunucu yok."
+    "No servers match the search.": "Aramayla eşleşen sunucu yok.",
+    "A task is running": "Bir görev çalışıyor"
 }

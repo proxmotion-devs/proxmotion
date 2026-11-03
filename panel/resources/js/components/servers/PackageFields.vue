@@ -133,7 +133,7 @@ const placementText = computed(() => {
             <p>{{ placementText }}</p>
             <p
                 v-if="fit && fit.fitting === 0"
-                class="flex items-center gap-2 text-amber-700 dark:text-amber-400"
+                class="flex items-center gap-2 text-status-warning-text"
             >
                 <TriangleAlert class="h-4 w-4 shrink-0" />
                 {{

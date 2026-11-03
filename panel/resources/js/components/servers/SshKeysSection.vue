@@ -361,7 +361,7 @@ const copy = async (key: SshKey) => {
                             <Badge
                                 v-if="missing.has(key.fingerprint)"
                                 variant="outline"
-                                class="mt-1 border-amber-500/50 text-amber-700 dark:text-amber-400"
+                                class="mt-1 border-status-warning-border text-status-warning-text"
                                 :title="
                                     $t(
                                         'Add or delete a key to write the list into the server again.',
@@ -388,7 +388,7 @@ const copy = async (key: SshKey) => {
                                 >
                                     <Check
                                         v-if="copied === key.fingerprint"
-                                        class="h-4 w-4 text-green-600"
+                                        class="h-4 w-4 text-status-success-foreground"
                                     />
                                     <Copy v-else class="h-4 w-4" />
                                 </Button>

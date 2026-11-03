@@ -101,7 +101,7 @@ const portShare = computed(() => {
                 <span v-else-if="stats">{{ $t('Not running') }}</span>
                 <span
                     v-if="stale && loaded"
-                    class="text-amber-700 dark:text-amber-400"
+                    class="text-status-warning-text"
                     data-test="stats-stale"
                     >{{
                         $t('Proxmox did not answer; the figures may be old.')
@@ -113,7 +113,7 @@ const portShare = computed(() => {
                     data-test="stats-live"
                 >
                     <span
-                        class="inline-block h-2 w-2 rounded-full bg-emerald-500"
+                        class="inline-block h-2 w-2 rounded-full bg-status-success-fill"
                     />
                     {{ $t('Live') }}
                 </span>
