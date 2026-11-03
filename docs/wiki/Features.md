@@ -673,7 +673,7 @@ Both modules are thin clients of the API: business logic stays in the panel, and
 
 ### 14.1 WHMCS server module
 
-`integrations/whmcs/modules/servers/proxmotion/` — for **WHMCS 8 and 9**, written in **PHP 7.2** syntax, no Composer dependencies. Setup and option names: the module's `README.md`.
+[proxmotion-WHMCS](https://github.com/proxmotion-devs/proxmotion-WHMCS) repository (`modules/servers/proxmotion/`, [ADR 0056](../adr/0056-billing-module-repositories.md)) — for **WHMCS 8 and 9**, written in **PHP 7.2** syntax, no Composer dependencies. Setup and option names: the module's `README.md`.
 
 - **Provisioning**: Create, Suspend, Unsuspend, Terminate, ChangePackage (with optional restart after upgrades), ChangePassword, TestConnection. The WHMCS password becomes the root password when it has 12+ characters; otherwise Proxmotion's is stored on the service.
 - **Configurable options**: OS, location, extra IPs, extra RAM and other resources, **app** (`app` option plus `app_<key>` custom fields for inputs; the option can be generated from the panel's app list).
@@ -688,7 +688,7 @@ Both modules are thin clients of the API: business logic stays in the panel, and
 
 ### 14.2 WISECP server module
 
-`integrations/wisecp/coremio/modules/Servers/Proxmotion/` — for **WISECP 5, PHP 8.2** ([ADR 0014](../adr/0014-wisecp-module.md)). Setup: [`integrations/wisecp/README.md`](../../integrations/wisecp/README.md).
+[proxmotion-WISECP](https://github.com/proxmotion-devs/proxmotion-WISECP) repository (`coremio/modules/Servers/Proxmotion/`) — for **WISECP 5, PHP 8.2** ([ADR 0014](../adr/0014-wisecp-module.md), [ADR 0056](../adr/0056-billing-module-repositories.md)). Setup: its [`README.md`](https://github.com/proxmotion-devs/proxmotion-WISECP/blob/main/README.md).
 
 - **Server form**: panel address, API token (in the password field), webhook secret.
 - **Product Module tab**: package, location, OS template, network model, restart after upgrades, resource values. Order answers set OS, location, hostname, SSH key, root password, app and app inputs; add-on values `extra_*` add resources and `paid_app` grants paid apps.
@@ -825,5 +825,5 @@ See `panel/.env.example` for the full list (database, Redis, mail, …).
 - [Architecture Decision Records](../adr/) — the reasoning behind each feature
 - [OpenAPI reference](../api/openapi.yaml)
 - Guides: [OS templates](../guides/os-templates.md) · [ISO templates](../guides/iso-templates.md) · [Windows templates](../guides/windows-templates.md) · [Real Proxmox verification](../guides/real-proxmox-verification.md)
-- [WHMCS module README](../../integrations/whmcs/modules/servers/proxmotion/README.md) · [WISECP module README](../../integrations/wisecp/README.md)
+- [WHMCS module README](https://github.com/proxmotion-devs/proxmotion-WHMCS/blob/main/modules/servers/proxmotion/README.md) · [WISECP module README](https://github.com/proxmotion-devs/proxmotion-WISECP/blob/main/README.md)
 - [CONTRIBUTING.md](../../CONTRIBUTING.md) · [SECURITY.md](../../SECURITY.md)

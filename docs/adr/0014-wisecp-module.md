@@ -1,6 +1,6 @@
 # 14. WISECP module
 
-- **Status:** Accepted
+- **Status:** Accepted (the module moved to the repository `proxmotion-devs/proxmotion-WISECP` on 2026-11-03, ADR 0056; paths below are those of the time)
 - **Date:** 2026-10-17
 
 ## Context

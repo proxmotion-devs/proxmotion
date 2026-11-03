@@ -1397,7 +1397,7 @@
     "Open Apps": "Uygulamaları aç",
     "Customers never log in to the panel. Their billing system creates and manages servers through the API.": "Müşteriler panele hiç giriş yapmaz. Sunucuları faturalama sistemleri API üzerinden oluşturur ve yönetir.",
     "Add the billing system and create an API token for it. The token is shown once.": "Faturalama sistemini ekleyin ve onun için bir API token'ı oluşturun. Token yalnızca bir kez gösterilir.",
-    "Install the module: integrations/whmcs (WHMCS 8 and 9) or integrations/wisecp (WISECP 5). Their README files list the settings.": "Modülü kurun: integrations/whmcs (WHMCS 8 ve 9) ya da integrations/wisecp (WISECP 5). Ayarlar README dosyalarında listelenir.",
+    "Install the module from its own repository: proxmotion-WHMCS (WHMCS 8 and 9) or proxmotion-WISECP (WISECP 5) under proxmotion-devs on GitHub. Their README files list the settings.": "Modülü kendi deposundan kurun: GitHub'da proxmotion-devs altındaki proxmotion-WHMCS (WHMCS 8 ve 9) ya da proxmotion-WISECP (WISECP 5). Ayarlar README dosyalarında listelenir.",
     "Enter the panel address and the token on the billing system's server, then test the connection.": "Faturalama sistemindeki sunucu kaydına panel adresini ve token'ı girin, ardından bağlantıyı test edin.",
     "Optional: add a webhook so the billing system hears about finished tasks at once.": "İsteğe bağlı: biten görevlerden faturalama sisteminin hemen haberdar olması için bir webhook ekleyin.",
     "Open Billing systems": "Faturalama sistemlerini aç",

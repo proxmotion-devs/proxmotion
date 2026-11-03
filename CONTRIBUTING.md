@@ -28,7 +28,7 @@ And `shellcheck` on any shell script you changed.
 - [ ] Tests added or updated for the change
 - [ ] New UI strings are translation keys with a Turkish entry in `lang/tr.json`
 - [ ] Schema changes are in a **new** migration
-- [ ] Public API changes are reflected in `docs/api/openapi.yaml` (and the WHMCS module, if affected)
+- [ ] Public API changes are reflected in `docs/api/openapi.yaml`, with matching changes in the module repositories ([proxmotion-WHMCS](https://github.com/proxmotion-devs/proxmotion-WHMCS), [proxmotion-WISECP](https://github.com/proxmotion-devs/proxmotion-WISECP)) when they are affected
 - [ ] No secrets, real IPs, hostnames or customer data (use `192.0.2.0/24`, `2001:db8::/32`, `example.com` in fixtures)
 
 ## Commit messages
@@ -37,7 +37,7 @@ We use [Conventional Commits](https://www.conventionalcommits.org/), with a scop
 
 ```
 feat(provisioning): add routed IP network strategy
-fix(whmcs): mask API token in module log
+fix(api): mask API token in task logs
 docs: describe NAT gateway design
 ```
 

@@ -1,4 +1,5 @@
-# Static analysis of the PHP code (panel and billing modules) with Semgrep CE.
+# Static analysis of the panel's PHP code with Semgrep CE (the billing modules are
+# scanned in their own repositories, ADR 0056).
 # CodeQL (default setup) covers JavaScript/TypeScript and the workflows but has no
 # PHP support. Findings go to code scanning under the category "semgrep" and never
 # fail this workflow: `semgrep scan` exits 0 with findings unless `--error` is given.
@@ -46,7 +47,7 @@ jobs:
           --metrics=off
           --exclude=tests
           --sarif --output=semgrep.sarif
-          panel integrations
+          panel
 
       # Pull requests from forks and Dependabot get a read-only token, which cannot
       # upload results; the scan above still runs for them.
