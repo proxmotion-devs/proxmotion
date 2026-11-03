@@ -568,6 +568,30 @@ const vmBadge = computed(
 const agentDown = computed(
     () => vmAway.value || vmStopped.value || props.agent === false,
 );
+// Why some everyday tasks are unavailable, said next to them (English keys).
+const everydayBlocked = computed((): string | null => {
+    if (busy.value) {
+        return 'A task is running for this server. These are available again once it ends.';
+    }
+
+    if (vmState.value === 'missing') {
+        return 'Proxmox has no VM for this server. Reinstall builds it again.';
+    }
+
+    if (vmAway.value) {
+        return 'The VM is not on the node the panel recorded; the note above says what to do.';
+    }
+
+    if (vmStopped.value) {
+        return 'The server is not running. Start it to reset the root password.';
+    }
+
+    if (props.agent === false) {
+        return 'The guest agent (qemu-guest-agent) in the server does not answer, so the root password cannot be reset. Reinstall still works.';
+    }
+
+    return null;
+});
 // A firewall drift says it was changed in Proxmox; an adopted VM not compared yet may never have had it (docs/adr/0033).
 const firewallDrift = computed(() =>
     props.drifts.some((drift) => drift.type === 'firewall_mismatch'),
@@ -618,7 +642,9 @@ const resetAfterTrial = () => {
         <!-- Who the server is, its state and the everyday controls. -->
         <div class="flex flex-wrap items-start justify-between gap-4">
             <div class="flex flex-col gap-2">
+                <!-- Without the heading's own bottom margin: the status badges belong right under it. -->
                 <Heading
+                    class="mb-0!"
                     :title="title"
                     :description="`${server.vm_name ? `${server.hostname} · ` : ''}VMID ${server.vmid} · ${server.node} · ${server.os_template ?? '—'}`"
                 />
@@ -751,17 +777,6 @@ const resetAfterTrial = () => {
             }}
         </Notice>
 
-        <Notice
-            v-else-if="active && agent === false"
-            data-test="agent-unreachable"
-        >
-            {{
-                $t(
-                    'Password reset, reinstall and apps need a running qemu-guest-agent in the server.',
-                )
-            }}
-        </Notice>
-
         <DriftList v-if="drifts.length > 0" :drifts="drifts" />
 
         <!-- Scrolls sideways on phones; arrow keys move between tabs. -->
@@ -803,14 +818,183 @@ const resetAfterTrial = () => {
         <template v-if="tab === 'overview'">
             <TaskList v-if="runningTasks.length" :tasks="runningTasks" />
 
-            <!-- Live figures from Proxmox while its VM exists (docs/adr/0036). -->
-            <ServerStatsCards
-                v-if="
-                    ['active', 'suspended'].includes(server.status) && !vmAway
+            <!-- What support work needs most often, first; why any is unavailable, right below them. -->
+            <section
+                v-if="active"
+                class="flex flex-col gap-3 rounded-xl border p-4"
+                role="group"
+                :aria-labelledby="`everyday-${server.uuid}`"
+                :aria-describedby="
+                    everydayBlocked
+                        ? `everyday-reason-${server.uuid}`
+                        : undefined
                 "
-                :server-uuid="server.uuid"
-                :port-speed-mbps="server.port_speed_mbps"
-            />
+                data-test="everyday-tasks"
+            >
+                <h3 :id="`everyday-${server.uuid}`" class="font-medium">
+                    {{ $t('Everyday tasks') }}
+                </h3>
+                <div class="flex flex-wrap gap-2">
+                    <ResetPasswordButton
+                        :action="resetPassword(server.uuid)"
+                        :disabled="busy || agentDown"
+                    />
+                    <ReinstallDialog
+                        :action="reinstall(server.uuid)"
+                        :hostname="server.hostname"
+                        :options="reinstallOptions"
+                        :ssh-keys="
+                            sshKeys.keys.map((key) => key.public_key).join('\n')
+                        "
+                        :disabled="busy || (vmAway && vmState !== 'missing')"
+                    />
+                    <HostnameDialog
+                        :action="changeHostname(server.uuid)"
+                        :hostname="server.hostname"
+                        :platform="server.platform"
+                        :disabled="vmBlocked"
+                    />
+                </div>
+                <p
+                    v-if="everydayBlocked"
+                    :id="`everyday-reason-${server.uuid}`"
+                    class="text-sm text-muted-foreground"
+                    data-test="everyday-reason"
+                >
+                    {{ $t(everydayBlocked) }}
+                </p>
+            </section>
+
+            <section class="flex flex-col gap-3 rounded-xl border p-4">
+                <div class="flex flex-wrap items-center justify-between gap-2">
+                    <h3 class="font-medium">
+                        {{ $t('IP addresses') }}
+                        <span class="text-sm font-normal text-muted-foreground"
+                            >· {{ $t(modelLabel) }}</span
+                        >
+                        <StatusBadge
+                            v-if="antiSpoofingOn"
+                            class="ml-2 align-middle"
+                            tone="success"
+                            label="Anti-spoofing on"
+                            :title="
+                                $t('Checked :time', {
+                                    time: formatDateTime(
+                                        server.firewall_checked_at,
+                                    ),
+                                })
+                            "
+                        />
+                        <StatusBadge
+                            v-else-if="firewallDrift"
+                            class="ml-2 align-middle"
+                            tone="warning"
+                            label="Anti-spoofing off"
+                        />
+                    </h3>
+                    <div
+                        v-if="active || offerAntiSpoofing"
+                        class="flex flex-wrap gap-2"
+                    >
+                        <AntiSpoofingButton
+                            v-if="offerAntiSpoofing"
+                            :action="enableAntiSpoofing(server.uuid)"
+                            :addresses="
+                                server.addresses.map(
+                                    (address) => address.address,
+                                )
+                            "
+                            :disabled="busy"
+                        />
+                        <ReapplyAddressesButton
+                            v-if="active"
+                            :action="reapplyAddresses(server.uuid)"
+                            :disabled="
+                                vmBlocked || server.addresses.length === 0
+                            "
+                        />
+                        <AddressesDialog
+                            v-if="active"
+                            :action="changeAddresses(server.uuid)"
+                            :addresses="server.addresses"
+                            :pools="addressPools"
+                            :disabled="vmBlocked"
+                        />
+                    </div>
+                </div>
+                <!-- One row per address: what it is on the left, its actions on the right. -->
+                <ul
+                    class="flex flex-col divide-y text-sm"
+                    data-test="addresses"
+                >
+                    <li
+                        v-for="address in server.addresses"
+                        :key="address.address"
+                        class="flex flex-wrap items-center gap-x-3 gap-y-1 py-2 first:pt-0 last:pb-0"
+                    >
+                        <div
+                            class="flex min-w-0 flex-1 basis-48 flex-col gap-0.5"
+                        >
+                            <div class="flex flex-wrap items-center gap-2">
+                                <span class="font-mono break-all">{{
+                                    address.address
+                                }}</span>
+                                <StatusBadge
+                                    v-if="address.primary"
+                                    tone="neutral"
+                                    label="Primary"
+                                />
+                                <Link
+                                    :href="showPool(address.pool.uuid)"
+                                    class="text-xs text-muted-foreground underline-offset-4 hover:underline"
+                                    >{{ address.pool.name }}</Link
+                                >
+                            </div>
+                            <div
+                                v-if="address.ptr || address.ptr_pending"
+                                class="text-xs text-muted-foreground"
+                            >
+                                {{ $t('Reverse DNS') }}:
+                                <span
+                                    v-if="address.ptr"
+                                    class="font-mono break-words"
+                                    >{{ address.ptr }}</span
+                                >
+                                <span
+                                    v-if="address.ptr_pending"
+                                    class="text-status-warning-text"
+                                >
+                                    ({{ $t('pending') }})</span
+                                >
+                            </div>
+                        </div>
+                        <div
+                            v-if="active"
+                            class="flex shrink-0 items-center gap-1"
+                        >
+                            <RdnsDialog
+                                :action="rdns(server.uuid)"
+                                :address="address.address"
+                                :ptr="address.ptr"
+                            />
+                            <RemoveAddressButton
+                                v-if="!address.primary"
+                                :action="changeAddresses(server.uuid)"
+                                :address="address.address"
+                                :disabled="vmBlocked"
+                            />
+                            <!-- Keeps Reverse DNS aligned on rows that cannot be removed. -->
+                            <span v-else class="size-8" aria-hidden="true" />
+                        </div>
+                    </li>
+                    <li
+                        v-if="server.addresses.length === 0"
+                        class="text-muted-foreground"
+                    >
+                        {{ $t('No IP addresses.') }}
+                    </li>
+                </ul>
+            </section>
 
             <div class="grid gap-4 lg:grid-cols-3">
                 <section class="flex flex-col gap-3 rounded-xl border p-4">
@@ -916,18 +1100,6 @@ const resetAfterTrial = () => {
                             </dd>
                         </div>
                     </dl>
-                    <div v-if="active" class="mt-auto flex flex-wrap gap-2">
-                        <ResetPasswordButton
-                            :action="resetPassword(server.uuid)"
-                            :disabled="busy || agentDown"
-                        />
-                        <HostnameDialog
-                            :action="changeHostname(server.uuid)"
-                            :hostname="server.hostname"
-                            :platform="server.platform"
-                            :disabled="vmBlocked"
-                        />
-                    </div>
                 </section>
 
                 <section class="flex flex-col gap-3 rounded-xl border p-4">
@@ -1012,105 +1184,14 @@ const resetAfterTrial = () => {
                 </section>
             </div>
 
-            <section class="flex flex-col gap-3 rounded-xl border p-4">
-                <div class="flex flex-wrap items-center justify-between gap-2">
-                    <h3 class="font-medium">
-                        {{ $t('IP addresses') }}
-                        <span class="text-sm font-normal text-muted-foreground"
-                            >· {{ $t(modelLabel) }}</span
-                        >
-                        <StatusBadge
-                            v-if="antiSpoofingOn"
-                            class="ml-2 align-middle"
-                            tone="success"
-                            label="Anti-spoofing on"
-                            :title="
-                                $t('Checked :time', {
-                                    time: formatDateTime(
-                                        server.firewall_checked_at,
-                                    ),
-                                })
-                            "
-                        />
-                        <StatusBadge
-                            v-else-if="firewallDrift"
-                            class="ml-2 align-middle"
-                            tone="warning"
-                            label="Anti-spoofing off"
-                        />
-                    </h3>
-                    <div
-                        v-if="active || offerAntiSpoofing"
-                        class="flex flex-wrap gap-2"
-                    >
-                        <AntiSpoofingButton
-                            v-if="offerAntiSpoofing"
-                            :action="enableAntiSpoofing(server.uuid)"
-                            :addresses="
-                                server.addresses.map(
-                                    (address) => address.address,
-                                )
-                            "
-                            :disabled="busy"
-                        />
-                        <ReapplyAddressesButton
-                            v-if="active"
-                            :action="reapplyAddresses(server.uuid)"
-                            :disabled="
-                                vmBlocked || server.addresses.length === 0
-                            "
-                        />
-                        <AddressesDialog
-                            v-if="active"
-                            :action="changeAddresses(server.uuid)"
-                            :addresses="server.addresses"
-                            :pools="addressPools"
-                            :disabled="vmBlocked"
-                        />
-                    </div>
-                </div>
-                <ul class="flex flex-col gap-1">
-                    <li
-                        v-for="address in server.addresses"
-                        :key="address.address"
-                        class="flex flex-wrap items-center gap-x-2 font-mono text-xs"
-                    >
-                        {{ address.address }}
-                        <StatusBadge
-                            v-if="address.primary"
-                            tone="neutral"
-                            label="Primary"
-                        />
-                        <Link
-                            :href="showPool(address.pool.uuid)"
-                            class="text-muted-foreground hover:underline"
-                            >({{ address.pool.name }})</Link
-                        >
-                        <span v-if="address.ptr" class="text-muted-foreground">
-                            → {{ address.ptr }}</span
-                        >
-                        <span
-                            v-if="address.ptr_pending"
-                            class="text-status-warning-text"
-                        >
-                            ({{ $t('pending') }})</span
-                        >
-                        <RdnsDialog
-                            v-if="active"
-                            :action="rdns(server.uuid)"
-                            :address="address.address"
-                            :ptr="address.ptr"
-                        />
-                        <RemoveAddressButton
-                            v-if="active && !address.primary"
-                            :action="changeAddresses(server.uuid)"
-                            :address="address.address"
-                            :disabled="vmBlocked"
-                        />
-                    </li>
-                    <li v-if="server.addresses.length === 0">—</li>
-                </ul>
-            </section>
+            <!-- Live figures from Proxmox while its VM exists (docs/adr/0036). -->
+            <ServerStatsCards
+                v-if="
+                    ['active', 'suspended'].includes(server.status) && !vmAway
+                "
+                :server-uuid="server.uuid"
+                :port-speed-mbps="server.port_speed_mbps"
+            />
 
             <UsageSection
                 v-if="['active', 'suspended'].includes(server.status)"
@@ -1154,12 +1235,12 @@ const resetAfterTrial = () => {
             >
                 <div>
                     <h3 class="font-medium">
-                        {{ $t('Suspend, reinstall or delete') }}
+                        {{ $t('Suspend or delete') }}
                     </h3>
                     <p class="text-sm text-muted-foreground">
                         {{
                             $t(
-                                'Billing systems usually do this for you. Reinstalling and deleting cannot be undone.',
+                                'Billing systems usually do this for you. Deleting cannot be undone.',
                             )
                         }}
                     </p>
@@ -1184,16 +1265,6 @@ const resetAfterTrial = () => {
                         v-if="server.status === 'suspended'"
                         :action="unsuspend(server.uuid)"
                         :disabled="busy"
-                    />
-                    <ReinstallDialog
-                        v-if="active"
-                        :action="reinstall(server.uuid)"
-                        :hostname="server.hostname"
-                        :options="reinstallOptions"
-                        :ssh-keys="
-                            sshKeys.keys.map((key) => key.public_key).join('\n')
-                        "
-                        :disabled="busy || (vmAway && vmState !== 'missing')"
                     />
                 </div>
                 <!-- Kept apart from Reinstall, and confirmed by typing the hostname. Deleting would leave a VM moved to another node running there. -->
@@ -1224,6 +1295,16 @@ const resetAfterTrial = () => {
         </template>
 
         <template v-else-if="tab === 'apps'">
+            <Notice
+                v-if="active && agent === false && !vmAway && !vmStopped"
+                data-test="apps-agent-unreachable"
+            >
+                {{
+                    $t(
+                        'The guest agent (qemu-guest-agent) in the server does not answer, so apps cannot be installed or run.',
+                    )
+                }}
+            </Notice>
             <AppList
                 :apps="apps"
                 :options="appOptions"

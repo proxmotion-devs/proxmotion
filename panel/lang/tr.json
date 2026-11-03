@@ -2661,5 +2661,15 @@
     "Deleting removes the VM, its disks and its IP addresses for good.": "Silmek VM'i, disklerini ve IP adreslerini kalıcı olarak kaldırır.",
     "Delete server": "Sunucuyu sil",
     "Delete this server?": "Bu sunucu silinsin mi?",
-    "The VM and its disks are deleted on Proxmox and its IP addresses are released. This cannot be undone, also for a server of a billing system.": "VM ve diskleri Proxmox'ta silinir, IP adresleri serbest bırakılır. Bu işlem geri alınamaz; faturalama sistemine ait sunucular için de."
+    "The VM and its disks are deleted on Proxmox and its IP addresses are released. This cannot be undone, also for a server of a billing system.": "VM ve diskleri Proxmox'ta silinir, IP adresleri serbest bırakılır. Bu işlem geri alınamaz; faturalama sistemine ait sunucular için de.",
+    "Everyday tasks": "Günlük işler",
+    "Suspend or delete": "Askıya al veya sil",
+    "Billing systems usually do this for you. Deleting cannot be undone.": "Bunu genellikle faturalama sistemi sizin yerinize yapar. Silme geri alınamaz.",
+    "No IP addresses.": "IP adresi yok.",
+    "A task is running for this server. These are available again once it ends.": "Bu sunucu için bir görev çalışıyor. Görev bitince bunlar yeniden kullanılabilir.",
+    "Proxmox has no VM for this server. Reinstall builds it again.": "Proxmox'ta bu sunucunun VM'i yok. Yeniden kurulum onu yeniden oluşturur.",
+    "The VM is not on the node the panel recorded; the note above says what to do.": "VM, panelin kaydettiği node'da değil; ne yapılacağını yukarıdaki not söylüyor.",
+    "The server is not running. Start it to reset the root password.": "Sunucu çalışmıyor. Root parolasını sıfırlamak için başlatın.",
+    "The guest agent (qemu-guest-agent) in the server does not answer, so the root password cannot be reset. Reinstall still works.": "Sunucudaki guest agent (qemu-guest-agent) yanıt vermiyor, bu yüzden root parolası sıfırlanamaz. Yeniden kurulum yine de yapılabilir.",
+    "The guest agent (qemu-guest-agent) in the server does not answer, so apps cannot be installed or run.": "Sunucudaki guest agent (qemu-guest-agent) yanıt vermiyor, bu yüzden uygulamalar kurulamaz veya çalıştırılamaz."
 }

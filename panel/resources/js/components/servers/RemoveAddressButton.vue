@@ -47,8 +47,8 @@ const confirm = () =>
         <DialogTrigger as-child>
             <Button
                 variant="ghost"
-                size="icon"
-                class="h-6 w-6 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                size="icon-sm"
+                class="text-destructive hover:bg-destructive/10 hover:text-destructive"
                 :disabled="disabled"
                 :aria-label="$t('Remove :address', { address })"
                 :title="$t('Remove :address', { address })"
