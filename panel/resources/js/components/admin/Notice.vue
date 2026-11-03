@@ -1,28 +1,41 @@
 <script setup lang="ts">
-import { CircleAlert, TriangleAlert } from '@lucide/vue';
+import { CircleAlert, CircleCheck, TriangleAlert } from '@lucide/vue';
 import { computed } from 'vue';
 import { cn } from '@/lib/utils';
 
 /**
  * A short note about the state of what the page shows: `warning` for "needs a
- * look", `danger` for something broken. The icon carries the tone as well as
- * the colour (DESIGN.md, Notices).
+ * look", `danger` for something broken, `success` for a check that passed or
+ * something created that must be noted now. The icon carries the tone as well
+ * as the colour (DESIGN.md, Notices).
  */
 const props = withDefaults(
     defineProps<{
-        tone?: 'warning' | 'danger';
+        tone?: 'warning' | 'danger' | 'success';
         class?: string;
     }>(),
     { tone: 'warning', class: undefined },
 );
 
-const classes = computed(
-    () =>
-        ({
-            warning: 'border-status-warning-border bg-status-warning',
-            danger: 'border-destructive/40 bg-status-danger',
-        })[props.tone],
-);
+const tones = {
+    warning: {
+        box: 'border-status-warning-border bg-status-warning',
+        icon: TriangleAlert,
+        iconClass: 'text-status-warning-text',
+    },
+    danger: {
+        box: 'border-destructive/40 bg-status-danger',
+        icon: CircleAlert,
+        iconClass: 'text-status-danger-text',
+    },
+    success: {
+        box: 'border-status-success-foreground/30 bg-status-success',
+        icon: CircleCheck,
+        iconClass: 'text-status-success-foreground',
+    },
+} as const;
+
+const current = computed(() => tones[props.tone]);
 </script>
 
 <template>
@@ -30,19 +43,15 @@ const classes = computed(
         :class="
             cn(
                 'flex items-start gap-3 rounded-lg border p-3 text-sm break-words',
-                classes,
+                current.box,
                 props.class,
             )
         "
     >
         <component
-            :is="tone === 'danger' ? CircleAlert : TriangleAlert"
+            :is="current.icon"
             class="mt-0.5 size-4 shrink-0"
-            :class="
-                tone === 'danger'
-                    ? 'text-status-danger-text'
-                    : 'text-status-warning-text'
-            "
+            :class="current.iconClass"
             aria-hidden="true"
         />
         <div class="min-w-0 flex-1">

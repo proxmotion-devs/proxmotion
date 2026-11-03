@@ -79,7 +79,7 @@ const post = (action: RouteDefinition<'post'>) =>
         >
             <div class="flex min-w-0 items-start gap-3">
                 <TriangleAlert
-                    class="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400"
+                    class="mt-0.5 h-4 w-4 shrink-0 text-status-warning-text"
                 />
                 <div class="flex min-w-0 flex-col gap-1 text-sm">
                     <p class="font-medium">

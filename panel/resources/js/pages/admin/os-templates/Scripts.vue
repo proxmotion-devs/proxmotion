@@ -499,14 +499,14 @@ const saveSettings = () => {
             />
             <p
                 v-if="forms[slot.event].errors.script"
-                class="text-sm text-red-600 dark:text-red-500"
+                class="text-sm text-status-danger-text"
             >
                 {{ forms[slot.event].errors.script }}
             </p>
 
             <p
                 v-if="slot.draft !== null"
-                class="text-sm text-amber-700 dark:text-amber-400"
+                class="text-sm text-status-warning-text"
             >
                 {{
                     $t(
@@ -724,7 +724,7 @@ const saveSettings = () => {
                 </label>
                 <p
                     v-if="settings.errors.events"
-                    class="text-sm text-red-600 dark:text-red-500"
+                    class="text-sm text-status-danger-text"
                 >
                     {{ settings.errors.events }}
                 </p>

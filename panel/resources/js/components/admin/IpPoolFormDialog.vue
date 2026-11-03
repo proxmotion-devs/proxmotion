@@ -342,7 +342,7 @@ const submit = () => {
             </FormField>
             <p
                 v-if="form.add_mode === 'network'"
-                class="text-xs text-amber-700 dark:text-amber-400"
+                class="text-xs text-status-warning-text"
             >
                 {{
                     $t(

@@ -16,17 +16,23 @@ defineProps<{ entries: PermissionCheck }>();
             :key="entry.path"
             class="flex flex-wrap items-center gap-2 rounded-lg border p-3"
         >
-            <CircleX v-if="entry.missing.length" class="h-4 w-4 text-red-600" />
+            <CircleX
+                v-if="entry.missing.length"
+                class="h-4 w-4 text-status-danger-text"
+            />
             <AlertTriangle
                 v-else-if="entry.excess.length"
-                class="h-4 w-4 text-amber-600"
+                class="h-4 w-4 text-status-warning-text"
             />
-            <CircleCheck v-else class="h-4 w-4 text-emerald-600" />
+            <CircleCheck
+                v-else
+                class="h-4 w-4 text-status-success-foreground"
+            />
             <span class="font-mono text-xs">{{ entry.path }}</span>
             <span class="text-muted-foreground">{{ $t(entry.purpose) }}</span>
             <span
                 v-if="entry.missing.length"
-                class="w-full font-mono text-xs text-red-700 dark:text-red-400"
+                class="w-full font-mono text-xs text-status-danger-text"
             >
                 {{
                     $t('Missing: :privileges', {
@@ -36,7 +42,7 @@ defineProps<{ entries: PermissionCheck }>();
             </span>
             <span
                 v-if="entry.excess.length"
-                class="w-full font-mono text-xs text-amber-700 dark:text-amber-400"
+                class="w-full font-mono text-xs text-status-warning-text"
             >
                 {{
                     $t('More than needed: :privileges', {

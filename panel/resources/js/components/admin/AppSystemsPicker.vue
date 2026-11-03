@@ -152,7 +152,7 @@ const tickSuggested = () =>
                             {{ version.version }}
                             <span
                                 v-if="app.suggested_ids.includes(version.id)"
-                                class="text-xs text-emerald-600 dark:text-emerald-400"
+                                class="text-xs text-status-success-foreground"
                                 >{{ $t('suggested') }}</span
                             >
                         </Label>
@@ -160,7 +160,7 @@ const tickSuggested = () =>
                 </div>
             </div>
         </template>
-        <p v-if="error" class="text-sm text-red-600 dark:text-red-500">
+        <p v-if="error" class="text-sm text-status-danger-text">
             {{ error }}
         </p>
     </div>

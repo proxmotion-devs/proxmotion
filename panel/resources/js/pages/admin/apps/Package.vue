@@ -107,14 +107,14 @@ const install = () =>
 
 const lineClass = (line: string) => {
     if (line.startsWith('+')) {
-        return 'text-emerald-600 dark:text-emerald-400';
+        return 'text-status-success-foreground';
     }
 
     if (line.startsWith('-')) {
-        return 'text-red-600 dark:text-red-400';
+        return 'text-status-danger-text';
     }
 
-    return line.startsWith('@@') ? 'text-sky-600 dark:text-sky-400' : '';
+    return line.startsWith('@@') ? 'text-muted-foreground' : '';
 };
 </script>
 

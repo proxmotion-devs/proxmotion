@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import AppSystemsPicker from '@/components/admin/AppSystemsPicker.vue';
+import Notice from '@/components/admin/Notice.vue';
 import type { AppOsVersion } from '@/components/admin/AppSystemsPicker.vue';
 import { Head, Link, router, useForm, usePage, usePoll } from '@inertiajs/vue3';
 import {
@@ -611,7 +612,7 @@ const statusLabels = {
                     />
                     <span
                         v-if="app.bundled_newer"
-                        class="text-amber-600 dark:text-amber-400"
+                        class="text-status-warning-text"
                         data-test="bundled-newer"
                     >
                         {{
@@ -631,7 +632,7 @@ const statusLabels = {
                     </span>
                     <span
                         v-if="app.upstream_version"
-                        class="text-amber-600 dark:text-amber-400"
+                        class="text-status-warning-text"
                     >
                         {{
                             $t('The original has a newer version: :version', {
@@ -723,7 +724,7 @@ const statusLabels = {
 
         <div
             v-if="draft && draft.errors.length"
-            class="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm"
+            class="rounded-lg border border-status-warning-border bg-status-warning p-3 text-sm"
             data-test="draft-errors"
         >
             <p class="font-medium">
@@ -739,13 +740,13 @@ const statusLabels = {
                 </li>
             </ul>
         </div>
-        <p
+        <Notice
+            tone="danger"
             v-for="(error, key) in page.props.errors"
             :key="key"
-            class="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300"
         >
             {{ error }}
-        </p>
+        </Notice>
 
         <GuideBox
             v-if="app.editable"
@@ -1289,12 +1290,9 @@ const statusLabels = {
                     )
                 }}
             </p>
-            <p
-                v-if="yamlError"
-                class="rounded-lg border border-red-200 bg-red-50 p-2 text-sm text-red-800 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300"
-            >
+            <Notice tone="danger" v-if="yamlError">
                 {{ yamlError }}
-            </p>
+            </Notice>
             <CodeEditor
                 v-model="yamlText"
                 language="yaml"
@@ -1342,7 +1340,7 @@ const statusLabels = {
                 </div>
                 <p
                     v-if="testServers.length === 0"
-                    class="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm"
+                    class="rounded-lg border border-status-warning-border bg-status-warning p-3 text-sm"
                 >
                     {{
                         $t(
@@ -1407,7 +1405,7 @@ const statusLabels = {
                                     </p>
                                     <p
                                         v-if="trial.error"
-                                        class="mt-1 text-xs break-words text-red-700 dark:text-red-400"
+                                        class="mt-1 text-xs break-words text-status-danger-text"
                                     >
                                         {{ trial.error }}
                                     </p>
@@ -1536,7 +1534,7 @@ const statusLabels = {
                     v-if="diffText !== null"
                     class="max-h-[32rem] overflow-auto rounded-lg border bg-muted/30 p-3 font-mono text-xs"
                     data-test="version-diff"
-                ><template v-for="(line, number) in diffText.split('\n')" :key="number"><span :class="line.startsWith('+') ? 'text-emerald-600 dark:text-emerald-400' : line.startsWith('-') ? 'text-red-600 dark:text-red-400' : line.startsWith('@@') ? 'text-sky-600 dark:text-sky-400' : ''">{{ line }}</span>
+                ><template v-for="(line, number) in diffText.split('\n')" :key="number"><span :class="line.startsWith('+') ? 'text-status-success-foreground' : line.startsWith('-') ? 'text-status-danger-text' : line.startsWith('@@') ? 'text-muted-foreground' : ''">{{ line }}</span>
 </template></pre>
                 <p v-if="diffText === ''" class="text-sm text-muted-foreground">
                     {{ $t('No differences.') }}

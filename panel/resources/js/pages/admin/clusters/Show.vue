@@ -172,7 +172,7 @@ const submitNode = () => {
 
         <div
             v-if="cluster.last_sync_error"
-            class="flex gap-3 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300"
+            class="flex gap-3 rounded-lg border border-destructive/40 bg-status-danger p-4 text-sm text-status-danger-foreground"
         >
             <AlertTriangle class="mt-0.5 h-4 w-4 shrink-0" />
             <div>
@@ -183,7 +183,7 @@ const submitNode = () => {
 
         <div
             v-if="cluster.firewall_problem"
-            class="flex gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200"
+            class="flex gap-3 rounded-lg border border-status-warning-border bg-status-warning p-4 text-sm text-status-warning-foreground"
         >
             <AlertTriangle class="mt-0.5 h-4 w-4 shrink-0" />
             <div class="flex flex-col gap-1">
@@ -301,8 +301,8 @@ const submitNode = () => {
                     :key="index"
                     :class="
                         check.severity === 'HEALTH_ERR'
-                            ? 'text-red-700 dark:text-red-400'
-                            : 'text-amber-700 dark:text-amber-400'
+                            ? 'text-status-danger-text'
+                            : 'text-status-warning-text'
                     "
                 >
                     {{ check.message }}

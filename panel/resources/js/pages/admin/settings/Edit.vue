@@ -855,7 +855,7 @@ const sectionClass = 'flex flex-col gap-4 rounded-xl border p-4';
                 </div>
                 <p
                     v-if="brandColorLowContrast.length > 0"
-                    class="rounded-md border border-amber-500/40 bg-amber-500/5 px-3 py-2 text-sm"
+                    class="rounded-md border border-status-warning-border bg-status-warning px-3 py-2 text-sm"
                     data-test="brand-color-contrast"
                 >
                     {{
@@ -1018,7 +1018,7 @@ const sectionClass = 'flex flex-col gap-4 rounded-xl border p-4';
         <template v-if="category === 'notifications'">
             <p
                 v-if="!mailerDelivers"
-                class="rounded-md border border-amber-500/40 bg-amber-500/5 px-3 py-2 text-sm"
+                class="rounded-md border border-status-warning-border bg-status-warning px-3 py-2 text-sm"
                 data-test="mailer-not-delivering"
             >
                 {{

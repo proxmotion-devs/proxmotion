@@ -4,6 +4,7 @@ import { trans } from 'laravel-vue-i18n';
 import { Check } from '@lucide/vue';
 import { computed, ref, watch } from 'vue';
 import FormField from '@/components/admin/FormField.vue';
+import Notice from '@/components/admin/Notice.vue';
 import NativeSelect from '@/components/admin/NativeSelect.vue';
 import Heading from '@/components/Heading.vue';
 import CapacityNote from '@/components/servers/CapacityNote.vue';
@@ -587,17 +588,13 @@ const submit = () => {
                         placeholder="ssh-ed25519 AAAA… user@host"
                     />
                 </FormField>
-                <p
-                    v-if="testServer"
-                    class="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm"
-                    data-test="test-server-note"
-                >
+                <Notice v-if="testServer" data-test="test-server-note">
                     {{
                         $t(
                             'The chosen OS template is inactive, so this becomes a test server without a billing system. Activate the template to offer it to customers.',
                         )
                     }}
-                </p>
+                </Notice>
                 <template v-else>
                     <FormField
                         label="Billing system"

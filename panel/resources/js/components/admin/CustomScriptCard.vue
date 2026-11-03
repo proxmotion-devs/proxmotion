@@ -185,15 +185,12 @@ const bytes = (text: string) => new TextEncoder().encode(text).length;
                 template.platform === 'windows' ? '# PowerShell' : '#!/bin/sh'
             "
         />
-        <p
-            v-if="form.errors.script"
-            class="text-sm text-red-600 dark:text-red-500"
-        >
+        <p v-if="form.errors.script" class="text-sm text-status-danger-text">
             {{ form.errors.script }}
         </p>
         <p
             v-if="script.draft !== null"
-            class="text-sm text-amber-700 dark:text-amber-400"
+            class="text-sm text-status-warning-text"
         >
             {{
                 script.content === null

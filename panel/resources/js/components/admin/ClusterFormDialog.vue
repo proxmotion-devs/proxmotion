@@ -185,10 +185,7 @@ const submit = () => {
                 <Checkbox v-model="form.verify_tls" />
                 {{ $t('Verify TLS certificate') }}
             </Label>
-            <p
-                v-if="!form.verify_tls"
-                class="text-xs text-amber-600 dark:text-amber-400"
-            >
+            <p v-if="!form.verify_tls" class="text-xs text-status-warning-text">
                 {{
                     $t(
                         'Only disable this for self-signed certificates on a trusted network.',
