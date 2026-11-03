@@ -45,7 +45,7 @@ const statusLabels: Record<GuestScriptRun['status'], string> = {
     failed: 'Failed',
 };
 const statusTones = {
-    running: 'neutral',
+    running: 'progress',
     succeeded: 'success',
     failed: 'danger',
 } as const;

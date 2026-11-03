@@ -1,5 +1,13 @@
 import type { BackupSchedule } from '@/lib/backupSchedules';
 
+/** Tone of a StatusBadge; `progress` is work still running. */
+export type StatusTone =
+    | 'success'
+    | 'warning'
+    | 'danger'
+    | 'neutral'
+    | 'progress';
+
 export type NetworkModel = 'bridged' | 'routed' | 'nat';
 export type NodeStatus = 'online' | 'offline' | 'unknown';
 

@@ -1,0 +1,180 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-11-03T12:00:00Z",
+  "title": "Design System: Proxmotion",
+  "extensions": {
+    "colorMeta": {
+      "primary": { "role": "primary", "displayName": "Provider Accent", "canonical": "hsl(0 0% 9%)", "note": "Placeholder: replaced at runtime by the provider's branding colour (--primary, --sidebar-primary, --ring) in both modes.", "tonalRamp": ["oklch(15% 0 0)", "oklch(25% 0 0)", "oklch(35% 0 0)", "oklch(45% 0 0)", "oklch(55% 0 0)", "oklch(65% 0 0)", "oklch(80% 0 0)", "oklch(95% 0 0)"] },
+      "primary-foreground": { "role": "primary", "displayName": "Accent Text", "canonical": "hsl(0 0% 98%)", "note": "Black or white at runtime, whichever contrasts more with the provider colour." },
+      "background": { "role": "neutral", "displayName": "Paper", "canonical": "hsl(0 0% 100%)", "dark": "hsl(0 0% 3.9%)", "tonalRamp": ["oklch(15% 0 0)", "oklch(25% 0 0)", "oklch(35% 0 0)", "oklch(45% 0 0)", "oklch(55% 0 0)", "oklch(65% 0 0)", "oklch(80% 0 0)", "oklch(95% 0 0)"] },
+      "foreground": { "role": "neutral", "displayName": "Ink", "canonical": "hsl(0 0% 3.9%)", "dark": "hsl(0 0% 98%)" },
+      "sidebar": { "role": "neutral", "displayName": "Sidebar Ground", "canonical": "hsl(0 0% 98%)", "dark": "hsl(0 0% 7%)" },
+      "secondary": { "role": "neutral", "displayName": "Secondary Grey", "canonical": "hsl(0 0% 92.1%)", "dark": "hsl(0 0% 14.9%)" },
+      "secondary-foreground": { "role": "neutral", "displayName": "Secondary Text", "canonical": "hsl(0 0% 9%)", "dark": "hsl(0 0% 98%)" },
+      "muted": { "role": "neutral", "displayName": "Quiet Grey", "canonical": "hsl(0 0% 96.1%)", "dark": "hsl(0 0% 16.08%)" },
+      "muted-foreground": { "role": "neutral", "displayName": "Quiet Text", "canonical": "hsl(0 0% 45.1%)", "dark": "hsl(0 0% 63.9%)" },
+      "border": { "role": "neutral", "displayName": "Hairline", "canonical": "hsl(0 0% 92.8%)", "dark": "hsl(0 0% 14.9%)" },
+      "input": { "role": "neutral", "displayName": "Input Stroke", "canonical": "hsl(0 0% 89.8%)", "dark": "hsl(0 0% 14.9%)" },
+      "destructive": { "role": "secondary", "displayName": "Destructive Red", "canonical": "hsl(0 84.2% 60.2%)", "dark": "hsl(0 84% 60%)", "tonalRamp": ["oklch(25% 0.08 25)", "oklch(35% 0.12 25)", "oklch(45% 0.17 25)", "oklch(55% 0.21 25)", "oklch(63% 0.21 25)", "oklch(72% 0.16 25)", "oklch(84% 0.09 20)", "oklch(95% 0.025 18)"] },
+      "dark-background": { "role": "neutral", "displayName": "Night Paper", "canonical": "hsl(0 0% 3.9%)" },
+      "dark-foreground": { "role": "neutral", "displayName": "Night Ink", "canonical": "hsl(0 0% 98%)" },
+      "dark-sidebar": { "role": "neutral", "displayName": "Night Sidebar Ground", "canonical": "hsl(0 0% 7%)" },
+      "dark-muted": { "role": "neutral", "displayName": "Night Quiet Grey", "canonical": "hsl(0 0% 16.08%)" },
+      "dark-muted-foreground": { "role": "neutral", "displayName": "Night Quiet Text", "canonical": "hsl(0 0% 63.9%)" },
+      "dark-border": { "role": "neutral", "displayName": "Night Hairline", "canonical": "hsl(0 0% 14.9%)" },
+      "status-success-bg": { "role": "secondary", "displayName": "Status Green Tint", "canonical": "oklch(95% 0.052 163.051)", "dark": "oklch(37.8% 0.077 168.94 / 0.4)", "tonalRamp": ["oklch(26% 0.05 166)", "oklch(37.8% 0.077 169)", "oklch(43.2% 0.095 167)", "oklch(50.8% 0.118 166)", "oklch(59.6% 0.145 163)", "oklch(69.6% 0.17 162)", "oklch(84.5% 0.143 165)", "oklch(95% 0.052 163)"] },
+      "status-success-text": { "role": "secondary", "displayName": "Status Green Ink", "canonical": "oklch(43.2% 0.095 166.913)", "dark": "oklch(84.5% 0.143 164.978)" },
+      "status-warning-bg": { "role": "secondary", "displayName": "Status Amber Tint", "canonical": "oklch(96.2% 0.059 95.617)", "dark": "oklch(41.4% 0.112 45.904 / 0.4)", "tonalRamp": ["oklch(27.9% 0.077 45.6)", "oklch(41.4% 0.112 45.9)", "oklch(47.3% 0.137 46.2)", "oklch(55.5% 0.163 49)", "oklch(66.6% 0.179 58.3)", "oklch(76.9% 0.188 70.1)", "oklch(87.9% 0.169 91.6)", "oklch(96.2% 0.059 95.6)"] },
+      "status-warning-text": { "role": "secondary", "displayName": "Status Amber Ink", "canonical": "oklch(47.3% 0.137 46.201)", "dark": "oklch(87.9% 0.169 91.605)" },
+      "status-warning-border": { "role": "secondary", "displayName": "Attention Border", "canonical": "oklch(87.9% 0.169 91.605)", "dark": "oklch(47.3% 0.137 46.201)" },
+      "status-danger-bg": { "role": "secondary", "displayName": "Status Red Tint", "canonical": "oklch(93.6% 0.032 17.717)", "dark": "oklch(39.6% 0.141 25.723 / 0.4)", "tonalRamp": ["oklch(25.8% 0.092 26)", "oklch(39.6% 0.141 25.7)", "oklch(44.4% 0.177 26.9)", "oklch(50.5% 0.213 27.5)", "oklch(57.7% 0.245 27.3)", "oklch(70.4% 0.191 22.2)", "oklch(80.8% 0.114 19.6)", "oklch(93.6% 0.032 17.7)"] },
+      "status-danger-text": { "role": "secondary", "displayName": "Status Red Ink", "canonical": "oklch(44.4% 0.177 26.899)", "dark": "oklch(80.8% 0.114 19.571)" },
+      "guide-accent": { "role": "tertiary", "displayName": "Guide Sky", "canonical": "oklch(68.5% 0.169 237.323)", "note": "Used at 30% for borders and 5% for fills; icons sky 600 / 400, links sky 700 / 400.", "tonalRamp": ["oklch(29.3% 0.066 243)", "oklch(39.1% 0.09 240.9)", "oklch(50% 0.134 242.7)", "oklch(58.8% 0.158 242)", "oklch(68.5% 0.169 237.3)", "oklch(74.6% 0.16 232.7)", "oklch(82.8% 0.111 230.3)", "oklch(95.1% 0.026 236.8)"] },
+      "series-1": { "role": "tertiary", "displayName": "Series Blue", "canonical": "#2a78d6", "dark": "#3987e5", "tonalRamp": ["oklch(25% 0.07 255)", "oklch(35% 0.1 255)", "oklch(45% 0.13 255)", "oklch(57% 0.16 255)", "oklch(65% 0.15 255)", "oklch(73% 0.12 255)", "oklch(84% 0.07 255)", "oklch(95% 0.02 255)"] },
+      "series-2": { "role": "tertiary", "displayName": "Series Orange", "canonical": "#eb6834", "dark": "#d95926", "tonalRamp": ["oklch(28% 0.07 40)", "oklch(38% 0.11 40)", "oklch(48% 0.15 40)", "oklch(58% 0.18 40)", "oklch(66% 0.18 40)", "oklch(74% 0.14 45)", "oklch(85% 0.08 50)", "oklch(95% 0.025 55)"] }
+    },
+    "typographyMeta": {
+      "page-title": { "displayName": "Page Title", "purpose": "The Heading at the top of each admin page, followed by a muted description." },
+      "metric": { "displayName": "Metric", "purpose": "Dashboard figures and stat cards; always tabular numerals." },
+      "section-title": { "displayName": "Section Title", "purpose": "Small headings of sections, panels and dialogs." },
+      "body": { "displayName": "Body", "purpose": "Almost all UI text: table cells, labels (500), descriptions, buttons (500)." },
+      "label": { "displayName": "Label", "purpose": "Badges, helper and detail text, timestamps." },
+      "code": { "displayName": "Code", "purpose": "IP addresses, VMIDs, UUIDs, paths and inline code on a muted pill." }
+    },
+    "shadows": [
+      { "name": "stroke", "value": "0 1px 2px 0 rgb(0 0 0 / 0.05)", "purpose": "Inputs and outline buttons; reads as a stroke, not a lift." },
+      { "name": "float", "value": "0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)", "purpose": "Menus, select pickers, popovers: layers floating above the page." }
+    ],
+    "focus": [
+      { "name": "ring", "value": "border-color: var(--ring); box-shadow: 0 0 0 3px color-mix(in oklab, var(--ring) 50%, transparent)", "purpose": "Focus-visible on buttons, inputs and badges; follows the provider colour." }
+    ],
+    "motion": [
+      { "name": "state", "value": "150ms cubic-bezier(0.4, 0, 0.2, 1)", "purpose": "Colour and ring transitions of controls (Tailwind's default transition)." },
+      { "name": "sidebar", "value": "200ms linear", "purpose": "Sidebar collapse and header height change." },
+      { "name": "spin", "value": "1s linear infinite", "purpose": "Spinners for running tasks; the only looping motion." }
+    ],
+    "breakpoints": [
+      { "name": "sm", "value": "640px" },
+      { "name": "md", "value": "768px", "note": "Below this the sidebar becomes a sheet and inputs use 16px text." },
+      { "name": "lg", "value": "1024px" },
+      { "name": "xl", "value": "1280px" }
+    ],
+    "layout": {
+      "sidebarWidth": "16rem",
+      "sidebarWidthMobile": "18rem",
+      "sidebarWidthIcon": "3rem",
+      "headerHeight": "64px",
+      "pagePadding": "16px",
+      "sectionGap": "24px"
+    }
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The one main action of an area, in the provider's colour.",
+      "html": "<button class=\"ds-btn ds-btn-primary\">Create server</button>",
+      "css": ".ds-btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 36px; padding: 8px 16px; border-radius: 6px; font: 500 0.875rem/1.25rem 'Instrument Sans', ui-sans-serif, system-ui, sans-serif; border: 1px solid transparent; cursor: pointer; transition: background-color 150ms cubic-bezier(0.4,0,0.2,1), box-shadow 150ms cubic-bezier(0.4,0,0.2,1); outline: none; } .ds-btn-primary { background: var(--primary, hsl(0 0% 9%)); color: var(--primary-foreground, hsl(0 0% 98%)); } .ds-btn-primary:hover { background: color-mix(in oklab, var(--primary, hsl(0 0% 9%)) 90%, transparent); } .ds-btn:focus-visible { border-color: var(--ring, hsl(0 0% 3.9%)); box-shadow: 0 0 0 3px color-mix(in oklab, var(--ring, hsl(0 0% 3.9%)) 50%, transparent); } .ds-btn:disabled { opacity: 0.5; pointer-events: none; }"
+    },
+    {
+      "name": "Outline Button",
+      "kind": "button",
+      "refersTo": "button-outline",
+      "description": "Secondary actions in toolbars, dialogs and page headers.",
+      "html": "<button class=\"ds-btn-outline\">Cancel</button>",
+      "css": ".ds-btn-outline { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 36px; padding: 8px 16px; border-radius: 6px; font: 500 0.875rem/1.25rem 'Instrument Sans', ui-sans-serif, system-ui, sans-serif; background: var(--background, #fff); color: var(--foreground, hsl(0 0% 3.9%)); border: 1px solid var(--border, hsl(0 0% 92.8%)); box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05); cursor: pointer; transition: background-color 150ms cubic-bezier(0.4,0,0.2,1), box-shadow 150ms cubic-bezier(0.4,0,0.2,1); outline: none; } .ds-btn-outline:hover { background: var(--accent, hsl(0 0% 96.1%)); } .ds-btn-outline:focus-visible { border-color: var(--ring, hsl(0 0% 3.9%)); box-shadow: 0 0 0 3px color-mix(in oklab, var(--ring, hsl(0 0% 3.9%)) 50%, transparent); }"
+    },
+    {
+      "name": "Destructive Button",
+      "kind": "button",
+      "refersTo": "button-destructive",
+      "description": "Only the final confirming action of terminate, delete, reinstall, rollback or restore.",
+      "html": "<button class=\"ds-btn-danger\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M3 6h18\"/><path d=\"M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6\"/><path d=\"M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2\"/></svg>Terminate server</button>",
+      "css": ".ds-btn-danger { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 36px; padding: 8px 12px; border-radius: 6px; font: 500 0.875rem/1.25rem 'Instrument Sans', ui-sans-serif, system-ui, sans-serif; background: var(--destructive, hsl(0 84.2% 60.2%)); color: #fff; border: 1px solid transparent; cursor: pointer; transition: background-color 150ms cubic-bezier(0.4,0,0.2,1), box-shadow 150ms cubic-bezier(0.4,0,0.2,1); outline: none; } .ds-btn-danger:hover { background: color-mix(in oklab, var(--destructive, hsl(0 84.2% 60.2%)) 90%, transparent); } .ds-btn-danger:focus-visible { box-shadow: 0 0 0 3px color-mix(in oklab, var(--destructive, hsl(0 84.2% 60.2%)) 20%, transparent); }"
+    },
+    {
+      "name": "Text Input",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Single-line field with a hairline stroke and the provider-coloured focus ring.",
+      "html": "<label class=\"ds-field\"><span class=\"ds-field-label\">Hostname</span><input class=\"ds-input\" value=\"vps1.example.com\" /></label>",
+      "css": ".ds-field { display: grid; gap: 8px; font-family: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif; } .ds-field-label { font-size: 0.875rem; font-weight: 500; color: var(--foreground, hsl(0 0% 3.9%)); } .ds-input { height: 36px; width: 100%; padding: 4px 12px; border-radius: 6px; border: 1px solid var(--input, hsl(0 0% 89.8%)); background: transparent; color: var(--foreground, hsl(0 0% 3.9%)); font: 400 0.875rem/1.25rem inherit; box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05); outline: none; transition: border-color 150ms cubic-bezier(0.4,0,0.2,1), box-shadow 150ms cubic-bezier(0.4,0,0.2,1); } .ds-input:focus-visible { border-color: var(--ring, hsl(0 0% 3.9%)); box-shadow: 0 0 0 3px color-mix(in oklab, var(--ring, hsl(0 0% 3.9%)) 50%, transparent); } .ds-input[aria-invalid='true'] { border-color: var(--destructive, hsl(0 84.2% 60.2%)); box-shadow: 0 0 0 3px color-mix(in oklab, var(--destructive, hsl(0 84.2% 60.2%)) 20%, transparent); }"
+    },
+    {
+      "name": "Status Badges",
+      "kind": "chip",
+      "refersTo": "status-badge-success",
+      "description": "StatusBadge tones: success, warning, danger, neutral, progress (neutral with a spinner). Always a word, never colour alone.",
+      "html": "<div class=\"ds-badges\"><span class=\"ds-status ds-status-success\">Active</span><span class=\"ds-status ds-status-warning\">Suspended</span><span class=\"ds-status ds-status-danger\">Failed</span><span class=\"ds-status ds-status-neutral\">Recorded only</span><span class=\"ds-status ds-status-neutral\"><svg class=\"ds-spin\" width=\"12\" height=\"12\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M21 12a9 9 0 1 1-6.219-8.56\"/></svg>Provisioning</span></div>",
+      "css": ".ds-badges { display: flex; flex-wrap: wrap; gap: 8px; } @keyframes ds-spin { to { transform: rotate(360deg); } } @media (prefers-reduced-motion: no-preference) { .ds-spin { animation: ds-spin 1s linear infinite; } } .ds-status { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 6px; font: 500 0.75rem/1rem 'Instrument Sans', ui-sans-serif, system-ui, sans-serif; white-space: nowrap; } .ds-status-success { background: oklch(95% 0.052 163.051); color: oklch(43.2% 0.095 166.913); } .ds-status-warning { background: oklch(96.2% 0.059 95.617); color: oklch(47.3% 0.137 46.201); } .ds-status-danger { background: oklch(93.6% 0.032 17.717); color: oklch(44.4% 0.177 26.899); } .ds-status-neutral { background: oklch(97% 0 0); color: oklch(37.1% 0 0); }"
+    },
+    {
+      "name": "Panel",
+      "kind": "card",
+      "refersTo": "panel",
+      "description": "Flat bordered section or link card; the amber border marks a panel that needs attention.",
+      "html": "<div class=\"ds-panels\"><a class=\"ds-panel\" href=\"#\"><span class=\"ds-panel-head\">Servers<svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><rect x=\"2\" y=\"2\" width=\"20\" height=\"8\" rx=\"2\"/><rect x=\"2\" y=\"14\" width=\"20\" height=\"8\" rx=\"2\"/></svg></span><span class=\"ds-panel-value\">128</span></a><a class=\"ds-panel ds-panel-attention\" href=\"#\"><span class=\"ds-panel-head\">Drift</span><span class=\"ds-panel-value\">3</span><span class=\"ds-panel-detail\">Needs a look</span></a></div>",
+      "css": ".ds-panels { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; font-family: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif; } .ds-panel { display: flex; flex-direction: column; gap: 8px; padding: 20px; border-radius: 12px; border: 1px solid var(--border, hsl(0 0% 92.8%)); background: var(--background, #fff); color: var(--foreground, hsl(0 0% 3.9%)); text-decoration: none; transition: background-color 150ms cubic-bezier(0.4,0,0.2,1); outline: none; } .ds-panel:hover { background: color-mix(in oklab, var(--muted, hsl(0 0% 96.1%)) 40%, transparent); } .ds-panel:focus-visible { box-shadow: 0 0 0 3px color-mix(in oklab, var(--ring, hsl(0 0% 3.9%)) 50%, transparent); } .ds-panel-head { display: flex; align-items: center; justify-content: space-between; font-size: 0.875rem; color: var(--muted-foreground, hsl(0 0% 45.1%)); } .ds-panel-value { font-size: 1.875rem; line-height: 2.25rem; font-weight: 600; font-variant-numeric: tabular-nums; } .ds-panel-attention { border-color: oklch(87.9% 0.169 91.605); } .ds-panel-detail { font-size: 0.75rem; color: oklch(55.5% 0.163 48.998); }"
+    },
+    {
+      "name": "Data Table",
+      "kind": "custom",
+      "refersTo": "table-header",
+      "description": "Rounded bordered wrapper, muted header, hairline rows with a faint hover; scrolls sideways on phones.",
+      "html": "<div class=\"ds-table-wrap\"><table class=\"ds-table\"><thead><tr><th>Hostname</th><th>Status</th><th>IP addresses</th></tr></thead><tbody><tr><td><a href=\"#\">vps1.example.com</a></td><td><span class=\"ds-tstatus\">Active</span></td><td class=\"ds-mono\">203.0.113.10</td></tr><tr><td><a href=\"#\">vps2.example.com</a></td><td><span class=\"ds-tstatus ds-tstatus-warn\">Suspended</span></td><td class=\"ds-mono\">203.0.113.11</td></tr></tbody></table></div>",
+      "css": ".ds-table-wrap { overflow-x: auto; border-radius: 12px; border: 1px solid var(--border, hsl(0 0% 92.8%)); } .ds-table { width: 100%; border-collapse: collapse; font: 400 0.875rem/1.25rem 'Instrument Sans', ui-sans-serif, system-ui, sans-serif; color: var(--foreground, hsl(0 0% 3.9%)); } .ds-table thead { background: color-mix(in oklab, var(--muted, hsl(0 0% 96.1%)) 50%, transparent); color: var(--muted-foreground, hsl(0 0% 45.1%)); text-align: left; } .ds-table th { padding: 12px 16px; font-weight: 500; } .ds-table td { padding: 12px 16px; border-top: 1px solid var(--border, hsl(0 0% 92.8%)); } .ds-table tbody tr:hover { background: color-mix(in oklab, var(--muted, hsl(0 0% 96.1%)) 30%, transparent); } .ds-table a { color: inherit; font-weight: 500; text-decoration: none; } .ds-table a:hover { text-decoration: underline; } .ds-mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.8125rem; } .ds-tstatus { display: inline-flex; padding: 2px 8px; border-radius: 6px; font-size: 0.75rem; font-weight: 500; background: oklch(95% 0.052 163.051); color: oklch(43.2% 0.095 166.913); } .ds-tstatus-warn { background: oklch(96.2% 0.059 95.617); color: oklch(47.3% 0.137 46.201); }"
+    },
+    {
+      "name": "Sidebar Navigation",
+      "kind": "nav",
+      "description": "Grouped links with 16px icons on the Sidebar Ground; the active item takes the light grey sidebar accent.",
+      "html": "<nav class=\"ds-nav\"><span class=\"ds-nav-group\">Infrastructure</span><a class=\"ds-nav-item\" href=\"#\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z\"/></svg>Dashboard</a><a class=\"ds-nav-item\" aria-current=\"page\" href=\"#\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><rect x=\"2\" y=\"2\" width=\"20\" height=\"8\" rx=\"2\"/><rect x=\"2\" y=\"14\" width=\"20\" height=\"8\" rx=\"2\"/></svg>Servers</a><a class=\"ds-nav-item\" href=\"#\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><circle cx=\"12\" cy=\"12\" r=\"10\"/><path d=\"M2 12h20\"/></svg>IP pools</a></nav>",
+      "css": ".ds-nav { display: flex; flex-direction: column; gap: 2px; width: 16rem; padding: 8px; background: var(--sidebar, hsl(0 0% 98%)); font: 400 0.875rem/1.25rem 'Instrument Sans', ui-sans-serif, system-ui, sans-serif; } .ds-nav-group { padding: 8px 8px 4px; font-size: 0.75rem; font-weight: 500; color: color-mix(in oklab, var(--sidebar-foreground, hsl(240 5.3% 26.1%)) 70%, transparent); } .ds-nav-item { display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 8px; border-radius: 6px; color: var(--sidebar-foreground, hsl(240 5.3% 26.1%)); text-decoration: none; outline: none; transition: background-color 150ms cubic-bezier(0.4,0,0.2,1); } .ds-nav-item:hover { background: var(--sidebar-accent, hsl(0 0% 94%)); color: var(--sidebar-accent-foreground, hsl(0 0% 30%)); } .ds-nav-item[aria-current='page'] { background: var(--sidebar-accent, hsl(0 0% 94%)); color: var(--sidebar-accent-foreground, hsl(0 0% 30%)); font-weight: 500; } .ds-nav-item:focus-visible { box-shadow: 0 0 0 2px var(--sidebar-ring, hsl(217.2 91.2% 59.8%)); }"
+    },
+    {
+      "name": "Guide Box",
+      "kind": "custom",
+      "description": "Signature hideable how-to at the top of explanatory pages, in Guide Sky only.",
+      "html": "<section class=\"ds-guide\"><button class=\"ds-guide-hide\" aria-label=\"Hide guide\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M18 6 6 18\"/><path d=\"m6 6 12 12\"/></svg></button><h3 class=\"ds-guide-title\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5\"/><path d=\"M9 18h6\"/><path d=\"M10 22h4\"/></svg>New to Proxmotion?</h3><p class=\"ds-guide-body\">Set the panel up in this order: location, Proxmox cluster, IP pool, OS templates, packages, billing system. Run <code>infra:sync</code> after adding a cluster.</p><a class=\"ds-guide-link\" href=\"#\">More in Help</a></section>",
+      "css": ".ds-guide { position: relative; padding: 16px; border-radius: 12px; border: 1px solid oklch(68.5% 0.169 237.323 / 0.3); background: oklch(68.5% 0.169 237.323 / 0.05); font: 400 0.875rem/1.25rem 'Instrument Sans', ui-sans-serif, system-ui, sans-serif; color: var(--foreground, hsl(0 0% 3.9%)); } .ds-guide-hide { position: absolute; top: 12px; right: 12px; display: inline-flex; padding: 4px; border: 0; border-radius: 6px; background: transparent; color: var(--muted-foreground, hsl(0 0% 45.1%)); cursor: pointer; } .ds-guide-hide:hover { background: var(--muted, hsl(0 0% 96.1%)); color: var(--foreground, hsl(0 0% 3.9%)); } .ds-guide-hide:focus-visible { outline: none; box-shadow: 0 0 0 3px color-mix(in oklab, var(--ring, hsl(0 0% 3.9%)) 50%, transparent); } .ds-guide-title { display: flex; align-items: center; gap: 8px; margin: 0; padding-right: 32px; font-size: 0.875rem; font-weight: 500; } .ds-guide-title svg { color: oklch(58.8% 0.158 241.966); } .ds-guide-body { margin: 8px 0 0; color: var(--muted-foreground, hsl(0 0% 45.1%)); } .ds-guide-body code { padding: 0 4px; border-radius: 4px; background: var(--muted, hsl(0 0% 96.1%)); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.75rem; } .ds-guide-link { display: inline-flex; margin-top: 12px; color: oklch(50% 0.134 242.749); text-decoration: none; } .ds-guide-link:hover { text-decoration: underline; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Control Room",
+    "overview": "Proxmotion's admin panel is a quiet operations room. Everything at rest is neutral: white or near-black surfaces, grey text, hairline borders. Only two things are allowed to speak. One is state: a green, amber or red badge, an amber-bordered panel, a red error. The other is the provider's single brand colour, carried by primary buttons, the active navigation item and focus rings. Staff look across a room of servers, tasks and nodes. Whatever is coloured is what needs their attention, or what they can act on.\n\nThe panel belongs to the hosting provider, not to Proxmotion. Its neutral base is deliberate: the provider sets one colour and a logo under Panel settings → Branding, and the panel takes them on without clashing. Proxmotion's own craft shows in precision rather than identity: tabular numbers that line up, status that is never ambiguous, guides that explain before anyone gets lost.\n\nThe intended feel is comfortable and reassuring. Support staff who are less technical than the sysadmins do routine work here, sometimes on a phone during an incident. Spacing stays generous, controls are full-size targets, destructive actions are clearly separated and confirmed, and every page can open with a calm, hideable how-to. Density comes from clear structure, never from shrinking things.",
+    "keyCharacteristics": [
+      "Achromatic neutral base in light and dark mode; colour only for state and the brand accent.",
+      "One brand colour, injected at runtime; no second accent.",
+      "Flat surfaces divided by 1px borders; shadows only for things floating above the page.",
+      "Instrument Sans throughout; tabular numbers for every figure; monospace for addresses, IDs and code.",
+      "Inset sidebar shell: navigation on a faint grey ground, content on an inset rounded sheet.",
+      "Bilingual (English, Turkish) layouts that tolerate longer strings."
+    ],
+    "rules": [
+      { "name": "The Two Voices Rule", "body": "Only state and the provider accent may carry colour. A new feature that wants its own hue must express it as one of the three status tones, the guide sky, or the accent, or stay neutral.", "section": "colors" },
+      { "name": "The Any-Colour Rule", "body": "Never rely on the accent's hue for meaning or contrast. The provider may pick yellow, pale blue or black. Meaning comes from labels, icons and the status tones; the accent only marks \"primary\" and \"focused\".", "section": "colors" },
+      { "name": "The Explanation Is Not State Rule", "body": "Sky belongs to guides only. Don't use it for info badges, links in general, or \"in progress\".", "section": "colors" },
+      { "name": "The Tabular Figures Rule", "body": "Every number that is compared or updates live (capacity, traffic, counts, percentages, sizes) uses tabular numerals.", "section": "typography" },
+      { "name": "The Machine Values Rule", "body": "Addresses, identifiers and code are monospace; human words never are.", "section": "typography" },
+      { "name": "The Busy Is Not Wrong Rule", "body": "Amber means \"needs a look\". Something that is merely in progress is `progress`, never `warning`.", "section": "components" },
+      { "name": "The Flat-Room Rule", "body": "At rest nothing casts a shadow. If an element is not floating over other content, separate it with a border or a tonal step, not a shadow.", "section": "elevation" }
+    ],
+    "dos": [
+      "Do keep every surface achromatic and let StatusBadge tones and the Provider Accent carry all colour.",
+      "Do test every new screen with a light, a mid and a dark provider colour, in light and dark mode, and keep focus rings visible on each.",
+      "Do pair every status colour with a label and, where useful, an icon.",
+      "Do use tabular numerals for figures and monospace for addresses, VMIDs and IDs.",
+      "Do separate panels with 1px hairlines and 12px corners; use the amber border for \"needs attention\".",
+      "Do keep controls at their full 36px height and wrap or scroll before shrinking; leave room for Turkish strings.",
+      "Do start explanatory pages with a GuideBox and keep destructive actions in red, at the end of a confirmation."
+    ],
+    "donts": [
+      "Don't introduce a second brand accent or decorative colour; Proxmotion's own identity does not compete with the provider's inside the panel.",
+      "Don't encode meaning in the accent's hue, since the provider can set any colour.",
+      "Don't use sky outside guides, or red for anything that is not failure or destruction.",
+      "Don't add resting shadows to panels and cards; shadows are for floating layers only.",
+      "Don't shrink type below 0.75rem or targets below 32px to fit more onto a screen."
+    ]
+  }
+}

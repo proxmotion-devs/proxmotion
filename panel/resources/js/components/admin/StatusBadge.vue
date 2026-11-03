@@ -1,22 +1,24 @@
 <script setup lang="ts">
+import { LoaderCircle } from '@lucide/vue';
 import { computed } from 'vue';
 import { cn } from '@/lib/utils';
+import type { StatusTone } from '@/types/admin';
 
 const props = defineProps<{
-    tone: 'success' | 'warning' | 'danger' | 'neutral';
+    tone: StatusTone;
     label: string;
 }>();
 
+// `progress` is work still running: neutral colours with a spinner, so it is
+// not mistaken for a warning (DESIGN.md, Status badges).
 const classes = computed(
     () =>
         ({
-            success:
-                'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300',
-            warning:
-                'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300',
-            danger: 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300',
-            neutral:
-                'bg-neutral-100 text-neutral-700 dark:bg-neutral-800 dark:text-neutral-300',
+            success: 'bg-status-success text-status-success-foreground',
+            warning: 'bg-status-warning text-status-warning-foreground',
+            danger: 'bg-status-danger text-status-danger-foreground',
+            neutral: 'bg-status-neutral text-status-neutral-foreground',
+            progress: 'bg-status-neutral text-status-neutral-foreground',
         })[props.tone],
 );
 </script>
@@ -25,11 +27,16 @@ const classes = computed(
     <span
         :class="
             cn(
-                'inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium whitespace-nowrap',
+                'inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium whitespace-nowrap',
                 classes,
             )
         "
     >
+        <LoaderCircle
+            v-if="tone === 'progress'"
+            class="size-3 shrink-0 motion-safe:animate-spin"
+            aria-hidden="true"
+        />
         {{ $t(label) }}
     </span>
 </template>
