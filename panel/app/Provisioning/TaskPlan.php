@@ -22,15 +22,18 @@ use App\Models\Task;
  * The steps a task is expected to record, in order, so the server page can
  * list the ones still to come (docs/adr/0032 §5). Steps that depend on the
  * server are listed only when they apply: the hostname script and restart of
- * a server named from its location's template, additional addresses, the
+ * a server whose VM name differs from its hostname, additional addresses, the
  * template's own script and an app ordered with the server. A pipeline may
  * still record steps that are not listed (they are shown where they happen).
  */
-final readonly class TaskPlan
+final class TaskPlan
 {
+    /** @var array<int, list<string>> build steps per server id, worked out once per instance */
+    private array $built = [];
+
     public function __construct(
-        private GuestScripts $guestScripts,
-        private GuestAddresses $addresses,
+        private readonly GuestScripts $guestScripts,
+        private readonly GuestAddresses $addresses,
     ) {}
 
     /**
@@ -52,11 +55,11 @@ final readonly class TaskPlan
             TaskType::Move => $this->move($task),
             // Snapshots (docs/adr/0051 §3, §5).
             TaskType::CreateSnapshot => ['snapshot'],
-            TaskType::RollbackSnapshot => ['rollback', 'configure', 'resize', 'firewall', 'start', GuestScriptEvent::AddressesChanged->step(), GuestScriptEvent::HostnameChanged->step(), GuestScriptEvent::SshKeysChanged->step()],
+            TaskType::RollbackSnapshot => ['rollback', 'configure', 'resize', 'firewall', 'start', ...$this->refresh()],
             TaskType::DeleteSnapshot => ['delete_snapshot'],
             // Backups (docs/adr/0051 §4, §5).
             TaskType::CreateBackup => ['backup', 'record_backup', ...(($task->input['kind'] ?? null) === BackupKind::Scheduled->value ? ['prune_backups'] : [])],
-            TaskType::RestoreBackup => ['stop', 'restore', 'configure', 'resize', 'firewall', 'start', 'wait_agent', GuestScriptEvent::AddressesChanged->step(), GuestScriptEvent::HostnameChanged->step(), GuestScriptEvent::SshKeysChanged->step(), 'verify'],
+            TaskType::RestoreBackup => ['stop', 'restore', 'configure', 'resize', 'firewall', 'start', 'wait_agent', ...$this->refresh(), 'verify'],
             TaskType::DeleteBackup => ['delete_backup'],
             default => [],
         };
@@ -78,14 +81,26 @@ final readonly class TaskPlan
         // Before the check knows, an active server is taken to be running.
         $running = $move->was_running ?? $task->server->status === ServerStatus::Active;
 
-        return array_values(array_filter(match ($move->kind) {
-            ServerMoveKind::Node => ['check', 'migrate', 'record', $running ? 'verify' : null],
-            ServerMoveKind::Cluster => ['check', 'migrate', 'record', 'adopt', 'firewall', $running ? 'verify' : null],
+        $verify = $running ? ['verify'] : [];
+
+        return match ($move->kind) {
+            ServerMoveKind::Node => ['check', 'migrate', 'record', ...$verify],
+            ServerMoveKind::Cluster => ['check', 'migrate', 'record', 'adopt', 'firewall', ...$verify],
             ServerMoveKind::Location => [
-                'check', $running ? 'shutdown' : null, 'migrate', 'record', 'adopt', 'configure_network', 'firewall',
-                $running ? 'start' : null, $running ? 'wait_agent' : null, GuestScriptEvent::AddressesChanged->step(), $running ? 'verify' : null,
+                'check', ...($running ? ['shutdown'] : []), 'migrate', 'record', 'adopt', 'configure_network', 'firewall',
+                ...($running ? ['start', 'wait_agent'] : []), GuestScriptEvent::AddressesChanged->step(), ...$verify,
             ],
-        }));
+        };
+    }
+
+    /**
+     * The guest scripts GuestRefresh runs after a rollback or restore (docs/adr/0051 §5).
+     *
+     * @return list<string>
+     */
+    private function refresh(): array
+    {
+        return [GuestScriptEvent::AddressesChanged->step(), GuestScriptEvent::HostnameChanged->step(), GuestScriptEvent::SshKeysChanged->step()];
     }
 
     /**
@@ -94,6 +109,14 @@ final readonly class TaskPlan
      * @return list<string>
      */
     private function build(Server $server): array
+    {
+        return $this->built[$server->id] ??= $this->buildSteps($server);
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function buildSteps(Server $server): array
     {
         $steps = ['clone', 'configure', 'resize', 'firewall', 'start', 'wait_agent'];
 

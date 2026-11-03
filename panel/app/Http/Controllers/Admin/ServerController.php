@@ -314,7 +314,7 @@ class ServerController extends Controller
                 'firewall_checked_at' => $server->firewall_checked_at?->toIso8601String(),
                 'created_at' => $server->created_at?->toIso8601String(),
             ],
-            'tasks' => $server->tasks()->latest('id')->limit(10)->get()->map(function (Task $task) use ($server, $failer, $plan, $estimates) {
+            'tasks' => $server->tasks()->with('move')->latest('id')->limit(10)->get()->map(function (Task $task) use ($server, $failer, $plan, $estimates) {
                 $task->setRelation('server', $server);
                 // Steps still to come (docs/adr/0032 §5); a succeeded task shows what it did.
                 $planned = $task->status === TaskStatus::Succeeded ? [] : $plan->steps($task);
