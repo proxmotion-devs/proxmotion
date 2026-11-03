@@ -614,12 +614,28 @@ class ServerManagementTest extends AdminTestCase
         $this->assertNull($server->suspension_reason);
         $this->post(route('admin.servers.unsuspend', $server));
 
-        $this->delete(route('admin.servers.destroy', $server));
+        $this->delete(route('admin.servers.destroy', $server), ['confirm_hostname' => strtoupper($server->hostname)]);
         $this->assertSame(ServerStatus::Terminated, $server->refresh()->status);
 
         // Deleted servers are hidden unless asked for.
         $this->get(route('admin.servers.index'))->assertInertia(fn (Assert $page) => $page->has('servers.data', 0));
         $this->get(route('admin.servers.index', ['terminated' => 1]))->assertInertia(fn (Assert $page) => $page->has('servers.data', 1));
+    }
+
+    public function test_deleting_a_server_needs_its_hostname_typed()
+    {
+        $server = Server::factory()->for($this->node)->create(['hostname' => 'web1.example.com', 'external_id' => 'svc-1']);
+
+        $this->delete(route('admin.servers.destroy', $server))->assertSessionHasErrors('confirm_hostname');
+        $this->delete(route('admin.servers.destroy', $server), ['confirm_hostname' => 'web2.example.com'])->assertSessionHasErrors('confirm_hostname');
+        // The billing service ID is not the hostname.
+        $this->delete(route('admin.servers.destroy', $server), ['confirm_hostname' => 'svc-1'])->assertSessionHasErrors('confirm_hostname');
+
+        $this->assertSame(ServerStatus::Active, $server->refresh()->status);
+        $this->assertSame(0, $server->tasks()->count());
+
+        $this->delete(route('admin.servers.destroy', $server), ['confirm_hostname' => ' web1.example.com '])->assertSessionHasNoErrors();
+        $this->assertSame(ServerStatus::Terminated, $server->refresh()->status);
     }
 
     public function test_actions_are_refused_in_the_wrong_state()

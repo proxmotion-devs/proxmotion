@@ -17,6 +17,10 @@ defineProps<{
     submitLabel?: string;
     /** For forms with tables, e.g. firewall rules. */
     wide?: boolean;
+    /** The submit button deletes or wipes something: shown in red. */
+    destructive?: boolean;
+    /** Keeps the submit button disabled, e.g. until a confirmation is typed. */
+    submitDisabled?: boolean;
 }>();
 
 const open = defineModel<boolean>('open', { required: true });
@@ -50,7 +54,11 @@ const emit = defineEmits<{ submit: [] }>();
                     >
                         {{ $t('Cancel') }}
                     </Button>
-                    <Button type="submit" :disabled="processing">
+                    <Button
+                        type="submit"
+                        :variant="destructive ? 'destructive' : 'default'"
+                        :disabled="processing || submitDisabled"
+                    >
                         <Spinner v-if="processing" />
                         {{ $t(submitLabel ?? 'Save') }}
                     </Button>

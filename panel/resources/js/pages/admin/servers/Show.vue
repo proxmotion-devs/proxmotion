@@ -7,10 +7,10 @@ import {
     useHttp,
     usePoll,
 } from '@inertiajs/vue3';
-import { Eye, LoaderCircle, Monitor, RotateCcw } from '@lucide/vue';
+import { Eye, LoaderCircle, Monitor, RotateCcw, Trash2 } from '@lucide/vue';
 import { trans } from 'laravel-vue-i18n';
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
-import ConfirmDelete from '@/components/admin/ConfirmDelete.vue';
+import TypedConfirmDialog from '@/components/admin/TypedConfirmDialog.vue';
 import Notice from '@/components/admin/Notice.vue';
 import DriftList from '@/components/admin/DriftList.vue';
 import ServerStatusBadge from '@/components/admin/ServerStatusBadge.vue';
@@ -1195,13 +1195,29 @@ const resetAfterTrial = () => {
                         "
                         :disabled="busy || (vmAway && vmState !== 'missing')"
                     />
-                    <!-- Deleting would leave a VM moved to another node running there. -->
-                    <ConfirmDelete
-                        v-if="!['elsewhere', 'moving'].includes(vmState)"
-                        with-label
+                </div>
+                <!-- Kept apart from Reinstall, and confirmed by typing the hostname. Deleting would leave a VM moved to another node running there. -->
+                <div
+                    v-if="!['elsewhere', 'moving'].includes(vmState)"
+                    class="flex flex-wrap items-center justify-between gap-3 border-t pt-3"
+                >
+                    <p class="text-sm text-muted-foreground">
+                        {{
+                            $t(
+                                'Deleting removes the VM, its disks and its IP addresses for good.',
+                            )
+                        }}
+                    </p>
+                    <TypedConfirmDialog
                         :action="destroy(server.uuid)"
-                        :name="server.hostname"
-                        description="The VM and its disks are deleted on Proxmox and its IP addresses are released. This cannot be undone."
+                        :hostname="server.hostname"
+                        :icon="Trash2"
+                        label="Delete server"
+                        title="Delete this server?"
+                        description="The VM and its disks are deleted on Proxmox and its IP addresses are released. This cannot be undone, also for a server of a billing system."
+                        submit-label="Delete server"
+                        destructive
+                        data-test="server-delete"
                     />
                 </div>
             </section>

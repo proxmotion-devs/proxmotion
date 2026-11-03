@@ -41,6 +41,7 @@ use App\Enums\TaskType;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\AddressChangeRequest;
 use App\Http\Requests\Admin\ChangeResourcesRequest;
+use App\Http\Requests\Admin\DestroyServerRequest;
 use App\Http\Requests\Admin\ServerRequest;
 use App\Http\Requests\Admin\SuspendServerRequest;
 use App\Http\Requests\HostnameRequest;
@@ -683,7 +684,7 @@ class ServerController extends Controller
         return $this->startTask($server, $type, $admin, $allowedFrom, 'Retrying…');
     }
 
-    public function destroy(Server $server, #[CurrentUser] User $admin): RedirectResponse
+    public function destroy(DestroyServerRequest $request, Server $server, #[CurrentUser] User $admin): RedirectResponse
     {
         return $this->startTask(
             $server,

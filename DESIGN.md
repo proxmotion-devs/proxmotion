@@ -251,6 +251,7 @@ Steady and unhurried: full-height targets with one clear primary per area.
 - **Outline:** Paper fill, hairline border, stroke shadow; hover to the accent-grey (`accent`) fill. The default for secondary actions in toolbars and dialogs.
 - **Secondary / Ghost:** light grey fill, or no fill until hover. Ghost for icon buttons and row actions.
 - **Destructive:** Destructive Red fill with white text (red at 60% in dark mode). Used only for the final confirming action of terminate, delete, reinstall, rollback or restore, normally inside `ConfirmDelete` or a dialog that asks for the hostname.
+- **Typed confirmation:** anything that destroys a server's VM or disks (delete, rebuild; reinstall, rollback and restore follow the same pattern in their own dialogs) uses `TypedConfirmDialog`: a red-text outline trigger, a dialog asking for the hostname in a monospace field, and a destructive submit that stays disabled until the text matches (trimmed, case-insensitive); the server checks `confirm_hostname` again. On the server page, Delete sits on its own row below a hairline, apart from Suspend and Reinstall, with one line saying what is lost. `ConfirmDelete` stays for records the panel can recreate (locations, pools, templates).
 - **Focus:** border turns to the ring colour plus a 3px ring at 50% opacity. Disabled is 50% opacity with no pointer events.
 
 ### Status badges

@@ -2657,5 +2657,9 @@
     "Hostname, IP address, billing ID or VMID": "Hostname, IP adresi, faturalama ID'si veya VMID",
     "Search servers": "Sunucularda ara",
     "No servers match the search.": "Aramayla eşleşen sunucu yok.",
-    "A task is running": "Bir görev çalışıyor"
+    "A task is running": "Bir görev çalışıyor",
+    "Deleting removes the VM, its disks and its IP addresses for good.": "Silmek VM'i, disklerini ve IP adreslerini kalıcı olarak kaldırır.",
+    "Delete server": "Sunucuyu sil",
+    "Delete this server?": "Bu sunucu silinsin mi?",
+    "The VM and its disks are deleted on Proxmox and its IP addresses are released. This cannot be undone, also for a server of a billing system.": "VM ve diskleri Proxmox'ta silinir, IP adresleri serbest bırakılır. Bu işlem geri alınamaz; faturalama sistemine ait sunucular için de."
 }
