@@ -716,7 +716,7 @@ Blesta, HostBill, Paymenter and FOSSBilling modules **(planned, Phase 9)**.
 
 ### 15.3 Virtualizor import
 
-**(planned, Phase 8)** — import users, VPS, IPs and plans from the Virtualizor Admin API with a dry-run report and idempotent re-runs, plus a guide to switch WHMCS services to the Proxmotion module while keeping service ids. Imports never delete anything.
+**(planned, Phase 8; on hold since 2026-11-03)** — import users, VPS, IPs and plans from the Virtualizor Admin API with a dry-run report and idempotent re-runs, plus a guide to switch WHMCS services to the Proxmotion module while keeping service ids. Imports never delete anything.
 
 ---
 
@@ -814,7 +814,7 @@ See `panel/.env.example` for the full list (database, Redis, mail, …).
 | 5 | App Marketplace: install, order-time apps, paid apps, uninstall/upgrade/actions, logs, editor, trials, import/export, 16 recipes | Mostly done; catalogs and signing (ADR 0017) open |
 | 6 | Usage and quotas: traffic collection, graphs, throttle/suspend, `UsageUpdate` | Resource changes, guest scripts, primary address and hostname changes done early; traffic collection, quotas and usage limits with suspend/stop, WHMCS `UsageUpdate` and traffic in the billing modules done (ADR 0039); usage history with graphs in the admin panel, the API and the WHMCS client area done (ADR 0050); throttling not started |
 | 7 | Snapshots and backups, Proxmox Backup Server | Snapshots, manual backups and restore, schedules and retention done (ADR 0051, phases 1–3); Proxmox Backup Server unverified |
-| 8 | Virtualizor import, native installer, production images, branding | Install and upgrade commands (ADR 0052), branding (ADR 0053), production images (ADR 0054) and the native installer (ADR 0055) done; the Virtualizor import planned |
+| 8 | Virtualizor import, native installer, production images, branding | Install and upgrade commands (ADR 0052), branding (ADR 0053), production images (ADR 0054) and the native installer (ADR 0055) done; the Virtualizor import on hold |
 | 9 | NAT VPS, LXC, ISO mount, rescue mode, customer firewall, moving servers (pulled forward, see 9.4), reseller system, more billing modules | Planned |
 
 ---
