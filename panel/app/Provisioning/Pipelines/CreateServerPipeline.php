@@ -472,7 +472,7 @@ final readonly class CreateServerPipeline implements StagedPipeline
             return null;
         }
 
-        if (! $this->guestScripts->run($task, $server, GuestScriptEvent::HostnameChanged, custom: false)
+        if (! $this->guestScripts->runEvent($task, $server, GuestScriptEvent::HostnameChanged)
             || $this->guestScripts->platform($server) !== OsPlatform::Windows) {
             return null;
         }

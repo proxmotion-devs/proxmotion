@@ -35,4 +35,22 @@ enum TaskType: string
     case CreateBackup = 'create_backup';
     case RestoreBackup = 'restore_backup';
     case DeleteBackup = 'delete_backup';
+
+    /**
+     * Whether the task installs the server's OS template (it records the
+     * template, whose earlier runs TaskEstimates times).
+     */
+    public function installsSystem(): bool
+    {
+        return $this === self::Create || $this === self::Reinstall;
+    }
+
+    /**
+     * Whether a failure leaves the VM half-built or half-deleted, so the
+     * server goes into error (TaskFailer, webhook server.failed).
+     */
+    public function failureBreaksServer(): bool
+    {
+        return $this->installsSystem() || $this === self::Terminate;
+    }
 }

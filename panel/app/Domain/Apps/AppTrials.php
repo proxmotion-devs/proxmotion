@@ -95,7 +95,7 @@ final readonly class AppTrials
         }
 
         if ($test && in_array($server->status, [ServerStatus::Terminating, ServerStatus::Terminated], true)) {
-            throw new ProvisioningException('This action is not possible while the server is :status.', ['status' => $server->status->value]);
+            throw ProvisioningException::notWhile($server);
         }
 
         if ($server->is_test === $test) {
@@ -121,7 +121,7 @@ final readonly class AppTrials
         }
 
         if ($server->status !== ServerStatus::Active) {
-            throw new ProvisioningException('This action is not possible while the server is :status.', ['status' => $server->status->value]);
+            throw ProvisioningException::notWhile($server);
         }
 
         $base = self::trialBase($server);
@@ -216,15 +216,13 @@ final readonly class AppTrials
 
     /**
      * Active test servers the draft could be tried on, with the reason when
-     * it does not fit one.
+     * it does not fit one. Only a draft without errors ($checked) can be
+     * checked against the servers.
      *
      * @return list<array{uuid: string, hostname: string, problem: string|null}>
      */
-    public function testServers(AppRecipe $app, ?AppRecipeVersion $draft): array
+    public function testServers(AppRecipe $app, ?AppRecipeVersion $checked): array
     {
-        // Only a draft without errors can be checked against the servers.
-        $checked = $draft !== null && $this->editor->errors($draft) === [] ? $draft : null;
-
         /** @var Collection<int, Server> $servers */
         $servers = Server::query()
             ->where('is_test', true)

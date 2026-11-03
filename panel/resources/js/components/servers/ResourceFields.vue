@@ -3,6 +3,7 @@ import FormField from '@/components/admin/FormField.vue';
 import LimitFields from '@/components/servers/LimitFields.vue';
 import SlotFields from '@/components/servers/SlotFields.vue';
 import { Input } from '@/components/ui/input';
+import { toOptionalNumber } from '@/lib/forms';
 import type { NewServerResources } from '@/types/admin';
 
 /**
@@ -28,9 +29,6 @@ const fields = [
     { key: 'ipv4_count', label: 'IPv4 addresses', min: 0, step: 1 },
     { key: 'ipv6_count', label: 'IPv6 addresses', min: 0, step: 1 },
 ] as const;
-
-const optional = (value: string | number): number | '' =>
-    value === '' ? '' : Number(value);
 </script>
 
 <template>
@@ -67,7 +65,7 @@ const optional = (value: string | number): number | '' =>
                 type="number"
                 min="1"
                 @update:model-value="
-                    (value) => set('port_speed_mbps', optional(value))
+                    (value) => set('port_speed_mbps', toOptionalNumber(value))
                 "
             />
         </FormField>
@@ -83,7 +81,7 @@ const optional = (value: string | number): number | '' =>
                 type="number"
                 min="1"
                 @update:model-value="
-                    (value) => set('traffic_gb', optional(value))
+                    (value) => set('traffic_gb', toOptionalNumber(value))
                 "
             />
         </FormField>

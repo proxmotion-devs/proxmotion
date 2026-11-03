@@ -127,7 +127,7 @@ final readonly class ServerSnapshots
     public function delete(Server $server, Snapshot $snapshot, User|ApiToken $actor, ?string $ipAddress): Task
     {
         if (! in_array($server->status, [ServerStatus::Active, ServerStatus::Suspended], true)) {
-            throw new ProvisioningException('This action is not possible while the server is :status.', ['status' => $server->status->value]);
+            throw ProvisioningException::notWhile($server);
         }
 
         $task = $this->tasks->start($server, TaskType::DeleteSnapshot, $actor, input: ['snapshot' => $snapshot->uuid]);
@@ -143,7 +143,7 @@ final readonly class ServerSnapshots
     private static function ensureActive(Server $server): void
     {
         if ($server->status !== ServerStatus::Active) {
-            throw new ProvisioningException('This action is not possible while the server is :status.', ['status' => $server->status->value]);
+            throw ProvisioningException::notWhile($server);
         }
     }
 }

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Provisioning\Exceptions;
 
+use App\Models\Server;
 use RuntimeException;
 
 /**
@@ -23,6 +24,11 @@ class ProvisioningException extends RuntimeException
     public function translatedMessage(): string
     {
         return __($this->getMessage(), $this->replace);
+    }
+
+    public static function notWhile(Server $server): self
+    {
+        return new self('This action is not possible while the server is :status.', ['status' => $server->status->value]);
     }
 
     public static function noCapacity(): self

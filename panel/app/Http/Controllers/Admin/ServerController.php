@@ -86,6 +86,7 @@ use Illuminate\Container\Attributes\CurrentUser;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
@@ -261,6 +262,15 @@ class ServerController extends Controller
                 : ['power' => null, 'vm' => ServerLiveState::PRESENT, 'node' => null];
         };
 
+        // The active apps, each with why it does not fit the server (null when it
+        // fits), checked once for the three app props below.
+        $checked = null;
+        /** @return Collection<int, array{app: AppRecipe, problem: AppNotEligible|null}> */
+        $appFits = function () use ($server, $eligibility, &$checked): Collection {
+            return $checked ??= AppRecipe::query()->with(['latestVersion', 'osVersions'])->where('is_active', true)->orderBy('name')->get()
+                ->map(fn (AppRecipe $app) => ['app' => $app, 'problem' => $eligibility->forServer($app, $server)]);
+        };
+
         return Inertia::render('admin/servers/Show', [
             'server' => [
                 'uuid' => $server->uuid,
@@ -314,7 +324,7 @@ class ServerController extends Controller
                 'firewall_checked_at' => $server->firewall_checked_at?->toIso8601String(),
                 'created_at' => $server->created_at?->toIso8601String(),
             ],
-            'tasks' => $server->tasks()->with('move')->latest('id')->limit(10)->get()->map(function (Task $task) use ($server, $failer, $plan, $estimates) {
+            'tasks' => fn () => $server->tasks()->with('move')->latest('id')->limit(10)->get()->map(function (Task $task) use ($server, $failer, $plan, $estimates) {
                 $task->setRelation('server', $server);
                 // Steps still to come (docs/adr/0032 §5); a succeeded task shows what it did.
                 $planned = $task->status === TaskStatus::Succeeded ? [] : $plan->steps($task);
@@ -419,11 +429,11 @@ class ServerController extends Controller
                 ->limit(5)
                 ->get()
                 ->map(GuestScriptController::summary(...)),
-            'drifts' => $server->drifts()->visible()->with(['cluster:id,uuid,name', 'server:id,uuid,hostname,status'])->get()
+            'drifts' => fn () => $server->drifts()->visible()->with(['cluster:id,uuid,name', 'server:id,uuid,hostname,status'])->get()
                 ->map(fn (ServerDrift $drift) => DriftController::present($drift)),
             // Null (not asked) unless Proxmox says the VM runs.
             'agent' => Inertia::defer(fn () => $liveState()['power'] === 'running' ? $agent->reachable($server) : null),
-            'apps' => $server->appInstallations()
+            'apps' => fn () => $server->appInstallations()
                 ->with([
                     'recipe:id,slug,name,is_active,latest_version_id', 'recipe.latestVersion', 'version',
                     'runs' => fn ($query) => $query->with(['targetVersion', 'log:id,uuid,app_run_id'])->latest('id')->limit(50),
@@ -475,7 +485,7 @@ class ServerController extends Controller
                     ];
                 }),
             // Rights to paid apps (docs/adr/0019), and the paid apps that fit the server and could be granted.
-            'entitlements' => $server->appEntitlements()->with('recipe:id,slug,name')->latest('id')->limit(20)->get()
+            'entitlements' => fn () => $server->appEntitlements()->with('recipe:id,slug,name')->latest('id')->limit(20)->get()
                 ->map(fn (AppEntitlement $entitlement) => [
                     'uuid' => $entitlement->uuid,
                     'app' => $entitlement->recipe->name,
@@ -485,23 +495,23 @@ class ServerController extends Controller
                     'created_at' => $entitlement->created_at?->toIso8601String(),
                     'revoked_at' => $entitlement->revoked_at?->toIso8601String(),
                 ]),
-            'entitlementOptions' => fn () => AppRecipe::query()->with('latestVersion')->where('is_active', true)->orderBy('name')->get()
-                ->filter(fn (AppRecipe $app) => $eligibility->forServer($app, $server) instanceof AppNotEntitled)
-                ->map(fn (AppRecipe $app) => ['value' => $app->slug, 'label' => $app->name])
+            'entitlementOptions' => fn () => $appFits()
+                ->filter(fn (array $fit) => $fit['problem'] instanceof AppNotEntitled)
+                ->map(fn (array $fit) => ['value' => $fit['app']->slug, 'label' => $fit['app']->name])
                 ->values(),
-            'appOptions' => fn () => AppRecipe::query()->with('latestVersion')->where('is_active', true)->orderBy('name')->get()
-                ->filter(fn (AppRecipe $app) => $eligibility->forServer($app, $server) === null)
-                ->map(fn (AppRecipe $app) => [
-                    'slug' => $app->slug,
-                    'name' => $app->name,
-                    'inputs' => array_map(fn (RecipeInput $input) => $input->toArray(), $app->recipe()->inputs),
+            'appOptions' => fn () => $appFits()
+                ->filter(fn (array $fit) => $fit['problem'] === null)
+                ->map(fn (array $fit) => [
+                    'slug' => $fit['app']->slug,
+                    'name' => $fit['app']->name,
+                    'inputs' => array_map(fn (RecipeInput $input) => $input->toArray(), $fit['app']->recipe()->inputs),
                 ])
                 ->values(),
             // Active apps that do not fit, with the first reason (only administrators see these;
             // billing systems get the eligible apps only).
-            'unavailableApps' => fn () => AppRecipe::query()->with('latestVersion')->where('is_active', true)->orderBy('name')->get()
-                ->map(fn (AppRecipe $app) => ['slug' => $app->slug, 'name' => $app->name, 'reason' => $eligibility->forServer($app, $server)?->translatedMessage()])
-                ->filter(fn (array $app) => $app['reason'] !== null)
+            'unavailableApps' => fn () => $appFits()
+                ->filter(fn (array $fit) => $fit['problem'] !== null)
+                ->map(fn (array $fit) => ['slug' => $fit['app']->slug, 'name' => $fit['app']->name, 'reason' => $fit['problem']->translatedMessage()])
                 ->values(),
         ]);
     }

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import FormField from '@/components/admin/FormField.vue';
 import { Input } from '@/components/ui/input';
+import { toOptionalNumber } from '@/lib/forms';
 import type { OptionalNumber } from '@/lib/forms';
 
 /**
@@ -16,9 +17,6 @@ const cpuLimit = defineModel<OptionalNumber>('cpuLimit', { required: true });
 const cpuUnits = defineModel<OptionalNumber>('cpuUnits', { required: true });
 const diskMbS = defineModel<OptionalNumber>('diskMbS', { required: true });
 const diskIops = defineModel<OptionalNumber>('diskIops', { required: true });
-
-const optional = (value: string | number): OptionalNumber =>
-    value === '' ? '' : Number(value);
 </script>
 
 <template>
@@ -35,7 +33,9 @@ const optional = (value: string | number): OptionalNumber =>
                 type="number"
                 min="0.1"
                 step="0.1"
-                @update:model-value="(value) => (cpuLimit = optional(value))"
+                @update:model-value="
+                    (value) => (cpuLimit = toOptionalNumber(value))
+                "
             />
         </FormField>
         <FormField
@@ -50,7 +50,9 @@ const optional = (value: string | number): OptionalNumber =>
                 type="number"
                 min="1"
                 max="10000"
-                @update:model-value="(value) => (cpuUnits = optional(value))"
+                @update:model-value="
+                    (value) => (cpuUnits = toOptionalNumber(value))
+                "
             />
         </FormField>
         <FormField
@@ -64,7 +66,9 @@ const optional = (value: string | number): OptionalNumber =>
                 :model-value="diskMbS"
                 type="number"
                 min="1"
-                @update:model-value="(value) => (diskMbS = optional(value))"
+                @update:model-value="
+                    (value) => (diskMbS = toOptionalNumber(value))
+                "
             />
         </FormField>
         <FormField
@@ -78,7 +82,9 @@ const optional = (value: string | number): OptionalNumber =>
                 :model-value="diskIops"
                 type="number"
                 min="10"
-                @update:model-value="(value) => (diskIops = optional(value))"
+                @update:model-value="
+                    (value) => (diskIops = toOptionalNumber(value))
+                "
             />
         </FormField>
     </div>

@@ -101,17 +101,17 @@ class AppRecipeController extends Controller
             ],
             // Trial runs of the draft on test servers (docs/adr/0018 §7).
             'trials' => $trials->forEditor($appRecipe, $draft),
-            'testServers' => $trials->testServers($appRecipe, $draft),
+            'testServers' => fn () => $trials->testServers($appRecipe, $draftErrors === [] ? $draft : null),
             'trialInputs' => $draft === null || $draftErrors !== [] ? [] : array_map(fn (RecipeInput $input) => $input->toArray(), $draft->recipe()->inputs),
             // Trial copies of drafts are listed with the trials, not here.
-            'versions' => $appRecipe->versions()->where('status', '!=', AppRecipeVersionStatus::Trial)->with('reviewer:id,name')->orderByDesc('id')->get()->map(fn (AppRecipeVersion $version) => [
+            'versions' => fn () => $appRecipe->versions()->where('status', '!=', AppRecipeVersionStatus::Trial)->with('reviewer:id,name')->orderByDesc('id')->get()->map(fn (AppRecipeVersion $version) => [
                 'version' => $version->version,
                 'status' => $version->status->value,
                 'published_by' => $version->reviewer?->name,
                 'published_at' => $version->reviewed_at?->toIso8601String(),
                 'created_at' => $version->created_at?->toIso8601String(),
             ]),
-            'library' => $loader->library($recipe === null ? 'linux' : $recipe->platform),
+            'library' => fn () => $loader->library($recipe === null ? 'linux' : $recipe->platform),
             // The operating system versions the app is offered on: ticked here
             // and saved at once, not part of the recipe (docs/adr/0026).
             'osVersions' => AppSystems::options($versions),

@@ -41,7 +41,7 @@ final readonly class ResourceChanger
     public function request(Server $server, ResourceChange $change, User|ApiToken $actor, ?string $ipAddress): Task
     {
         if ($server->status !== ServerStatus::Active) {
-            throw new ProvisioningException('This action is not possible while the server is :status.', ['status' => $server->status->value]);
+            throw ProvisioningException::notWhile($server);
         }
 
         $before = $this->resourcesOf($server);

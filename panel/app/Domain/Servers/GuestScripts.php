@@ -296,23 +296,43 @@ final readonly class GuestScripts
      * $waitForAgent, wait for the agent of a freshly booted server first;
      * otherwise one ping decides. Critical events throw instead of leaving a
      * note, and leave completing their step to the caller. Every run is
-     * logged (GuestScriptLog). Only trials pass $draft (the template's saved
-     * draft instead of its script) and $trace (sh -x on Linux). Without
-     * $custom only the event's own script runs.
+     * logged (GuestScriptLog).
      *
      * @return bool whether the event's own script ran and succeeded
      */
-    public function run(Task $task, Server $server, GuestScriptEvent $event, bool $waitForAgent = false, ?string $input = null, bool $draft = false, bool $trace = false, bool $custom = true): bool
+    public function run(Task $task, Server $server, GuestScriptEvent $event, bool $waitForAgent = false, ?string $input = null): bool
     {
-        $resolved = $this->resolve($server->osTemplate, $this->platform($server), $event, $draft);
-        $succeeded = $resolved !== null
-            && $this->execute($task, $server, ScriptSlot::event($event), $resolved[0], $resolved[1], $waitForAgent, $input, $trace);
+        $succeeded = $this->runScript($task, $server, $event, $waitForAgent, $input);
 
-        if ($custom && $task->type !== TaskType::GuestScript && ! $event->isCritical()) {
-            $this->runCustom($task, $server, $event, waitForAgent: $waitForAgent && $resolved === null);
+        if (! $event->isCritical()) {
+            $this->runCustom($task, $server, $event, waitForAgent: $waitForAgent && $succeeded === null);
         }
 
-        return $succeeded;
+        return $succeeded === true;
+    }
+
+    /**
+     * Only the event's own script, without the custom scripts bound to it.
+     * Only trials pass $draft (the template's saved draft instead of its
+     * script) and $trace (sh -x on Linux).
+     *
+     * @return bool whether the event's own script ran and succeeded
+     */
+    public function runEvent(Task $task, Server $server, GuestScriptEvent $event, bool $draft = false, bool $trace = false): bool
+    {
+        return $this->runScript($task, $server, $event, draft: $draft, trace: $trace) === true;
+    }
+
+    /**
+     * @return bool|null whether the event's script succeeded, null when the template has none
+     */
+    private function runScript(Task $task, Server $server, GuestScriptEvent $event, bool $waitForAgent = false, ?string $input = null, bool $draft = false, bool $trace = false): ?bool
+    {
+        $resolved = $this->resolve($server->osTemplate, $this->platform($server), $event, $draft);
+
+        return $resolved === null
+            ? null
+            : $this->execute($task, $server, ScriptSlot::event($event), $resolved[0], $resolved[1], $waitForAgent, $input, $trace);
     }
 
     /**
@@ -474,7 +494,7 @@ final readonly class GuestScripts
             throw new GuestScriptFailed($draft ? 'The server\'s OS template has no draft for this event.' : 'The server\'s OS template has no script for this event.');
         }
 
-        $this->runOrThrow($task, ScriptSlot::event($event), fn () => $this->run($task, $server, $event, draft: $draft, trace: $trace));
+        $this->runOrThrow($task, ScriptSlot::event($event), fn () => $this->runEvent($task, $server, $event, $draft, $trace));
 
         // A critical script leaves its step to the caller.
         if ($event->isCritical()) {

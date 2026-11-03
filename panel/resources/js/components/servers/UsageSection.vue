@@ -4,7 +4,7 @@ import { computed } from 'vue';
 import StatusBadge from '@/components/admin/StatusBadge.vue';
 import { Checkbox } from '@/components/ui/checkbox';
 import { useDateTime } from '@/composables/useDateTime';
-import { formatTraffic, formatUsageValue } from '@/lib/format';
+import { formatTraffic, formatUsageValue, percentage } from '@/lib/format';
 import type { ServerUsage, UsageViolation } from '@/types/admin';
 import type { RouteDefinition } from '@/wayfinder';
 
@@ -22,17 +22,14 @@ const { formatDateTime } = useDateTime();
 
 const traffic = computed(() => props.usage.traffic);
 
-const percent = computed(() =>
-    traffic.value.quota_bytes
-        ? Math.min(
-              100,
-              Math.round(
-                  (traffic.value.counted_bytes / traffic.value.quota_bytes) *
-                      100,
-              ),
-          )
-        : null,
-);
+const percent = computed(() => {
+    const used = percentage(
+        traffic.value.counted_bytes,
+        traffic.value.quota_bytes,
+    );
+
+    return used === null ? null : Math.min(100, used);
+});
 
 const barClass = computed(() =>
     percent.value === null || percent.value < 80

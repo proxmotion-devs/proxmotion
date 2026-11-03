@@ -45,7 +45,7 @@ final readonly class PrimaryAddressChanger
     public function request(Server $server, IpVersion $version, ?string $address, User|ApiToken $actor, ?string $ipAddress): Task
     {
         if ($server->status !== ServerStatus::Active) {
-            throw new ProvisioningException('This action is not possible while the server is :status.', ['status' => $server->status->value]);
+            throw ProvisioningException::notWhile($server);
         }
 
         $address = $address === null ? null : self::normalize($address);

@@ -44,27 +44,29 @@ class GuestScriptController extends Controller
 
     public function index(OsTemplate $osTemplate): Response
     {
-        $own = $osTemplate->guestScripts()->get()->keyBy(fn (GuestScript $script) => $script->event->value);
-
         return Inertia::render('admin/os-templates/Scripts', [
             'template' => [
                 'uuid' => $osTemplate->uuid,
                 'name' => $osTemplate->name,
                 'platform' => $osTemplate->platform->value,
             ],
-            'scripts' => array_map(fn (GuestScriptEvent $event) => [
-                'event' => $event->value,
-                'content' => $own->get($event->value)?->content,
-                'draft' => $own->get($event->value)?->draft_content,
-                'default' => GuestScripts::defaultScript($osTemplate->platform, $event, $osTemplate->distribution),
-                'inputs' => ['server', 'hostname', 'mac', ...$event->inputKeys()],
-                'can_be_tried' => $event->canBeTried(),
-                'critical' => $event->isCritical(),
-                'timeout_seconds' => $event->timeoutSeconds(),
-            ], GuestScriptEvent::cases()),
+            'scripts' => function () use ($osTemplate) {
+                $own = $osTemplate->guestScripts()->get()->keyBy(fn (GuestScript $script) => $script->event->value);
+
+                return array_map(fn (GuestScriptEvent $event) => [
+                    'event' => $event->value,
+                    'content' => $own->get($event->value)?->content,
+                    'draft' => $own->get($event->value)?->draft_content,
+                    'default' => GuestScripts::defaultScript($osTemplate->platform, $event, $osTemplate->distribution),
+                    'inputs' => ['server', 'hostname', 'mac', ...$event->inputKeys()],
+                    'can_be_tried' => $event->canBeTried(),
+                    'critical' => $event->isCritical(),
+                    'timeout_seconds' => $event->timeoutSeconds(),
+                ], GuestScriptEvent::cases());
+            },
             'logs' => fn () => $this->logs($osTemplate),
             // Administrators' own scripts and their latest runs (docs/adr/0043).
-            'customScripts' => $osTemplate->customScripts()->get()->map(fn (CustomScript $script) => [
+            'customScripts' => fn () => $osTemplate->customScripts()->get()->map(fn (CustomScript $script) => [
                 'uuid' => $script->uuid,
                 'name' => $script->name,
                 'manual' => $script->manual,
@@ -73,7 +75,7 @@ class GuestScriptController extends Controller
                 'draft' => $script->draft_content,
             ])->values(),
             'customLogs' => fn () => $this->customLogs($osTemplate),
-            'servers' => $osTemplate->servers()
+            'servers' => fn () => $osTemplate->servers()
                 ->where('status', ServerStatus::Active)
                 ->orderBy('hostname')
                 ->limit(200)

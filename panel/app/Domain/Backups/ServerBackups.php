@@ -222,7 +222,7 @@ final readonly class ServerBackups
     public function delete(Server $server, Backup $backup, User|ApiToken $actor, ?string $ipAddress): Task
     {
         if (! in_array($server->status, [ServerStatus::Active, ServerStatus::Suspended, ServerStatus::Terminated], true)) {
-            throw new ProvisioningException('This action is not possible while the server is :status.', ['status' => $server->status->value]);
+            throw ProvisioningException::notWhile($server);
         }
 
         $task = $this->tasks->start($server, TaskType::DeleteBackup, $actor, input: ['backup' => $backup->uuid]);
@@ -238,7 +238,7 @@ final readonly class ServerBackups
     private static function ensureActive(Server $server): void
     {
         if ($server->status !== ServerStatus::Active) {
-            throw new ProvisioningException('This action is not possible while the server is :status.', ['status' => $server->status->value]);
+            throw ProvisioningException::notWhile($server);
         }
     }
 }

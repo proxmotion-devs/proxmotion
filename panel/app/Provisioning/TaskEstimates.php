@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace App\Provisioning;
 
 use App\Enums\TaskStatus;
-use App\Enums\TaskType;
 use App\Models\Task;
 use Illuminate\Support\Carbon;
 
@@ -31,7 +30,7 @@ final readonly class TaskEstimates
     public function remaining(Task $task, array $planned): ?array
     {
         if (! in_array($task->status, [TaskStatus::Queued, TaskStatus::Running], true)
-            || ! in_array($task->type, [TaskType::Create, TaskType::Reinstall], true)
+            || ! $task->type->installsSystem()
             || $task->os_template_id === null) {
             return null;
         }
