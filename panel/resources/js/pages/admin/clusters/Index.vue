@@ -159,7 +159,7 @@ const { syncing, startSync } = useClusterSync();
                                     label="Sync failed"
                                 />
                                 <div
-                                    class="mt-1 text-xs break-words text-red-700 dark:text-red-400"
+                                    class="mt-1 text-xs break-words text-status-danger-text"
                                 >
                                     {{ cluster.last_sync_error }}
                                 </div>

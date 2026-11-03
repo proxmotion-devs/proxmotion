@@ -582,7 +582,7 @@ const modelLabel = (value: string) =>
             </div>
             <p
                 v-if="networkModelErrors"
-                class="text-sm text-red-600 dark:text-red-500"
+                class="text-sm text-status-danger-text"
             >
                 {{ networkModelErrors }}
             </p>
@@ -621,7 +621,7 @@ const modelLabel = (value: string) =>
             </div>
             <p
                 v-if="form.errors.os_template_ids"
-                class="text-sm text-red-600 dark:text-red-500"
+                class="text-sm text-status-danger-text"
             >
                 {{ form.errors.os_template_ids }}
             </p>
@@ -673,7 +673,7 @@ const modelLabel = (value: string) =>
             </p>
             <p
                 v-if="form.errors.placement_group_ids"
-                class="text-sm text-red-600 dark:text-red-500"
+                class="text-sm text-status-danger-text"
             >
                 {{ form.errors.placement_group_ids }}
             </p>

@@ -16,6 +16,7 @@ import FormDialog from '@/components/admin/FormDialog.vue';
 import FormField from '@/components/admin/FormField.vue';
 import IpPoolFormDialog from '@/components/admin/IpPoolFormDialog.vue';
 import StatusBadge from '@/components/admin/StatusBadge.vue';
+import Pagination from '@/components/admin/Pagination.vue';
 import Heading from '@/components/Heading.vue';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -498,21 +499,7 @@ const submitAddress = () => {
             </table>
         </div>
 
-        <nav v-if="addresses.last_page > 1" class="flex flex-wrap gap-1">
-            <template v-for="link in addresses.links" :key="link.label">
-                <Link
-                    v-if="link.url"
-                    :href="link.url"
-                    preserve-scroll
-                    class="rounded-md border px-3 py-1 text-sm"
-                    :class="{
-                        'bg-primary text-primary-foreground': link.active,
-                    }"
-                >
-                    <span v-html="link.label" />
-                </Link>
-            </template>
-        </nav>
+        <Pagination :paginator="addresses" />
     </div>
 
     <IpPoolFormDialog

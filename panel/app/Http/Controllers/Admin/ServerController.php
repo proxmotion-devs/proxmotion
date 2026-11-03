@@ -82,6 +82,7 @@ use App\Provisioning\TaskFailer;
 use App\Provisioning\TaskPlan;
 use App\Provisioning\TaskRunner;
 use App\Proxmox\Exceptions\ProxmoxException;
+use App\Support\Database\Like;
 use Illuminate\Container\Attributes\CurrentUser;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -109,11 +110,25 @@ class ServerController extends Controller
         $showTerminated = $request->boolean('terminated');
         // One status only, e.g. the suspended servers; unknown values list them all.
         $status = ServerStatus::tryFrom($request->string('status')->value());
+        // Part of a hostname, VM name, billing service or customer ID, IP address, or a VMID.
+        $search = mb_substr(trim($request->string('search')->toString()), 0, 100);
 
         return Inertia::render('admin/servers/Index', [
             'servers' => Server::query()
                 ->when($status !== null, fn ($query) => $query->where('status', $status))
                 ->when($status === null && ! $showTerminated, fn ($query) => $query->occupying())
+                ->when($search !== '', fn ($query) => $query->where(function ($query) use ($search): void {
+                    $pattern = Like::contains($search);
+                    $query->whereRaw("hostname like ? escape '!'", [$pattern])
+                        ->orWhereRaw("vm_name like ? escape '!'", [$pattern])
+                        ->orWhereRaw("external_id like ? escape '!'", [$pattern])
+                        ->orWhereRaw("external_client_id like ? escape '!'", [$pattern])
+                        ->orWhereHas('ipAddresses', fn ($query) => $query->whereRaw("address like ? escape '!'", [$pattern]));
+
+                    if (ctype_digit($search)) {
+                        $query->orWhere('vmid', (int) $search);
+                    }
+                }))
                 ->with(['node:id,name', 'location:id,name', 'package:id,name', 'billingSystem:id,name', 'ipAddresses:id,server_id,address'])
                 ->withExists(['drifts as firewall_drift' => fn ($query) => $query->where('type', DriftType::FirewallMismatch)->whereNull('resolved_at')->whereNull('dismissed_at')])
                 ->latest()
@@ -138,6 +153,7 @@ class ServerController extends Controller
                 ]),
             'showTerminated' => $showTerminated,
             'status' => $status,
+            'search' => $search,
         ]);
     }
 

@@ -514,7 +514,7 @@ const submit = () => {
             </div>
             <p
                 v-if="form.errors.proxmox_template_ids"
-                class="text-sm text-red-600 dark:text-red-500"
+                class="text-sm text-status-danger-text"
             >
                 {{ form.errors.proxmox_template_ids }}
             </p>

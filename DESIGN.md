@@ -281,6 +281,9 @@ The panel's main signal. `StatusBadge` takes a tone (`StatusTone`: success, warn
 - **Header:** `muted` at 50% fill, muted 0.875rem medium text, left-aligned.
 - **Rows:** hairline top border, hover to `muted` at 30%; primary cell (hostname, name) is a medium-weight link.
 - **Wrapper:** 12px rounded hairline border with horizontal scroll on narrow screens.
+- **Above the table:** a search form (input plus a 36px outline icon button, full width on phones, 24rem from `sm`) and filters in one wrapping row.
+- **Pagination:** the shared `Pagination` component: 32px targets, outline *Previous* / *Next* with chevrons (dimmed when unavailable), plain page numbers, the current page filled with the Provider Accent and `aria-current`. Laravel's HTML labels are never rendered.
+- **Empty:** one centred muted line with 40px vertical padding that says why it is empty (no records yet, nothing matches the search, nothing with this status).
 
 ### Guide Box (signature)
 `GuideBox` opens explanatory pages with a calm how-to: 12px corners, sky border at 30%, sky fill at 5% (`border-guide/30`, `bg-guide/5`), a sky lightbulb icon (`text-guide-icon`), a medium title, muted body text with styled lists and inline code, and a "More in Help" link (`text-guide-link`). A 32px ghost × hides it, which is remembered per browser; hidden guides leave a 32px-high "Show guide" text button. Every control in it shows the focus ring. It is the panel's reassurance made visible.

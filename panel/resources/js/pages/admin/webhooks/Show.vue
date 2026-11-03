@@ -5,6 +5,7 @@ import { computed, ref, watch } from 'vue';
 import ConfirmDelete from '@/components/admin/ConfirmDelete.vue';
 import StatusBadge from '@/components/admin/StatusBadge.vue';
 import WebhookEndpointDialog from '@/components/admin/WebhookEndpointDialog.vue';
+import Pagination from '@/components/admin/Pagination.vue';
 import Heading from '@/components/Heading.vue';
 import { Button } from '@/components/ui/button';
 import {
@@ -291,21 +292,7 @@ const prettyPayload = (payload: string) => {
                 </table>
             </div>
 
-            <nav v-if="deliveries.last_page > 1" class="flex flex-wrap gap-1">
-                <template v-for="link in deliveries.links" :key="link.label">
-                    <Link
-                        v-if="link.url"
-                        :href="link.url"
-                        preserve-scroll
-                        class="rounded-md border px-3 py-1 text-sm"
-                        :class="{
-                            'bg-primary text-primary-foreground': link.active,
-                        }"
-                    >
-                        <span v-html="link.label" />
-                    </Link>
-                </template>
-            </nav>
+            <Pagination :paginator="deliveries" />
         </section>
     </div>
 

@@ -2650,5 +2650,11 @@
     "Nothing needs attention": "İlgilenilmesi gereken bir şey yok",
     "Clusters sync, nodes are online, storage is healthy, and no task failed in the last 24 hours.": "Cluster'lar senkronize, node'lar çevrimiçi, storage sağlıklı ve son 24 saatte başarısız olan görev yok.",
     "Infrastructure": "Altyapı",
-    "What happens to them is set on Panel settings.": "Bu sunuculara ne olacağı Panel ayarları'ndan belirlenir."
+    "What happens to them is set on Panel settings.": "Bu sunuculara ne olacağı Panel ayarları'ndan belirlenir.",
+    "Pagination": "Sayfalama",
+    "Previous": "Geri",
+    "Page :page": "Sayfa :page",
+    "Hostname, IP address, billing ID or VMID": "Hostname, IP adresi, faturalama ID'si veya VMID",
+    "Search servers": "Sunucularda ara",
+    "No servers match the search.": "Aramayla eşleşen sunucu yok."
 }

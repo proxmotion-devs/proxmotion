@@ -660,6 +660,26 @@ class ServerManagementTest extends AdminTestCase
         $this->assertTrue(AuditLog::query()->where('action', 'server.suspended')->sole()->properties['taken_over'] ?? false);
     }
 
+    public function test_servers_can_be_searched_by_hostname_address_billing_id_and_vmid()
+    {
+        $web = Server::factory()->for($this->node)->create(['hostname' => 'web1.example.com', 'vmid' => 4242]);
+        $billed = Server::factory()->for($this->node)->create(['hostname' => 'db.example.com', 'external_id' => 'svc-77']);
+        $addressed = Server::factory()->for($this->node)->create(['hostname' => 'mail.example.com']);
+        IpAddress::query()->where('address', '203.0.113.5')->update(['server_id' => $addressed->id]);
+
+        $found = fn (string $search) => fn (Assert $page) => $page->where('search', $search)->has('servers.data', 1);
+
+        $this->get(route('admin.servers.index', ['search' => 'web1']))->assertInertia($found('web1'));
+        $this->get(route('admin.servers.index', ['search' => 'svc-77']))->assertInertia(fn (Assert $page) => $page->where('servers.data.0.uuid', $billed->uuid));
+        $this->get(route('admin.servers.index', ['search' => '203.0.113.5']))->assertInertia(fn (Assert $page) => $page->has('servers.data', 1)->where('servers.data.0.uuid', $addressed->uuid));
+        $this->get(route('admin.servers.index', ['search' => '4242']))->assertInertia(fn (Assert $page) => $page->has('servers.data', 1)->where('servers.data.0.uuid', $web->uuid));
+
+        // Wildcards and quotes are matched as text.
+        $this->get(route('admin.servers.index', ['search' => '%']))->assertInertia(fn (Assert $page) => $page->has('servers.data', 0));
+        $this->get(route('admin.servers.index', ['search' => '_']))->assertInertia(fn (Assert $page) => $page->has('servers.data', 0));
+        $this->get(route('admin.servers.index', ['search' => "' or 1=1 --"]))->assertInertia(fn (Assert $page) => $page->has('servers.data', 0));
+    }
+
     public function test_servers_can_be_listed_by_status()
     {
         Server::factory()->for($this->node)->status(ServerStatus::Active)->create();
