@@ -2671,5 +2671,12 @@
     "The VM is not on the node the panel recorded; the note above says what to do.": "VM, panelin kaydettiği node'da değil; ne yapılacağını yukarıdaki not söylüyor.",
     "The server is not running. Start it to reset the root password.": "Sunucu çalışmıyor. Root parolasını sıfırlamak için başlatın.",
     "The guest agent (qemu-guest-agent) in the server does not answer, so the root password cannot be reset. Reinstall still works.": "Sunucudaki guest agent (qemu-guest-agent) yanıt vermiyor, bu yüzden root parolası sıfırlanamaz. Yeniden kurulum yine de yapılabilir.",
-    "The guest agent (qemu-guest-agent) in the server does not answer, so apps cannot be installed or run.": "Sunucudaki guest agent (qemu-guest-agent) yanıt vermiyor, bu yüzden uygulamalar kurulamaz veya çalıştırılamaz."
+    "The guest agent (qemu-guest-agent) in the server does not answer, so apps cannot be installed or run.": "Sunucudaki guest agent (qemu-guest-agent) yanıt vermiyor, bu yüzden uygulamalar kurulamaz veya çalıştırılamaz.",
+    "Powered on": "Açık",
+    "Powered off": "Kapalı",
+    "Power state unknown": "Güç durumu bilinmiyor",
+    "More": "Diğer",
+    "Nothing failed inside the server.": "Sunucunun içinde başarısız olan bir şey yok.",
+    "Show checks": "Kontrolleri göster",
+    "Hide checks": "Kontrolleri gizle"
 }

@@ -20,14 +20,19 @@ const buttons = (power: string | null | undefined) =>
         .map((button) => button.text());
 
 describe('PowerControls', () => {
-    it('offers the actions that fit the power state', () => {
-        expect(buttons('running')).toEqual(['Shut down', 'Reboot', 'Stop']);
+    it('shows the usual action as a button and the rest in a menu', () => {
+        // Shut down and Stop are in the menu behind "More".
+        expect(buttons('running')).toEqual(['Reboot', 'More']);
         expect(buttons('stopped')).toEqual(['Start']);
     });
 
+    it('words the power state apart from the panel status', () => {
+        expect(render('running').text()).toContain('Powered on');
+        expect(render('stopped').text()).toContain('Powered off');
+    });
+
     it('offers everything while the state is not known', () => {
-        expect(buttons(null)).toHaveLength(4);
-        expect(buttons('unknown')).toHaveLength(4);
-        expect(render('unknown').text()).toContain('Unknown');
+        expect(buttons(null)).toEqual(['Start', 'Reboot', 'More']);
+        expect(render('unknown').text()).toContain('Power state unknown');
     });
 });

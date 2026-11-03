@@ -66,6 +66,29 @@ describe('ServerChecks', () => {
         ]);
     });
 
+    it('folds the list away when nothing failed', async () => {
+        const passed = {
+            ...verification,
+            checks: verification.checks.map((check) => ({
+                ...check,
+                status: 'passed' as const,
+            })),
+        };
+        const wrapper = render({ verification: passed });
+
+        expect(wrapper.find('[data-test="checks-summary"]').text()).toContain(
+            'Nothing failed inside the server.',
+        );
+        expect(wrapper.find('li').exists()).toBe(false);
+
+        const toggle = wrapper.find('[data-test="checks-toggle"]');
+        expect(toggle.attributes('aria-expanded')).toBe('false');
+        await toggle.trigger('click');
+
+        expect(toggle.attributes('aria-expanded')).toBe('true');
+        expect(wrapper.findAll('li')).toHaveLength(passed.checks.length);
+    });
+
     it('says when the server was never checked', () => {
         const wrapper = render({ verification: null });
 

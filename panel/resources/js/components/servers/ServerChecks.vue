@@ -1,7 +1,13 @@
 <script setup lang="ts">
 import { router } from '@inertiajs/vue3';
-import { CircleAlert, CircleCheck, CircleMinus, RefreshCw } from '@lucide/vue';
-import { ref } from 'vue';
+import {
+    ChevronDown,
+    CircleAlert,
+    CircleCheck,
+    CircleMinus,
+    RefreshCw,
+} from '@lucide/vue';
+import { computed, ref, useId } from 'vue';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
 import { useDateTime } from '@/composables/useDateTime';
@@ -22,6 +28,16 @@ const props = defineProps<{
 
 const { formatDateTime } = useDateTime();
 const processing = ref(false);
+
+// Everything fine: one line, the list behind a toggle. Any failed check shows the list.
+const failed = computed(
+    () =>
+        props.verification?.checks.filter((check) => check.status === 'failed')
+            .length ?? 0,
+);
+const expanded = ref(false);
+const showList = computed(() => failed.value > 0 || expanded.value);
+const listId = useId();
 
 // English keys, translated in the template with the check's params.
 const labels: Record<string, string> = {
@@ -77,7 +93,40 @@ const checkAgain = () => {
             </Button>
         </div>
 
-        <ul v-if="verification" class="flex flex-col gap-1 text-sm">
+        <div
+            v-if="verification && failed === 0"
+            class="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm"
+            data-test="checks-summary"
+        >
+            <span class="flex items-center gap-2">
+                <CircleCheck
+                    class="h-4 w-4 text-status-success-foreground"
+                    aria-hidden="true"
+                />
+                {{ $t('Nothing failed inside the server.') }}
+            </span>
+            <button
+                type="button"
+                class="-mx-2 inline-flex h-8 items-center gap-1 rounded-md px-2 text-xs text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50"
+                :aria-expanded="expanded"
+                :aria-controls="listId"
+                data-test="checks-toggle"
+                @click="expanded = !expanded"
+            >
+                {{ expanded ? $t('Hide checks') : $t('Show checks') }}
+                <ChevronDown
+                    class="h-3.5 w-3.5 transition-transform"
+                    :class="{ 'rotate-180': expanded }"
+                    aria-hidden="true"
+                />
+            </button>
+        </div>
+
+        <ul
+            v-if="verification && showList"
+            :id="listId"
+            class="flex flex-col gap-1 text-sm"
+        >
             <li
                 v-for="(check, index) in verification.checks"
                 :key="`${check.key}-${index}`"

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { router } from '@inertiajs/vue3';
-import { Play, Power, RotateCw, Square } from '@lucide/vue';
+import { ChevronDown, Play, Power, RotateCw, Square } from '@lucide/vue';
 import { computed, ref } from 'vue';
 import StatusBadge from '@/components/admin/StatusBadge.vue';
 import { Button } from '@/components/ui/button';
@@ -12,13 +12,21 @@ import {
     DialogFooter,
     DialogTitle,
 } from '@/components/ui/dialog';
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { Spinner } from '@/components/ui/spinner';
 import type { PowerAction } from '@/types/admin';
 import type { RouteDefinition } from '@/wayfinder';
 
 /**
- * Start, shut down, reboot and stop buttons for an active server, with a
- * confirmation for everything but start.
+ * Start, shut down, reboot and stop for an active server, with a confirmation
+ * for everything but start. Only the usual action is a button (Start when the
+ * server is off, Reboot when it runs); Shut down and Stop, rarer and the
+ * latter like pulling the plug, sit in the menu beside it.
  */
 const props = defineProps<{
     /** Proxmox power state; undefined while loading, null when unknown. */
@@ -77,6 +85,9 @@ const actions: {
 
 // Unknown state (also one Proxmox has no name for here): offer everything;
 // every action is safe to repeat.
+// Shown as buttons; the rest of what fits goes into the menu.
+const PRIMARY: PowerAction[] = ['start', 'reboot'];
+
 const known = computed(
     () => props.power === 'running' || props.power === 'stopped',
 );
@@ -88,6 +99,12 @@ const visible = computed(() =>
     ),
 );
 
+const buttons = computed(() =>
+    visible.value.filter((item) => PRIMARY.includes(item.value)),
+);
+const menu = computed(() =>
+    visible.value.filter((item) => !PRIMARY.includes(item.value)),
+);
 const confirming = ref<(typeof actions)[number] | null>(null);
 const processing = ref(false);
 
@@ -115,11 +132,12 @@ const stateLabel = computed(() => {
         return 'Checking…';
     }
 
+    // Proxmox's power state, worded apart from the panel's own status (Active).
     if (props.power === 'running') {
-        return 'Running';
+        return 'Powered on';
     }
 
-    return props.power === 'stopped' ? 'Stopped' : 'Unknown';
+    return props.power === 'stopped' ? 'Powered off' : 'Power state unknown';
 });
 </script>
 
@@ -130,7 +148,7 @@ const stateLabel = computed(() => {
             :label="stateLabel"
         />
         <Button
-            v-for="item in visible"
+            v-for="item in buttons"
             :key="item.value"
             variant="outline"
             size="sm"
@@ -140,6 +158,31 @@ const stateLabel = computed(() => {
             <component :is="item.icon" class="h-4 w-4" />
             {{ $t(item.label) }}
         </Button>
+        <DropdownMenu v-if="menu.length">
+            <DropdownMenuTrigger as-child>
+                <Button
+                    variant="outline"
+                    size="sm"
+                    :disabled="busy || processing"
+                    data-test="power-menu"
+                >
+                    {{ $t('More') }}
+                    <ChevronDown class="h-4 w-4" />
+                </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+                <DropdownMenuItem
+                    v-for="item in menu"
+                    :key="item.value"
+                    :variant="item.value === 'stop' ? 'destructive' : 'default'"
+                    :data-test="`power-${item.value}`"
+                    @select="choose(item)"
+                >
+                    <component :is="item.icon" class="h-4 w-4" />
+                    {{ $t(item.label) }}
+                </DropdownMenuItem>
+            </DropdownMenuContent>
+        </DropdownMenu>
 
         <Dialog
             :open="confirming !== null"
