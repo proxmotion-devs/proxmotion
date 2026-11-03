@@ -51,7 +51,8 @@ return new class extends Migration
         // The versions an app is offered on.
         Schema::create('app_recipe_operating_system_version', function (Blueprint $table) {
             $table->foreignId('app_recipe_id')->constrained()->cascadeOnDelete();
-            $table->foreignId('operating_system_version_id')->constrained()->cascadeOnDelete();
+            // The default name is longer than the 64 characters MariaDB and MySQL allow.
+            $table->foreignId('operating_system_version_id')->constrained(indexName: 'app_recipe_os_version_version_id_foreign')->cascadeOnDelete();
             $table->primary(['app_recipe_id', 'operating_system_version_id']);
         });
 

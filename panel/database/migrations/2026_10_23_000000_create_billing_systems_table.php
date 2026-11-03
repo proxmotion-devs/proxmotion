@@ -62,12 +62,17 @@ return new class extends Migration
 
     public function down(): void
     {
+        // The foreign key first: MariaDB and MySQL refuse to drop the index it uses.
+        Schema::table('servers', function (Blueprint $table) {
+            $table->dropForeign(['billing_system_id']);
+        });
+
         Schema::table('servers', function (Blueprint $table) {
             $table->dropUnique(['billing_system_id', 'external_id']);
         });
 
         Schema::table('servers', function (Blueprint $table) {
-            $table->dropConstrainedForeignId('billing_system_id');
+            $table->dropColumn('billing_system_id');
         });
 
         Schema::table('servers', function (Blueprint $table) {

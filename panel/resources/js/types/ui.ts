@@ -16,6 +16,15 @@ export type Branding = {
     support_url: string | null;
 };
 
+/** Where the browser reaches Reverb (docs/adr/0036, 0054); null: pages poll. */
+export type ReverbClient = {
+    key: string;
+    /** null: the panel's own host, scheme and port */
+    host: string | null;
+    port: number | null;
+    scheme: 'http' | 'https' | null;
+};
+
 export type FlashToast = {
     type: 'success' | 'info' | 'warning' | 'error';
     message: string;

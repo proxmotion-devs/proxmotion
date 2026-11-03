@@ -141,13 +141,54 @@ class UpgradePanelTest extends TestCase
         });
 
         $this->artisan('proxmotion:upgrade')
-            ->expectsOutputToContain('Proxmotion is upgraded')
+            ->expectsOutputToContain('Proxmotion is upgraded to '.config('proxmotion.version').'.')
             ->assertSuccessful();
 
         $this->assertTrue($downWhileMigrating);
         $this->assertFalse(app()->isDownForMaintenance());
         $this->assertNotNull(Cache::get('illuminate:queue:restart'));
         $this->assertNotNull(Cache::get('laravel:reverb:restart'));
+    }
+
+    public function test_when_needed_leaves_the_panel_open_without_pending_migrations()
+    {
+        $migrating = false;
+        Event::listen([MigrationsStarted::class, NoPendingMigrations::class], function () use (&$migrating) {
+            $migrating = true;
+        });
+
+        // The Docker images' migrate role, run on every `docker compose up` (docs/adr/0054).
+        $this->artisan('proxmotion:upgrade', ['--when-needed' => true])
+            ->expectsOutputToContain('No migrations are pending: the panel stays open.')
+            ->assertSuccessful();
+
+        $this->assertFalse($migrating);
+        $this->assertFalse(app()->isDownForMaintenance());
+        $this->assertNull(Cache::get('illuminate:queue:restart'));
+    }
+
+    public function test_when_needed_upgrades_with_pending_migrations()
+    {
+        $directory = storage_path('framework/testing/pending-migrations');
+        File::ensureDirectoryExists($directory);
+        File::put($directory.'/2099_01_01_000000_pending_test_migration.php', '<?php return new class extends Illuminate\Database\Migrations\Migration { public function up(): void {} };');
+        $this->app->make('migrator')->path($directory);
+
+        try {
+            $downWhileMigrating = null;
+            Event::listen(MigrationsStarted::class, function () use (&$downWhileMigrating) {
+                $downWhileMigrating = app()->isDownForMaintenance();
+            });
+
+            $this->artisan('proxmotion:upgrade', ['--when-needed' => true])
+                ->expectsOutputToContain('Proxmotion is upgraded to')
+                ->assertSuccessful();
+
+            $this->assertTrue($downWhileMigrating);
+            $this->assertFalse(app()->isDownForMaintenance());
+        } finally {
+            File::deleteDirectory($directory);
+        }
     }
 
     public function test_a_maintenance_mode_set_before_the_upgrade_stays()

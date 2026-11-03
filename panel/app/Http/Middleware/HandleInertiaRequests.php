@@ -3,6 +3,7 @@
 namespace App\Http\Middleware;
 
 use App\Domain\Settings\Branding;
+use App\Support\Broadcasting\ReverbClient;
 use App\Support\Locales;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\App;
@@ -48,6 +49,8 @@ class HandleInertiaRequests extends Middleware
             'auth' => [
                 'user' => $request->user(),
             ],
+            // Live server statistics, for administrators only (docs/adr/0036, 0054).
+            'reverb' => fn () => $request->user() === null ? null : ReverbClient::forPages(),
             'sidebarOpen' => ! $request->hasCookie('sidebar_state') || $request->cookie('sidebar_state') === 'true',
         ];
     }

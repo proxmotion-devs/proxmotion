@@ -24,18 +24,24 @@ return new class extends Migration
                 ->after('external_id');
         });
 
-        Schema::table('servers', function (Blueprint $table) {
-            $table->dropUnique(['billing_system_id', 'external_id']);
-        });
-
+        // The new indexes first: MariaDB and MySQL refuse to drop the index the
+        // billing_system_id foreign key uses while it has no other.
         Schema::table('servers', function (Blueprint $table) {
             $table->unique(['billing_system_id', 'live_external_id']);
             $table->index(['billing_system_id', 'external_id']);
+        });
+
+        Schema::table('servers', function (Blueprint $table) {
+            $table->dropUnique(['billing_system_id', 'external_id']);
         });
     }
 
     public function down(): void
     {
+        Schema::table('servers', function (Blueprint $table) {
+            $table->unique(['billing_system_id', 'external_id']);
+        });
+
         Schema::table('servers', function (Blueprint $table) {
             $table->dropIndex(['billing_system_id', 'external_id']);
             $table->dropUnique(['billing_system_id', 'live_external_id']);
@@ -43,10 +49,6 @@ return new class extends Migration
 
         Schema::table('servers', function (Blueprint $table) {
             $table->dropColumn('live_external_id');
-        });
-
-        Schema::table('servers', function (Blueprint $table) {
-            $table->unique(['billing_system_id', 'external_id']);
         });
     }
 };

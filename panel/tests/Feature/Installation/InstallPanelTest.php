@@ -55,7 +55,7 @@ class InstallPanelTest extends TestCase
             '--no-interaction' => true,
         ])
             ->expectsOutputToContain('Password of ada@example.com')
-            ->expectsOutputToContain('Proxmotion is installed')
+            ->expectsOutputToContain('Proxmotion '.config('proxmotion.version').' is installed')
             ->assertSuccessful();
 
         $user = User::query()->sole();

@@ -1,0 +1,110 @@
+# Proxmotion in production with Docker Compose (docs/adr/0054, docs/guides/docker-install.md).
+# In a directory with this file and an .env made from .env.example next to it:
+#   docker compose run --rm migrate install    # once: the tables and the first administrator
+#   docker compose up -d
+# Upgrades: set PROXMOTION_VERSION in .env, then docker compose pull && docker compose up -d
+# (the migrate service runs php artisan proxmotion:upgrade --when-needed before the panel starts
+# again: maintenance mode only while migrations are pending).
+name: proxmotion
+
+x-panel: &panel
+  image: ${PROXMOTION_REGISTRY:-ghcr.io/proxmotion-devs}/proxmotion:${PROXMOTION_VERSION:?Set PROXMOTION_VERSION in .env}
+  env_file: .env
+  restart: unless-stopped
+  volumes:
+    - storage:/var/www/panel/storage
+
+services:
+  # Runs on every `up` and exits; the others start only after it succeeded. Without pending
+  # migrations it only checks the requirements and leaves the panel open.
+  migrate:
+    <<: *panel
+    command: migrate
+    restart: "no"
+    depends_on:
+      mariadb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  web:
+    <<: *panel
+    command: web
+    depends_on: &after-migrate
+      mariadb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  worker:
+    <<: *panel
+    command: worker
+    # A stopped worker finishes its job first. Longer than the longest job timeout (RunServerTask,
+    # 30 minutes): killed inside a job, the task would fail. Most jobs end within seconds.
+    stop_grace_period: 31m
+    depends_on: *after-migrate
+
+  # Exactly one: it starts the scheduled commands.
+  scheduler:
+    <<: *panel
+    command: scheduler
+    depends_on: *after-migrate
+
+  reverb:
+    <<: *panel
+    command: reverb
+    depends_on: *after-migrate
+
+  # Relays browser console WebSockets to Proxmox (docs/adr/0002).
+  console-proxy:
+    image: ${PROXMOTION_REGISTRY:-ghcr.io/proxmotion-devs}/proxmotion-console-proxy:${PROXMOTION_VERSION:?Set PROXMOTION_VERSION in .env}
+    restart: unless-stopped
+    environment:
+      PANEL_URL: http://nginx
+      CONSOLE_PROXY_SECRET: ${CONSOLE_PROXY_SECRET:?Set CONSOLE_PROXY_SECRET in .env}
+
+  nginx:
+    image: ${PROXMOTION_REGISTRY:-ghcr.io/proxmotion-devs}/proxmotion-nginx:${PROXMOTION_VERSION:?Set PROXMOTION_VERSION in .env}
+    restart: unless-stopped
+    ports:
+      - "${PROXMOTION_HTTP_BIND:-80}:80"
+    depends_on:
+      - web
+      - reverb
+      - console-proxy
+
+  mariadb:
+    image: mariadb:11.8
+    restart: unless-stopped
+    environment:
+      MARIADB_DATABASE: ${DB_DATABASE:-proxmotion}
+      MARIADB_USER: ${DB_USERNAME:-proxmotion}
+      MARIADB_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
+      MARIADB_RANDOM_ROOT_PASSWORD: "1"
+    volumes:
+      - mariadb:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  # Queue, cache, sessions, locks and the maintenance state; written to disk.
+  redis:
+    image: redis:8-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  storage:
+  mariadb:
+  redis:

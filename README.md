@@ -22,7 +22,7 @@ See the [feature overview](docs/wiki/Features.md) for what Proxmotion can do tod
 
 ## Tech stack
 
-Laravel 13 · PHP 8.3 · Vue 3 + Inertia.js 3 + TypeScript · Tailwind CSS 4 · Vite+ · MariaDB · Redis · Horizon · Reverb
+Laravel 13 · PHP 8.3 · Vue 3 + Inertia.js 3 + TypeScript · Tailwind CSS 4 · Vite+ · MariaDB · Redis · Reverb
 
 ## Development
 
@@ -49,7 +49,7 @@ docker compose -f deploy/docker/compose.yml up -d
 
 ## Production
 
-Production images and a native installer are being built (Phase 8). Both run the same commands, which you can also run by hand inside `panel/` once the code, `.env` and the dependencies are in place:
+With Docker Compose, from the images published to GHCR: follow [docs/guides/docker-install.md](docs/guides/docker-install.md) ([ADR 0054](docs/adr/0054-production-docker-images.md)). A native installer for Debian/Ubuntu is being built (Phase 8). Both run the same commands, which you can also run by hand inside `panel/` once the code, `.env` and the dependencies are in place:
 
 ```bash
 php artisan proxmotion:install   # checks requirements, migrates, creates the first administrator

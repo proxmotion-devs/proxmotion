@@ -1,0 +1,61 @@
+name: Images
+
+# The production images still build (docs/adr/0054); release.yml publishes them. Only
+# for changes to what goes into them, since each build takes several minutes.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'panel/**'
+      - 'deploy/docker/production/**'
+      - 'deploy/console-proxy/**'
+      - '.github/workflows/images.yml'
+  pull_request:
+    paths:
+      - 'panel/**'
+      - 'deploy/docker/production/**'
+      - 'deploy/console-proxy/**'
+      - '.github/workflows/images.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: images-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  images:
+    name: Image ${{ matrix.image }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: proxmotion
+            context: .
+            file: deploy/docker/production/Dockerfile
+            target: panel
+          - image: proxmotion-nginx
+            context: .
+            file: deploy/docker/production/Dockerfile
+            target: nginx
+          - image: proxmotion-console-proxy
+            context: deploy/console-proxy
+            file: deploy/console-proxy/Dockerfile
+            target: ''
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.file }}
+          target: ${{ matrix.target }}
+          push: false
+          cache-from: type=gha,scope=${{ matrix.image }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.image }}

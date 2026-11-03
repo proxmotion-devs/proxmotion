@@ -1,13 +1,26 @@
 <?php
 
 /*
-| Everything here except require_admin_two_factor, console.proxy_secret,
-| console.websocket_url and console.ticket_seconds is only a default: once
-| the Panel settings page is saved, its values are used
-| (App\Domain\Settings\PanelSettings, docs/adr/0038).
+| Everything here except version, require_admin_two_factor, trusted_proxies,
+| reverb_public, console.proxy_secret, console.websocket_url and
+| console.ticket_seconds is only a default: once the Panel settings page is
+| saved, its values are used (App\Domain\Settings\PanelSettings,
+| docs/adr/0038).
 */
 
 return [
+
+    /*
+    |--------------------------------------------------------------------------
+    | Version (docs/adr/0054)
+    |--------------------------------------------------------------------------
+    |
+    | From the VERSION file next to composer.json. A release is tagged
+    | v<version>, and its images are tagged with the version.
+    |
+    */
+
+    'version' => is_file(base_path('VERSION')) ? trim((string) file_get_contents(base_path('VERSION'))) : 'dev',
 
     /*
     |--------------------------------------------------------------------------
@@ -21,6 +34,21 @@ return [
     */
 
     'require_admin_two_factor' => (bool) env('PROXMOTION_REQUIRE_ADMIN_2FA', true),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Trusted proxies (docs/adr/0054)
+    |--------------------------------------------------------------------------
+    |
+    | A TLS proxy in front of the panel: comma-separated addresses or CIDRs
+    | whose X-Forwarded-For, -Proto, -Host and -Port headers are believed, or
+    | * for any. Empty: none, which is right when nginx faces the internet;
+    | trusting more lets clients choose the address that API token address
+    | limits and rate limits see.
+    |
+    */
+
+    'trusted_proxies' => env('TRUSTED_PROXIES'),
 
     /*
     |--------------------------------------------------------------------------
@@ -175,6 +203,23 @@ return [
     'storage' => [
         'warning_percent' => (int) env('PROXMOTION_STORAGE_WARNING_PERCENT', 85),
         'critical_percent' => (int) env('PROXMOTION_STORAGE_CRITICAL_PERCENT', 95),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Reverb as browsers reach it (docs/adr/0036, 0054)
+    |--------------------------------------------------------------------------
+    |
+    | Sent to the pages when they load, not built into the frontend. Empty:
+    | the panel's own host, scheme and port (behind nginx, Reverb is at /app).
+    | REVERB_HOST, REVERB_PORT and REVERB_SCHEME are where the panel reaches it.
+    |
+    */
+
+    'reverb_public' => [
+        'host' => env('REVERB_PUBLIC_HOST'),
+        'port' => env('REVERB_PUBLIC_PORT'),
+        'scheme' => env('REVERB_PUBLIC_SCHEME'),
     ],
 
     'console' => [

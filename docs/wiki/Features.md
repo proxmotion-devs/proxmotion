@@ -742,7 +742,7 @@ All features are covered by automated tests with faked HTTP (an in-memory Proxmo
 
 **Checked on a real Proxmox VE 9.2** (October 2026): connection, cluster sync, permission check for a pool-limited token, task tracking, provisioning on the test storage, suspend/unsuspend/terminate, adoption, power actions, console ticket, guest agent basics, reinstall, drift detection, resource changes, additional addresses, disk growth, primary address swap, hostname change (Debian 13 test template).
 
-**Not yet checked on real systems** (among others): Proxmox VE 8, shared storage and cross-node clones, routed `/32` and IPv6 inside the guest, the console relay end to end, PowerDNS, every bundled app recipe, Windows guests, the WHMCS module, most of the WISECP module, real webhook receivers, MariaDB/MySQL-specific migrations, the Docker Compose stack.
+**Not yet checked on real systems** (among others): Proxmox VE 8, shared storage and cross-node clones, routed `/32` and IPv6 inside the guest, the console relay end to end, PowerDNS, every bundled app recipe, Windows guests, the WHMCS module, most of the WISECP module, real webhook receivers, MySQL 8, migrations over existing data on MariaDB, the published Docker images and a TLS proxy in front of them.
 
 ---
 
@@ -787,17 +787,18 @@ The **scheduler** and a **queue worker** must run; `composer dev` starts both lo
 |---|---|
 | `PROXMOTION_REQUIRE_ADMIN_2FA` | Enforce TOTP for administrators (default `true`; turn off for local development only) |
 | `CONSOLE_PROXY_SECRET`, `CONSOLE_WEBSOCKET_URL` | Shared secret and public address of the console proxy |
-| `BROADCAST_CONNECTION`, `REVERB_*`, `VITE_REVERB_*` | `reverb` and its settings push live server figures; `log` makes the server page poll instead |
+| `BROADCAST_CONNECTION`, `REVERB_*`, `REVERB_PUBLIC_*` | `reverb` and its settings push live server figures (`REVERB_PUBLIC_*`: where browsers reach it, sent with each page, ADR 0054); `log` makes the server page poll instead |
 
 See `panel/.env.example` for the full list (database, Redis, mail, …).
 
 ### 18.3 Deployment
 
-- **Docker Compose** (`deploy/docker/compose.yml`): app (php-fpm + nginx), console-proxy, queue/Horizon, scheduler, Reverb (nginx forwards `/app`), MariaDB, Redis. Not yet run end to end.
+- **Docker Compose for production** (`deploy/docker/production/`, ADR 0054): images on GHCR for the panel (roles web, worker, scheduler, reverb, migrate, install), nginx and the console proxy, with MariaDB and Redis; `docker compose run --rm migrate install` once, then `up -d`; upgrades by a new `PROXMOTION_VERSION`, `pull` and `up -d`. TLS ends at a proxy in front (`TRUSTED_PROXIES`). Guide: `docs/guides/docker-install.md`. Run on Docker Desktop with locally built images only.
+- **Docker Compose for development** (`deploy/docker/compose.yml`): the source mounted into php-fpm, nginx, a queue worker, scheduler, Reverb, Vite, MariaDB, Redis. Not yet run end to end.
 - **Local development**: SQLite works out of the box (WAL mode and immediate transactions so web, worker and scheduler can write at once). See the [README](../../README.md#development).
-- **`proxmotion:install` / `proxmotion:upgrade`** (ADR 0052), shared by every install path. Install checks PHP, its extensions, the database and Redis, writes a missing application key, migrates, creates the first administrator (password asked for, or generated and shown once) and caches the configuration in production. Upgrade runs the new migrations in maintenance mode, which stays on when a migration fails, then tells queue workers and Reverb to restart before the panel opens again. Not yet run against MariaDB/MySQL or a real deployment.
+- **`proxmotion:install` / `proxmotion:upgrade`** (ADR 0052), shared by every install path. Install checks PHP, its extensions, the database and Redis, writes a missing application key, migrates, creates the first administrator (password asked for, or generated and shown once) and caches the configuration in production. Upgrade runs the new migrations in maintenance mode, which stays on when a migration fails, then tells queue workers and Reverb to restart before the panel opens again. Run against MariaDB 11.8 and Redis in the Docker images (ADR 0054), not yet on MySQL or a native install.
 - **Branding** (ADR 0053): name, colour, logos, favicon and support contacts on *Panel settings → Branding*, shown in the panel, on the sign-in pages, on the customer console and in mail. Without it the panel is called `APP_NAME` and looks like Proxmotion.
-- **Native Debian/Ubuntu installer** and production images on GHCR **(planned, Phase 8)**.
+- **Native Debian/Ubuntu installer** **(planned, Phase 8)**.
 
 ---
 
@@ -813,7 +814,7 @@ See `panel/.env.example` for the full list (database, Redis, mail, …).
 | 5 | App Marketplace: install, order-time apps, paid apps, uninstall/upgrade/actions, logs, editor, trials, import/export, 16 recipes | Mostly done; catalogs and signing (ADR 0017) open |
 | 6 | Usage and quotas: traffic collection, graphs, throttle/suspend, `UsageUpdate` | Resource changes, guest scripts, primary address and hostname changes done early; traffic collection, quotas and usage limits with suspend/stop, WHMCS `UsageUpdate` and traffic in the billing modules done (ADR 0039); usage history with graphs in the admin panel, the API and the WHMCS client area done (ADR 0050); throttling not started |
 | 7 | Snapshots and backups, Proxmox Backup Server | Snapshots, manual backups and restore, schedules and retention done (ADR 0051, phases 1–3); Proxmox Backup Server unverified |
-| 8 | Virtualizor import, native installer, production images, branding | Install and upgrade commands (ADR 0052) and branding (ADR 0053) done; the rest planned |
+| 8 | Virtualizor import, native installer, production images, branding | Install and upgrade commands (ADR 0052), branding (ADR 0053) and production images (ADR 0054) done; the rest planned |
 | 9 | NAT VPS, LXC, ISO mount, rescue mode, customer firewall, moving servers (pulled forward, see 9.4), reseller system, more billing modules | Planned |
 
 ---

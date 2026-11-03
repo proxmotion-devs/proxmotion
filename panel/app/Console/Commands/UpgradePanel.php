@@ -9,27 +9,49 @@ use App\Domain\Installation\Requirements;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
+use Illuminate\Database\Migrations\Migrator;
 
-#[Signature('proxmotion:upgrade')]
+#[Signature('proxmotion:upgrade
+    {--when-needed : Only when migrations are pending: otherwise check the requirements and change nothing (the migrate role of the Docker images, docs/adr/0054)}')]
 #[Description('Upgrade the panel after its code changed: maintenance mode, migrate, cache, restart workers (docs/adr/0052)')]
 class UpgradePanel extends Command
 {
     use PreparesPanel;
 
     /** Restarts that exist only when their package is installed. */
-    private const array OPTIONAL_RESTARTS = ['horizon:terminate', 'reverb:restart'];
+    private const array OPTIONAL_RESTARTS = ['reverb:restart'];
 
     private const string STAYS_DOWN = 'The panel stays in maintenance mode. Fix the cause and run proxmotion:upgrade again, or open it as it is with php artisan up.';
 
     public function handle(Requirements $requirements): int
     {
-        return $this->prepare([], fn () => $this->upgrade($requirements));
+        return $this->prepare($this->option('when-needed') ? ['--when-needed'] : [], fn () => $this->upgrade($requirements));
     }
 
     private function upgrade(Requirements $requirements): int
     {
         if (! $this->checkRequirements($requirements)) {
             return self::FAILURE;
+        }
+
+        // New code in containers comes with new containers: without migrations there is
+        // nothing to close the panel for, e.g. after only .env changed (docs/adr/0054).
+        if ($this->option('when-needed')) {
+            $pending = false;
+
+            if (! $this->attempt(function () use (&$pending): bool {
+                $pending = $this->hasPendingMigrations();
+
+                return true;
+            })) {
+                return self::FAILURE;
+            }
+
+            if (! $pending) {
+                $this->components->info('No migrations are pending: the panel stays open.');
+
+                return self::SUCCESS;
+            }
         }
 
         // An administrator's own maintenance mode stays after the upgrade.
@@ -54,9 +76,23 @@ class UpgradePanel extends Command
             return self::FAILURE;
         }
 
-        $this->components->info('Proxmotion is upgraded.');
+        $this->components->info('Proxmotion is upgraded to '.config('proxmotion.version').'.');
 
         return self::SUCCESS;
+    }
+
+    private function hasPendingMigrations(): bool
+    {
+        /** @var Migrator $migrator */
+        $migrator = $this->laravel->make('migrator');
+
+        if (! $migrator->repositoryExists()) {
+            return true;
+        }
+
+        $files = $migrator->getMigrationFiles([...$migrator->paths(), $this->laravel->databasePath('migrations')]);
+
+        return array_diff(array_keys($files), $migrator->getRepository()->getRan()) !== [];
     }
 
     /**

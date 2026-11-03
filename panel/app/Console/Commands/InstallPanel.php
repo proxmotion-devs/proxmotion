@@ -58,7 +58,7 @@ class InstallPanel extends Command
             return self::FAILURE;
         }
 
-        $this->components->info('Proxmotion is installed. Sign in at '.route('login').' and set up two-factor authentication.');
+        $this->components->info('Proxmotion '.config('proxmotion.version').' is installed. Sign in at '.route('login').' and set up two-factor authentication.');
 
         return self::SUCCESS;
     }
