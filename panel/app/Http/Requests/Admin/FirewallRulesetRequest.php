@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Requests\Admin;
 
 use App\Domain\Firewall\FirewallRule;
+use App\Domain\Firewall\ServerFirewalls;
 use App\Http\Requests\FirewallRulesRequest;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
@@ -23,7 +24,7 @@ class FirewallRulesetRequest extends FormRequest
         return [
             'name' => ['required', 'string', 'max:100'],
             'description' => ['nullable', 'string', 'max:255'],
-            'default_policy' => ['required', 'in:accept,drop'],
+            'default_policy' => ['required', 'in:'.implode(',', ServerFirewalls::POLICIES)],
             'is_active' => ['required', 'boolean'],
             ...FirewallRule::validation('rules'),
         ];

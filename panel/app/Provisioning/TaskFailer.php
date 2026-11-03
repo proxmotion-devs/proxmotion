@@ -39,7 +39,7 @@ final class TaskFailer
         // These leave the VM half-built or half-deleted; the others leave it as it was.
         // The server goes first: should this fail, the task is still open and
         // RunServerTask::failed() ends both.
-        if (in_array($task->type, [TaskType::Create, TaskType::Terminate, TaskType::Reinstall], true)) {
+        if ($task->type->failureBreaksServer()) {
             $task->server->discardChanges()->forceFill(['status' => ServerStatus::Error])->save();
         }
 

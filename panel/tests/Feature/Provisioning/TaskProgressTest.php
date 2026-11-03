@@ -96,6 +96,8 @@ class TaskProgressTest extends TestCase
         $this->server->forceFill(['vm_name' => '203.0.113.5'])->save();
         $this->server->osTemplate->platform = OsPlatform::Windows;
         $task->setRelation('server', $this->server);
+        // A plan works out a server's build steps once.
+        $plan = app(TaskPlan::class);
 
         $this->assertSame(
             ['clone', 'configure', 'resize', 'firewall', 'start', 'wait_agent', 'guest_hostname', 'reboot', 'verify'],

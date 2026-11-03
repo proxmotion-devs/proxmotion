@@ -4,6 +4,11 @@
  */
 export type OptionalNumber = number | '';
 
+/** The value of a number input that may be left empty, as the form keeps it. */
+export function toOptionalNumber(value: string | number): OptionalNumber {
+    return value === '' ? '' : Number(value);
+}
+
 export function optionalNumber(value: OptionalNumber | null): number | null {
     return value === '' || value === null ? null : value;
 }

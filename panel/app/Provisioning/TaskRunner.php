@@ -39,7 +39,7 @@ final class TaskRunner
             'user_id' => $actor instanceof User ? $actor->id : null,
             'api_token_id' => $actor instanceof ApiToken ? $actor->id : null,
             // What it installs, for time estimates of later runs (TaskEstimates).
-            'os_template_id' => in_array($type, [TaskType::Create, TaskType::Reinstall], true) ? $server->os_template_id : null,
+            'os_template_id' => $type->installsSystem() ? $server->os_template_id : null,
             'type' => $type,
             'status' => TaskStatus::Queued,
             'steps' => [],

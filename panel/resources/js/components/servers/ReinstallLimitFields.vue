@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import FormField from '@/components/admin/FormField.vue';
 import { Input } from '@/components/ui/input';
+import { toOptionalNumber } from '@/lib/forms';
 import type { OptionalNumber } from '@/lib/forms';
 
 /**
@@ -14,9 +15,6 @@ defineProps<{
 
 const limit = defineModel<OptionalNumber>('limit', { required: true });
 const days = defineModel<OptionalNumber>('days', { required: true });
-
-const optional = (value: string | number): OptionalNumber =>
-    value === '' ? '' : Number(value);
 </script>
 
 <template>
@@ -33,7 +31,9 @@ const optional = (value: string | number): OptionalNumber =>
                 type="number"
                 min="0"
                 max="1000"
-                @update:model-value="(value) => (limit = optional(value))"
+                @update:model-value="
+                    (value) => (limit = toOptionalNumber(value))
+                "
             />
         </FormField>
         <FormField
@@ -50,7 +50,9 @@ const optional = (value: string | number): OptionalNumber =>
                 max="365"
                 :disabled="limit === ''"
                 :required="limit !== ''"
-                @update:model-value="(value) => (days = optional(value))"
+                @update:model-value="
+                    (value) => (days = toOptionalNumber(value))
+                "
             />
         </FormField>
     </div>

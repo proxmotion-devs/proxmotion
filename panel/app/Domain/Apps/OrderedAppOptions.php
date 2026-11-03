@@ -29,7 +29,7 @@ final readonly class OrderedAppOptions
         $osTemplates = collect($osTemplates);
         $options = [];
 
-        foreach (AppRecipe::query()->with('latestVersion')->where('is_active', true)->orderBy('name')->get() as $app) {
+        foreach (AppRecipe::query()->with(['latestVersion', 'osVersions'])->where('is_active', true)->orderBy('name')->get() as $app) {
             $fits = $osTemplates->filter(fn (OsTemplate $template) => ($server === null
                 ? $this->eligibility->forCatalog($app, $template, null, AppInstallMode::Order)
                 // The server's entitlements too: a reinstall with a paid app needs one (docs/adr/0019).

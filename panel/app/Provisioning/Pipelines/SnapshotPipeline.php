@@ -74,7 +74,7 @@ final readonly class SnapshotPipeline
 
         if (! is_bool($wasRunning)) {
             $wasRunning = $qemu->status($server->vmid)['status'] === 'running';
-            $task->forceFill(['input' => [...($task->input ?? []), 'was_running' => $wasRunning]])->save();
+            $task->rememberInput('was_running', $wasRunning);
         }
 
         if (! $task->hasCompleted('rollback')) {

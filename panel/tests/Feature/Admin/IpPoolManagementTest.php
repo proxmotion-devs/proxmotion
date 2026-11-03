@@ -358,6 +358,23 @@ class IpPoolManagementTest extends AdminTestCase
                 ]));
     }
 
+    public function test_the_address_search_takes_wildcards_and_quotes_literally()
+    {
+        $pool = IpPool::factory()->create(['network' => '203.0.113.0/24', 'gateway' => '203.0.113.1']);
+        $pool->addresses()->createMany([
+            ['address' => '203.0.113.50', 'notes' => '50% off_line'],
+            ['address' => '203.0.113.60', 'notes' => "customer's spare"],
+            ['address' => '203.0.113.70', 'notes' => 'offxline'],
+        ]);
+
+        $search = fn (string $text) => $this->get(route('admin.ip-pools.show', ['ipPool' => $pool, 'search' => $text]))->assertOk();
+
+        $search('%')->assertInertia(fn (Assert $page) => $page->has('addresses.data', 1)->where('addresses.data.0.address', '203.0.113.50'));
+        $search('off_line')->assertInertia(fn (Assert $page) => $page->has('addresses.data', 1)->where('addresses.data.0.address', '203.0.113.50'));
+        $search("customer's")->assertInertia(fn (Assert $page) => $page->has('addresses.data', 1)->where('addresses.data.0.address', '203.0.113.60'));
+        $search("' OR '1'='1")->assertInertia(fn (Assert $page) => $page->has('addresses.data', 0));
+    }
+
     public function test_the_pool_page_shows_the_mac_address_of_the_assigned_server()
     {
         $pool = IpPool::factory()->create(['network' => '203.0.113.0/24']);

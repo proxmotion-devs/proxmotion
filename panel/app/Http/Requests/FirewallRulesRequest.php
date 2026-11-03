@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Requests;
 
 use App\Domain\Firewall\FirewallRule;
+use App\Domain\Firewall\ServerFirewalls;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Validator;
@@ -22,7 +23,7 @@ class FirewallRulesRequest extends FormRequest
     {
         return [
             // What happens to incoming traffic no rule matches.
-            'default_policy' => ['required', 'in:accept,drop'],
+            'default_policy' => ['required', 'in:'.implode(',', ServerFirewalls::POLICIES)],
             ...FirewallRule::validation('rules'),
         ];
     }

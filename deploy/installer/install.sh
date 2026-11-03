@@ -257,7 +257,6 @@ write_environment() {
 CREATE DATABASE IF NOT EXISTS proxmotion CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 CREATE USER IF NOT EXISTS 'proxmotion'@'localhost' IDENTIFIED BY '$db_password';
 ALTER USER 'proxmotion'@'localhost' IDENTIFIED BY '$db_password';
-GRANT ALL PRIVILEGES ON proxmotion.* TO 'proxmotion'@'localhost';
 SQL
 
     if [ "$letsencrypt" = 1 ]; then
@@ -331,6 +330,21 @@ ENV
     umask 022
     chown "root:$APP_USER" "$env"
     chmod 0640 "$env"
+}
+
+# What the panel's database user may do: read and write rows, and change the schema for
+# migrations. Nothing else, so an injected query could not add triggers, events, routines
+# or views, or read files. Applied on every run, so older installs lose the rest too.
+readonly DB_PRIVILEGES="SELECT, INSERT, UPDATE, DELETE, CREATE, ALTER, DROP, INDEX, REFERENCES"
+
+grant_database_privileges() {
+    # Only the user this installer created; a panel moved to another database keeps its grants.
+    [ "$(mariadb -N -B -e "SELECT COUNT(*) FROM mysql.user WHERE User = 'proxmotion' AND Host = 'localhost'")" = 1 ] || return 0
+
+    mariadb <<SQL
+REVOKE ALL PRIVILEGES, GRANT OPTION FROM 'proxmotion'@'localhost';
+GRANT $DB_PRIVILEGES ON proxmotion.* TO 'proxmotion'@'localhost';
+SQL
 }
 
 save_options() {
@@ -472,6 +486,7 @@ main() {
     fetch_release
     link_shared
     write_environment
+    grant_database_privileges
     save_options
     configure_services
 

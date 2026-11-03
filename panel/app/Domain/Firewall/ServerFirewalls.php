@@ -213,7 +213,7 @@ final readonly class ServerFirewalls
     private static function ensureChangeable(Server $server): void
     {
         if (! in_array($server->status, [ServerStatus::Active, ServerStatus::Suspended], true)) {
-            throw new ProvisioningException('This action is not possible while the server is :status.', ['status' => $server->status->value]);
+            throw ProvisioningException::notWhile($server);
         }
     }
 

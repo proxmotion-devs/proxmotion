@@ -255,7 +255,7 @@ final readonly class AppInstaller
     private function ensureActive(Server $server): void
     {
         if ($server->status !== ServerStatus::Active) {
-            throw new ProvisioningException('This action is not possible while the server is :status.', ['status' => $server->status->value]);
+            throw ProvisioningException::notWhile($server);
         }
     }
 

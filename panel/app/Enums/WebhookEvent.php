@@ -64,7 +64,7 @@ enum WebhookEvent: string
     public static function forTask(TaskType $type, bool $succeeded): ?self
     {
         if (! $succeeded) {
-            return in_array($type, [TaskType::Create, TaskType::Reinstall, TaskType::Terminate], true) ? self::ServerFailed : null;
+            return $type->failureBreaksServer() ? self::ServerFailed : null;
         }
 
         return match ($type) {
