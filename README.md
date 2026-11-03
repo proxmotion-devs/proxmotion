@@ -13,7 +13,7 @@ Proxmotion lets hosting providers connect their Proxmox nodes and clusters, and 
 - **Network models:** bridged public IPs, routed/failover IPs, NAT VPS, IPv6
 - **Customer actions in your billing system:** power actions, browser console (noVNC), reinstall, root password, rDNS, graphs — through the API and module
 - **App Marketplace:** one-click OpenVPN, WireGuard, Docker, control panels and web stacks — at order time or later
-- **Billing integration:** REST API + WHMCS and WISECP modules (Blesta, HostBill, Paymenter, FOSSBilling later)
+- **Billing integration:** REST API + [WHMCS](https://github.com/proxmotion-devs/proxmotion-WHMCS) and [WISECP](https://github.com/proxmotion-devs/proxmotion-WISECP) modules, each in its own repository (Blesta, HostBill, Paymenter, FOSSBilling later)
 - **Migration:** adopt existing Proxmox VMs, import from Virtualizor
 - Snapshots, backups, traffic accounting and quotas, audit log, 2FA
 - English and Turkish UI

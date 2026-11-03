@@ -194,7 +194,7 @@ const statusOf = (token: ApiToken) => {
                 <li>
                     {{
                         $t(
-                            'Install the module: integrations/whmcs (WHMCS 8 and 9) or integrations/wisecp (WISECP 5). Their README files list the settings.',
+                            'Install the module from its own repository: proxmotion-WHMCS (WHMCS 8 and 9) or proxmotion-WISECP (WISECP 5) under proxmotion-devs on GitHub. Their README files list the settings.',
                         )
                     }}
                 </li>
