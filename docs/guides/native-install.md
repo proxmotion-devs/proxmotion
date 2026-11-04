@@ -2,7 +2,7 @@
 
 `install.sh` installs the panel directly on a server, without Docker ([ADR 0055](../adr/0055-native-installer.md)). For Docker Compose, see [docker-install.md](docker-install.md).
 
-> Tested so far only in containers with locally built archives, not on a real server, with a downloaded release or with Let's Encrypt.
+> Tested so far only in containers (with locally built archives and the downloaded 0.1.0 release), not on a real server or with Let's Encrypt. Use 0.1.1 or later: 0.1.0's archive cannot be installed.
 
 ## Requirements
 
@@ -24,7 +24,7 @@ sudo bash install.sh --domain panel.example.com --letsencrypt --email you@exampl
 
 `--letsencrypt` accepts the Let's Encrypt Subscriber Agreement. Without it the panel is served over HTTP: use that only with a TLS proxy in front, and set `TRUSTED_PROXIES` in `.env` to its address.
 
-The installer asks for the first administrator's name, email and password; a password left empty is generated and shown once. Without a terminal, give `--admin-name` and `--admin-email`. Do not save the installer's output to a file: it holds that password.
+The installer asks for the first administrator's name, email and password; a password left empty is generated and shown once. Without a terminal, give `--admin-name` and `--admin-email` (a first install without them stops before installing anything). Do not save the installer's output to a file: it holds that password.
 
 When it is done, sign in at the address it prints and set up two-factor authentication. *Admin → Help* shows the setup order.
 
@@ -70,6 +70,10 @@ The installer puts the panel into maintenance mode, switches to the new release,
 | `/etc/systemd/system/proxmotion-*.service` | Worker, scheduler, Reverb, console proxy |
 
 Files the installer writes are replaced on every run. Put your own nginx settings into separate files.
+
+### The `proxmotion` user
+
+The installer creates a system user `proxmotion` (no password, no login shell, home `/opt/proxmotion`). php-fpm, the queue worker, the scheduler, Reverb and the console proxy run as this user, never as root or as nginx's `www-data`. The code belongs to root and the user may write only `shared/storage/` and its release's `bootstrap/cache/`; `.env` is `root:proxmotion 0640`. So a flaw in the panel or one of its libraries cannot change the panel's code or settings, read other services' files, or take over the server, and `APP_KEY`, which decrypts the stored Proxmox tokens, stays readable only by root and the panel. Run Artisan as this user too (see below): files root creates in `storage/` would be unwritable for the panel.
 
 ## Day to day
 

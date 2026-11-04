@@ -58,11 +58,17 @@ jobs:
           target: release
           build-args: VERSION=${{ needs.version.outputs.version }}
           outputs: type=local,dest=dist/proxmotion-${{ needs.version.outputs.version }}
+          # Attestations would land in the exported files (0.1.0 shipped provenance.json).
+          provenance: false
+          sbom: false
           cache-from: type=gha,scope=proxmotion
 
       - name: Pack
         working-directory: dist
         run: |
+          # The export's top directory is 0700: the panel's user could not read the release.
+          chmod -R u=rwX,go=rX "proxmotion-$VERSION"
+          test ! -e "proxmotion-$VERSION/provenance.json"
           tar --owner=0 --group=0 -czf "proxmotion-$VERSION.tar.gz" "proxmotion-$VERSION"
           sha256sum "proxmotion-$VERSION.tar.gz" > "proxmotion-$VERSION.tar.gz.sha256"
           cp "proxmotion-$VERSION/installer/install.sh" install.sh
