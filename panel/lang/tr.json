@@ -2764,5 +2764,6 @@
     "Service": "Hizmet",
     "Customer": "Müşteri",
     "No billing system": "Faturalama sistemi yok",
-    "In Proxmox": "Proxmox'ta"
+    "In Proxmox": "Proxmox'ta",
+    "Toggle sidebar": "Menüyü aç veya kapat"
 }

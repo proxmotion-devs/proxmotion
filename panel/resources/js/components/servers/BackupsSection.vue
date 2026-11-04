@@ -12,6 +12,7 @@ import { computed, ref } from 'vue';
 import ConfirmDelete from '@/components/admin/ConfirmDelete.vue';
 import FormDialog from '@/components/admin/FormDialog.vue';
 import FormField from '@/components/admin/FormField.vue';
+import HostnameConfirmField from '@/components/admin/HostnameConfirmField.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -23,6 +24,7 @@ import {
 } from '@/lib/backupSchedules';
 import type { BackupSchedule } from '@/lib/backupSchedules';
 import { formatBytes } from '@/lib/format';
+import { confirmsHostname } from '@/lib/hostname';
 import { backupSchedule as scheduleRoute } from '@/routes/admin/servers';
 import {
     destroy as destroyRoute,
@@ -296,6 +298,7 @@ const restore = () => {
                         v-if="!terminated"
                         variant="outline"
                         size="sm"
+                        class="text-destructive hover:bg-destructive/10 hover:text-destructive"
                         :disabled="disabled || busy || !backup.restorable"
                         data-test="restore-backup"
                         @click="startRestore(backup)"
@@ -375,6 +378,10 @@ const restore = () => {
             description="Everything written to the disk since the backup is lost, the snapshots are deleted and apps installed since are removed. The operating system and root password become those of the backup."
             submit-label="Restore"
             :processing="restoreForm.processing"
+            destructive
+            :submit-disabled="
+                !confirmsHostname(restoreForm.confirm_hostname, hostname)
+            "
             @submit="restore"
         >
             <p v-if="restoring" class="text-sm">
@@ -385,18 +392,12 @@ const restore = () => {
                     })
                 }}
             </p>
-            <FormField
-                label="Type the hostname to confirm"
-                for="backup_confirm_hostname"
+            <HostnameConfirmField
+                id="backup_confirm_hostname"
+                v-model="restoreForm.confirm_hostname"
+                :hostname="hostname"
                 :error="restoreForm.errors.confirm_hostname"
-                :hint="hostname"
-            >
-                <Input
-                    id="backup_confirm_hostname"
-                    v-model="restoreForm.confirm_hostname"
-                    autocomplete="off"
-                />
-            </FormField>
+            />
         </FormDialog>
     </section>
 </template>
