@@ -7,6 +7,7 @@ namespace Tests\Feature\Admin;
 use App\Enums\ServerStatus;
 use App\Enums\TaskStatus;
 use App\Enums\TaskType;
+use App\Models\Location;
 use App\Models\Server;
 use App\Models\Task;
 use App\Models\User;
@@ -23,6 +24,17 @@ class DashboardTest extends TestCase
         parent::setUp();
 
         $this->actingAs(User::factory()->withTwoFactor()->create());
+    }
+
+    public function test_it_says_which_setup_steps_are_done(): void
+    {
+        Location::factory()->create();
+
+        $this->get(route('admin.dashboard'))
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('setup.locations', true)
+                ->where('setup.clusters', false)
+                ->where('setup.billing_systems', false));
     }
 
     public function test_it_counts_the_servers_by_what_they_are_doing(): void

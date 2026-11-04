@@ -2752,5 +2752,11 @@
     "Copy root password": "Root parolasını kopyala",
     "Copy IP address": "IP adresini kopyala",
     "Copy value": "Değeri kopyala",
-    "Hostname, IP address, billing ID or VMID.": "Hostname, IP adresi, faturalama ID'si veya VMID."
+    "Hostname, IP address, billing ID or VMID.": "Hostname, IP adresi, faturalama ID'si veya VMID.",
+    "Set up the panel": "Paneli kurun",
+    ":done of :total steps done. Each step opens its page; Help explains them.": ":total adımdan :done tanesi tamam. Her adım kendi sayfasını açar; Yardım hepsini açıklar.",
+    "Next step": "Sıradaki adım",
+    "Nothing to check yet": "Henüz kontrol edilecek bir şey yok",
+    "No Proxmox cluster is connected. Once one is, its nodes, storage and tasks are checked here.": "Bağlı bir Proxmox cluster'ı yok. Bağlandığında node'ları, storage'ları ve görevleri burada kontrol edilir.",
+    "The connected clusters have no nodes yet. They are read at the next sync of each cluster.": "Bağlı cluster'larda henüz node yok. Her cluster'ın bir sonraki senkronizasyonunda okunurlar."
 }

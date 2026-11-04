@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Admin;
 
+use App\Domain\Installation\SetupProgress;
 use App\Enums\NodeStatus;
 use App\Enums\ServerStatus;
 use App\Enums\StorageHealth;
@@ -27,9 +28,11 @@ use Inertia\Response;
 
 class DashboardController extends Controller
 {
-    public function __invoke(): Response
+    public function __invoke(SetupProgress $setup): Response
     {
         return Inertia::render('admin/Dashboard', [
+            // The setup order's steps, shown until every one is done.
+            'setup' => $setup->steps(),
             'stats' => [
                 'locations' => Location::query()->count(),
                 'clusters' => Cluster::query()->count(),
