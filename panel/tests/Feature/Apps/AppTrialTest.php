@@ -208,7 +208,11 @@ class AppTrialTest extends TestCase
         $template = $this->server->os_template_id;
         $password = $this->server->refresh()->root_password;
 
-        $this->post(route('admin.servers.trial-reset', $this->server))->assertSessionHasNoErrors();
+        // The disks are wiped: the hostname is typed again, like a reinstall.
+        $this->post(route('admin.servers.trial-reset', $this->server), ['confirm_hostname' => 'web2.example.com'])->assertSessionHasErrors('confirm_hostname');
+        $this->assertSame(0, AuditLog::query()->where('action', 'server.trial_reset')->count());
+
+        $this->post(route('admin.servers.trial-reset', $this->server), ['confirm_hostname' => ' WEB1.example.com '])->assertSessionHasNoErrors();
 
         $server = $this->server->refresh();
         $this->assertSame(TaskType::Reinstall, $server->tasks()->latest('id')->firstOrFail()->type);
@@ -223,7 +227,7 @@ class AppTrialTest extends TestCase
 
     public function test_only_an_active_test_server_is_reset()
     {
-        $this->post(route('admin.servers.trial-reset', $this->server))->assertSessionHas('inertia.flash_data.toast.message', 'Only a test server can be reset after a trial.');
+        $this->post(route('admin.servers.trial-reset', $this->server), ['confirm_hostname' => 'web1.example.com'])->assertSessionHas('inertia.flash_data.toast.message', 'Only a test server can be reset after a trial.');
 
         $this->assertFalse($this->server->tasks()->where('type', TaskType::Reinstall)->exists());
         $this->assertSame(0, AuditLog::query()->where('action', 'server.trial_reset')->count());

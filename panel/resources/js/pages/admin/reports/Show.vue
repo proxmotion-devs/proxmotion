@@ -68,15 +68,24 @@ watch(chosen, () =>
     <div class="flex flex-col gap-6 p-4">
         <Heading :title="page.title" :description="page.description" />
 
-        <nav class="-mt-4 flex flex-wrap gap-1" :aria-label="$t('Reports')">
+        <!-- Links to the other reports, marked like the server page's tabs: a
+             foreground underline, never the provider colour; 36px targets. -->
+        <nav
+            class="-mt-2 flex [scrollbar-width:none] gap-1 overflow-x-auto border-b"
+            :aria-label="$t('Reports')"
+        >
             <Link
                 v-for="item in REPORTS"
                 :key="item.key"
                 :href="show(item.key)"
-                class="rounded-md border px-3 py-1 text-sm"
-                :class="{
-                    'bg-primary text-primary-foreground': item.key === report,
-                }"
+                class="-mb-px inline-flex h-9 shrink-0 items-center border-b-2 px-3 text-sm whitespace-nowrap outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:ring-inset"
+                :class="
+                    item.key === report
+                        ? 'border-foreground font-medium'
+                        : 'border-transparent text-muted-foreground hover:text-foreground'
+                "
+                :aria-current="item.key === report ? 'page' : undefined"
+                :data-test="`report-link-${item.key}`"
             >
                 {{ $t(item.title) }}
             </Link>

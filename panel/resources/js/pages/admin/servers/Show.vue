@@ -58,8 +58,10 @@ import UnsuspendDialog from '@/components/servers/UnsuspendDialog.vue';
 import UsageHistorySection from '@/components/servers/UsageHistorySection.vue';
 import UsageSection from '@/components/servers/UsageSection.vue';
 import { Button } from '@/components/ui/button';
+import { Spinner } from '@/components/ui/spinner';
 import { useDateTime } from '@/composables/useDateTime';
 import { formatMib, formatTraffic } from '@/lib/format';
+import { usePendingVisit } from '@/lib/pendingVisit';
 import { show as showCluster } from '@/routes/admin/clusters';
 import { show as showPool } from '@/routes/admin/ip-pools';
 import {
@@ -625,6 +627,17 @@ const vmStopped = computed(
 );
 // Operations on the VM are refused while a task runs or the VM is not where the panel recorded it.
 const vmBlocked = computed(() => busy.value || vmAway.value);
+// The Suspend dialog opened from the power menu.
+const suspending = ref(false);
+// Start and Finish the move offered inside the notices that ask for them.
+const {
+    pending: noticePending,
+    busy: noticeBusy,
+    visit: noticeVisit,
+} = usePendingVisit();
+const finishableMove = computed(
+    () => props.moveOptions.moves.find((move) => move.can_finish) ?? null,
+);
 // English keys, translated by StatusBadge.
 const vmBadge = computed(
     () =>
@@ -694,11 +707,6 @@ const restartForChanges = () =>
     router.visit(powerAction(props.power === 'running' ? 'reboot' : 'start'), {
         preserveScroll: true,
     });
-
-// Reinstall the test server from its template after trials (docs/adr/0018 §7).
-const confirmingTrialReset = ref(false);
-const resetAfterTrial = () =>
-    router.post(trialReset(props.server.uuid), {}, { preserveScroll: true });
 </script>
 
 <template>
@@ -740,6 +748,15 @@ const resetAfterTrial = () =>
                     :busy="busy"
                     :action="powerAction"
                     :hostname="server.hostname"
+                    :can-suspend="!vmBlocked"
+                    @suspend="suspending = true"
+                />
+                <!-- Suspend from the power menu: during an incident it is at hand, not at the bottom of the page. -->
+                <SuspendDialog
+                    v-if="active"
+                    v-model:open="suspending"
+                    :trigger="false"
+                    :action="suspend(server.uuid)"
                 />
                 <Button v-if="active && !vmAway" size="sm" as-child>
                     <a
@@ -864,20 +881,58 @@ const resetAfterTrial = () =>
         </Notice>
 
         <Notice v-else-if="vmState === 'moving'" data-test="vm-moving">
-            {{
-                $t(
-                    'A move of this server has not finished: its VM is no longer on :node. If the move failed, Finish the move under Placement and billing completes it.',
-                    { node: server.node },
-                )
-            }}
+            <div
+                class="flex flex-wrap items-center justify-between gap-x-4 gap-y-2"
+            >
+                <span>{{
+                    $t(
+                        'A move of this server has not finished: its VM is no longer on :node. If the move failed, Finish the move completes it.',
+                        { node: server.node },
+                    )
+                }}</span>
+                <!-- The control the note talks about, right here (DESIGN.md, Notices). -->
+                <Button
+                    v-if="finishableMove"
+                    variant="outline"
+                    size="sm"
+                    class="bg-background"
+                    :disabled="busy || noticePending !== null"
+                    data-test="vm-moving-finish"
+                    @click="
+                        noticeVisit(
+                            'finish',
+                            finishMove([server.uuid, finishableMove.uuid]),
+                        )
+                    "
+                >
+                    <Spinner v-if="noticeBusy('finish')" />
+                    {{ $t('Finish the move') }}
+                </Button>
+            </div>
         </Notice>
 
         <Notice v-else-if="vmStopped" data-test="vm-stopped">
-            {{
-                $t(
-                    'The server is not running in Proxmox. Start it to reset its password or install apps.',
-                )
-            }}
+            <div
+                class="flex flex-wrap items-center justify-between gap-x-4 gap-y-2"
+            >
+                <span>{{
+                    $t(
+                        'The server is not running in Proxmox. Start it to reset its password or install apps.',
+                    )
+                }}</span>
+                <Button
+                    variant="outline"
+                    size="sm"
+                    class="bg-background"
+                    :disabled="busy || noticePending !== null"
+                    data-test="vm-stopped-start"
+                    @click="noticeVisit('start', powerAction('start'))"
+                >
+                    <Spinner v-if="noticeBusy('start')" />
+                    <Play v-else class="h-4 w-4" />
+                    {{ $t('Start now') }}
+                </Button>
+            </div>
         </Notice>
 
         <DriftList v-if="drifts.length > 0" :drifts="drifts" />
@@ -972,6 +1027,7 @@ const resetAfterTrial = () =>
                             :action="reinstall(server.uuid)"
                             :hostname="server.hostname"
                             :options="reinstallOptions"
+                            :current-system="server.os_template"
                             :ssh-keys="
                                 sshKeys.keys
                                     .map((key) => key.public_key)
@@ -1104,7 +1160,7 @@ const resetAfterTrial = () =>
                                     >
                                     <span
                                         v-if="address.ptr_pending"
-                                        class="text-status-warning-text"
+                                        class="text-muted-foreground"
                                     >
                                         ({{ $t('pending') }})</span
                                     >
@@ -1530,17 +1586,20 @@ const resetAfterTrial = () =>
                         </p>
                     </div>
                     <div class="flex flex-wrap gap-2">
-                        <Button
+                        <!-- It wipes the disks: typed hostname, like a reinstall. -->
+                        <TypedConfirmDialog
                             v-if="server.is_test && active"
-                            variant="destructive"
-                            size="sm"
+                            :action="trialReset(server.uuid)"
+                            :hostname="server.hostname"
                             :disabled="vmBlocked"
+                            :icon="RotateCcw"
+                            label="Reset after trial"
+                            title="Reset after trial?"
+                            description="The server is rolled back to its trial base snapshot, or reinstalled from its template when it has none. Everything written since is lost and every app installed since is removed. IP addresses and SSH keys stay."
+                            submit-label="Reset after trial"
+                            destructive
                             data-test="trial-reset"
-                            @click="confirmingTrialReset = true"
-                        >
-                            <RotateCcw class="h-4 w-4" />
-                            {{ $t('Reset after trial') }}
-                        </Button>
+                        />
                         <Button
                             variant="outline"
                             size="sm"
@@ -1554,22 +1613,6 @@ const resetAfterTrial = () =>
                         </Button>
                     </div>
                 </section>
-                <ConfirmDialog
-                    v-model:open="confirmingTrialReset"
-                    title="Reset after trial?"
-                    :description="
-                        $t(
-                            'Reinstall :hostname from :template? Its disks are wiped and every app on it is removed. IP addresses and SSH keys stay; the root password is new.',
-                            {
-                                hostname: server.hostname,
-                                template: server.os_template ?? '—',
-                            },
-                        )
-                    "
-                    confirm-label="Reset after trial"
-                    destructive
-                    @confirm="resetAfterTrial"
-                />
             </template>
 
             <UsageHistorySection

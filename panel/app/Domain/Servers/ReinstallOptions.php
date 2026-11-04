@@ -10,12 +10,14 @@ use App\Models\Server;
 
 /**
  * What the reinstall dialog offers: the OS templates the server can use,
- * and the apps that can come with the new system (docs/adr/0016 §5).
+ * the one it runs now (chosen first, so a reinstall keeps its system unless
+ * someone picks another), and the apps that can come with the new system
+ * (docs/adr/0016 §5).
  */
 final class ReinstallOptions
 {
     /**
-     * @return array{osTemplates: list<array{value: string, label: string}>, apps: list<array{slug: string, name: string, os_templates: list<string>, inputs: list<array<string, mixed>>}>}
+     * @return array{osTemplates: list<array{value: string, label: string}>, current: string|null, apps: list<array{slug: string, name: string, os_templates: list<string>, inputs: list<array<string, mixed>>}>}
      */
     public static function for(Server $server): array
     {
@@ -29,6 +31,8 @@ final class ReinstallOptions
                     'label' => $template->is_active ? $template->name : $template->name.' ('.__('inactive, makes it a test server').')',
                 ])
                 ->all()),
+            // Null when its template is gone or no longer offered to it.
+            'current' => $templates->firstWhere('id', $server->os_template_id)?->uuid,
             'apps' => app(OrderedAppOptions::class)->for($templates, $server),
         ];
     }

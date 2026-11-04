@@ -568,6 +568,8 @@ export type AddressPoolOption = Option & {
 /** Choices for ReinstallDialog: OS templates of the server's cluster and the apps that can come with them. */
 export type ReinstallOptions = {
     osTemplates: Option[];
+    /** The template the server runs now, when it is still offered to it. */
+    current: string | null;
     apps: OrderedAppOption[];
 };
 

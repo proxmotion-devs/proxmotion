@@ -266,30 +266,6 @@ const severityText = {
             <SetupSteps :setup="setup" mark-next />
         </section>
 
-        <nav
-            class="grid grid-cols-2 gap-px overflow-hidden rounded-xl border bg-border sm:grid-cols-5"
-            :aria-label="$t('Servers')"
-            data-test="server-stats"
-        >
-            <Link
-                v-for="(stat, index) in serverStats"
-                :key="stat.label"
-                :href="stat.href"
-                class="flex flex-col gap-1 bg-background px-4 py-3 transition-colors outline-none hover:bg-muted/40 focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:ring-inset"
-                :class="{ 'col-span-2 sm:col-span-1': index === 0 }"
-            >
-                <span class="text-sm text-muted-foreground">
-                    {{ $t(stat.label) }}
-                </span>
-                <span
-                    class="text-2xl font-semibold tabular-nums"
-                    :class="{ 'text-status-danger-text': stat.danger }"
-                >
-                    {{ stat.value }}
-                </span>
-            </Link>
-        </nav>
-
         <div class="grid items-start gap-6 lg:grid-cols-3">
             <section
                 class="flex flex-col overflow-hidden rounded-xl border lg:col-span-2"
@@ -580,5 +556,29 @@ const severityText = {
                 </ul>
             </section>
         </div>
+
+        <nav
+            class="grid grid-cols-2 gap-px overflow-hidden rounded-xl border bg-border sm:grid-cols-5"
+            :aria-label="$t('Servers')"
+            data-test="server-stats"
+        >
+            <Link
+                v-for="(stat, index) in serverStats"
+                :key="stat.label"
+                :href="stat.href"
+                class="flex flex-col gap-1 bg-background px-4 py-3 transition-colors outline-none hover:bg-muted/40 focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:ring-inset"
+                :class="{ 'col-span-2 sm:col-span-1': index === 0 }"
+            >
+                <span class="text-sm text-muted-foreground">
+                    {{ $t(stat.label) }}
+                </span>
+                <span
+                    class="text-2xl font-semibold tabular-nums"
+                    :class="{ 'text-status-danger-text': stat.danger }"
+                >
+                    {{ stat.value }}
+                </span>
+            </Link>
+        </nav>
     </div>
 </template>

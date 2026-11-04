@@ -43,6 +43,25 @@ describe('PowerControls', () => {
         expect(state.text()).toBe('Powered on');
     });
 
+    it('offers Suspend in the menu only when asked to, and leaves it to the page', async () => {
+        const plain = render('stopped');
+        expect(plain.find('[data-test="power-menu"]').exists()).toBe(false);
+
+        const wrapper = mount(PowerControls, {
+            props: {
+                power: 'stopped',
+                busy: false,
+                action: () => ({ url: '/power', method: 'post' as const }),
+                canSuspend: true,
+            },
+            global: { mocks: { $t: (key: string) => key } },
+            attachTo: document.body,
+        });
+        // A stopped server has nothing else in the menu; Suspend still needs a way in.
+        expect(wrapper.find('[data-test="power-menu"]').exists()).toBe(true);
+        wrapper.unmount();
+    });
+
     it('offers everything while the state is not known', () => {
         expect(buttons(null)).toEqual(['Start', 'Reboot', 'More']);
         expect(render('unknown').text()).toContain('Power state unknown');

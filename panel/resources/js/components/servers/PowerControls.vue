@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { router } from '@inertiajs/vue3';
-import { ChevronDown, Play, Power, RotateCw, Square } from '@lucide/vue';
+import { ChevronDown, Pause, Play, Power, RotateCw, Square } from '@lucide/vue';
 import { computed, ref } from 'vue';
 import StatusBadge from '@/components/admin/StatusBadge.vue';
 import { Button } from '@/components/ui/button';
@@ -16,6 +16,7 @@ import {
     DropdownMenu,
     DropdownMenuContent,
     DropdownMenuItem,
+    DropdownMenuSeparator,
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Spinner } from '@/components/ui/spinner';
@@ -37,7 +38,11 @@ const props = defineProps<{
     action: (action: PowerAction) => RouteDefinition<'post'>;
     /** Named in the confirmation, so it is clear which server is affected. */
     hostname?: string;
+    /** Offer Suspend in the menu too: on a phone it is otherwise at the bottom of the page. */
+    canSuspend?: boolean;
 }>();
+
+const emit = defineEmits<{ suspend: [] }>();
 
 // English keys, translated in the template.
 const actions: {
@@ -163,7 +168,7 @@ const stateLabel = computed(() => {
             <component :is="item.icon" class="h-4 w-4" />
             {{ $t(item.label) }}
         </Button>
-        <DropdownMenu v-if="menu.length">
+        <DropdownMenu v-if="menu.length || canSuspend">
             <DropdownMenuTrigger as-child>
                 <Button
                     variant="outline"
@@ -186,6 +191,16 @@ const stateLabel = computed(() => {
                     <component :is="item.icon" class="h-4 w-4" />
                     {{ $t(item.label) }}
                 </DropdownMenuItem>
+                <template v-if="canSuspend">
+                    <DropdownMenuSeparator v-if="menu.length" />
+                    <DropdownMenuItem
+                        data-test="power-suspend"
+                        @select="emit('suspend')"
+                    >
+                        <Pause class="h-4 w-4" />
+                        {{ $t('Suspend…') }}
+                    </DropdownMenuItem>
+                </template>
             </DropdownMenuContent>
         </DropdownMenu>
 

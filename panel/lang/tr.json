@@ -2765,5 +2765,12 @@
     "Customer": "Müşteri",
     "No billing system": "Faturalama sistemi yok",
     "In Proxmox": "Proxmox'ta",
-    "Toggle sidebar": "Menüyü aç veya kapat"
+    "Toggle sidebar": "Menüyü aç veya kapat",
+    ":name (current)": ":name (mevcut)",
+    "Runs now": "Şu an çalışan",
+    "Its snapshots are deleted and its apps removed; its backups are kept.": "Snapshot'ları silinir ve uygulamaları kaldırılır; yedekleri korunur.",
+    "Suspend…": "Askıya al…",
+    "App editor sections": "Uygulama düzenleyicisi bölümleri",
+    "The server is rolled back to its trial base snapshot, or reinstalled from its template when it has none. Everything written since is lost and every app installed since is removed. IP addresses and SSH keys stay.": "Sunucu trial base snapshot'ına geri döndürülür, yoksa şablonundan yeniden kurulur. O zamandan beri yazılan her şey kaybolur ve o zamandan beri kurulan her uygulama kaldırılır. IP adresleri ve SSH anahtarları kalır.",
+    "A move of this server has not finished: its VM is no longer on :node. If the move failed, Finish the move completes it.": "Bu sunucunun taşınması bitmedi: VM'i artık :node üzerinde değil. Taşıma başarısız olduysa Taşımayı tamamla onu bitirir."
 }

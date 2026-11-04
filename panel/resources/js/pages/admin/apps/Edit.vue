@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import AdminTabs from '@/components/admin/AdminTabs.vue';
 import AppSystemsPicker from '@/components/admin/AppSystemsPicker.vue';
 import ConfirmDialog from '@/components/admin/ConfirmDialog.vue';
 import Notice from '@/components/admin/Notice.vue';
@@ -587,10 +588,10 @@ const runImport = () => {
     );
 };
 
-// A draft is a deliberate state, not a problem: neutral, like archived.
+// Draft and published are deliberate states, not health: neutral, like archived.
 const statusTone = {
     draft: 'neutral',
-    published: 'success',
+    published: 'neutral',
     archived: 'neutral',
     pending_review: 'warning',
     rejected: 'danger',
@@ -809,27 +810,21 @@ const statusLabels = {
             </ul>
         </GuideBox>
 
-        <nav class="flex flex-wrap items-end justify-between gap-2 border-b">
-            <div class="flex flex-wrap gap-1">
-                <button
-                    v-for="[key, label] in tabs"
-                    :key="key"
-                    type="button"
-                    class="-mb-px border-b-2 px-3 py-2 text-sm"
-                    :class="
-                        tab === key
-                            ? 'border-primary font-medium'
-                            : 'border-transparent text-muted-foreground hover:text-foreground'
-                    "
-                    :data-test="`tab-${key}`"
-                    @click="switchTab(key)"
-                >
-                    {{ $t(label) }}
-                </button>
-            </div>
+        <div class="flex flex-wrap items-end justify-between gap-2 border-b">
+            <!-- The server page's tabs: foreground underline, never the provider colour. -->
+            <AdminTabs
+                class="min-w-0"
+                :tabs="tabs.map(([value, label]) => ({ value, label }))"
+                :model-value="tab"
+                label="App editor sections"
+                id-prefix="app-editor-tab"
+                panel-id="app-editor-panel"
+                @select="(key) => switchTab(key as Tab)"
+            />
             <button
+                id="app-editor-tab-yaml"
                 type="button"
-                class="mb-1 inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
+                class="mb-1 inline-flex h-8 items-center gap-1 rounded-md px-2 text-xs text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50"
                 data-test="tab-yaml"
                 @click="switchTab(tab === 'yaml' ? formTab : 'yaml')"
             >
@@ -838,734 +833,772 @@ const statusLabels = {
                     tab === 'yaml' ? $t('Back to the form') : $t('Edit as YAML')
                 }}
             </button>
-        </nav>
+        </div>
 
-        <p
-            v-if="!formatTwo && tab !== 'yaml' && tab !== 'versions'"
-            class="text-sm text-muted-foreground"
+        <!-- The panel of the selected tab (or of the YAML view). -->
+        <div
+            id="app-editor-panel"
+            role="tabpanel"
+            :aria-labelledby="`app-editor-tab-${tab}`"
+            class="flex flex-col gap-6"
         >
-            {{ $t('This is a format 1 recipe; edit it in the YAML view.') }}
-        </p>
+            <p
+                v-if="!formatTwo && tab !== 'yaml' && tab !== 'versions'"
+                class="text-sm text-muted-foreground"
+            >
+                {{ $t('This is a format 1 recipe; edit it in the YAML view.') }}
+            </p>
 
-        <!-- Details -->
-        <section v-else-if="tab === 'details'" class="grid max-w-3xl gap-4">
-            <FormField label="Name" for="name">
-                <Input
-                    id="name"
-                    v-model="definition.name"
-                    :disabled="readonly"
-                />
-            </FormField>
-            <FormField label="Category" for="category">
-                <NativeSelect
-                    id="category"
-                    v-model="definition.category"
-                    :options="
-                        CATEGORIES.map((value) => ({ value, label: value }))
-                    "
-                    :disabled="readonly"
-                />
-            </FormField>
-            <FormField label="Description (English)" for="description_en">
-                <textarea
-                    id="description_en"
-                    v-model="definition.description.en"
-                    rows="3"
-                    class="rounded-md border bg-transparent px-3 py-2 text-sm"
-                    :disabled="readonly"
-                />
-            </FormField>
-            <FormField label="Description (Turkish)" for="description_tr">
-                <textarea
-                    id="description_tr"
-                    v-model="definition.description.tr"
-                    rows="3"
-                    class="rounded-md border bg-transparent px-3 py-2 text-sm"
-                    :disabled="readonly"
-                />
-            </FormField>
-            <FormField label="Homepage" for="homepage">
-                <Input
-                    id="homepage"
-                    v-model="definition.homepage as string"
-                    placeholder="https://example.com"
-                    :disabled="readonly"
-                />
-            </FormField>
-            <div class="grid gap-4 sm:grid-cols-2">
-                <FormField label="Billing" for="billing">
-                    <NativeSelect
-                        id="billing"
-                        v-model="definition.billing"
-                        :options="[
-                            { value: 'free', label: trans('Free') },
-                            {
-                                value: 'paid',
-                                label: trans(
-                                    'Paid: needs a right granted by the billing system',
-                                ),
-                            },
-                        ]"
+            <!-- Details -->
+            <section v-else-if="tab === 'details'" class="grid max-w-3xl gap-4">
+                <FormField label="Name" for="name">
+                    <Input
+                        id="name"
+                        v-model="definition.name"
                         :disabled="readonly"
                     />
                 </FormField>
-                <FormField label="Licence" for="license">
+                <FormField label="Category" for="category">
                     <NativeSelect
-                        id="license"
-                        v-model="definition.license"
-                        :options="[
-                            {
-                                value: 'none',
-                                label: trans('No licence needed'),
-                            },
-                            {
-                                value: 'external',
-                                label: trans(
-                                    'Licence sold separately (e.g. cPanel, Plesk)',
-                                ),
-                            },
-                        ]"
+                        id="category"
+                        v-model="definition.category"
+                        :options="
+                            CATEGORIES.map((value) => ({ value, label: value }))
+                        "
                         :disabled="readonly"
                     />
                 </FormField>
-            </div>
-        </section>
-
-        <!-- Requirements -->
-        <section
-            v-else-if="tab === 'requirements'"
-            class="grid max-w-3xl gap-6"
-        >
-            <div class="grid gap-2">
-                <h3 class="text-sm font-medium">
-                    {{ $t('Operating systems') }}
-                </h3>
-                <AppSystemsPicker :app="systems" :os-versions="osVersions" />
-            </div>
-
-            <div class="grid gap-2">
-                <h3 class="text-sm font-medium">
-                    {{ $t('Smallest server it needs') }}
-                </h3>
-                <div class="grid gap-4 sm:grid-cols-3">
-                    <FormField label="vCPU cores" for="min_cores">
-                        <Input
-                            id="min_cores"
-                            v-model.number="definition.resources.min_cores"
-                            type="number"
-                            min="1"
-                            class="w-28"
+                <FormField label="Description (English)" for="description_en">
+                    <textarea
+                        id="description_en"
+                        v-model="definition.description.en"
+                        rows="3"
+                        class="rounded-md border bg-transparent px-3 py-2 text-sm"
+                        :disabled="readonly"
+                    />
+                </FormField>
+                <FormField label="Description (Turkish)" for="description_tr">
+                    <textarea
+                        id="description_tr"
+                        v-model="definition.description.tr"
+                        rows="3"
+                        class="rounded-md border bg-transparent px-3 py-2 text-sm"
+                        :disabled="readonly"
+                    />
+                </FormField>
+                <FormField label="Homepage" for="homepage">
+                    <Input
+                        id="homepage"
+                        v-model="definition.homepage as string"
+                        placeholder="https://example.com"
+                        :disabled="readonly"
+                    />
+                </FormField>
+                <div class="grid gap-4 sm:grid-cols-2">
+                    <FormField label="Billing" for="billing">
+                        <NativeSelect
+                            id="billing"
+                            v-model="definition.billing"
+                            :options="[
+                                { value: 'free', label: trans('Free') },
+                                {
+                                    value: 'paid',
+                                    label: trans(
+                                        'Paid: needs a right granted by the billing system',
+                                    ),
+                                },
+                            ]"
                             :disabled="readonly"
                         />
                     </FormField>
-                    <FormField label="Memory" for="min_memory">
-                        <GbInput
-                            id="min_memory"
-                            v-model="definition.resources.min_memory_mib"
-                            :presets="memoryPresets"
-                            :readonly="readonly"
-                        />
-                    </FormField>
-                    <FormField label="Disk" for="min_disk">
-                        <GbInput
-                            id="min_disk"
-                            v-model="definition.resources.min_disk_mib"
-                            :presets="diskPresets"
-                            :readonly="readonly"
+                    <FormField label="Licence" for="license">
+                        <NativeSelect
+                            id="license"
+                            v-model="definition.license"
+                            :options="[
+                                {
+                                    value: 'none',
+                                    label: trans('No licence needed'),
+                                },
+                                {
+                                    value: 'external',
+                                    label: trans(
+                                        'Licence sold separately (e.g. cPanel, Plesk)',
+                                    ),
+                                },
+                            ]"
+                            :disabled="readonly"
                         />
                     </FormField>
                 </div>
-            </div>
+            </section>
 
-            <div class="flex flex-wrap gap-8">
+            <!-- Requirements -->
+            <section
+                v-else-if="tab === 'requirements'"
+                class="grid max-w-3xl gap-6"
+            >
                 <div class="grid gap-2">
                     <h3 class="text-sm font-medium">
-                        {{ $t('Network models') }}
+                        {{ $t('Operating systems') }}
                     </h3>
-                    <label
-                        v-for="model in networkModels"
-                        :key="model.value"
-                        class="flex items-center gap-2 text-sm"
-                    >
-                        <Checkbox
-                            :model-value="
-                                definition.network_models.includes(model.value)
-                            "
-                            :disabled="readonly"
-                            @update:model-value="
-                                definition.network_models = toggleList(
-                                    definition.network_models,
-                                    model.value,
-                                    $event,
-                                )
-                            "
-                        />
-                        {{ $t(model.label) }}
-                    </label>
+                    <AppSystemsPicker
+                        :app="systems"
+                        :os-versions="osVersions"
+                    />
                 </div>
+
                 <div class="grid gap-2">
                     <h3 class="text-sm font-medium">
-                        {{ $t('When it can be installed') }}
+                        {{ $t('Smallest server it needs') }}
                     </h3>
-                    <label
-                        v-for="mode in ['order', 'post']"
-                        :key="mode"
-                        class="flex items-center gap-2 text-sm"
-                    >
-                        <Checkbox
-                            :model-value="
-                                definition.install_modes.includes(mode)
-                            "
-                            :disabled="readonly"
-                            @update:model-value="
-                                definition.install_modes = toggleList(
-                                    definition.install_modes,
-                                    mode,
-                                    $event,
-                                )
-                            "
-                        />
-                        {{
-                            mode === 'order'
-                                ? $t('With a new server or a reinstall')
-                                : $t('Later, on a running server')
-                        }}
-                    </label>
-                </div>
-            </div>
-        </section>
-
-        <!-- Customer form: inputs and outputs -->
-        <section v-else-if="tab === 'form'" class="grid gap-6">
-            <div class="grid gap-2">
-                <h3 class="text-sm font-medium">
-                    {{ $t('What the customer fills in') }}
-                </h3>
-                <p class="text-xs text-muted-foreground">
-                    {{
-                        $t(
-                            'What the customer fills in. Scripts read them with pm_input; they are validated and never put into a script.',
-                        )
-                    }}
-                </p>
-                <RecipeFieldsEditor
-                    v-model="
-                        definition.inputs as (RecipeInput | RecipeOutput)[]
-                    "
-                    kind="inputs"
-                    :readonly="readonly"
-                />
-            </div>
-            <div class="grid gap-2">
-                <h3 class="text-sm font-medium">
-                    {{ $t('What the customer gets back') }}
-                </h3>
-                <p class="text-xs text-muted-foreground">
-                    {{
-                        $t(
-                            'What the customer gets: texts and URLs written with pm_output, files with pm_output_file.',
-                        )
-                    }}
-                </p>
-                <RecipeFieldsEditor
-                    v-model="
-                        definition.outputs as (RecipeInput | RecipeOutput)[]
-                    "
-                    kind="outputs"
-                    :readonly="readonly"
-                />
-            </div>
-        </section>
-
-        <!-- Scripts & actions -->
-        <template v-else-if="tab === 'scripts'">
-            <section class="grid gap-4 lg:grid-cols-[16rem_1fr]">
-                <div class="flex flex-col gap-3">
-                    <div class="flex flex-col gap-1">
-                        <button
-                            v-for="name in fileNames"
-                            :key="name"
-                            type="button"
-                            class="flex items-center justify-between rounded-md px-2 py-1 text-left font-mono text-xs"
-                            :class="
-                                selectedFile === name
-                                    ? 'bg-muted font-medium'
-                                    : 'hover:bg-muted/60'
-                            "
-                            @click="selectedFile = name"
-                        >
-                            {{ name }}
-                            <Trash2
-                                v-if="!readonly"
-                                class="h-3.5 w-3.5 text-muted-foreground hover:text-destructive"
-                                :aria-label="$t('Remove')"
-                                @click.stop="removeFile(name)"
-                            />
-                        </button>
-                        <button
-                            v-for="name in Object.keys(library)"
-                            :key="`_lib/${name}`"
-                            type="button"
-                            class="rounded-md px-2 py-1 text-left font-mono text-xs text-muted-foreground"
-                            :class="
-                                selectedFile === `_lib/${name}`
-                                    ? 'bg-muted'
-                                    : 'hover:bg-muted/60'
-                            "
-                            @click="selectedFile = `_lib/${name}`"
-                        >
-                            _lib/{{ name }} ({{ $t('read-only') }})
-                        </button>
-                    </div>
-                    <div v-if="!readonly" class="flex gap-2">
-                        <Input
-                            v-model="newFile"
-                            class="h-8 font-mono text-xs"
-                            :placeholder="
-                                windows
-                                    ? 'actions/add-user.ps1'
-                                    : 'actions/add-user.sh'
-                            "
-                            @keydown.enter.prevent="addFile"
-                        />
-                        <Button
-                            variant="outline"
-                            size="icon"
-                            :aria-label="$t('Add file')"
-                            @click="addFile"
-                        >
-                            <FilePlus class="h-4 w-4" />
-                        </Button>
-                    </div>
-
-                    <div class="grid gap-3 border-t pt-3 text-sm">
-                        <FormField label="Install script" for="install_script">
-                            <NativeSelect
-                                id="install_script"
-                                v-model="definition.lifecycle.install.script"
-                                :options="fileOptions"
-                                :disabled="readonly"
-                            />
-                        </FormField>
-                        <FormField
-                            label="Install timeout (minutes)"
-                            for="install_timeout"
-                        >
+                    <div class="grid gap-4 sm:grid-cols-3">
+                        <FormField label="vCPU cores" for="min_cores">
                             <Input
-                                id="install_timeout"
-                                v-model.number="
-                                    definition.lifecycle.install.timeout_minutes
-                                "
+                                id="min_cores"
+                                v-model.number="definition.resources.min_cores"
                                 type="number"
                                 min="1"
-                                max="120"
+                                class="w-28"
                                 :disabled="readonly"
                             />
                         </FormField>
-                        <FormField
-                            label="Uninstall script"
-                            for="uninstall_script"
+                        <FormField label="Memory" for="min_memory">
+                            <GbInput
+                                id="min_memory"
+                                v-model="definition.resources.min_memory_mib"
+                                :presets="memoryPresets"
+                                :readonly="readonly"
+                            />
+                        </FormField>
+                        <FormField label="Disk" for="min_disk">
+                            <GbInput
+                                id="min_disk"
+                                v-model="definition.resources.min_disk_mib"
+                                :presets="diskPresets"
+                                :readonly="readonly"
+                            />
+                        </FormField>
+                    </div>
+                </div>
+
+                <div class="flex flex-wrap gap-8">
+                    <div class="grid gap-2">
+                        <h3 class="text-sm font-medium">
+                            {{ $t('Network models') }}
+                        </h3>
+                        <label
+                            v-for="model in networkModels"
+                            :key="model.value"
+                            class="flex items-center gap-2 text-sm"
                         >
-                            <NativeSelect
-                                id="uninstall_script"
-                                v-model="uninstallScript"
-                                :options="uninstallOptions"
+                            <Checkbox
+                                :model-value="
+                                    definition.network_models.includes(
+                                        model.value,
+                                    )
+                                "
                                 :disabled="readonly"
+                                @update:model-value="
+                                    definition.network_models = toggleList(
+                                        definition.network_models,
+                                        model.value,
+                                        $event,
+                                    )
+                                "
                             />
-                        </FormField>
-                        <div class="grid gap-1">
-                            <span class="font-medium">{{
-                                $t('Shared files (includes)')
-                            }}</span>
-                            <label
-                                v-for="name in fileNames"
-                                :key="`include-${name}`"
-                                class="flex items-center gap-2 font-mono text-xs"
-                            >
-                                <Checkbox
-                                    :model-value="
-                                        (definition.includes ?? []).includes(
-                                            name,
-                                        )
-                                    "
-                                    :disabled="readonly"
-                                    @update:model-value="
-                                        toggleInclude(name, $event)
-                                    "
-                                />
-                                {{ name }}
-                            </label>
-                        </div>
+                            {{ $t(model.label) }}
+                        </label>
                     </div>
-                </div>
-
-                <div class="min-w-0">
-                    <CodeEditor
-                        v-if="selectedFile !== null"
-                        :key="selectedFile"
-                        v-model="selectedContent"
-                        :language="languageOf(selectedFile)"
-                        :readonly="readonly || selectedFile.startsWith('_lib/')"
-                        min-height="28rem"
-                    />
-                    <p v-else class="text-sm text-muted-foreground">
-                        {{ $t('No files yet.') }}
-                    </p>
+                    <div class="grid gap-2">
+                        <h3 class="text-sm font-medium">
+                            {{ $t('When it can be installed') }}
+                        </h3>
+                        <label
+                            v-for="mode in ['order', 'post']"
+                            :key="mode"
+                            class="flex items-center gap-2 text-sm"
+                        >
+                            <Checkbox
+                                :model-value="
+                                    definition.install_modes.includes(mode)
+                                "
+                                :disabled="readonly"
+                                @update:model-value="
+                                    definition.install_modes = toggleList(
+                                        definition.install_modes,
+                                        mode,
+                                        $event,
+                                    )
+                                "
+                            />
+                            {{
+                                mode === 'order'
+                                    ? $t('With a new server or a reinstall')
+                                    : $t('Later, on a running server')
+                            }}
+                        </label>
+                    </div>
                 </div>
             </section>
 
-            <section class="grid gap-4 border-t pt-6" data-test="actions">
-                <h3 class="text-sm font-medium">{{ $t('Actions') }}</h3>
-                <p class="text-sm text-muted-foreground">
-                    {{
-                        $t(
-                            'Actions run on an installed app, e.g. adding a VPN client. Each has its own script, inputs and outputs.',
-                        )
-                    }}
-                </p>
-                <div
-                    v-for="(action, position) in definition.actions"
-                    :key="position"
-                    class="grid gap-3 rounded-xl border p-4"
-                >
-                    <div class="grid gap-3 sm:grid-cols-4">
-                        <Input
-                            v-model="action.key"
-                            class="font-mono"
-                            :placeholder="$t('Key, e.g. add_client')"
-                            :disabled="readonly"
-                        />
-                        <Input
-                            v-model="action.label.en"
-                            :placeholder="$t('Label (English)')"
-                            :disabled="readonly"
-                        />
-                        <Input
-                            v-model="action.label.tr"
-                            :placeholder="$t('Label (Turkish)')"
-                            :disabled="readonly"
-                        />
-                        <div class="flex gap-2">
-                            <NativeSelect
-                                v-model="action.script"
-                                :options="fileOptions"
-                                :disabled="readonly"
-                            />
-                            <Button
-                                v-if="!readonly"
-                                variant="ghost"
-                                size="icon"
-                                :aria-label="$t('Remove')"
-                                @click="removeAction(position)"
-                            >
-                                <Trash2 class="h-4 w-4" />
-                            </Button>
-                        </div>
-                    </div>
-                    <FormField
-                        label="Timeout (minutes)"
-                        :for="`action_timeout_${position}`"
-                    >
-                        <Input
-                            :id="`action_timeout_${position}`"
-                            v-model.number="action.timeout_minutes"
-                            type="number"
-                            min="1"
-                            max="120"
-                            class="w-28"
-                            :disabled="readonly"
-                        />
-                    </FormField>
-                    <span class="text-sm font-medium">{{ $t('Inputs') }}</span>
-                    <RecipeFieldsEditor
-                        :model-value="actionFields(action, 'inputs')"
-                        kind="inputs"
-                        :readonly="readonly"
-                        @update:model-value="
-                            action.inputs = $event as RecipeInput[]
-                        "
-                    />
-                    <span class="text-sm font-medium">{{ $t('Outputs') }}</span>
-                    <RecipeFieldsEditor
-                        :model-value="actionFields(action, 'outputs')"
-                        kind="outputs"
-                        :readonly="readonly"
-                        @update:model-value="
-                            action.outputs = $event as RecipeOutput[]
-                        "
-                    />
-                </div>
-                <div v-if="!readonly">
-                    <Button variant="outline" size="sm" @click="addAction">
-                        <Plus class="h-4 w-4" />
-                        {{ $t('Add action') }}
-                    </Button>
-                </div>
-            </section>
-        </template>
-
-        <!-- YAML -->
-        <section v-else-if="tab === 'yaml'" class="grid gap-2">
-            <p class="text-xs text-muted-foreground">
-                {{
-                    $t(
-                        'The whole recipe.yaml. Changes here replace the forms when you leave this view or save.',
-                    )
-                }}
-            </p>
-            <Notice tone="danger" v-if="yamlError">
-                {{ yamlError }}
-            </Notice>
-            <CodeEditor
-                v-model="yamlText"
-                language="yaml"
-                :readonly="readonly"
-                min-height="32rem"
-            />
-        </section>
-
-        <!-- Try & history: trial runs (docs/adr/0018 §7) and versions -->
-        <template v-else-if="tab === 'versions'">
-            <section class="grid gap-4" data-test="trials">
-                <div class="flex flex-wrap items-start justify-between gap-3">
-                    <p class="max-w-2xl text-sm text-muted-foreground">
+            <!-- Customer form: inputs and outputs -->
+            <section v-else-if="tab === 'form'" class="grid gap-6">
+                <div class="grid gap-2">
+                    <h3 class="text-sm font-medium">
+                        {{ $t('What the customer fills in') }}
+                    </h3>
+                    <p class="text-xs text-muted-foreground">
                         {{
                             $t(
-                                'Install the draft as it was last saved on a test server. Billing systems never see trials; uninstall and actions of a trial use the copy it installed.',
+                                'What the customer fills in. Scripts read them with pm_input; they are validated and never put into a script.',
                             )
                         }}
                     </p>
-                    <div class="flex items-center gap-2">
-                        <StatusBadge
-                            v-if="draft"
-                            :tone="draftTried ? 'success' : 'neutral'"
-                            :label="
-                                draftTried
-                                    ? 'Saved draft tried'
-                                    : 'Saved draft not tried yet'
+                    <RecipeFieldsEditor
+                        v-model="
+                            definition.inputs as (RecipeInput | RecipeOutput)[]
+                        "
+                        kind="inputs"
+                        :readonly="readonly"
+                    />
+                </div>
+                <div class="grid gap-2">
+                    <h3 class="text-sm font-medium">
+                        {{ $t('What the customer gets back') }}
+                    </h3>
+                    <p class="text-xs text-muted-foreground">
+                        {{
+                            $t(
+                                'What the customer gets: texts and URLs written with pm_output, files with pm_output_file.',
+                            )
+                        }}
+                    </p>
+                    <RecipeFieldsEditor
+                        v-model="
+                            definition.outputs as (RecipeInput | RecipeOutput)[]
+                        "
+                        kind="outputs"
+                        :readonly="readonly"
+                    />
+                </div>
+            </section>
+
+            <!-- Scripts & actions -->
+            <template v-else-if="tab === 'scripts'">
+                <section class="grid gap-4 lg:grid-cols-[16rem_1fr]">
+                    <div class="flex flex-col gap-3">
+                        <div class="flex flex-col gap-1">
+                            <button
+                                v-for="name in fileNames"
+                                :key="name"
+                                type="button"
+                                class="flex items-center justify-between rounded-md px-2 py-1 text-left font-mono text-xs"
+                                :class="
+                                    selectedFile === name
+                                        ? 'bg-muted font-medium'
+                                        : 'hover:bg-muted/60'
+                                "
+                                @click="selectedFile = name"
+                            >
+                                {{ name }}
+                                <Trash2
+                                    v-if="!readonly"
+                                    class="h-3.5 w-3.5 text-muted-foreground hover:text-destructive"
+                                    :aria-label="$t('Remove')"
+                                    @click.stop="removeFile(name)"
+                                />
+                            </button>
+                            <button
+                                v-for="name in Object.keys(library)"
+                                :key="`_lib/${name}`"
+                                type="button"
+                                class="rounded-md px-2 py-1 text-left font-mono text-xs text-muted-foreground"
+                                :class="
+                                    selectedFile === `_lib/${name}`
+                                        ? 'bg-muted'
+                                        : 'hover:bg-muted/60'
+                                "
+                                @click="selectedFile = `_lib/${name}`"
+                            >
+                                _lib/{{ name }} ({{ $t('read-only') }})
+                            </button>
+                        </div>
+                        <div v-if="!readonly" class="flex gap-2">
+                            <Input
+                                v-model="newFile"
+                                class="h-8 font-mono text-xs"
+                                :placeholder="
+                                    windows
+                                        ? 'actions/add-user.ps1'
+                                        : 'actions/add-user.sh'
+                                "
+                                @keydown.enter.prevent="addFile"
+                            />
+                            <Button
+                                variant="outline"
+                                size="icon"
+                                :aria-label="$t('Add file')"
+                                @click="addFile"
+                            >
+                                <FilePlus class="h-4 w-4" />
+                            </Button>
+                        </div>
+
+                        <div class="grid gap-3 border-t pt-3 text-sm">
+                            <FormField
+                                label="Install script"
+                                for="install_script"
+                            >
+                                <NativeSelect
+                                    id="install_script"
+                                    v-model="
+                                        definition.lifecycle.install.script
+                                    "
+                                    :options="fileOptions"
+                                    :disabled="readonly"
+                                />
+                            </FormField>
+                            <FormField
+                                label="Install timeout (minutes)"
+                                for="install_timeout"
+                            >
+                                <Input
+                                    id="install_timeout"
+                                    v-model.number="
+                                        definition.lifecycle.install
+                                            .timeout_minutes
+                                    "
+                                    type="number"
+                                    min="1"
+                                    max="120"
+                                    :disabled="readonly"
+                                />
+                            </FormField>
+                            <FormField
+                                label="Uninstall script"
+                                for="uninstall_script"
+                            >
+                                <NativeSelect
+                                    id="uninstall_script"
+                                    v-model="uninstallScript"
+                                    :options="uninstallOptions"
+                                    :disabled="readonly"
+                                />
+                            </FormField>
+                            <div class="grid gap-1">
+                                <span class="font-medium">{{
+                                    $t('Shared files (includes)')
+                                }}</span>
+                                <label
+                                    v-for="name in fileNames"
+                                    :key="`include-${name}`"
+                                    class="flex items-center gap-2 font-mono text-xs"
+                                >
+                                    <Checkbox
+                                        :model-value="
+                                            (
+                                                definition.includes ?? []
+                                            ).includes(name)
+                                        "
+                                        :disabled="readonly"
+                                        @update:model-value="
+                                            toggleInclude(name, $event)
+                                        "
+                                    />
+                                    {{ name }}
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="min-w-0">
+                        <CodeEditor
+                            v-if="selectedFile !== null"
+                            :key="selectedFile"
+                            v-model="selectedContent"
+                            :language="languageOf(selectedFile)"
+                            :readonly="
+                                readonly || selectedFile.startsWith('_lib/')
                             "
-                            data-test="draft-tried"
+                            min-height="28rem"
                         />
-                        <Button
-                            v-if="app.editable"
-                            :disabled="
-                                !draft ||
-                                draft.errors.length > 0 ||
-                                testServers.length === 0
-                            "
-                            data-test="try-draft"
-                            @click="openTrial"
+                        <p v-else class="text-sm text-muted-foreground">
+                            {{ $t('No files yet.') }}
+                        </p>
+                    </div>
+                </section>
+
+                <section class="grid gap-4 border-t pt-6" data-test="actions">
+                    <h3 class="text-sm font-medium">{{ $t('Actions') }}</h3>
+                    <p class="text-sm text-muted-foreground">
+                        {{
+                            $t(
+                                'Actions run on an installed app, e.g. adding a VPN client. Each has its own script, inputs and outputs.',
+                            )
+                        }}
+                    </p>
+                    <div
+                        v-for="(action, position) in definition.actions"
+                        :key="position"
+                        class="grid gap-3 rounded-xl border p-4"
+                    >
+                        <div class="grid gap-3 sm:grid-cols-4">
+                            <Input
+                                v-model="action.key"
+                                class="font-mono"
+                                :placeholder="$t('Key, e.g. add_client')"
+                                :disabled="readonly"
+                            />
+                            <Input
+                                v-model="action.label.en"
+                                :placeholder="$t('Label (English)')"
+                                :disabled="readonly"
+                            />
+                            <Input
+                                v-model="action.label.tr"
+                                :placeholder="$t('Label (Turkish)')"
+                                :disabled="readonly"
+                            />
+                            <div class="flex gap-2">
+                                <NativeSelect
+                                    v-model="action.script"
+                                    :options="fileOptions"
+                                    :disabled="readonly"
+                                />
+                                <Button
+                                    v-if="!readonly"
+                                    variant="ghost"
+                                    size="icon"
+                                    :aria-label="$t('Remove')"
+                                    @click="removeAction(position)"
+                                >
+                                    <Trash2 class="h-4 w-4" />
+                                </Button>
+                            </div>
+                        </div>
+                        <FormField
+                            label="Timeout (minutes)"
+                            :for="`action_timeout_${position}`"
                         >
-                            <Play class="h-4 w-4" />
-                            {{ $t('Try on a test server') }}
+                            <Input
+                                :id="`action_timeout_${position}`"
+                                v-model.number="action.timeout_minutes"
+                                type="number"
+                                min="1"
+                                max="120"
+                                class="w-28"
+                                :disabled="readonly"
+                            />
+                        </FormField>
+                        <span class="text-sm font-medium">{{
+                            $t('Inputs')
+                        }}</span>
+                        <RecipeFieldsEditor
+                            :model-value="actionFields(action, 'inputs')"
+                            kind="inputs"
+                            :readonly="readonly"
+                            @update:model-value="
+                                action.inputs = $event as RecipeInput[]
+                            "
+                        />
+                        <span class="text-sm font-medium">{{
+                            $t('Outputs')
+                        }}</span>
+                        <RecipeFieldsEditor
+                            :model-value="actionFields(action, 'outputs')"
+                            kind="outputs"
+                            :readonly="readonly"
+                            @update:model-value="
+                                action.outputs = $event as RecipeOutput[]
+                            "
+                        />
+                    </div>
+                    <div v-if="!readonly">
+                        <Button variant="outline" size="sm" @click="addAction">
+                            <Plus class="h-4 w-4" />
+                            {{ $t('Add action') }}
                         </Button>
                     </div>
-                </div>
-                <Notice v-if="testServers.length === 0">
-                    {{
-                        $t(
-                            'No active test server yet. Mark a server without a billing system as a test server on its Apps tab.',
-                        )
-                    }}
-                </Notice>
-                <div class="overflow-x-auto rounded-xl border">
-                    <table class="w-full text-sm">
-                        <thead
-                            class="bg-muted/50 text-left text-muted-foreground"
-                        >
-                            <tr>
-                                <th class="px-4 py-3 font-medium">
-                                    {{ $t('Server') }}
-                                </th>
-                                <th class="px-4 py-3 font-medium">
-                                    {{ $t('Version') }}
-                                </th>
-                                <th class="px-4 py-3 font-medium">
-                                    {{ $t('Status') }}
-                                </th>
-                                <th class="px-4 py-3 font-medium">
-                                    {{ $t('Date') }}
-                                </th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr
-                                v-for="trial in trials"
-                                :key="trial.uuid"
-                                class="border-t align-top"
-                            >
-                                <td class="px-4 py-3">
-                                    <Link
-                                        :href="showServer(trial.server.uuid)"
-                                        class="font-medium hover:underline"
-                                        >{{ trial.server.hostname }}</Link
-                                    >
-                                </td>
-                                <td class="px-4 py-3 font-mono">
-                                    {{ trial.version }}
-                                    <span
-                                        v-if="trial.current"
-                                        class="ml-1 font-sans text-xs text-muted-foreground"
-                                        >({{ $t('saved draft') }})</span
-                                    >
-                                </td>
-                                <td class="px-4 py-3">
-                                    <StatusBadge
-                                        :tone="trialStatusTone(trial.status)"
-                                        :label="trialStatusLabels[trial.status]"
-                                    />
-                                    <p
-                                        v-if="
-                                            trial.step &&
-                                            trial.status !== 'installed'
-                                        "
-                                        class="mt-1 text-xs text-muted-foreground"
-                                    >
-                                        {{ trial.step }} ·
-                                        {{ formatPercent(trial.progress) }}
-                                    </p>
-                                    <p
-                                        v-if="trial.error"
-                                        class="mt-1 text-xs break-words text-status-danger-text"
-                                    >
-                                        {{ trial.error }}
-                                    </p>
-                                </td>
-                                <td class="px-4 py-3 whitespace-nowrap">
-                                    {{
-                                        formatDateTime(
-                                            trial.finished_at ??
-                                                trial.created_at,
-                                        )
-                                    }}
-                                </td>
-                            </tr>
-                            <tr v-if="trials.length === 0" class="border-t">
-                                <td
-                                    colspan="4"
-                                    class="px-4 py-3 text-muted-foreground"
-                                >
-                                    {{ $t('No trial runs yet.') }}
-                                </td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
+                </section>
+            </template>
+
+            <!-- YAML -->
+            <section v-else-if="tab === 'yaml'" class="grid gap-2">
                 <p class="text-xs text-muted-foreground">
                     {{
                         $t(
-                            'Logs, outputs, uninstall and actions of a trial are on the Apps tab of its server.',
+                            'The whole recipe.yaml. Changes here replace the forms when you leave this view or save.',
                         )
                     }}
                 </p>
+                <Notice tone="danger" v-if="yamlError">
+                    {{ yamlError }}
+                </Notice>
+                <CodeEditor
+                    v-model="yamlText"
+                    language="yaml"
+                    :readonly="readonly"
+                    min-height="32rem"
+                />
             </section>
 
-            <section class="grid gap-4 border-t pt-6" data-test="history">
-                <h3 class="text-sm font-medium">{{ $t('Versions') }}</h3>
-                <div class="overflow-x-auto rounded-xl border">
-                    <table class="w-full text-sm">
-                        <thead
-                            class="bg-muted/50 text-left text-muted-foreground"
-                        >
-                            <tr>
-                                <th class="px-4 py-3 font-medium">
-                                    {{ $t('Version') }}
-                                </th>
-                                <th class="px-4 py-3 font-medium">
-                                    {{ $t('Status') }}
-                                </th>
-                                <th class="px-4 py-3 font-medium">
-                                    {{ $t('Published by') }}
-                                </th>
-                                <th class="px-4 py-3 font-medium">
-                                    {{ $t('Date') }}
-                                </th>
-                                <th class="px-4 py-3">
-                                    <span class="sr-only">{{
-                                        $t('Actions')
-                                    }}</span>
-                                </th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr
-                                v-for="version in versions"
-                                :key="`${version.version}-${version.status}`"
-                                class="border-t"
+            <!-- Try & history: trial runs (docs/adr/0018 §7) and versions -->
+            <template v-else-if="tab === 'versions'">
+                <section class="grid gap-4" data-test="trials">
+                    <div
+                        class="flex flex-wrap items-start justify-between gap-3"
+                    >
+                        <p class="max-w-2xl text-sm text-muted-foreground">
+                            {{
+                                $t(
+                                    'Install the draft as it was last saved on a test server. Billing systems never see trials; uninstall and actions of a trial use the copy it installed.',
+                                )
+                            }}
+                        </p>
+                        <div class="flex items-center gap-2">
+                            <StatusBadge
+                                v-if="draft"
+                                :tone="draftTried ? 'success' : 'neutral'"
+                                :label="
+                                    draftTried
+                                        ? 'Saved draft tried'
+                                        : 'Saved draft not tried yet'
+                                "
+                                data-test="draft-tried"
+                            />
+                            <Button
+                                v-if="app.editable"
+                                :disabled="
+                                    !draft ||
+                                    draft.errors.length > 0 ||
+                                    testServers.length === 0
+                                "
+                                data-test="try-draft"
+                                @click="openTrial"
                             >
-                                <td class="px-4 py-3 font-mono">
-                                    {{ version.version }}
-                                </td>
-                                <td class="px-4 py-3">
-                                    <StatusBadge
-                                        :tone="statusTone[version.status]"
-                                        :label="statusLabels[version.status]"
-                                    />
-                                </td>
-                                <td class="px-4 py-3">
-                                    {{ version.published_by ?? '—' }}
-                                </td>
-                                <td class="px-4 py-3 whitespace-nowrap">
-                                    {{
-                                        formatDateTime(
-                                            version.published_at ??
-                                                version.created_at,
-                                        )
-                                    }}
-                                </td>
-                                <td class="px-4 py-3 text-right">
-                                    <a
-                                        :href="
-                                            exportUrl(
-                                                version.status === 'draft'
-                                                    ? 'draft'
-                                                    : version.version,
+                                <Play class="h-4 w-4" />
+                                {{ $t('Try on a test server') }}
+                            </Button>
+                        </div>
+                    </div>
+                    <Notice v-if="testServers.length === 0">
+                        {{
+                            $t(
+                                'No active test server yet. Mark a server without a billing system as a test server on its Apps tab.',
+                            )
+                        }}
+                    </Notice>
+                    <div class="overflow-x-auto rounded-xl border">
+                        <table class="w-full text-sm">
+                            <thead
+                                class="bg-muted/50 text-left text-muted-foreground"
+                            >
+                                <tr>
+                                    <th class="px-4 py-3 font-medium">
+                                        {{ $t('Server') }}
+                                    </th>
+                                    <th class="px-4 py-3 font-medium">
+                                        {{ $t('Version') }}
+                                    </th>
+                                    <th class="px-4 py-3 font-medium">
+                                        {{ $t('Status') }}
+                                    </th>
+                                    <th class="px-4 py-3 font-medium">
+                                        {{ $t('Date') }}
+                                    </th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr
+                                    v-for="trial in trials"
+                                    :key="trial.uuid"
+                                    class="border-t align-top"
+                                >
+                                    <td class="px-4 py-3">
+                                        <Link
+                                            :href="
+                                                showServer(trial.server.uuid)
+                                            "
+                                            class="font-medium hover:underline"
+                                            >{{ trial.server.hostname }}</Link
+                                        >
+                                    </td>
+                                    <td class="px-4 py-3 font-mono">
+                                        {{ trial.version }}
+                                        <span
+                                            v-if="trial.current"
+                                            class="ml-1 font-sans text-xs text-muted-foreground"
+                                            >({{ $t('saved draft') }})</span
+                                        >
+                                    </td>
+                                    <td class="px-4 py-3">
+                                        <StatusBadge
+                                            :tone="
+                                                trialStatusTone(trial.status)
+                                            "
+                                            :label="
+                                                trialStatusLabels[trial.status]
+                                            "
+                                        />
+                                        <p
+                                            v-if="
+                                                trial.step &&
+                                                trial.status !== 'installed'
+                                            "
+                                            class="mt-1 text-xs text-muted-foreground"
+                                        >
+                                            {{ trial.step }} ·
+                                            {{ formatPercent(trial.progress) }}
+                                        </p>
+                                        <p
+                                            v-if="trial.error"
+                                            class="mt-1 text-xs break-words text-status-danger-text"
+                                        >
+                                            {{ trial.error }}
+                                        </p>
+                                    </td>
+                                    <td class="px-4 py-3 whitespace-nowrap">
+                                        {{
+                                            formatDateTime(
+                                                trial.finished_at ??
+                                                    trial.created_at,
                                             )
-                                        "
-                                        class="inline-flex items-center gap-1 text-xs hover:underline"
-                                        :title="$t('Export zip')"
+                                        }}
+                                    </td>
+                                </tr>
+                                <tr v-if="trials.length === 0" class="border-t">
+                                    <td
+                                        colspan="4"
+                                        class="px-4 py-3 text-muted-foreground"
                                     >
-                                        <Download class="h-3.5 w-3.5" />
-                                        zip
-                                    </a>
-                                </td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-                <div
-                    v-if="versionOptions.length > 1"
-                    class="flex flex-wrap items-end gap-2"
-                >
-                    <FormField label="From" for="diff_from">
-                        <NativeSelect
-                            id="diff_from"
-                            v-model="diffFrom"
-                            :options="versionOptions"
-                        />
-                    </FormField>
-                    <FormField label="To" for="diff_to">
-                        <NativeSelect
-                            id="diff_to"
-                            v-model="diffTo"
-                            :options="versionOptions"
-                        />
-                    </FormField>
-                    <Button variant="outline" @click="loadDiff">{{
-                        $t('Compare')
-                    }}</Button>
-                </div>
-                <pre
-                    v-if="diffText !== null"
-                    class="max-h-[32rem] overflow-auto rounded-lg border bg-muted/30 p-3 font-mono text-xs"
-                    data-test="version-diff"
-                ><template v-for="(line, number) in diffText.split('\n')" :key="number"><span :class="line.startsWith('+') ? 'text-status-success-foreground' : line.startsWith('-') ? 'text-status-danger-text' : line.startsWith('@@') ? 'text-muted-foreground' : ''">{{ line }}</span>
+                                        {{ $t('No trial runs yet.') }}
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <p class="text-xs text-muted-foreground">
+                        {{
+                            $t(
+                                'Logs, outputs, uninstall and actions of a trial are on the Apps tab of its server.',
+                            )
+                        }}
+                    </p>
+                </section>
+
+                <section class="grid gap-4 border-t pt-6" data-test="history">
+                    <h3 class="text-sm font-medium">{{ $t('Versions') }}</h3>
+                    <div class="overflow-x-auto rounded-xl border">
+                        <table class="w-full text-sm">
+                            <thead
+                                class="bg-muted/50 text-left text-muted-foreground"
+                            >
+                                <tr>
+                                    <th class="px-4 py-3 font-medium">
+                                        {{ $t('Version') }}
+                                    </th>
+                                    <th class="px-4 py-3 font-medium">
+                                        {{ $t('Status') }}
+                                    </th>
+                                    <th class="px-4 py-3 font-medium">
+                                        {{ $t('Published by') }}
+                                    </th>
+                                    <th class="px-4 py-3 font-medium">
+                                        {{ $t('Date') }}
+                                    </th>
+                                    <th class="px-4 py-3">
+                                        <span class="sr-only">{{
+                                            $t('Actions')
+                                        }}</span>
+                                    </th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr
+                                    v-for="version in versions"
+                                    :key="`${version.version}-${version.status}`"
+                                    class="border-t"
+                                >
+                                    <td class="px-4 py-3 font-mono">
+                                        {{ version.version }}
+                                    </td>
+                                    <td class="px-4 py-3">
+                                        <StatusBadge
+                                            :tone="statusTone[version.status]"
+                                            :label="
+                                                statusLabels[version.status]
+                                            "
+                                        />
+                                    </td>
+                                    <td class="px-4 py-3">
+                                        {{ version.published_by ?? '—' }}
+                                    </td>
+                                    <td class="px-4 py-3 whitespace-nowrap">
+                                        {{
+                                            formatDateTime(
+                                                version.published_at ??
+                                                    version.created_at,
+                                            )
+                                        }}
+                                    </td>
+                                    <td class="px-4 py-3 text-right">
+                                        <a
+                                            :href="
+                                                exportUrl(
+                                                    version.status === 'draft'
+                                                        ? 'draft'
+                                                        : version.version,
+                                                )
+                                            "
+                                            class="inline-flex items-center gap-1 text-xs hover:underline"
+                                            :title="$t('Export zip')"
+                                        >
+                                            <Download class="h-3.5 w-3.5" />
+                                            zip
+                                        </a>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div
+                        v-if="versionOptions.length > 1"
+                        class="flex flex-wrap items-end gap-2"
+                    >
+                        <FormField label="From" for="diff_from">
+                            <NativeSelect
+                                id="diff_from"
+                                v-model="diffFrom"
+                                :options="versionOptions"
+                            />
+                        </FormField>
+                        <FormField label="To" for="diff_to">
+                            <NativeSelect
+                                id="diff_to"
+                                v-model="diffTo"
+                                :options="versionOptions"
+                            />
+                        </FormField>
+                        <Button variant="outline" @click="loadDiff">{{
+                            $t('Compare')
+                        }}</Button>
+                    </div>
+                    <pre
+                        v-if="diffText !== null"
+                        class="max-h-[32rem] overflow-auto rounded-lg border bg-muted/30 p-3 font-mono text-xs"
+                        data-test="version-diff"
+                    ><template v-for="(line, number) in diffText.split('\n')" :key="number"><span :class="line.startsWith('+') ? 'text-status-success-foreground' : line.startsWith('-') ? 'text-status-danger-text' : line.startsWith('@@') ? 'text-muted-foreground' : ''">{{ line }}</span>
 </template></pre>
-                <p v-if="diffText === ''" class="text-sm text-muted-foreground">
-                    {{ $t('No differences.') }}
-                </p>
-            </section>
-        </template>
+                    <p
+                        v-if="diffText === ''"
+                        class="text-sm text-muted-foreground"
+                    >
+                        {{ $t('No differences.') }}
+                    </p>
+                </section>
+            </template>
+        </div>
     </div>
 
     <FormDialog

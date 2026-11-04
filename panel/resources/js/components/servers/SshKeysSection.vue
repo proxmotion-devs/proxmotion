@@ -13,6 +13,7 @@ import { computed, ref, watch } from 'vue';
 import CopyButton from '@/components/admin/CopyButton.vue';
 import FormDialog from '@/components/admin/FormDialog.vue';
 import FormField from '@/components/admin/FormField.vue';
+import StatusBadge from '@/components/admin/StatusBadge.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -339,18 +340,22 @@ const manage = (selected: GuestSshKey[]) => {
                                 :title="key.fingerprint"
                                 >{{ key.fingerprint }}</code
                             >
-                            <Badge
+                            <!-- The status and what to do, both as text (no tooltip-only reason). -->
+                            <div
                                 v-if="missing.has(key.fingerprint)"
-                                variant="outline"
-                                class="mt-1 border-status-warning-border text-status-warning-text"
-                                :title="
+                                class="mt-1 flex flex-col items-start gap-1"
+                                data-test="ssh-key-missing"
+                            >
+                                <StatusBadge
+                                    tone="warning"
+                                    label="Not in the server"
+                                />
+                                <span class="text-xs text-muted-foreground">{{
                                     $t(
                                         'Add or delete a key to write the list into the server again.',
                                     )
-                                "
-                                data-test="ssh-key-missing"
-                                >{{ $t('Not in the server') }}</Badge
-                            >
+                                }}</span>
+                            </div>
                         </td>
                         <td class="px-2 py-2">
                             <div class="flex justify-end gap-1">
