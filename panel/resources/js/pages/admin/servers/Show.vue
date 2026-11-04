@@ -33,7 +33,7 @@ import HostnameDialog from '@/components/servers/HostnameDialog.vue';
 import MoveDialog from '@/components/servers/MoveDialog.vue';
 import MoveHistory from '@/components/servers/MoveHistory.vue';
 import RdnsDialog from '@/components/servers/RdnsDialog.vue';
-import RebuildDialog from '@/components/servers/RebuildDialog.vue';
+import FailedTaskNotice from '@/components/servers/FailedTaskNotice.vue';
 import AntiSpoofingButton from '@/components/servers/AntiSpoofingButton.vue';
 import FirewallSection from '@/components/servers/FirewallSection.vue';
 import BackupsSection from '@/components/servers/BackupsSection.vue';
@@ -752,21 +752,19 @@ const resetAfterTrial = () =>
                         {{ $t('Console') }}
                     </a>
                 </Button>
-                <Button
-                    v-if="server.can_retry"
-                    size="sm"
-                    @click="post(retry(server.uuid))"
-                >
-                    <RotateCcw class="h-4 w-4" />
-                    {{ $t('Retry') }}
-                </Button>
-                <RebuildDialog
-                    v-if="server.can_rebuild"
-                    :action="rebuild(server.uuid)"
-                    :hostname="server.hostname"
-                />
             </div>
         </div>
+
+        <!-- Why the server is in error and what to do about it, before anything else. -->
+        <FailedTaskNotice
+            v-if="server.can_retry || server.can_rebuild"
+            :tasks="tasks"
+            :hostname="server.hostname"
+            :can-retry="server.can_retry"
+            :retry="retry(server.uuid)"
+            :rebuild="server.can_rebuild ? rebuild(server.uuid) : null"
+            @show-tasks="tab = 'tasks'"
+        />
 
         <Notice v-if="server.reboot_required" data-test="reboot-required">
             <div

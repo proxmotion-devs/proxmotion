@@ -724,6 +724,8 @@ export type TaskProgress = {
     estimate?: { remaining_seconds: number; based_on: number } | null;
     error?: string | null;
     created_at: string | null;
+    /** When it succeeded or failed; null while it runs. */
+    finished_at?: string | null;
     /** Stuck (queued, or running past its time limit): an administrator may end it. */
     can_fail?: boolean;
     /** An administrator's script run, queued or running: it may be cancelled. */

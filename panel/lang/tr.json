@@ -2738,5 +2738,15 @@
     "Catalog": "Katalog",
     "Administration": "Yönetim",
     "Find a server": "Sunucu bul",
-    "Find a server by hostname, IP address, billing ID or VMID": "Hostname, IP adresi, faturalama ID'si veya VMID ile sunucu bul"
+    "Find a server by hostname, IP address, billing ID or VMID": "Hostname, IP adresi, faturalama ID'si veya VMID ile sunucu bul",
+    "No task is running, but the server is still marked as busy.": "Çalışan bir görev yok, ama sunucu hâlâ meşgul olarak işaretli.",
+    "Creating the server failed.": "Sunucu oluşturulamadı.",
+    "The reinstall failed.": "Yeniden kurulum başarısız oldu.",
+    "Deleting the server failed.": "Sunucu silinemedi.",
+    ":task failed.": ":task başarısız oldu.",
+    "Retry starts the reinstall again; what is already done is kept.": "Yeniden dene, yeniden kurulumu tekrar başlatır; tamamlanan adımlar korunur.",
+    "Retry starts the deletion again; what is already done is kept.": "Yeniden dene, silmeyi tekrar başlatır; tamamlanan adımlar korunur.",
+    "Retry starts the creation again; what is already done is kept.": "Yeniden dene, oluşturmayı tekrar başlatır; tamamlanan adımlar korunur.",
+    "If Retry keeps failing on a broken VM, Rebuild from scratch deletes that VM and creates the server again.": "Yeniden dene bozuk bir VM yüzünden başarısız olmaya devam ediyorsa, Sıfırdan yeniden kur o VM'i siler ve sunucuyu yeniden oluşturur.",
+    "Show the task": "Görevi göster"
 }
