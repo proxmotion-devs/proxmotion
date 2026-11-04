@@ -47,6 +47,7 @@ import ResourcesDialog from '@/components/servers/ResourcesDialog.vue';
 import ResetPasswordButton from '@/components/servers/ResetPasswordButton.vue';
 import ServerChecks from '@/components/servers/ServerChecks.vue';
 import ServerScripts from '@/components/servers/ServerScripts.vue';
+import ServerToolsSection from '@/components/servers/ServerToolsSection.vue';
 import ServerStatsCards from '@/components/servers/ServerStatsCards.vue';
 import SuspendDialog from '@/components/servers/SuspendDialog.vue';
 import TaskAnnouncer from '@/components/servers/TaskAnnouncer.vue';
@@ -219,6 +220,28 @@ setLayoutProps({
 });
 
 const { formatDateTime } = useDateTime();
+
+// What the folded tools section holds, and whether something there needs a look.
+const hasReinstallLimit = computed(
+    () =>
+        props.server.billing_system !== null &&
+        ['active', 'suspended'].includes(props.server.status),
+);
+const canMove = computed(() =>
+    ['active', 'suspended'].includes(props.server.status),
+);
+const toolsContents = computed(() => [
+    ...(active.value || props.server.verification ? ['Checks'] : []),
+    ...(props.scripts.length || props.scriptRuns.length ? ['Scripts'] : []),
+    ...(hasReinstallLimit.value ? ['Reinstall limit'] : []),
+    ...(canMove.value ? ['Move'] : []),
+]);
+const toolsAttention = computed(
+    () =>
+        (props.server.verification?.checks ?? []).some(
+            (check) => check.status === 'failed',
+        ) || props.scriptRuns.some((run) => run.status === 'running'),
+);
 
 // Refresh while a task runs, so progress and the power state show up live.
 const { start, stop } = usePoll(
@@ -1293,19 +1316,6 @@ const resetAfterTrial = () =>
                             :finish="(move) => finishMove([server.uuid, move])"
                             :disabled="busy"
                         />
-                        <div
-                            v-if="
-                                ['active', 'suspended'].includes(server.status)
-                            "
-                            class="mt-auto flex flex-wrap gap-2"
-                        >
-                            <MoveDialog
-                                :action="moveServer(server.uuid)"
-                                :options="moveOptions"
-                                :hostname="server.hostname"
-                                :disabled="vmBlocked"
-                            />
-                        </div>
                     </section>
                 </div>
 
@@ -1326,32 +1336,62 @@ const resetAfterTrial = () =>
                     :exempt-action="usageExempt(server.uuid)"
                 />
 
-                <!-- Only the billing system's reinstalls are limited (docs/adr/0045). -->
-                <ReinstallLimitSection
-                    v-if="
-                        server.billing_system &&
-                        ['active', 'suspended'].includes(server.status)
-                    "
-                    :limit="reinstallLimit"
-                    :action="updateReinstallLimit(server.uuid)"
-                    :reset-action="resetReinstalls(server.uuid)"
-                />
+                <!-- Administrators' tools rather than everyday support, folded away until needed. -->
+                <ServerToolsSection
+                    v-if="toolsContents.length"
+                    :contents="toolsContents"
+                    :attention="toolsAttention"
+                >
+                    <ServerChecks
+                        v-if="active || server.verification"
+                        :verification="server.verification"
+                        :action="active ? verify(server.uuid) : undefined"
+                        :disabled="vmBlocked"
+                    />
 
-                <ServerChecks
-                    v-if="active || server.verification"
-                    :verification="server.verification"
-                    :action="active ? verify(server.uuid) : undefined"
-                    :disabled="vmBlocked"
-                />
+                    <ServerScripts
+                        v-if="scripts.length || scriptRuns.length"
+                        :server-uuid="server.uuid"
+                        :hostname="server.hostname"
+                        :scripts="scripts"
+                        :runs="scriptRuns"
+                        :disabled="!active || vmBlocked || agentDown"
+                    />
 
-                <ServerScripts
-                    v-if="scripts.length || scriptRuns.length"
-                    :server-uuid="server.uuid"
-                    :hostname="server.hostname"
-                    :scripts="scripts"
-                    :runs="scriptRuns"
-                    :disabled="!active || vmBlocked || agentDown"
-                />
+                    <!-- Only the billing system's reinstalls are limited (docs/adr/0045). -->
+                    <ReinstallLimitSection
+                        v-if="hasReinstallLimit"
+                        :limit="reinstallLimit"
+                        :action="updateReinstallLimit(server.uuid)"
+                        :reset-action="resetReinstalls(server.uuid)"
+                    />
+
+                    <!-- Moving to another node, cluster or location (docs/adr/0037). -->
+                    <section
+                        v-if="canMove"
+                        class="flex flex-col gap-3 rounded-xl border p-4"
+                        data-test="server-move-section"
+                    >
+                        <div>
+                            <h2 class="font-medium">{{ $t('Move') }}</h2>
+                            <p class="text-sm text-muted-foreground">
+                                {{
+                                    $t(
+                                        'Moves the server to another node. With moves to other clusters turned on, also to another cluster or location.',
+                                    )
+                                }}
+                            </p>
+                        </div>
+                        <div class="flex flex-wrap gap-2">
+                            <MoveDialog
+                                :action="moveServer(server.uuid)"
+                                :options="moveOptions"
+                                :hostname="server.hostname"
+                                :disabled="vmBlocked"
+                            />
+                        </div>
+                    </section>
+                </ServerToolsSection>
 
                 <!-- Operations that interrupt or remove the server. -->
                 <section

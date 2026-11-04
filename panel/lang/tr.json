@@ -224,6 +224,7 @@
     "Description": "Açıklama",
     "Detach": "Ayır",
     "Details": "Ayrıntılar",
+    "Diagnostics and administration": "Tanılama ve yönetim",
     "Differences between the panel and Proxmox, found by the cluster sync. Nothing is changed automatically.": "Cluster senkronizasyonunun bulduğu panel ile Proxmox arasındaki farklar. Hiçbir şey otomatik olarak değiştirilmez.",
     "Different resources": "Kaynaklar farklı",
     "Disable": "Devre Dışı Bırak",
