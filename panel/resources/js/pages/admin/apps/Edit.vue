@@ -38,6 +38,7 @@ import { Input } from '@/components/ui/input';
 import { useDateTime } from '@/composables/useDateTime';
 import { formatPercent } from '@/lib/format';
 import { CATEGORIES, editable, languageOf, pruned } from '@/lib/recipes';
+import { useUnsavedChanges } from '@/lib/unsavedChanges';
 import type {
     RecipeAction,
     RecipeDefinition,
@@ -159,6 +160,7 @@ const reset = () => {
     files.value = { ...source()?.files };
     yamlText.value = dump(pruned(definition.value), { lineWidth: 120 });
     yamlError.value = null;
+    saved.value = current();
 };
 
 // Five tabs from describing the app to trying it (docs/adr/0018 §5); the
@@ -178,6 +180,27 @@ const formTab = ref<Exclude<Tab, 'yaml'>>('details');
 // YAML view: the whole definition as text, read back when leaving the tab.
 const yamlText = ref(dump(pruned(definition.value), { lineWidth: 120 }));
 const yamlError = ref<string | null>(null);
+
+// Unsaved edits: the YAML view's text, or the forms' definition, and the
+// files, against what was loaded or last saved.
+const current = () => ({
+    yaml:
+        tab.value === 'yaml'
+            ? yamlText.value
+            : dump(pruned(definition.value), { lineWidth: 120 }),
+    files: JSON.stringify(files.value),
+});
+const saved = ref({ yaml: yamlText.value, files: JSON.stringify(files.value) });
+const dirty = computed(() => {
+    if (readonly.value) {
+        return false;
+    }
+
+    const now = current();
+
+    return now.yaml !== saved.value.yaml || now.files !== saved.value.files;
+});
+useUnsavedChanges(() => dirty.value);
 
 const readYaml = (): boolean => {
     try {

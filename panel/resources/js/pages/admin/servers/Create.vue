@@ -2,7 +2,7 @@
 import { Head, useForm } from '@inertiajs/vue3';
 import { trans } from 'laravel-vue-i18n';
 import { Check } from '@lucide/vue';
-import { computed, nextTick, ref, watch } from 'vue';
+import { computed, nextTick, onMounted, ref, watch } from 'vue';
 import FormField from '@/components/admin/FormField.vue';
 import Notice from '@/components/admin/Notice.vue';
 import NativeSelect from '@/components/admin/NativeSelect.vue';
@@ -20,6 +20,7 @@ import { Spinner } from '@/components/ui/spinner';
 import { formatMib } from '@/lib/format';
 import { optionalNumber } from '@/lib/forms';
 import { hostnameExample } from '@/lib/hostnames';
+import { useUnsavedChanges } from '@/lib/unsavedChanges';
 import {
     firstStepWithError,
     makesTestServer,
@@ -109,6 +110,11 @@ const form = useForm({
     external_id: '',
     external_client_id: '',
 });
+
+// The watchers below fill in a template and network model from the first
+// choices; what is there once the wizard shows counts as unchanged.
+onMounted(() => form.defaults());
+useUnsavedChanges(() => form.isDirty);
 
 const errors = computed(() => form.errors as Record<string, string>);
 

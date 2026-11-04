@@ -17,6 +17,7 @@ import NativeSelect from '@/components/admin/NativeSelect.vue';
 import StatusBadge from '@/components/admin/StatusBadge.vue';
 import CodeEditor from '@/components/apps/CodeEditor.vue';
 import Heading from '@/components/Heading.vue';
+import { useUnsavedChanges } from '@/lib/unsavedChanges';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
@@ -160,6 +161,7 @@ const shown = (slot: GuestScriptSlot) =>
 const forms = Object.fromEntries(
     props.scripts.map((slot) => [slot.event, useForm({ script: shown(slot) })]),
 ) as Record<GuestScriptEvent, ReturnType<typeof useForm<{ script: string }>>>;
+useUnsavedChanges(() => Object.values(forms).some((form) => form.isDirty));
 
 const tryOn = reactive(
     Object.fromEntries(

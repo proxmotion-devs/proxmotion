@@ -5,6 +5,7 @@ import AppSidebar from '@/components/AppSidebar.vue';
 import AppSidebarHeader from '@/components/AppSidebarHeader.vue';
 import SkipLink from '@/components/SkipLink.vue';
 import { Toaster } from '@/components/ui/sonner';
+import UnsavedChangesGuard from '@/components/UnsavedChangesGuard.vue';
 import type { BreadcrumbItem } from '@/types';
 
 type Props = {
@@ -30,5 +31,6 @@ withDefaults(defineProps<Props>(), {
             <slot />
         </AppContent>
         <Toaster />
+        <UnsavedChangesGuard />
     </AppShell>
 </template>

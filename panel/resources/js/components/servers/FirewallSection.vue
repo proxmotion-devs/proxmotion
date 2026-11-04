@@ -6,6 +6,7 @@ import { computed, watch } from 'vue';
 import NativeSelect from '@/components/admin/NativeSelect.vue';
 import StatusBadge from '@/components/admin/StatusBadge.vue';
 import FirewallRulesEditor from '@/components/servers/FirewallRulesEditor.vue';
+import { useUnsavedChanges } from '@/lib/unsavedChanges';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { firewall as firewallRoute } from '@/routes/admin/servers';
@@ -28,6 +29,7 @@ const form = useForm({
     default_policy: props.firewall.default_policy,
     rules: props.firewall.rules,
 });
+useUnsavedChanges(() => form.isDirty);
 
 const rulesetForm = useForm({
     ruleset: (props.firewall.rulesets[0]?.value ?? null) as string | null,

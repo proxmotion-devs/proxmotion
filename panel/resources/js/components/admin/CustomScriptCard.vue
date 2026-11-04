@@ -15,6 +15,7 @@ import GuestScriptRuns from '@/components/admin/GuestScriptRuns.vue';
 import NativeSelect from '@/components/admin/NativeSelect.vue';
 import StatusBadge from '@/components/admin/StatusBadge.vue';
 import CodeEditor from '@/components/apps/CodeEditor.vue';
+import { useUnsavedChanges } from '@/lib/unsavedChanges';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
@@ -60,6 +61,7 @@ const route = [props.template.uuid, props.script.uuid] as [string, string];
 // The editor shows the draft when there is one, otherwise what runs now.
 const shown = () => props.script.draft ?? props.script.content ?? '';
 const form = useForm({ script: shown() });
+useUnsavedChanges(() => form.isDirty);
 
 // After a reload the editor follows what was saved, published or discarded.
 watch(

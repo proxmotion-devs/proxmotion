@@ -29,6 +29,7 @@ import type { OptionalNumber } from '@/lib/forms';
 import { fitsCloudInit, passwordExample } from '@/lib/passwordExample';
 import type { PasswordCharacters } from '@/lib/passwordExample';
 import { SETTINGS_CATEGORIES } from '@/lib/settingsCategories';
+import { useUnsavedChanges } from '@/lib/unsavedChanges';
 import type { SettingsCategoryKey } from '@/lib/settingsCategories';
 import { edit, index, testEmail, update } from '@/routes/admin/settings';
 import type { PanelSettings } from '@/types/admin';
@@ -111,6 +112,8 @@ const form = useForm({
     support_email: props.settings.support_email ?? '',
     support_url: props.settings.support_url ?? '',
 });
+
+useUnsavedChanges(() => form.isDirty);
 
 // Branding (docs/adr/0053): the images in use come with every page.
 const page = usePage();
