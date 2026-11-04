@@ -392,7 +392,9 @@ const submitAddress = () => {
                         <th class="px-4 py-2 font-medium">
                             {{ $t('Reverse DNS') }}
                         </th>
-                        <th class="px-4 py-2" />
+                        <th class="px-4 py-2">
+                            <span class="sr-only">{{ $t('Actions') }}</span>
+                        </th>
                     </tr>
                 </thead>
                 <tbody>

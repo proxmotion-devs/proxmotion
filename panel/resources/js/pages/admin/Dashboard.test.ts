@@ -104,7 +104,12 @@ describe('Dashboard', () => {
         expect(tasks.text()).toContain('vps1.example.com');
         expect(tasks.text()).toContain('Reinstall');
         expect(tasks.text()).toContain('The guest agent did not answer.');
-        expect(tasks.text()).toContain('And 2 more.');
+        // The rest are one click away, in the operations report.
+        const more = tasks.find('[data-test="failed-tasks-more"]');
+        expect(more.text()).toBe('And 2 more in the operations report.');
+        expect(more.attributes('href')).toBe(
+            '/admin/reports/operations?days=7',
+        );
         expect(
             wrapper.find('[data-test="attention-failed-tasks"]').text(),
         ).toContain('3');

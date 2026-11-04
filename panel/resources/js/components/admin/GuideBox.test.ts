@@ -47,6 +47,15 @@ describe('GuideBox', () => {
         expect(localStorage.getItem('proxmotion.guide.apps')).toBe('hidden');
     });
 
+    it('never renders open first when it was hidden', () => {
+        localStorage.setItem('proxmotion.guide.apps', 'hidden');
+
+        // No tick: the first render already has it collapsed, so it does not flash open.
+        expect(mountGuide().find('[data-test="guide-apps"]').exists()).toBe(
+            false,
+        );
+    });
+
     it('can be shown again', async () => {
         localStorage.setItem('proxmotion.guide.apps', 'hidden');
         const wrapper = mountGuide();

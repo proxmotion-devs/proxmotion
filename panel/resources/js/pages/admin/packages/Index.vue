@@ -289,7 +289,9 @@ const modelLabel = (value: string) =>
                         <th class="px-4 py-3 font-medium">
                             {{ $t('OS templates') }}
                         </th>
-                        <th class="px-4 py-3" />
+                        <th class="px-4 py-3">
+                            <span class="sr-only">{{ $t('Actions') }}</span>
+                        </th>
                     </tr>
                 </thead>
                 <tbody>

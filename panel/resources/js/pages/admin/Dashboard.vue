@@ -26,6 +26,7 @@ import { index as ipPools } from '@/routes/admin/ip-pools';
 import { index as locations } from '@/routes/admin/locations';
 import { index as osTemplates } from '@/routes/admin/os-templates';
 import { index as packages } from '@/routes/admin/packages';
+import { show as showReport } from '@/routes/admin/reports';
 import { index as servers, show as showServer } from '@/routes/admin/servers';
 import type { TaskType, UsageViolation } from '@/types/admin';
 import type { RouteDefinition } from '@/wayfinder';
@@ -379,14 +380,27 @@ const severityText = {
                                 v-if="failedTaskCount > failedTasks.length"
                                 class="text-xs text-muted-foreground"
                             >
-                                {{
-                                    $t('And :count more.', {
-                                        count: String(
-                                            failedTaskCount -
-                                                failedTasks.length,
-                                        ),
-                                    })
-                                }}
+                                <!-- The rest are listed with their errors in the operations report. -->
+                                <Link
+                                    :href="
+                                        showReport('operations', {
+                                            query: { days: 7 },
+                                        })
+                                    "
+                                    class="underline-offset-4 hover:text-foreground hover:underline"
+                                    data-test="failed-tasks-more"
+                                    >{{
+                                        $t(
+                                            'And :count more in the operations report.',
+                                            {
+                                                count: String(
+                                                    failedTaskCount -
+                                                        failedTasks.length,
+                                                ),
+                                            },
+                                        )
+                                    }}</Link
+                                >
                             </li>
                         </ul>
 
@@ -451,14 +465,23 @@ const severityText = {
                                 "
                                 class="text-xs text-muted-foreground"
                             >
-                                {{
-                                    $t('And :count more.', {
-                                        count: String(
-                                            usageViolationCount -
-                                                usageViolations.length,
-                                        ),
-                                    })
-                                }}
+                                <!-- The traffic report lists the period's violations. -->
+                                <Link
+                                    :href="showReport('traffic')"
+                                    class="underline-offset-4 hover:text-foreground hover:underline"
+                                    data-test="usage-violations-more"
+                                    >{{
+                                        $t(
+                                            'And :count more in the traffic report.',
+                                            {
+                                                count: String(
+                                                    usageViolationCount -
+                                                        usageViolations.length,
+                                                ),
+                                            },
+                                        )
+                                    }}</Link
+                                >
                             </li>
                             <li class="text-xs text-muted-foreground">
                                 {{

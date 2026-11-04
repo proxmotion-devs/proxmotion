@@ -2,7 +2,7 @@
 import { Head, useForm } from '@inertiajs/vue3';
 import { trans } from 'laravel-vue-i18n';
 import { Check } from '@lucide/vue';
-import { computed, ref, watch } from 'vue';
+import { computed, nextTick, ref, watch } from 'vue';
 import FormField from '@/components/admin/FormField.vue';
 import Notice from '@/components/admin/Notice.vue';
 import NativeSelect from '@/components/admin/NativeSelect.vue';
@@ -282,6 +282,11 @@ const missingForNext = computed(() => {
     );
 });
 
+// A new step takes focus on its (visually hidden) name, so screen readers
+// say where they are and Tab goes on to its first field.
+const stepHeading = ref<HTMLElement | null>(null);
+watch(step, () => nextTick(() => stepHeading.value?.focus()));
+
 const go = (target: number) => {
     if (target <= reached.value) {
         step.value = target;
@@ -445,6 +450,20 @@ const submit = () => {
         </ol>
 
         <form class="grid gap-4" @submit.prevent="submit">
+            <h2
+                ref="stepHeading"
+                class="sr-only"
+                tabindex="-1"
+                data-test="wizard-step-heading"
+            >
+                {{
+                    $t('Step :number of :total: :title', {
+                        number: String(step + 1),
+                        total: String(WIZARD_STEPS.length),
+                        title: $t(WIZARD_STEPS[step].title),
+                    })
+                }}
+            </h2>
             <template v-if="step === 0">
                 <FormField
                     label="Server type"

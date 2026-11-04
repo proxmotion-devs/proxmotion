@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { Link } from '@inertiajs/vue3';
 import { ChevronDown, LifeBuoy, Lightbulb, X } from '@lucide/vue';
-import { onMounted, ref } from 'vue';
+import { ref } from 'vue';
 import { help } from '@/routes/admin';
 
 /**
@@ -18,15 +18,17 @@ const props = defineProps<{
 }>();
 
 const storageKey = `proxmotion.guide.${props.id}`;
-const open = ref(true);
-
-onMounted(() => {
+// Read before the first render, so a hidden guide never opens and then
+// collapses (the panel renders in the browser only).
+const storedOpen = () => {
     try {
-        open.value = localStorage.getItem(storageKey) !== 'hidden';
+        return localStorage.getItem(storageKey) !== 'hidden';
     } catch {
         // Storage can be blocked; the guide then stays open.
+        return true;
     }
-});
+};
+const open = ref(storedOpen());
 
 const setOpen = (value: boolean) => {
     open.value = value;
@@ -59,10 +61,10 @@ const setOpen = (value: boolean) => {
         >
             <X class="h-4 w-4" />
         </button>
-        <h3 class="flex items-center gap-2 pr-8 font-medium">
+        <h2 class="flex items-center gap-2 pr-8 font-medium">
             <Lightbulb class="h-4 w-4 shrink-0 text-guide-icon" />
             {{ $t(title) }}
-        </h3>
+        </h2>
         <div
             class="mt-2 text-muted-foreground [&_code]:rounded [&_code]:bg-muted [&_code]:px-1 [&_code]:font-mono [&_code]:text-xs [&_ol]:list-decimal [&_ol]:space-y-1 [&_ol]:pl-5 [&_p]:mt-2 [&_ul]:list-disc [&_ul]:space-y-1 [&_ul]:pl-5"
         >

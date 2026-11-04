@@ -316,7 +316,9 @@ const copy = async (key: SshKey) => {
                         <th class="px-2 py-2 font-medium">
                             {{ $t('Fingerprint') }}
                         </th>
-                        <th class="w-24 px-2 py-2" />
+                        <th class="w-24 px-2 py-2">
+                            <span class="sr-only">{{ $t('Actions') }}</span>
+                        </th>
                     </tr>
                 </thead>
                 <tbody>
@@ -476,7 +478,9 @@ const copy = async (key: SshKey) => {
                             <th class="px-2 py-2 font-medium">
                                 {{ $t('Fingerprint') }}
                             </th>
-                            <th class="w-28 px-2 py-2" />
+                            <th class="w-28 px-2 py-2">
+                                <span class="sr-only">{{ $t('Actions') }}</span>
+                            </th>
                         </tr>
                     </thead>
                     <tbody>
