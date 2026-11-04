@@ -1,4 +1,4 @@
-import { mount } from '@vue/test-utils';
+import { flushPromises, mount } from '@vue/test-utils';
 import { afterEach, describe, expect, it, vi } from 'vite-plus/test';
 import ServerQuickFind from '@/components/admin/ServerQuickFind.vue';
 
@@ -41,6 +41,27 @@ describe('ServerQuickFind', () => {
         await wrapper.find('form').trigger('submit');
 
         expect(visit.mock.calls[0][0].url).toBe('/admin/servers');
+        wrapper.unmount();
+    });
+
+    it('opens a search box in a sheet on phones', async () => {
+        const wrapper = mountFind();
+        await wrapper
+            .find('[data-test="server-quick-find-phone"]')
+            .trigger('click');
+        await flushPromises();
+
+        const input = document.querySelector<HTMLInputElement>(
+            '[data-test="server-quick-find-phone-input"]',
+        );
+        expect(input).not.toBeNull();
+        expect(document.activeElement).toBe(input);
+
+        input!.value = 'web1';
+        input!.dispatchEvent(new Event('input'));
+        input!.form!.dispatchEvent(new Event('submit'));
+
+        expect(visit.mock.calls[0][0].url).toBe('/admin/servers?search=web1');
         wrapper.unmount();
     });
 

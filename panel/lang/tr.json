@@ -2748,5 +2748,9 @@
     "Retry starts the deletion again; what is already done is kept.": "Yeniden dene, silmeyi tekrar başlatır; tamamlanan adımlar korunur.",
     "Retry starts the creation again; what is already done is kept.": "Yeniden dene, oluşturmayı tekrar başlatır; tamamlanan adımlar korunur.",
     "If Retry keeps failing on a broken VM, Rebuild from scratch deletes that VM and creates the server again.": "Yeniden dene bozuk bir VM yüzünden başarısız olmaya devam ediyorsa, Sıfırdan yeniden kur o VM'i siler ve sunucuyu yeniden oluşturur.",
-    "Show the task": "Görevi göster"
+    "Show the task": "Görevi göster",
+    "Copy root password": "Root parolasını kopyala",
+    "Copy IP address": "IP adresini kopyala",
+    "Copy value": "Değeri kopyala",
+    "Hostname, IP address, billing ID or VMID.": "Hostname, IP adresi, faturalama ID'si veya VMID."
 }

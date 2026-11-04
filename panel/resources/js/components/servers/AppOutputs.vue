@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { usePage } from '@inertiajs/vue3';
 import { Download } from '@lucide/vue';
+import CopyButton from '@/components/admin/CopyButton.vue';
 import { Button } from '@/components/ui/button';
 import { useDateTime } from '@/composables/useDateTime';
 import type { AppText, RevealedAppOutputs } from '@/types/admin';
@@ -60,11 +61,16 @@ const fileHref = (contentBase64: string) =>
                                 </a>
                             </Button>
                         </dd>
-                        <dd
-                            v-else
-                            class="mt-1 font-mono text-xs break-all whitespace-pre-wrap select-all"
-                        >
-                            {{ output.value }}
+                        <dd v-else class="mt-1 flex items-start gap-1">
+                            <span
+                                class="min-w-0 flex-1 font-mono text-xs break-all whitespace-pre-wrap select-all"
+                                >{{ output.value }}</span
+                            >
+                            <CopyButton
+                                v-if="output.value"
+                                :value="output.value"
+                                label="Copy value"
+                            />
                         </dd>
                     </div>
                 </dl>

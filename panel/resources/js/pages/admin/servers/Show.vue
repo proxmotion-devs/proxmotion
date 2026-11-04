@@ -19,6 +19,7 @@ import {
 import { useResizeObserver } from '@vueuse/core';
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import ConfirmDialog from '@/components/admin/ConfirmDialog.vue';
+import CopyButton from '@/components/admin/CopyButton.vue';
 import TypedConfirmDialog from '@/components/admin/TypedConfirmDialog.vue';
 import Notice from '@/components/admin/Notice.vue';
 import DriftList from '@/components/admin/DriftList.vue';
@@ -1073,9 +1074,15 @@ const resetAfterTrial = () =>
                                 class="flex min-w-0 flex-1 basis-48 flex-col gap-0.5"
                             >
                                 <div class="flex flex-wrap items-center gap-2">
-                                    <span class="font-mono break-all">{{
-                                        address.address
-                                    }}</span>
+                                    <span class="inline-flex items-center">
+                                        <span class="font-mono break-all">{{
+                                            address.address
+                                        }}</span>
+                                        <CopyButton
+                                            :value="address.address"
+                                            label="Copy IP address"
+                                        />
+                                    </span>
                                     <StatusBadge
                                         v-if="address.primary"
                                         tone="neutral"
@@ -1192,9 +1199,17 @@ const resetAfterTrial = () =>
                                 </dt>
                                 <dd
                                     v-if="revealedPassword"
-                                    class="font-mono text-xs break-all select-all"
+                                    class="flex items-center gap-1"
                                 >
-                                    {{ revealedPassword }}
+                                    <span
+                                        class="min-w-0 font-mono text-sm break-all select-all"
+                                        data-test="root-password"
+                                        >{{ revealedPassword }}</span
+                                    >
+                                    <CopyButton
+                                        :value="revealedPassword"
+                                        label="Copy root password"
+                                    />
                                 </dd>
                                 <dd
                                     v-else-if="server.has_password"

@@ -266,7 +266,7 @@ const submit = () =>
                     }}</span>
                 </label>
 
-                <DialogFooter class="gap-2">
+                <DialogFooter class="dialog-sticky-footer gap-2">
                     <DialogClose as-child>
                         <Button type="button" variant="secondary">{{
                             $t('Cancel')

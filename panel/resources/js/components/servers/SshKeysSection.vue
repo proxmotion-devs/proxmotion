@@ -1,8 +1,6 @@
 <script setup lang="ts">
 import { useForm } from '@inertiajs/vue3';
 import {
-    Check,
-    Copy,
     KeyRound,
     LoaderCircle,
     Plus,
@@ -12,6 +10,7 @@ import {
 } from '@lucide/vue';
 import { trans } from 'laravel-vue-i18n';
 import { computed, ref, watch } from 'vue';
+import CopyButton from '@/components/admin/CopyButton.vue';
 import FormDialog from '@/components/admin/FormDialog.vue';
 import FormField from '@/components/admin/FormField.vue';
 import { Badge } from '@/components/ui/badge';
@@ -194,26 +193,6 @@ const manage = (selected: GuestSshKey[]) => {
     ];
     form.submit(sshKeysRoute(props.server), { preserveScroll: true });
 };
-
-// Browsers offer the clipboard only on HTTPS (and localhost).
-const canCopy =
-    typeof navigator !== 'undefined' && navigator.clipboard !== undefined;
-
-// The fingerprint of the key just copied, for a moment.
-const copied = ref<string | null>(null);
-let copiedTimer: ReturnType<typeof setTimeout> | undefined;
-
-const copy = async (key: SshKey) => {
-    try {
-        await navigator.clipboard.writeText(key.public_key);
-    } catch {
-        return;
-    }
-
-    copied.value = key.fingerprint;
-    clearTimeout(copiedTimer);
-    copiedTimer = setTimeout(() => (copied.value = null), 2000);
-};
 </script>
 
 <template>
@@ -375,25 +354,10 @@ const copy = async (key: SshKey) => {
                         </td>
                         <td class="px-2 py-2">
                             <div class="flex justify-end gap-1">
-                                <Button
-                                    v-if="canCopy"
-                                    variant="ghost"
-                                    size="icon"
-                                    class="h-8 w-8"
-                                    :aria-label="$t('Copy public key')"
-                                    :title="
-                                        copied === key.fingerprint
-                                            ? $t('Copied')
-                                            : $t('Copy public key')
-                                    "
-                                    @click="copy(key)"
-                                >
-                                    <Check
-                                        v-if="copied === key.fingerprint"
-                                        class="h-4 w-4 text-status-success-foreground"
-                                    />
-                                    <Copy v-else class="h-4 w-4" />
-                                </Button>
+                                <CopyButton
+                                    :value="key.public_key"
+                                    label="Copy public key"
+                                />
                                 <Button
                                     variant="ghost"
                                     size="icon"

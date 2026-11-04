@@ -78,7 +78,7 @@ const submit = () =>
                 {{ $t('Reinstall') }}
             </Button>
         </DialogTrigger>
-        <DialogContent>
+        <DialogContent class="max-h-[90dvh] overflow-y-auto">
             <form class="flex flex-col gap-4" @submit.prevent="submit">
                 <DialogTitle>{{ $t('Reinstall the server?') }}</DialogTitle>
                 <DialogDescription>
@@ -119,7 +119,7 @@ const submit = () =>
                         id="ssh_keys"
                         v-model="form.ssh_keys"
                         rows="3"
-                        class="w-full rounded-md border border-input bg-transparent px-3 py-2 font-mono text-xs shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 dark:bg-input/30"
+                        class="w-full rounded-md border border-input bg-transparent px-3 py-2 font-mono text-base shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 md:text-xs dark:bg-input/30"
                         placeholder="ssh-ed25519 AAAA… user@host"
                     />
                 </FormField>
@@ -131,7 +131,7 @@ const submit = () =>
                     :error="form.errors.confirm_hostname"
                 />
 
-                <DialogFooter class="gap-2">
+                <DialogFooter class="dialog-sticky-footer gap-2">
                     <DialogClose as-child>
                         <Button type="button" variant="secondary">{{
                             $t('Cancel')
