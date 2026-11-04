@@ -5,6 +5,7 @@ import { initializeTheme } from '@/composables/useAppearance';
 import AppLayout from '@/layouts/AppLayout.vue';
 import AuthLayout from '@/layouts/AuthLayout.vue';
 import SettingsLayout from '@/layouts/settings/Layout.vue';
+import { initializeConnectionToast } from '@/lib/connectionToast';
 import { initializeFlashToast } from '@/lib/flashToast';
 import { installI18n } from '@/lib/i18n';
 
@@ -16,7 +17,9 @@ void createInertiaApp({
     title: (title) => (title ? `${trans(title)} - ${appName()}` : appName()),
     layout: (name) => {
         switch (true) {
+            // Error pages also open for visitors who are not signed in.
             case name.startsWith('auth/'):
+            case name.startsWith('errors/'):
                 return AuthLayout;
             case name.startsWith('settings/'):
                 return [AppLayout, SettingsLayout];
@@ -53,3 +56,6 @@ initializeTheme();
 
 // This will listen for flash toast data from the server...
 initializeFlashToast();
+
+// ...and say so when the panel cannot be reached at all.
+initializeConnectionToast();
