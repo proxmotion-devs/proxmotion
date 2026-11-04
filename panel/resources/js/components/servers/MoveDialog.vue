@@ -2,11 +2,12 @@
 import { useForm } from '@inertiajs/vue3';
 import { ArrowRightLeft } from '@lucide/vue';
 import { trans } from 'laravel-vue-i18n';
-import { computed, ref } from 'vue';
+import { computed, ref, useId } from 'vue';
 import FormDialog from '@/components/admin/FormDialog.vue';
 import FormField from '@/components/admin/FormField.vue';
 import HostnameConfirmField from '@/components/admin/HostnameConfirmField.vue';
 import NativeSelect from '@/components/admin/NativeSelect.vue';
+import Notice from '@/components/admin/Notice.vue';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { formatMib } from '@/lib/format';
@@ -148,6 +149,9 @@ const submit = () =>
             onSuccess: () => (open.value = false),
         });
 
+// Why a move is not possible, read out with the button.
+const refusalId = `move-refusal-${useId()}`;
+
 const errors = computed(
     () => form.errors as Record<string, string | undefined>,
 );
@@ -158,13 +162,21 @@ const errors = computed(
         variant="outline"
         size="sm"
         :disabled="disabled || options.refusal !== null"
-        :title="options.refusal ?? undefined"
+        :aria-describedby="options.refusal !== null ? refusalId : undefined"
         data-test="server-move"
         @click="openDialog"
     >
         <ArrowRightLeft class="h-4 w-4" />
         {{ $t('Move') }}
     </Button>
+    <p
+        v-if="options.refusal !== null"
+        :id="refusalId"
+        class="basis-full text-xs text-muted-foreground"
+        data-test="server-move-refusal"
+    >
+        {{ options.refusal }}
+    </p>
 
     <FormDialog
         v-model:open="open"
@@ -174,13 +186,9 @@ const errors = computed(
         :processing="form.processing"
         @submit="submit"
     >
-        <p
-            v-if="errors.move"
-            class="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive"
-            data-test="move-error"
-        >
+        <Notice v-if="errors.move" tone="danger" data-test="move-error">
             {{ errors.move }}
-        </p>
+        </Notice>
 
         <p
             v-if="!options.cross_cluster"

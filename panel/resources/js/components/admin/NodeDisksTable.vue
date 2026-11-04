@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import ConfirmDelete from '@/components/admin/ConfirmDelete.vue';
 import HealthProblems from '@/components/admin/HealthProblems.vue';
+import Notice from '@/components/admin/Notice.vue';
 import StatusBadge from '@/components/admin/StatusBadge.vue';
 import { formatBytes, formatPercent } from '@/lib/format';
 import { healthLabel, healthTone, lifeUsed } from '@/lib/storageHealth';
@@ -17,12 +18,9 @@ defineProps<{
 
 <template>
     <div class="flex flex-col gap-2">
-        <p
-            v-if="error"
-            class="rounded-md border border-status-warning-border bg-status-warning px-3 py-2 text-xs text-status-warning-foreground"
-        >
+        <Notice v-if="error">
             {{ $t('Disks and pools could not be read: :error', { error }) }}
-        </p>
+        </Notice>
 
         <div v-if="disks.length > 0" class="overflow-x-auto rounded-lg border">
             <table class="w-full text-sm">

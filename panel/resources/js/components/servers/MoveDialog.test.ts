@@ -176,6 +176,19 @@ describe('MoveDialog', () => {
         expect(
             wrapper.find('[data-test="server-move"]').attributes('disabled'),
         ).toBeDefined();
+        // The reason is shown beside the button and read out with it, not hidden in a tooltip.
+        const refusal = wrapper.find('[data-test="server-move-refusal"]');
+        expect(refusal.text()).toBe(
+            'Another task is still running for this server.',
+        );
+        expect(
+            wrapper
+                .find('[data-test="server-move"]')
+                .attributes('aria-describedby'),
+        ).toBe(refusal.attributes('id'));
+        expect(
+            wrapper.find('[data-test="server-move"]').attributes('title'),
+        ).toBeUndefined();
     });
 
     it('asks to confirm routed addresses', async () => {

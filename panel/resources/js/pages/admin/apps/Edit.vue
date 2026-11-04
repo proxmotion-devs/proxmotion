@@ -392,6 +392,7 @@ const confirmingRevert = ref(false);
 const revertToBundled = () =>
     router.post(revertRoute(props.app.slug), {}, { preserveScroll: true });
 
+const confirmingDiscard = ref(false);
 const discardDraft = () =>
     router.delete(discard(props.app.slug), {
         preserveScroll: true,
@@ -625,12 +626,12 @@ const statusLabels = {
                         app.slug
                     }}</span>
                     <StatusBadge
-                        :tone="app.source === 'custom' ? 'neutral' : 'success'"
+                        tone="neutral"
                         :label="app.source === 'custom' ? 'Custom' : 'Bundled'"
                     />
                     <StatusBadge
                         v-if="published"
-                        tone="success"
+                        tone="neutral"
                         :label="`v${published.version}`"
                     />
                     <StatusBadge v-if="draft" tone="neutral" label="Draft" />
@@ -719,7 +720,8 @@ const statusLabels = {
                     <Button
                         v-if="draft && published"
                         variant="outline"
-                        @click="discardDraft"
+                        data-test="discard-draft"
+                        @click="confirmingDiscard = true"
                     >
                         {{ $t('Discard draft') }}
                     </Button>
@@ -751,24 +753,16 @@ const statusLabels = {
             </div>
         </div>
 
-        <div
-            v-if="draft && draft.errors.length"
-            class="rounded-lg border border-status-warning-border bg-status-warning p-3 text-sm"
-            data-test="draft-errors"
-        >
+        <Notice v-if="draft && draft.errors.length" data-test="draft-errors">
             <p class="font-medium">
                 {{ $t('Fix these before publishing:') }}
             </p>
             <ul class="mt-1 list-disc pl-5">
-                <li
-                    v-for="error in draft.errors"
-                    :key="error"
-                    class="break-words"
-                >
+                <li v-for="error in draft.errors" :key="error">
                     {{ error }}
                 </li>
             </ul>
-        </div>
+        </Notice>
         <Notice
             tone="danger"
             v-for="(error, key) in page.props.errors"
@@ -1367,16 +1361,13 @@ const statusLabels = {
                         </Button>
                     </div>
                 </div>
-                <p
-                    v-if="testServers.length === 0"
-                    class="rounded-lg border border-status-warning-border bg-status-warning p-3 text-sm"
-                >
+                <Notice v-if="testServers.length === 0">
                     {{
                         $t(
                             'No active test server yet. Mark a server without a billing system as a test server on its Apps tab.',
                         )
                     }}
-                </p>
+                </Notice>
                 <div class="overflow-x-auto rounded-xl border">
                     <table class="w-full text-sm">
                         <thead
@@ -1660,6 +1651,18 @@ const statusLabels = {
         "
         confirm-label="Back to bundled version"
         @confirm="revertToBundled"
+    />
+    <ConfirmDialog
+        v-model:open="confirmingDiscard"
+        title="Discard the draft?"
+        :description="
+            $t(
+                'The draft is deleted. Installed copies and new installations keep the published version.',
+            )
+        "
+        confirm-label="Discard draft"
+        destructive
+        @confirm="discardDraft"
     />
 
     <ConfirmDialog

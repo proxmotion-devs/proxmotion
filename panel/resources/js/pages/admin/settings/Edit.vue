@@ -1039,18 +1039,14 @@ const sectionClass = 'flex flex-col gap-4 rounded-xl border p-4';
         </template>
 
         <template v-if="category === 'notifications'">
-            <p
-                v-if="!mailerDelivers"
-                class="rounded-md border border-status-warning-border bg-status-warning px-3 py-2 text-sm"
-                data-test="mailer-not-delivering"
-            >
+            <Notice v-if="!mailerDelivers" data-test="mailer-not-delivering">
                 {{
                     $t(
                         'The mailer in .env is ":mailer": mail is written to the log, not sent. Set MAIL_MAILER and the SMTP settings in .env to send it.',
                         { mailer: environment.mailer },
                     )
                 }}
-            </p>
+            </Notice>
 
             <section :class="sectionClass" data-test="settings-notifications">
                 <label class="flex items-start gap-2 text-sm">

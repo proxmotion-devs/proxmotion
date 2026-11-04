@@ -37,7 +37,9 @@ defineProps<{
                         <h1 class="text-xl font-medium">
                             {{ $t(title ?? '') }}
                         </h1>
-                        <p class="text-center text-sm text-muted-foreground">
+                        <p
+                            class="text-center text-sm text-balance text-muted-foreground"
+                        >
                             {{ $t(description ?? '') }}
                         </p>
                     </div>

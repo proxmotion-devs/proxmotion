@@ -826,6 +826,7 @@
     "The console could not be opened. Make sure the server is running.": "Konsol açılamadı. Sunucunun çalıştığından emin olun.",
     "The datacenter firewall is off, so the anti-spoofing filters of its servers do nothing.": "Datacenter firewall'u kapalı, bu yüzden sunucularının anti-spoofing filtreleri etkisiz.",
     "the DHCP server rules are missing": "DHCP sunucu kuralları eksik",
+    "The draft is deleted. Installed copies and new installations keep the published version.": "Taslak silinir. Kurulu kopyalar ve yeni kurulumlar yayınlanmış sürümle devam eder.",
     "The draft is deleted. Servers keep running the script that runs now.": "Taslak silinir. Sunucular şu an çalışan script'i çalıştırmaya devam eder.",
     "The end of the range must not be before its start.": "Aralığın sonu başlangıcından önce olamaz.",
     "The existing encrypted environment file is not in readable format. Use --force to overwrite it.": "Mevcut şifrelenmiş ortam değişkenleri dosyası okunabilir biçimde değil. Üzerine yazmak için --force kullanın.",
