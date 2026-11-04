@@ -21,6 +21,7 @@ use App\Models\Server;
 use App\Models\User;
 use App\Provisioning\Exceptions\ProvisioningException;
 use App\Provisioning\TaskRunner;
+use App\Rules\TypedHostname;
 use Illuminate\Container\Attributes\CurrentUser;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Http\JsonResponse;
@@ -75,12 +76,19 @@ class GuestScriptController extends Controller
                 'draft' => $script->draft_content,
             ])->values(),
             'customLogs' => fn () => $this->customLogs($osTemplate),
+            // Test servers first: drafts run elsewhere only with the hostname typed again.
             'servers' => fn () => $osTemplate->servers()
                 ->where('status', ServerStatus::Active)
+                ->orderByDesc('is_test')
                 ->orderBy('hostname')
                 ->limit(200)
-                ->get(['uuid', 'hostname'])
-                ->map(fn (Server $server) => ['value' => $server->uuid, 'label' => $server->hostname]),
+                ->get(['uuid', 'hostname', 'is_test'])
+                ->map(fn (Server $server) => [
+                    'value' => $server->uuid,
+                    'label' => $server->is_test ? __(':hostname (test server)', ['hostname' => $server->hostname]) : $server->hostname,
+                    'hostname' => $server->hostname,
+                    'test' => $server->is_test,
+                ]),
             'maxBytes' => GuestScripts::MAX_SCRIPT_BYTES,
             'canTrace' => $osTemplate->platform === OsPlatform::Linux,
         ]);
@@ -194,6 +202,16 @@ class GuestScriptController extends Controller
         }
 
         $server = Server::query()->where('uuid', $validated['server'])->firstOrFail();
+
+        // A draft has never run on customers' servers: anywhere but on a test
+        // server it runs only with the hostname typed again.
+        if ($draft && ! $server->is_test) {
+            $request->validate(
+                ['confirm_hostname' => ['required', 'string', new TypedHostname($server->hostname)]],
+                ['confirm_hostname.required' => __('Type the hostname of the server to confirm.')],
+            );
+        }
+
         $trace = $request->boolean('trace') && $osTemplate->platform === OsPlatform::Linux;
 
         try {

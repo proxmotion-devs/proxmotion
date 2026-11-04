@@ -1,14 +1,16 @@
 <script setup lang="ts">
 import { Head, Link, router } from '@inertiajs/vue3';
-import { Download, Plus } from '@lucide/vue';
+import { Download, Plus, Search } from '@lucide/vue';
 import { trans } from 'laravel-vue-i18n';
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import NativeSelect from '@/components/admin/NativeSelect.vue';
 import ServerStatusBadge from '@/components/admin/ServerStatusBadge.vue';
 import StatusBadge from '@/components/admin/StatusBadge.vue';
+import Pagination from '@/components/admin/Pagination.vue';
 import Heading from '@/components/Heading.vue';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { adopt, create, index, show } from '@/routes/admin/servers';
 import type { Paginated, ServerListItem, ServerStatus } from '@/types/admin';
@@ -22,6 +24,8 @@ const props = defineProps<{
     showTerminated: boolean;
     /** Only servers with this status, e.g. the suspended ones. */
     status: ServerStatus | null;
+    /** Text the list is searched for (hostname, IP address, billing ID, VMID). */
+    search: string;
 }>();
 
 const statusOptions = computed(() =>
@@ -41,8 +45,18 @@ const statusOptions = computed(() =>
 );
 
 // A chosen status lists only its servers; "Show deleted servers" applies to all statuses.
-const visit = (status: ServerStatus | null, terminated: boolean) => {
+const searchText = ref(props.search);
+
+const visit = (
+    status: ServerStatus | null,
+    terminated: boolean,
+    search: string = props.search,
+) => {
     const query: Record<string, string | number> = {};
+
+    if (search.trim() !== '') {
+        query.search = search.trim();
+    }
 
     if (status) {
         query.status = status;
@@ -61,6 +75,9 @@ const statusFilter = computed({
 
 const toggleTerminated = (value: boolean | 'indeterminate') =>
     visit(null, value === true);
+
+const runSearch = () =>
+    visit(props.status, props.showTerminated, searchText.value);
 </script>
 
 <template>
@@ -89,6 +106,30 @@ const toggleTerminated = (value: boolean | 'indeterminate') =>
         </div>
 
         <div class="flex flex-wrap items-center gap-4">
+            <form
+                class="flex w-full gap-2 sm:w-auto"
+                role="search"
+                data-test="server-search"
+                @submit.prevent="runSearch"
+            >
+                <Input
+                    v-model="searchText"
+                    type="search"
+                    class="min-w-0 flex-1 sm:w-96 sm:flex-none"
+                    :placeholder="
+                        $t('Hostname, IP address, billing ID or VMID')
+                    "
+                    :aria-label="$t('Search servers')"
+                />
+                <Button
+                    type="submit"
+                    variant="outline"
+                    size="icon"
+                    :aria-label="$t('Search')"
+                >
+                    <Search class="h-4 w-4" />
+                </Button>
+            </form>
             <NativeSelect
                 v-model="statusFilter"
                 :options="statusOptions"
@@ -193,9 +234,11 @@ const toggleTerminated = (value: boolean | 'indeterminate') =>
                             class="px-4 py-10 text-center text-muted-foreground"
                         >
                             {{
-                                status
-                                    ? $t('No servers with this status.')
-                                    : $t('No servers yet.')
+                                search
+                                    ? $t('No servers match the search.')
+                                    : status
+                                      ? $t('No servers with this status.')
+                                      : $t('No servers yet.')
                             }}
                         </td>
                     </tr>
@@ -203,20 +246,6 @@ const toggleTerminated = (value: boolean | 'indeterminate') =>
             </table>
         </div>
 
-        <nav v-if="servers.last_page > 1" class="flex flex-wrap gap-1">
-            <template v-for="link in servers.links" :key="link.label">
-                <Link
-                    v-if="link.url"
-                    :href="link.url"
-                    preserve-scroll
-                    class="rounded-md border px-3 py-1 text-sm"
-                    :class="{
-                        'bg-primary text-primary-foreground': link.active,
-                    }"
-                >
-                    <span v-html="link.label" />
-                </Link>
-            </template>
-        </nav>
+        <Pagination :paginator="servers" />
     </div>
 </template>

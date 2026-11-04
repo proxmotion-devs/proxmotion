@@ -3,6 +3,7 @@ import { useForm } from '@inertiajs/vue3';
 import { RefreshCw } from '@lucide/vue';
 import { ref, watch } from 'vue';
 import FormField from '@/components/admin/FormField.vue';
+import HostnameConfirmField from '@/components/admin/HostnameConfirmField.vue';
 import NativeSelect from '@/components/admin/NativeSelect.vue';
 import OrderedAppFields from '@/components/servers/OrderedAppFields.vue';
 import { Button } from '@/components/ui/button';
@@ -15,7 +16,6 @@ import {
     DialogTitle,
     DialogTrigger,
 } from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
 import { Spinner } from '@/components/ui/spinner';
 import type { OrderedAppOption } from '@/types/admin';
 import type { RouteDefinition } from '@/wayfinder';
@@ -124,19 +124,12 @@ const submit = () =>
                     />
                 </FormField>
 
-                <FormField
-                    label="Type the hostname to confirm"
-                    for="confirm_hostname"
+                <HostnameConfirmField
+                    id="confirm_hostname"
+                    v-model="form.confirm_hostname"
+                    :hostname="hostname"
                     :error="form.errors.confirm_hostname"
-                >
-                    <Input
-                        id="confirm_hostname"
-                        v-model="form.confirm_hostname"
-                        autocomplete="off"
-                        :placeholder="hostname"
-                        class="font-mono"
-                    />
-                </FormField>
+                />
 
                 <DialogFooter class="gap-2">
                     <DialogClose as-child>

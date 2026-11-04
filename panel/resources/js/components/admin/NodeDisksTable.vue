@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import ConfirmDelete from '@/components/admin/ConfirmDelete.vue';
 import HealthProblems from '@/components/admin/HealthProblems.vue';
+import Notice from '@/components/admin/Notice.vue';
 import StatusBadge from '@/components/admin/StatusBadge.vue';
-import { formatBytes } from '@/lib/format';
+import { formatBytes, formatPercent } from '@/lib/format';
 import { healthLabel, healthTone, lifeUsed } from '@/lib/storageHealth';
 import { destroy } from '@/routes/admin/node-disks';
 import type { NodeDisk } from '@/types/admin';
@@ -17,12 +18,9 @@ defineProps<{
 
 <template>
     <div class="flex flex-col gap-2">
-        <p
-            v-if="error"
-            class="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200"
-        >
+        <Notice v-if="error">
             {{ $t('Disks and pools could not be read: :error', { error }) }}
-        </p>
+        </Notice>
 
         <div v-if="disks.length > 0" class="overflow-x-auto rounded-lg border">
             <table class="w-full text-sm">
@@ -73,9 +71,9 @@ defineProps<{
                             {{ disk.smart ?? '—' }}
                         </td>
                         <td class="px-3 py-2 whitespace-nowrap">
-                            <template v-if="lifeUsed(disk.wearout) !== null"
-                                >{{ lifeUsed(disk.wearout) }}%</template
-                            >
+                            <template v-if="lifeUsed(disk.wearout) !== null">{{
+                                formatPercent(lifeUsed(disk.wearout) ?? 0)
+                            }}</template>
                             <template v-else>—</template>
                         </td>
                         <td class="px-3 py-2">

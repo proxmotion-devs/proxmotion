@@ -246,10 +246,7 @@ const submit = () =>
                     :errors="form.errors"
                 />
 
-                <p
-                    v-if="smallerDisk"
-                    class="text-sm text-amber-700 dark:text-amber-400"
-                >
+                <p v-if="smallerDisk" class="text-sm text-status-warning-text">
                     {{
                         $t(
                             'Disks cannot shrink: the disk keeps its current size.',

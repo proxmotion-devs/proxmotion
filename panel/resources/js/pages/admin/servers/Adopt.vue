@@ -3,6 +3,7 @@ import { Head, router, useForm } from '@inertiajs/vue3';
 import { trans } from 'laravel-vue-i18n';
 import { computed, ref } from 'vue';
 import FormDialog from '@/components/admin/FormDialog.vue';
+import Notice from '@/components/admin/Notice.vue';
 import FormField from '@/components/admin/FormField.vue';
 import NativeSelect from '@/components/admin/NativeSelect.vue';
 import Heading from '@/components/Heading.vue';
@@ -147,12 +148,9 @@ const submit = () => {
             }}
         </p>
 
-        <p
-            v-if="error"
-            class="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300"
-        >
+        <Notice tone="danger" v-if="error">
             {{ error }}
-        </p>
+        </Notice>
 
         <div v-if="cluster && !error" class="overflow-x-auto rounded-xl border">
             <table class="w-full text-sm">
@@ -167,7 +165,9 @@ const submit = () => {
                         <th class="px-4 py-3 font-medium">
                             {{ $t('Status') }}
                         </th>
-                        <th class="px-4 py-3" />
+                        <th class="px-4 py-3">
+                            <span class="sr-only">{{ $t('Actions') }}</span>
+                        </th>
                     </tr>
                 </thead>
                 <tbody>
@@ -220,10 +220,7 @@ const submit = () => {
         :processing="form.processing"
         @submit="submit"
     >
-        <p
-            v-if="form.errors.vmid"
-            class="text-sm text-red-600 dark:text-red-500"
-        >
+        <p v-if="form.errors.vmid" class="text-sm text-status-danger-text">
             {{ form.errors.vmid }}
         </p>
         <FormField

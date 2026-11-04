@@ -12,17 +12,24 @@ import { computed, ref } from 'vue';
 import BrandingImageField from '@/components/admin/BrandingImageField.vue';
 import FormField from '@/components/admin/FormField.vue';
 import NativeSelect from '@/components/admin/NativeSelect.vue';
+import Notice from '@/components/admin/Notice.vue';
 import StatusBadge from '@/components/admin/StatusBadge.vue';
 import Heading from '@/components/Heading.vue';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
-import { foreground, isBrandColor, lowContrastModes } from '@/lib/brandColor';
+import {
+    foreground,
+    isBrandColor,
+    lowContrastModes,
+    resemblesStatus,
+} from '@/lib/brandColor';
 import { optionalNumber } from '@/lib/forms';
 import type { OptionalNumber } from '@/lib/forms';
 import { fitsCloudInit, passwordExample } from '@/lib/passwordExample';
 import type { PasswordCharacters } from '@/lib/passwordExample';
 import { SETTINGS_CATEGORIES } from '@/lib/settingsCategories';
+import { useUnsavedChanges } from '@/lib/unsavedChanges';
 import type { SettingsCategoryKey } from '@/lib/settingsCategories';
 import { edit, index, testEmail, update } from '@/routes/admin/settings';
 import type { PanelSettings } from '@/types/admin';
@@ -106,6 +113,8 @@ const form = useForm({
     support_url: props.settings.support_url ?? '',
 });
 
+useUnsavedChanges(() => form.isDirty);
+
 // Branding (docs/adr/0053): the images in use come with every page.
 const page = usePage();
 const branding = computed(() => page.props.branding);
@@ -120,6 +129,10 @@ const brandColorPicker = computed({
 
 const brandColorLowContrast = computed(() =>
     brandColorValid.value ? lowContrastModes(form.brand_color) : [],
+);
+// Amber and red already mean "needs a look" and "failed" (DESIGN.md).
+const brandColorStatus = computed(() =>
+    brandColorValid.value ? resemblesStatus(form.brand_color) : null,
 );
 
 // Email notifications (docs/adr/0044): a test mail through the mailer of .env.
@@ -853,9 +866,8 @@ const sectionClass = 'flex flex-col gap-4 rounded-xl border p-4';
                         >
                     </span>
                 </div>
-                <p
+                <Notice
                     v-if="brandColorLowContrast.length > 0"
-                    class="rounded-md border border-amber-500/40 bg-amber-500/5 px-3 py-2 text-sm"
                     data-test="brand-color-contrast"
                 >
                     {{
@@ -867,7 +879,18 @@ const sectionClass = 'flex flex-col gap-4 rounded-xl border p-4';
                                   'This colour hardly stands out from the dark page background: buttons will be hard to see in dark mode.',
                               )
                     }}
-                </p>
+                </Notice>
+                <Notice v-if="brandColorStatus" data-test="brand-color-status">
+                    {{
+                        brandColorStatus === 'warning'
+                            ? $t(
+                                  'This colour looks like the amber the panel uses for warnings: primary buttons may be taken for one.',
+                              )
+                            : $t(
+                                  'This colour looks like the red the panel uses for errors and deleting: primary buttons may be taken for one.',
+                              )
+                    }}
+                </Notice>
             </section>
 
             <section :class="sectionClass" data-test="settings-branding-images">
@@ -1016,18 +1039,14 @@ const sectionClass = 'flex flex-col gap-4 rounded-xl border p-4';
         </template>
 
         <template v-if="category === 'notifications'">
-            <p
-                v-if="!mailerDelivers"
-                class="rounded-md border border-amber-500/40 bg-amber-500/5 px-3 py-2 text-sm"
-                data-test="mailer-not-delivering"
-            >
+            <Notice v-if="!mailerDelivers" data-test="mailer-not-delivering">
                 {{
                     $t(
                         'The mailer in .env is ":mailer": mail is written to the log, not sent. Set MAIL_MAILER and the SMTP settings in .env to send it.',
                         { mailer: environment.mailer },
                     )
                 }}
-            </p>
+            </Notice>
 
             <section :class="sectionClass" data-test="settings-notifications">
                 <label class="flex items-start gap-2 text-sm">

@@ -57,6 +57,8 @@ class BrandingTest extends AdminTestCase
             ->assertSee('--primary: #facc15;', false)
             // Black reads better on yellow.
             ->assertSee('--primary-foreground: #000000;', false)
+            // The focus ring stays neutral, so a pale colour cannot hide keyboard focus.
+            ->assertDontSee('--ring:', false)
             ->assertInertia(fn (Assert $page) => $page
                 ->where('name', 'Example Cloud')
                 ->where('branding.color', '#facc15')

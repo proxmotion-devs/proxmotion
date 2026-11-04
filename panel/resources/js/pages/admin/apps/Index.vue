@@ -335,7 +335,9 @@ const submitCreate = () =>
                         <th class="px-4 py-3 font-medium">
                             {{ $t('Installed') }}
                         </th>
-                        <th class="px-4 py-3" />
+                        <th class="px-4 py-3">
+                            <span class="sr-only">{{ $t('Actions') }}</span>
+                        </th>
                     </tr>
                 </thead>
                 <tbody>
@@ -358,13 +360,13 @@ const submitCreate = () =>
                             <StatusBadge
                                 v-if="app.modified"
                                 class="ml-2"
-                                tone="warning"
+                                tone="neutral"
                                 label="Modified"
                             />
                             <StatusBadge
                                 v-if="app.draft_version"
                                 class="ml-2"
-                                tone="warning"
+                                tone="neutral"
                                 label="Draft"
                             />
                             <StatusBadge
@@ -375,7 +377,7 @@ const submitCreate = () =>
                             />
                             <StatusBadge
                                 v-if="app.billing === 'paid'"
-                                tone="warning"
+                                tone="neutral"
                                 label="Paid"
                                 class="ml-2"
                             />

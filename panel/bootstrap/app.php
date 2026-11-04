@@ -2,6 +2,7 @@
 
 use App\Domain\Settings\Branding;
 use App\Http\Controllers\BrandingFileController;
+use App\Http\ErrorPages;
 use App\Http\Middleware\AuthenticateApiToken;
 use App\Http\Middleware\AuthenticateConsoleProxy;
 use App\Http\Middleware\EnsureTwoFactorIsEnabled;
@@ -77,4 +78,6 @@ return Application::configure(basePath: dirname(__DIR__))
         $exceptions->shouldRenderJsonWhen(
             fn (Request $request) => $request->is('api/*') || $request->expectsJson(),
         );
+        // The panel's own error page for browser requests (403, 404, 500, 503).
+        $exceptions->respond(ErrorPages::respond(...));
     })->create();

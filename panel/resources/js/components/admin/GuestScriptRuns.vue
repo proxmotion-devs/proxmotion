@@ -166,7 +166,7 @@ const inputsText = computed(() =>
                 </span>
                 <span
                     v-if="run.message"
-                    class="basis-full text-red-600 dark:text-red-400"
+                    class="basis-full text-status-danger-text"
                     >{{ run.message }}</span
                 >
                 <Button
@@ -203,7 +203,7 @@ const inputsText = computed(() =>
                 </p>
                 <p
                     v-else-if="failed"
-                    class="text-sm text-red-600 dark:text-red-400"
+                    class="text-sm text-status-danger-text"
                     role="alert"
                 >
                     {{ $t('The run could not be loaded.') }}
@@ -225,7 +225,7 @@ const inputsText = computed(() =>
                         >
                         <span
                             v-if="detail.message"
-                            class="ml-2 text-red-600 dark:text-red-400"
+                            class="ml-2 text-status-danger-text"
                             >{{ detail.message }}</span
                         >
                     </p>

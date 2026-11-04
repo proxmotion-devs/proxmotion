@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Head, router, useForm } from '@inertiajs/vue3';
+import { Head, useForm } from '@inertiajs/vue3';
 import { trans } from 'laravel-vue-i18n';
 import { Pencil, Plug, Plus } from '@lucide/vue';
 import { computed, ref } from 'vue';
@@ -9,6 +9,8 @@ import FormField from '@/components/admin/FormField.vue';
 import NativeSelect from '@/components/admin/NativeSelect.vue';
 import Heading from '@/components/Heading.vue';
 import { Button } from '@/components/ui/button';
+import { Spinner } from '@/components/ui/spinner';
+import { usePendingVisit } from '@/lib/pendingVisit';
 import { Input } from '@/components/ui/input';
 import {
     destroy,
@@ -70,8 +72,10 @@ const submit = () =>
         onSuccess: () => (dialogOpen.value = false),
     });
 
+// Asks the DNS server, which can take a while.
+const { pending, busy, visit } = usePendingVisit();
 const runTest = (provider: Provider) =>
-    router.visit(test(provider.uuid), { preserveScroll: true });
+    visit(provider.uuid, test(provider.uuid));
 </script>
 
 <template>
@@ -120,9 +124,11 @@ const runTest = (provider: Provider) =>
                         v-if="provider.driver === 'powerdns'"
                         variant="outline"
                         size="sm"
+                        :disabled="pending !== null"
                         @click="runTest(provider)"
                     >
-                        <Plug class="h-4 w-4" />
+                        <Spinner v-if="busy(provider.uuid)" />
+                        <Plug v-else class="h-4 w-4" />
                         {{ $t('Test connection') }}
                     </Button>
                     <Button

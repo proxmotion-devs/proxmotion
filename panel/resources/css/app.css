@@ -60,6 +60,9 @@
     --color-status-warning-foreground: var(--status-warning-foreground);
     --color-status-warning-text: var(--status-warning-text);
     --color-status-warning-border: var(--status-warning-border);
+    /* Solid marks: meter bars, live dots. */
+    --color-status-success-fill: var(--status-success-fill);
+    --color-status-warning-fill: var(--status-warning-fill);
     --color-status-danger: var(--status-danger);
     --color-status-danger-foreground: var(--status-danger-foreground);
     --color-status-danger-text: var(--status-danger-text);
@@ -141,6 +144,8 @@
     --status-warning-foreground: oklch(47.3% 0.137 46.201);
     --status-warning-text: oklch(55.5% 0.163 48.998);
     --status-warning-border: oklch(87.9% 0.169 91.605);
+    --status-success-fill: oklch(69.6% 0.17 162.48);
+    --status-warning-fill: oklch(76.9% 0.188 70.08);
     --status-danger: oklch(93.6% 0.032 17.717);
     --status-danger-foreground: oklch(44.4% 0.177 26.899);
     --status-danger-text: oklch(50.5% 0.213 27.518);
@@ -204,6 +209,8 @@
     --status-warning-foreground: oklch(87.9% 0.169 91.605);
     --status-warning-text: oklch(82.8% 0.189 84.429);
     --status-warning-border: oklch(47.3% 0.137 46.201);
+    --status-success-fill: oklch(69.6% 0.17 162.48);
+    --status-warning-fill: oklch(76.9% 0.188 70.08);
     --status-danger: color-mix(
         in oklab,
         oklch(39.6% 0.141 25.723) 40%,
@@ -245,6 +252,12 @@
     }
     ::selection {
         background: color-mix(in oklab, var(--primary) 22%, transparent);
+    }
+    /* Spinners stand still for people who asked for less motion; the icon still says "busy". */
+    @media (prefers-reduced-motion: reduce) {
+        .animate-spin {
+            animation: none;
+        }
     }
     /* Figures in table cells line up (DESIGN.md, The Tabular Figures Rule). */
     td {

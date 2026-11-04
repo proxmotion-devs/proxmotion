@@ -142,7 +142,9 @@ const summary = (rules: FirewallRuleValues[]) =>
                         <th class="px-4 py-3 font-medium">
                             {{ $t('Status') }}
                         </th>
-                        <th class="px-4 py-3" />
+                        <th class="px-4 py-3">
+                            <span class="sr-only">{{ $t('Actions') }}</span>
+                        </th>
                     </tr>
                 </thead>
                 <tbody>
@@ -171,7 +173,7 @@ const summary = (rules: FirewallRuleValues[]) =>
                             </div>
                             <div
                                 v-if="!ruleset.opens_remote_access"
-                                class="mt-1 flex items-center gap-1 font-sans text-amber-700 dark:text-amber-400"
+                                class="mt-1 flex items-center gap-1 font-sans text-status-warning-text"
                             >
                                 <TriangleAlert class="h-3 w-3" />
                                 {{ $t('Lets neither SSH nor RDP in') }}
@@ -264,7 +266,7 @@ const summary = (rules: FirewallRuleValues[]) =>
         <FirewallRulesEditor v-model="form.rules" :errors="form.errors" />
         <p
             v-if="!opensRemoteAccess"
-            class="flex items-center gap-2 text-sm text-amber-700 dark:text-amber-400"
+            class="flex items-center gap-2 text-sm text-status-warning-text"
         >
             <TriangleAlert class="h-4 w-4 shrink-0" />
             {{

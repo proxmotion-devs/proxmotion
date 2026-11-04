@@ -222,7 +222,7 @@ const copy = async (key: SshKey) => {
         data-test="server-ssh-keys"
     >
         <div class="flex flex-wrap items-center justify-between gap-2">
-            <h3 class="flex items-center gap-2 font-medium">
+            <h2 class="flex items-center gap-2 font-medium">
                 <KeyRound class="h-4 w-4" />
                 {{ $t('SSH keys') }}
                 <Badge
@@ -232,7 +232,7 @@ const copy = async (key: SshKey) => {
                 >
                     {{ keys.length }} / {{ sshKeys.max }}
                 </Badge>
-            </h3>
+            </h2>
             <div class="flex flex-wrap gap-2">
                 <Button
                     variant="outline"
@@ -316,7 +316,9 @@ const copy = async (key: SshKey) => {
                         <th class="px-2 py-2 font-medium">
                             {{ $t('Fingerprint') }}
                         </th>
-                        <th class="w-24 px-2 py-2" />
+                        <th class="w-24 px-2 py-2">
+                            <span class="sr-only">{{ $t('Actions') }}</span>
+                        </th>
                     </tr>
                 </thead>
                 <tbody>
@@ -361,7 +363,7 @@ const copy = async (key: SshKey) => {
                             <Badge
                                 v-if="missing.has(key.fingerprint)"
                                 variant="outline"
-                                class="mt-1 border-amber-500/50 text-amber-700 dark:text-amber-400"
+                                class="mt-1 border-status-warning-border text-status-warning-text"
                                 :title="
                                     $t(
                                         'Add or delete a key to write the list into the server again.',
@@ -388,7 +390,7 @@ const copy = async (key: SshKey) => {
                                 >
                                     <Check
                                         v-if="copied === key.fingerprint"
-                                        class="h-4 w-4 text-green-600"
+                                        class="h-4 w-4 text-status-success-foreground"
                                     />
                                     <Copy v-else class="h-4 w-4" />
                                 </Button>
@@ -476,7 +478,9 @@ const copy = async (key: SshKey) => {
                             <th class="px-2 py-2 font-medium">
                                 {{ $t('Fingerprint') }}
                             </th>
-                            <th class="w-28 px-2 py-2" />
+                            <th class="w-28 px-2 py-2">
+                                <span class="sr-only">{{ $t('Actions') }}</span>
+                            </th>
                         </tr>
                     </thead>
                     <tbody>

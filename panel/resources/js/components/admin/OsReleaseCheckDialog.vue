@@ -3,6 +3,7 @@ import { Link } from '@inertiajs/vue3';
 import { trans } from 'laravel-vue-i18n';
 import { computed, ref, watch } from 'vue';
 import NativeSelect from '@/components/admin/NativeSelect.vue';
+import Notice from '@/components/admin/Notice.vue';
 import { Button } from '@/components/ui/button';
 import {
     Dialog,
@@ -154,11 +155,7 @@ const reported = computed(() => {
                 <Spinner />
                 {{ $t('Reading /etc/os-release…') }}
             </div>
-            <p
-                v-else-if="error"
-                class="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm"
-                data-test="os-release-error"
-            >
+            <Notice v-else-if="error" data-test="os-release-error">
                 {{ error }}
                 <Link
                     v-if="noServer"
@@ -170,7 +167,7 @@ const reported = computed(() => {
                 >
                     {{ $t('Create a server from this template') }}
                 </Link>
-            </p>
+            </Notice>
             <template v-else-if="result">
                 <dl class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
                     <dt class="text-muted-foreground">{{ $t('Template') }}</dt>
@@ -181,16 +178,15 @@ const reported = computed(() => {
                 <span class="font-mono text-xs text-muted-foreground">{{
                     reported
                 }}</span>
-                <p
+                <Notice
+                    tone="success"
                     v-if="result.version_matches === true"
-                    class="rounded-lg border border-emerald-500/40 bg-emerald-500/10 p-3 text-sm"
                     data-test="os-release-match"
                 >
                     {{ $t('The version matches the server.') }}
-                </p>
-                <p
+                </Notice>
+                <Notice
                     v-else-if="result.version_matches === false"
-                    class="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm"
                     data-test="os-release-mismatch"
                 >
                     {{
@@ -198,7 +194,7 @@ const reported = computed(() => {
                             'The server reports another version. Check that the template is of the version you picked.',
                         )
                     }}
-                </p>
+                </Notice>
             </template>
 
             <DialogFooter>

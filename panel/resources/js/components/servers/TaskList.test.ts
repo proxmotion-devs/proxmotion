@@ -1,4 +1,5 @@
 import { mount } from '@vue/test-utils';
+import type { DOMWrapper } from '@vue/test-utils';
 import { describe, expect, it, vi } from 'vite-plus/test';
 import TaskList from '@/components/servers/TaskList.vue';
 import type { TaskProgress } from '@/types/admin';
@@ -23,11 +24,15 @@ const render = (tasks: TaskProgress[]) =>
         global: { mocks: { $t: (key: string) => key } },
     });
 
+// A step's label without the state read out before it (sr-only).
+const label = (row: DOMWrapper<Element>) =>
+    row.text().replace(row.find('.sr-only').text().trim(), '').trim();
+
 const spinning = (tasks: TaskProgress[]) =>
     render(tasks)
         .findAll('li')
         .filter((row) => row.find('.animate-spin').exists())
-        .map((row) => row.text());
+        .map(label);
 
 const done = (key: string) => ({ key, status: 'done', message: null });
 
@@ -76,10 +81,11 @@ describe('TaskList', () => {
             }),
         ]).findAll('li');
 
+        // Each step's state is read out before it, since the icons are hidden.
         expect(rows.map((row) => row.text())).toEqual([
-            'Clone template',
-            'Wait for the guest agent',
-            'Change the hostname in the server',
+            'Done: Clone template',
+            'Running: Wait for the guest agent',
+            'Still to come: Change the hostname in the server',
         ]);
     });
 
@@ -102,7 +108,7 @@ describe('TaskList', () => {
             }),
         ]).findAll('li');
 
-        expect(rows.map((row) => row.text())).toEqual([
+        expect(rows.map(label)).toEqual([
             'Configure additional IP addresses in the server',
             'Run the script Monitoring agent in the server',
             'Run the script Monitoring agent in the server',

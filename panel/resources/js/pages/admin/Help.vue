@@ -98,7 +98,7 @@ const topics = [
                 :href="docsUrl"
                 target="_blank"
                 rel="noopener noreferrer"
-                class="inline-flex items-center gap-1 text-sm text-sky-700 hover:underline dark:text-sky-400"
+                class="inline-flex items-center gap-1 text-sm text-guide-link hover:underline"
                 data-test="docs-link"
             >
                 <BookOpen class="h-4 w-4" />
@@ -133,12 +133,17 @@ const topics = [
                 >
                     <CircleCheck
                         v-if="step.done"
-                        class="mt-0.5 h-4 w-4 shrink-0 text-green-600"
+                        class="mt-0.5 h-4 w-4 shrink-0 text-status-success-foreground"
+                        aria-hidden="true"
                     />
                     <Circle
                         v-else
                         class="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground"
+                        aria-hidden="true"
                     />
+                    <span class="sr-only">{{
+                        step.done ? $t('Done:') : $t('Not done yet:')
+                    }}</span>
                     <div>
                         <Link
                             :href="step.href"

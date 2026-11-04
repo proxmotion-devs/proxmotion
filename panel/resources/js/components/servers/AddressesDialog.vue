@@ -4,6 +4,7 @@ import { ListPlus, Network, X } from '@lucide/vue';
 import { trans } from 'laravel-vue-i18n';
 import { computed, ref } from 'vue';
 import FormDialog from '@/components/admin/FormDialog.vue';
+import Notice from '@/components/admin/Notice.vue';
 import NativeSelect from '@/components/admin/NativeSelect.vue';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -431,18 +432,14 @@ const rowError = (index: number) =>
             </p>
         </div>
 
-        <p
-            v-if="removed.length > 0"
-            class="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm"
-            data-test="release-warning"
-        >
+        <Notice v-if="removed.length > 0" data-test="release-warning">
             {{
                 $t(
                     'Released back to their pools, with their reverse DNS records removed: :addresses',
                     { addresses: removed.join(', ') },
                 )
             }}
-        </p>
+        </Notice>
 
         <p v-if="errors.addresses" class="text-sm text-destructive">
             {{ errors.addresses }}

@@ -4,6 +4,7 @@ import {
     foreground,
     isBrandColor,
     lowContrastModes,
+    resemblesStatus,
 } from './brandColor';
 
 describe('brandColor', () => {
@@ -30,5 +31,16 @@ describe('brandColor', () => {
         expect(lowContrastModes('#1d4ed8')).toEqual(['dark']);
         expect(lowContrastModes('#fef08a')).toEqual(['light']);
         expect(lowContrastModes('#111827')).toEqual(['dark']);
+    });
+
+    it('notices colours that look like a status tone', () => {
+        expect(resemblesStatus('#f5c400')).toBe('warning');
+        expect(resemblesStatus('#f59e0b')).toBe('warning');
+        expect(resemblesStatus('#dc2626')).toBe('danger');
+        expect(resemblesStatus('#2563eb')).toBeNull();
+        expect(resemblesStatus('#16a34a')).toBeNull();
+        // Greys and muted tones carry no status meaning.
+        expect(resemblesStatus('#111827')).toBeNull();
+        expect(resemblesStatus('#a8a29e')).toBeNull();
     });
 });

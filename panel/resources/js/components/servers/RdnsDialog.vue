@@ -38,14 +38,14 @@ const submit = () =>
 <template>
     <Button
         variant="ghost"
-        size="icon"
-        class="h-6 w-6"
+        size="sm"
         :disabled="disabled"
         :aria-label="$t('Edit reverse DNS of :address', { address })"
         :title="$t('Edit reverse DNS of :address', { address })"
         @click="openDialog"
     >
-        <Pencil class="h-3 w-3" />
+        <Pencil class="h-3.5 w-3.5" />
+        {{ $t('Reverse DNS') }}
     </Button>
 
     <FormDialog

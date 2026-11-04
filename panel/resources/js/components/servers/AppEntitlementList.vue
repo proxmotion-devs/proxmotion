@@ -105,7 +105,9 @@ const revoke = () => {
                         <th class="px-4 py-3 font-medium">
                             {{ $t('Status') }}
                         </th>
-                        <th class="px-4 py-3" />
+                        <th class="px-4 py-3">
+                            <span class="sr-only">{{ $t('Actions') }}</span>
+                        </th>
                     </tr>
                 </thead>
                 <tbody>

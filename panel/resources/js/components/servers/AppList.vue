@@ -20,6 +20,7 @@ import AppInputFields from '@/components/servers/AppInputFields.vue';
 import AppLogDialog from '@/components/servers/AppLogDialog.vue';
 import AppOutputs from '@/components/servers/AppOutputs.vue';
 import { Button } from '@/components/ui/button';
+import { formatPercent } from '@/lib/format';
 import { useDateTime } from '@/composables/useDateTime';
 import {
     action as actionRoute,
@@ -379,7 +380,9 @@ const openRunLog = (app: AppInstallation, run: AppRun) => {
                         <th class="px-4 py-3 font-medium">
                             {{ $t('Started') }}
                         </th>
-                        <th class="px-4 py-3" />
+                        <th class="px-4 py-3">
+                            <span class="sr-only">{{ $t('Actions') }}</span>
+                        </th>
                     </tr>
                 </thead>
                 <tbody>
@@ -435,7 +438,7 @@ const openRunLog = (app: AppInstallation, run: AppRun) => {
                                         </button>
                                         <span
                                             v-if="run.error"
-                                            class="w-full break-words text-red-600 dark:text-red-400"
+                                            class="w-full break-words text-status-danger-text"
                                             >{{ run.error }}</span
                                         >
                                     </li>
@@ -449,11 +452,11 @@ const openRunLog = (app: AppInstallation, run: AppRun) => {
                             </td>
                             <td class="px-4 py-3">
                                 <span v-if="app.status === 'installing'"
-                                    >{{ app.progress }}% · </span
+                                    >{{ formatPercent(app.progress) }} · </span
                                 >{{ app.step ?? '' }}
                                 <p
                                     v-if="app.error"
-                                    class="mt-1 text-xs break-words text-red-600 dark:text-red-400"
+                                    class="mt-1 text-xs break-words text-status-danger-text"
                                 >
                                     {{ app.error }}
                                 </p>
@@ -603,7 +606,7 @@ const openRunLog = (app: AppInstallation, run: AppRun) => {
         :processing="actionForm.processing"
         @submit="submitAction"
     >
-        <p v-if="actionError" class="text-sm text-red-600 dark:text-red-500">
+        <p v-if="actionError" class="text-sm text-status-danger-text">
             {{ actionError }}
         </p>
         <AppInputFields
@@ -626,7 +629,7 @@ const openRunLog = (app: AppInstallation, run: AppRun) => {
             {{ upgrading?.app }} {{ upgrading?.version }} →
             {{ upgrading?.upgrade?.version }}
         </p>
-        <p v-if="upgradeError" class="text-sm text-red-600 dark:text-red-500">
+        <p v-if="upgradeError" class="text-sm text-status-danger-text">
             {{ upgradeError }}
         </p>
         <AppInputFields

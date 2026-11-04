@@ -111,7 +111,7 @@ const fit = computed(() =>
         <p
             v-for="problem in problems"
             :key="problem"
-            class="flex items-center gap-2 text-amber-700 dark:text-amber-400"
+            class="flex items-center gap-2 text-status-warning-text"
         >
             <TriangleAlert class="h-4 w-4 shrink-0" />
             {{ $t(problemText[problem]) }}
@@ -123,7 +123,7 @@ const fit = computed(() =>
         class="rounded-lg border p-3 text-sm"
         :class="
             fit.fitting === 0
-                ? 'text-amber-700 dark:text-amber-400'
+                ? 'text-status-warning-text'
                 : 'text-muted-foreground'
         "
         data-test="capacity-group"

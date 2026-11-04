@@ -1,4 +1,4 @@
-import type { TaskType } from '@/types/admin';
+import type { TaskStatus, TaskType } from '@/types/admin';
 
 /** Labels of task types: English keys, translated where they are shown. */
 export const TASK_TYPE_LABELS: Record<TaskType, string> = {
@@ -31,4 +31,12 @@ export const TASK_TYPE_LABELS: Record<TaskType, string> = {
     create_backup: 'Take backup',
     restore_backup: 'Restore backup',
     delete_backup: 'Delete backup',
+};
+
+/** Labels of task statuses: English keys, translated where they are shown. */
+export const TASK_STATUS_LABELS: Record<TaskStatus, string> = {
+    queued: 'Queued',
+    running: 'Running',
+    succeeded: 'Succeeded',
+    failed: 'Failed',
 };

@@ -67,7 +67,7 @@ const confirm = () => {
     >
         <div class="flex flex-wrap items-start justify-between gap-3">
             <div class="grid gap-1">
-                <h3 class="font-medium">{{ $t('Scripts') }}</h3>
+                <h2 class="font-medium">{{ $t('Scripts') }}</h2>
                 <p class="max-w-2xl text-sm text-muted-foreground">
                     {{
                         $t(

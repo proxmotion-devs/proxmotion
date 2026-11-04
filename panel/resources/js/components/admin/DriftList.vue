@@ -1,11 +1,13 @@
 <script setup lang="ts">
-import { Link, router } from '@inertiajs/vue3';
+import { Link } from '@inertiajs/vue3';
 import { Check, EyeOff, Play, Square, TriangleAlert } from '@lucide/vue';
 import { trans } from 'laravel-vue-i18n';
 import AntiSpoofingButton from '@/components/servers/AntiSpoofingButton.vue';
 import { Button } from '@/components/ui/button';
+import { Spinner } from '@/components/ui/spinner';
 import { useDateTime } from '@/composables/useDateTime';
 import { formatMib } from '@/lib/format';
+import { usePendingVisit } from '@/lib/pendingVisit';
 import { accept, applyPower, dismiss, markError } from '@/routes/admin/drifts';
 import { adopt, enableAntiSpoofing, show } from '@/routes/admin/servers';
 import type { Drift, DriftType } from '@/types/admin';
@@ -66,8 +68,9 @@ const resources = (values: Drift['expected']) =>
         ? `${values.cpu_cores} vCPU · ${formatMib(Number(values.memory_mib))} · ${formatMib(Number(values.disk_mib))}`
         : '—';
 
-const post = (action: RouteDefinition<'post'>) =>
-    router.visit(action, { preserveScroll: true });
+const { pending, busy, visit } = usePendingVisit();
+const post = (key: string, action: RouteDefinition<'post'>) =>
+    visit(key, action);
 </script>
 
 <template>
@@ -79,7 +82,7 @@ const post = (action: RouteDefinition<'post'>) =>
         >
             <div class="flex min-w-0 items-start gap-3">
                 <TriangleAlert
-                    class="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400"
+                    class="mt-0.5 h-4 w-4 shrink-0 text-status-warning-text"
                 />
                 <div class="flex min-w-0 flex-col gap-1 text-sm">
                     <p class="font-medium">
@@ -197,28 +200,34 @@ const post = (action: RouteDefinition<'post'>) =>
                     "
                     variant="outline"
                     size="sm"
-                    @click="post(accept(drift.uuid))"
+                    :disabled="pending !== null"
+                    @click="post('accept:' + drift.uuid, accept(drift.uuid))"
                 >
-                    <Check class="h-4 w-4" />
+                    <Spinner v-if="busy('accept:' + drift.uuid)" />
+                    <Check v-else class="h-4 w-4" />
                     {{ $t('Accept Proxmox values') }}
                 </Button>
                 <Button
                     v-if="drift.type === 'missing_vm'"
                     variant="outline"
                     size="sm"
-                    @click="post(markError(drift.uuid))"
+                    :disabled="pending !== null"
+                    @click="post('error:' + drift.uuid, markError(drift.uuid))"
                 >
-                    <TriangleAlert class="h-4 w-4" />
+                    <Spinner v-if="busy('error:' + drift.uuid)" />
+                    <TriangleAlert v-else class="h-4 w-4" />
                     {{ $t('Mark server as failed') }}
                 </Button>
                 <Button
                     v-if="drift.type === 'power_mismatch'"
                     variant="outline"
                     size="sm"
-                    @click="post(applyPower(drift.uuid))"
+                    :disabled="pending !== null"
+                    @click="post('power:' + drift.uuid, applyPower(drift.uuid))"
                 >
+                    <Spinner v-if="busy('power:' + drift.uuid)" />
                     <Play
-                        v-if="drift.expected?.status === 'running'"
+                        v-else-if="drift.expected?.status === 'running'"
                         class="h-4 w-4"
                     />
                     <Square v-else class="h-4 w-4" />
@@ -246,9 +255,11 @@ const post = (action: RouteDefinition<'post'>) =>
                 <Button
                     variant="ghost"
                     size="sm"
-                    @click="post(dismiss(drift.uuid))"
+                    :disabled="pending !== null"
+                    @click="post('dismiss:' + drift.uuid, dismiss(drift.uuid))"
                 >
-                    <EyeOff class="h-4 w-4" />
+                    <Spinner v-if="busy('dismiss:' + drift.uuid)" />
+                    <EyeOff v-else class="h-4 w-4" />
                     {{ $t('Dismiss') }}
                 </Button>
             </div>

@@ -1,5 +1,6 @@
 import { mount } from '@vue/test-utils';
 import { describe, expect, it, vi } from 'vite-plus/test';
+import { nextTick } from 'vue';
 import PowerControls from '@/components/servers/PowerControls.vue';
 
 vi.mock('@inertiajs/vue3', () => ({ router: { visit: vi.fn() } }));
@@ -10,8 +11,10 @@ const render = (power: string | null | undefined) =>
             power,
             busy: false,
             action: () => ({ url: '/power', method: 'post' as const }),
+            hostname: 'web1.example.com',
         },
         global: { mocks: { $t: (key: string) => key } },
+        attachTo: document.body,
     });
 
 const buttons = (power: string | null | undefined) =>
@@ -20,14 +23,45 @@ const buttons = (power: string | null | undefined) =>
         .map((button) => button.text());
 
 describe('PowerControls', () => {
-    it('offers the actions that fit the power state', () => {
-        expect(buttons('running')).toEqual(['Shut down', 'Reboot', 'Stop']);
+    it('shows the usual action as a button and the rest in a menu', () => {
+        // Shut down and Stop are in the menu behind "More".
+        expect(buttons('running')).toEqual(['Reboot', 'More']);
         expect(buttons('stopped')).toEqual(['Start']);
     });
 
+    it('words the power state apart from the panel status', () => {
+        expect(render('running').text()).toContain('Powered on');
+        expect(render('stopped').text()).toContain('Powered off');
+    });
+
+    it('reads a new power state out politely', async () => {
+        const wrapper = render('stopped');
+        const state = wrapper.find('[data-test="power-state"]');
+
+        expect(state.attributes('role')).toBe('status');
+        await wrapper.setProps({ power: 'running' });
+        expect(state.text()).toBe('Powered on');
+    });
+
     it('offers everything while the state is not known', () => {
-        expect(buttons(null)).toHaveLength(4);
-        expect(buttons('unknown')).toHaveLength(4);
-        expect(render('unknown').text()).toContain('Unknown');
+        expect(buttons(null)).toEqual(['Start', 'Reboot', 'More']);
+        expect(render('unknown').text()).toContain('Power state unknown');
+    });
+
+    it('names the server in the confirmation', async () => {
+        const wrapper = render('running');
+        await wrapper
+            .findAll('button')
+            .find((button) => button.text() === 'Reboot')!
+            .trigger('click');
+        await nextTick();
+
+        expect(
+            document.body
+                .querySelector('[data-test="power-confirm-hostname"]')
+                ?.textContent?.trim(),
+        ).toBe('web1.example.com');
+        wrapper.unmount();
+        document.body.innerHTML = '';
     });
 });

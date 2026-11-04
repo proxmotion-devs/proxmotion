@@ -166,7 +166,9 @@ const submit = () => {
                         <th class="px-4 py-3 font-medium">
                             {{ $t('Packages') }}
                         </th>
-                        <th class="px-4 py-3" />
+                        <th class="px-4 py-3">
+                            <span class="sr-only">{{ $t('Actions') }}</span>
+                        </th>
                     </tr>
                 </thead>
                 <tbody>
@@ -297,7 +299,7 @@ const submit = () => {
             </div>
             <p
                 v-if="form.errors.node_ids"
-                class="text-sm text-red-600 dark:text-red-500"
+                class="text-sm text-status-danger-text"
             >
                 {{ form.errors.node_ids }}
             </p>
@@ -349,7 +351,7 @@ const submit = () => {
             </div>
             <p
                 v-if="form.errors.storage_ids"
-                class="text-sm text-red-600 dark:text-red-500"
+                class="text-sm text-status-danger-text"
             >
                 {{ form.errors.storage_ids }}
             </p>

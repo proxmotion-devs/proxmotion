@@ -115,7 +115,9 @@ const rowErrors = (index: number) =>
                         <th class="px-2 py-2 font-medium">
                             {{ $t('Comment') }}
                         </th>
-                        <th class="w-32 px-2 py-2" />
+                        <th class="w-32 px-2 py-2">
+                            <span class="sr-only">{{ $t('Actions') }}</span>
+                        </th>
                     </tr>
                 </thead>
                 <tbody>

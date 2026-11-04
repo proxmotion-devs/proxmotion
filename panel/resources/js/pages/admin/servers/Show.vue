@@ -7,10 +7,20 @@ import {
     useHttp,
     usePoll,
 } from '@inertiajs/vue3';
-import { Eye, Monitor, RotateCcw } from '@lucide/vue';
-import { trans } from 'laravel-vue-i18n';
-import { computed, onBeforeUnmount, ref, watch } from 'vue';
-import ConfirmDelete from '@/components/admin/ConfirmDelete.vue';
+import {
+    Eye,
+    LoaderCircle,
+    Monitor,
+    Play,
+    RotateCcw,
+    RotateCw,
+    Trash2,
+} from '@lucide/vue';
+import { useResizeObserver } from '@vueuse/core';
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
+import ConfirmDialog from '@/components/admin/ConfirmDialog.vue';
+import TypedConfirmDialog from '@/components/admin/TypedConfirmDialog.vue';
+import Notice from '@/components/admin/Notice.vue';
 import DriftList from '@/components/admin/DriftList.vue';
 import ServerStatusBadge from '@/components/admin/ServerStatusBadge.vue';
 import StatusBadge from '@/components/admin/StatusBadge.vue';
@@ -37,8 +47,10 @@ import ResourcesDialog from '@/components/servers/ResourcesDialog.vue';
 import ResetPasswordButton from '@/components/servers/ResetPasswordButton.vue';
 import ServerChecks from '@/components/servers/ServerChecks.vue';
 import ServerScripts from '@/components/servers/ServerScripts.vue';
+import ServerToolsSection from '@/components/servers/ServerToolsSection.vue';
 import ServerStatsCards from '@/components/servers/ServerStatsCards.vue';
 import SuspendDialog from '@/components/servers/SuspendDialog.vue';
+import TaskAnnouncer from '@/components/servers/TaskAnnouncer.vue';
 import TaskList from '@/components/servers/TaskList.vue';
 import UnsuspendDialog from '@/components/servers/UnsuspendDialog.vue';
 import UsageHistorySection from '@/components/servers/UsageHistorySection.vue';
@@ -208,6 +220,28 @@ setLayoutProps({
 });
 
 const { formatDateTime } = useDateTime();
+
+// What the folded tools section holds, and whether something there needs a look.
+const hasReinstallLimit = computed(
+    () =>
+        props.server.billing_system !== null &&
+        ['active', 'suspended'].includes(props.server.status),
+);
+const canMove = computed(() =>
+    ['active', 'suspended'].includes(props.server.status),
+);
+const toolsContents = computed(() => [
+    ...(active.value || props.server.verification ? ['Checks'] : []),
+    ...(props.scripts.length || props.scriptRuns.length ? ['Scripts'] : []),
+    ...(hasReinstallLimit.value ? ['Reinstall limit'] : []),
+    ...(canMove.value ? ['Move'] : []),
+]);
+const toolsAttention = computed(
+    () =>
+        (props.server.verification?.checks ?? []).some(
+            (check) => check.status === 'failed',
+        ) || props.scriptRuns.some((run) => run.status === 'running'),
+);
 
 // Refresh while a task runs, so progress and the power state show up live.
 const { start, stop } = usePoll(
@@ -470,6 +504,73 @@ const tabs = computed(() => [
     { value: 'tasks' as Tab, label: 'Tasks', count: null },
 ]);
 
+// Arrow keys, Home and End move between tabs (WAI-ARIA tabs pattern).
+const moveTab = (event: KeyboardEvent) => {
+    const keys = ['ArrowLeft', 'ArrowRight', 'Home', 'End'];
+
+    if (!keys.includes(event.key)) {
+        return;
+    }
+
+    event.preventDefault();
+    // currentTarget is gone once the event has been handled.
+    const list = event.currentTarget as HTMLElement;
+    const values = tabs.value.map((item) => item.value);
+    const current = values.indexOf(tab.value);
+    const next =
+        event.key === 'Home'
+            ? 0
+            : event.key === 'End'
+              ? values.length - 1
+              : (current +
+                    (event.key === 'ArrowRight' ? 1 : -1) +
+                    values.length) %
+                values.length;
+
+    tab.value = values[next];
+    nextTick(() =>
+        list
+            .querySelector<HTMLElement>(`[data-test="tab-${values[next]}"]`)
+            ?.focus(),
+    );
+};
+
+// On phones the tabs scroll sideways: the edge with more tabs behind it
+// fades, and the chosen tab is scrolled into view.
+const tablist = ref<HTMLElement | null>(null);
+const tabOverflow = ref({ start: false, end: false });
+const measureTabs = () => {
+    const list = tablist.value;
+
+    if (!list) {
+        return;
+    }
+
+    const scrolled = Math.abs(list.scrollLeft);
+    const max = list.scrollWidth - list.clientWidth;
+    tabOverflow.value = { start: scrolled > 1, end: scrolled < max - 1 };
+};
+useResizeObserver(tablist, measureTabs);
+const tabMask = computed(() => {
+    const { start, end } = tabOverflow.value;
+
+    if (!start && !end) {
+        return undefined;
+    }
+
+    const mask = `linear-gradient(to right, ${start ? 'transparent' : '#000'}, #000 2.5rem, #000 calc(100% - 2.5rem), ${end ? 'transparent' : '#000'})`;
+
+    return { maskImage: mask, WebkitMaskImage: mask };
+});
+watch([tab, () => tabs.value.length], () =>
+    nextTick(() => {
+        tablist.value
+            ?.querySelector<HTMLElement>('[aria-selected="true"]')
+            ?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
+        measureTabs();
+    }),
+);
+
 const runningTasks = computed(() =>
     props.tasks.filter(
         (task) => task.status === 'queued' || task.status === 'running',
@@ -536,6 +637,34 @@ const vmBadge = computed(
 const agentDown = computed(
     () => vmAway.value || vmStopped.value || props.agent === false,
 );
+// Why some everyday tasks are unavailable, said next to them (English keys).
+const everydayBlocked = computed((): string | null => {
+    if (busy.value) {
+        return 'A task is running for this server. These are available again once it ends.';
+    }
+
+    if (vmState.value === 'missing') {
+        return 'Proxmox has no VM for this server. Reinstall builds it again.';
+    }
+
+    if (vmAway.value) {
+        return 'The VM is not on the node the panel recorded; the note above says what to do.';
+    }
+
+    if (props.reinstallOptions.osTemplates.length === 0) {
+        return 'No OS template can be used for this server, so it cannot be reinstalled. Its package may limit the templates, or none is active.';
+    }
+
+    if (vmStopped.value) {
+        return 'The server is not running. Start it to reset the root password.';
+    }
+
+    if (props.agent === false) {
+        return 'The guest agent (qemu-guest-agent) in the server does not answer, so the root password cannot be reset. Reinstall still works.';
+    }
+
+    return null;
+});
 // A firewall drift says it was changed in Proxmox; an adopted VM not compared yet may never have had it (docs/adr/0033).
 const firewallDrift = computed(() =>
     props.drifts.some((drift) => drift.type === 'firewall_mismatch'),
@@ -557,36 +686,31 @@ const toggleTestServer = () =>
         preserveScroll: true,
     });
 
+// The restart a pending change waits for, right from its notice.
+const confirmingReboot = ref(false);
+const restartForChanges = () =>
+    router.visit(powerAction(props.power === 'running' ? 'reboot' : 'start'), {
+        preserveScroll: true,
+    });
+
 // Reinstall the test server from its template after trials (docs/adr/0018 §7).
-const resetAfterTrial = () => {
-    if (
-        window.confirm(
-            trans(
-                'Reinstall :hostname from :template? Its disks are wiped and every app on it is removed. IP addresses and SSH keys stay; the root password is new.',
-                {
-                    hostname: props.server.hostname,
-                    template: props.server.os_template ?? '—',
-                },
-            ),
-        )
-    ) {
-        router.post(
-            trialReset(props.server.uuid),
-            {},
-            { preserveScroll: true },
-        );
-    }
-};
+const confirmingTrialReset = ref(false);
+const resetAfterTrial = () =>
+    router.post(trialReset(props.server.uuid), {}, { preserveScroll: true });
 </script>
 
 <template>
     <Head :title="title" />
 
     <div class="flex flex-col gap-6 p-4">
+        <!-- Whatever tab is open, a task that starts or ends is read out. -->
+        <TaskAnnouncer :tasks="tasks" />
         <!-- Who the server is, its state and the everyday controls. -->
         <div class="flex flex-wrap items-start justify-between gap-4">
             <div class="flex flex-col gap-2">
+                <!-- Without the heading's own bottom margin: the status badges belong right under it. -->
                 <Heading
+                    class="mb-0!"
                     :title="title"
                     :description="`${server.vm_name ? `${server.hostname} · ` : ''}VMID ${server.vmid} · ${server.node} · ${server.os_template ?? '—'}`"
                 />
@@ -599,7 +723,7 @@ const resetAfterTrial = () => {
                     />
                     <StatusBadge
                         v-if="server.is_test"
-                        tone="warning"
+                        tone="neutral"
                         label="Test server"
                     />
                 </div>
@@ -616,6 +740,7 @@ const resetAfterTrial = () => {
                     :power="power"
                     :busy="busy"
                     :action="powerAction"
+                    :hostname="server.hostname"
                 />
                 <Button v-if="active && !vmAway" size="sm" as-child>
                     <a
@@ -643,23 +768,54 @@ const resetAfterTrial = () => {
             </div>
         </div>
 
-        <p
-            v-if="server.reboot_required"
-            class="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm"
-            data-test="reboot-required"
-        >
-            {{
+        <Notice v-if="server.reboot_required" data-test="reboot-required">
+            <div
+                class="flex flex-wrap items-center justify-between gap-x-4 gap-y-2"
+            >
+                <span>{{
+                    $t('Some changes take effect when the server restarts.')
+                }}</span>
+                <template v-if="active && !vmAway">
+                    <Button
+                        v-if="power === 'running'"
+                        variant="outline"
+                        size="sm"
+                        class="bg-background"
+                        :disabled="busy"
+                        data-test="reboot-required-reboot"
+                        @click="confirmingReboot = true"
+                    >
+                        <RotateCw class="h-4 w-4" />
+                        {{ $t('Reboot now') }}
+                    </Button>
+                    <Button
+                        v-else-if="power === 'stopped'"
+                        variant="outline"
+                        size="sm"
+                        class="bg-background"
+                        :disabled="busy"
+                        data-test="reboot-required-start"
+                        @click="restartForChanges"
+                    >
+                        <Play class="h-4 w-4" />
+                        {{ $t('Start now') }}
+                    </Button>
+                </template>
+            </div>
+        </Notice>
+        <ConfirmDialog
+            v-model:open="confirmingReboot"
+            title="Reboot the server?"
+            :description="
                 $t(
-                    'Some changes take effect when the server is restarted (Start or Reboot here).',
+                    'The operating system is asked to restart. Running programs are stopped.',
                 )
-            }}
-        </p>
+            "
+            confirm-label="Reboot"
+            @confirm="restartForChanges"
+        />
 
-        <p
-            v-if="server.status === 'suspended'"
-            class="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm"
-            data-test="suspension"
-        >
+        <Notice v-if="server.status === 'suspended'" data-test="suspension">
             <template v-if="server.suspension_cause === 'traffic'">
                 {{
                     $t(
@@ -678,11 +834,11 @@ const resetAfterTrial = () => {
             <span v-if="server.suspension_reason" class="block font-medium">{{
                 server.suspension_reason
             }}</span>
-        </p>
+        </Notice>
 
-        <p
+        <Notice
             v-if="vmState === 'missing'"
-            class="rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm"
+            tone="danger"
             data-test="vm-missing"
         >
             {{
@@ -691,11 +847,11 @@ const resetAfterTrial = () => {
                     { vmid: String(server.vmid) },
                 )
             }}
-        </p>
+        </Notice>
 
-        <p
+        <Notice
             v-else-if="vmState === 'elsewhere'"
-            class="rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm"
+            tone="danger"
             data-test="vm-elsewhere"
         >
             {{
@@ -708,59 +864,54 @@ const resetAfterTrial = () => {
                     },
                 )
             }}
-        </p>
+        </Notice>
 
-        <p
-            v-else-if="vmState === 'moving'"
-            class="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm"
-            data-test="vm-moving"
-        >
+        <Notice v-else-if="vmState === 'moving'" data-test="vm-moving">
             {{
                 $t(
                     'A move of this server has not finished: its VM is no longer on :node. If the move failed, Finish the move under Placement and billing completes it.',
                     { node: server.node },
                 )
             }}
-        </p>
+        </Notice>
 
-        <p
-            v-else-if="vmStopped"
-            class="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm"
-            data-test="vm-stopped"
-        >
+        <Notice v-else-if="vmStopped" data-test="vm-stopped">
             {{
                 $t(
                     'The server is not running in Proxmox. Start it to reset its password or install apps.',
                 )
             }}
-        </p>
-
-        <p
-            v-else-if="active && agent === false"
-            class="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm"
-            data-test="agent-unreachable"
-        >
-            {{
-                $t(
-                    'Password reset, reinstall and apps need a running qemu-guest-agent in the server.',
-                )
-            }}
-        </p>
+        </Notice>
 
         <DriftList v-if="drifts.length > 0" :drifts="drifts" />
 
-        <div role="tablist" class="flex gap-1 border-b">
+        <!-- Scrolls sideways on phones; arrow keys move between tabs. -->
+        <div
+            ref="tablist"
+            role="tablist"
+            :aria-label="$t('Server sections')"
+            class="-mx-4 flex [scrollbar-width:none] gap-1 overflow-x-auto border-b px-4"
+            :style="tabMask"
+            data-test="server-tabs"
+            @keydown="moveTab"
+            @scroll.passive="measureTabs"
+        >
             <button
                 v-for="item in tabs"
                 :key="item.value"
                 type="button"
                 role="tab"
+                :id="`server-tab-${item.value}`"
                 :aria-selected="tab === item.value"
+                :aria-controls="
+                    tab === item.value ? 'server-tabpanel' : undefined
+                "
+                :tabindex="tab === item.value ? 0 : -1"
                 :data-test="`tab-${item.value}`"
-                class="-mb-px border-b-2 px-3 py-2 text-sm font-medium transition-colors"
+                class="-mb-px inline-flex shrink-0 items-center gap-1.5 border-b-2 px-3 py-2 text-sm font-medium whitespace-nowrap transition-colors outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:ring-inset"
                 :class="
                     tab === item.value
-                        ? 'border-primary text-foreground'
+                        ? 'border-foreground text-foreground'
                         : 'border-transparent text-muted-foreground hover:text-foreground'
                 "
                 @click="tab = item.value"
@@ -768,136 +919,70 @@ const resetAfterTrial = () => {
                 {{ $t(item.label) }}
                 <span
                     v-if="item.count"
-                    class="ml-1 rounded-full bg-muted px-1.5 text-xs"
+                    class="rounded-full bg-muted px-1.5 text-xs tabular-nums"
                     >{{ item.count }}</span
                 >
-                <span
+                <LoaderCircle
                     v-if="item.value === 'tasks' && runningTasks.length"
-                    class="ml-1 inline-block h-2 w-2 rounded-full bg-amber-500"
+                    class="size-3.5 text-muted-foreground motion-safe:animate-spin"
+                    role="img"
+                    :aria-label="$t('A task is running')"
                 />
             </button>
         </div>
 
-        <template v-if="tab === 'overview'">
-            <TaskList v-if="runningTasks.length" :tasks="runningTasks" />
-
-            <!-- Live figures from Proxmox while its VM exists (docs/adr/0036). -->
-            <ServerStatsCards
-                v-if="
-                    ['active', 'suspended'].includes(server.status) && !vmAway
-                "
-                :server-uuid="server.uuid"
-                :port-speed-mbps="server.port_speed_mbps"
+        <div
+            id="server-tabpanel"
+            role="tabpanel"
+            :aria-labelledby="`server-tab-${tab}`"
+            class="flex flex-col gap-6"
+            data-test="server-tabpanel"
+        >
+            <!-- Only hidden on other tabs, so rules being edited survive a look elsewhere. -->
+            <FirewallSection
+                v-if="hasFirewall"
+                v-show="tab === 'firewall'"
+                :server="server.uuid"
+                :firewall="firewall"
+                :disabled="vmBlocked"
             />
 
-            <div class="grid gap-4 lg:grid-cols-3">
-                <section class="flex flex-col gap-3 rounded-xl border p-4">
-                    <div class="flex items-center justify-between gap-2">
-                        <h3 class="font-medium">{{ $t('Resources') }}</h3>
-                        <ResourcesDialog
-                            v-if="active"
-                            :action="resources(server.uuid)"
-                            :options="resourceOptions"
-                            :disabled="vmBlocked"
-                        />
-                    </div>
-                    <dl class="grid gap-2 text-sm">
-                        <div>
-                            <dt class="text-muted-foreground">
-                                {{ $t('Package') }}
-                            </dt>
-                            <dd class="font-medium">
-                                {{ server.package ?? $t('Custom') }}
-                            </dd>
-                        </div>
-                        <div>
-                            <dt class="text-muted-foreground">
-                                {{ $t('CPU, memory and disk') }}
-                            </dt>
-                            <dd>
-                                {{ server.cpu_cores }} vCPU ·
-                                {{ formatMib(server.memory_mib) }} ·
-                                {{ formatMib(server.disk_mib) }}
-                            </dd>
-                        </div>
-                        <div>
-                            <dt class="text-muted-foreground">
-                                {{ $t('Port speed and traffic') }}
-                            </dt>
-                            <dd>
-                                {{
-                                    server.port_speed_mbps
-                                        ? `${server.port_speed_mbps} Mbps`
-                                        : '∞ Mbps'
-                                }}
-                                · {{ formatTraffic(server.traffic_bytes) }}
-                            </dd>
-                        </div>
-                    </dl>
-                </section>
+            <template v-if="tab === 'overview'">
+                <TaskList v-if="runningTasks.length" :tasks="runningTasks" />
 
-                <section class="flex flex-col gap-3 rounded-xl border p-4">
-                    <h3 class="font-medium">{{ $t('Access') }}</h3>
-                    <dl class="grid gap-2 text-sm">
-                        <div>
-                            <dt class="text-muted-foreground">
-                                {{ $t('Root password') }}
-                            </dt>
-                            <dd
-                                v-if="revealedPassword"
-                                class="font-mono text-xs break-all select-all"
-                            >
-                                {{ revealedPassword }}
-                            </dd>
-                            <dd
-                                v-else-if="server.has_password"
-                                class="flex flex-col items-start gap-1"
-                            >
-                                <Button
-                                    variant="outline"
-                                    size="sm"
-                                    :disabled="passwordRequest.processing"
-                                    data-test="reveal-password"
-                                    @click="revealPassword"
-                                >
-                                    <Eye class="h-4 w-4" />
-                                    {{ $t('Show') }}
-                                </Button>
-                                <span
-                                    v-if="passwordFailed"
-                                    class="text-xs text-destructive"
-                                    >{{
-                                        $t('The password could not be shown.')
-                                    }}</span
-                                >
-                            </dd>
-                            <dd v-else>—</dd>
-                        </div>
-                        <div v-if="active">
-                            <dt class="text-muted-foreground">
-                                {{ $t('Guest agent') }}
-                            </dt>
-                            <dd class="font-medium">
-                                <template v-if="vmAway || vmStopped">{{
-                                    $t('Server not running')
-                                }}</template>
-                                <template v-else-if="agent === undefined">{{
-                                    $t('Checking…')
-                                }}</template>
-                                <template v-else-if="agent === true">{{
-                                    $t('Reachable')
-                                }}</template>
-                                <template v-else-if="agent === false">{{
-                                    $t('Not reachable')
-                                }}</template>
-                                <template v-else>{{ $t('Unknown') }}</template>
-                            </dd>
-                        </div>
-                    </dl>
-                    <div v-if="active" class="mt-auto flex flex-wrap gap-2">
+                <!-- What support work needs most often, first; why any is unavailable, right below them. -->
+                <section
+                    v-if="active"
+                    class="flex flex-col gap-3 rounded-xl border p-4"
+                    role="group"
+                    :aria-labelledby="`everyday-${server.uuid}`"
+                    :aria-describedby="
+                        everydayBlocked
+                            ? `everyday-reason-${server.uuid}`
+                            : undefined
+                    "
+                    data-test="everyday-tasks"
+                >
+                    <h2 :id="`everyday-${server.uuid}`" class="font-medium">
+                        {{ $t('Everyday tasks') }}
+                    </h2>
+                    <div class="flex flex-wrap gap-2">
                         <ResetPasswordButton
                             :action="resetPassword(server.uuid)"
                             :disabled="busy || agentDown"
+                        />
+                        <ReinstallDialog
+                            :action="reinstall(server.uuid)"
+                            :hostname="server.hostname"
+                            :options="reinstallOptions"
+                            :ssh-keys="
+                                sshKeys.keys
+                                    .map((key) => key.public_key)
+                                    .join('\n')
+                            "
+                            :disabled="
+                                busy || (vmAway && vmState !== 'missing')
+                            "
                         />
                         <HostnameDialog
                             :action="changeHostname(server.uuid)"
@@ -906,390 +991,609 @@ const resetAfterTrial = () => {
                             :disabled="vmBlocked"
                         />
                     </div>
+                    <p
+                        v-if="everydayBlocked"
+                        :id="`everyday-reason-${server.uuid}`"
+                        class="text-sm text-muted-foreground"
+                        data-test="everyday-reason"
+                    >
+                        {{ $t(everydayBlocked) }}
+                    </p>
                 </section>
 
                 <section class="flex flex-col gap-3 rounded-xl border p-4">
-                    <h3 class="font-medium">
-                        {{ $t('Placement and billing') }}
-                    </h3>
-                    <dl class="grid gap-2 text-sm">
-                        <div>
-                            <dt class="text-muted-foreground">
-                                {{ $t('Location') }}
-                            </dt>
-                            <dd class="font-medium">{{ server.location }}</dd>
-                            <dd class="text-xs">
-                                <Link
-                                    :href="showCluster(server.cluster.uuid)"
-                                    class="hover:underline"
-                                    >{{ server.cluster.name }}</Link
-                                >
-                                ·
-                                <span class="font-mono">{{ server.node }}</span>
-                                <template v-if="server.storage">
-                                    · {{ server.storage }}</template
-                                >
-                            </dd>
-                        </div>
-                        <div>
-                            <dt class="text-muted-foreground">
-                                {{ $t('Billing service ID') }}
-                            </dt>
-                            <dd class="font-mono font-medium">
-                                {{ server.external_id ?? '—' }}
-                            </dd>
-                            <dd
-                                v-if="server.billing_system"
-                                class="text-xs text-muted-foreground"
+                    <div
+                        class="flex flex-wrap items-center justify-between gap-2"
+                    >
+                        <h2 class="font-medium">
+                            {{ $t('IP addresses') }}
+                            <span
+                                class="text-sm font-normal text-muted-foreground"
+                                >· {{ $t(modelLabel) }}</span
                             >
-                                {{ server.billing_system }}
-                            </dd>
-                            <dd
-                                v-if="server.external_client_id"
-                                class="text-xs text-muted-foreground"
-                            >
-                                {{
-                                    $t('Client ID: :id', {
-                                        id: server.external_client_id,
+                            <StatusBadge
+                                v-if="antiSpoofingOn"
+                                class="ml-2 align-middle"
+                                tone="success"
+                                label="Anti-spoofing on"
+                                :title="
+                                    $t('Checked :time', {
+                                        time: formatDateTime(
+                                            server.firewall_checked_at,
+                                        ),
                                     })
-                                }}
-                            </dd>
+                                "
+                            />
+                            <StatusBadge
+                                v-else-if="firewallDrift"
+                                class="ml-2 align-middle"
+                                tone="warning"
+                                label="Anti-spoofing off"
+                            />
+                        </h2>
+                        <div
+                            v-if="active || offerAntiSpoofing"
+                            class="flex flex-wrap gap-2"
+                        >
+                            <AntiSpoofingButton
+                                v-if="offerAntiSpoofing"
+                                :action="enableAntiSpoofing(server.uuid)"
+                                :addresses="
+                                    server.addresses.map(
+                                        (address) => address.address,
+                                    )
+                                "
+                                :disabled="busy"
+                            />
+                            <ReapplyAddressesButton
+                                v-if="active"
+                                :action="reapplyAddresses(server.uuid)"
+                                :disabled="
+                                    vmBlocked || server.addresses.length === 0
+                                "
+                            />
+                            <AddressesDialog
+                                v-if="active"
+                                :action="changeAddresses(server.uuid)"
+                                :addresses="server.addresses"
+                                :pools="addressPools"
+                                :disabled="vmBlocked"
+                            />
                         </div>
+                    </div>
+                    <!-- One row per address: what it is on the left, its actions on the right. -->
+                    <ul
+                        class="flex flex-col divide-y text-sm"
+                        data-test="addresses"
+                    >
+                        <li
+                            v-for="address in server.addresses"
+                            :key="address.address"
+                            class="flex flex-wrap items-center gap-x-3 gap-y-1 py-2 first:pt-0 last:pb-0"
+                        >
+                            <div
+                                class="flex min-w-0 flex-1 basis-48 flex-col gap-0.5"
+                            >
+                                <div class="flex flex-wrap items-center gap-2">
+                                    <span class="font-mono break-all">{{
+                                        address.address
+                                    }}</span>
+                                    <StatusBadge
+                                        v-if="address.primary"
+                                        tone="neutral"
+                                        label="Primary"
+                                    />
+                                    <Link
+                                        :href="showPool(address.pool.uuid)"
+                                        class="text-xs text-muted-foreground underline-offset-4 hover:underline"
+                                        >{{ address.pool.name }}</Link
+                                    >
+                                </div>
+                                <div
+                                    v-if="address.ptr || address.ptr_pending"
+                                    class="text-xs text-muted-foreground"
+                                >
+                                    {{ $t('Reverse DNS') }}:
+                                    <span
+                                        v-if="address.ptr"
+                                        class="font-mono break-words"
+                                        >{{ address.ptr }}</span
+                                    >
+                                    <span
+                                        v-if="address.ptr_pending"
+                                        class="text-status-warning-text"
+                                    >
+                                        ({{ $t('pending') }})</span
+                                    >
+                                </div>
+                            </div>
+                            <div
+                                v-if="active"
+                                class="flex shrink-0 items-center gap-1"
+                            >
+                                <RdnsDialog
+                                    :action="rdns(server.uuid)"
+                                    :address="address.address"
+                                    :ptr="address.ptr"
+                                />
+                                <RemoveAddressButton
+                                    v-if="!address.primary"
+                                    :action="changeAddresses(server.uuid)"
+                                    :address="address.address"
+                                    :disabled="vmBlocked"
+                                />
+                                <!-- Keeps Reverse DNS aligned on rows that cannot be removed. -->
+                                <span
+                                    v-else
+                                    class="size-8"
+                                    aria-hidden="true"
+                                />
+                            </div>
+                        </li>
+                        <li
+                            v-if="server.addresses.length === 0"
+                            class="text-muted-foreground"
+                        >
+                            {{ $t('No IP addresses.') }}
+                        </li>
+                    </ul>
+                </section>
+
+                <div class="grid gap-4 lg:grid-cols-3">
+                    <section class="flex flex-col gap-3 rounded-xl border p-4">
+                        <div class="flex items-center justify-between gap-2">
+                            <h2 class="font-medium">{{ $t('Resources') }}</h2>
+                            <ResourcesDialog
+                                v-if="active"
+                                :action="resources(server.uuid)"
+                                :options="resourceOptions"
+                                :disabled="vmBlocked"
+                            />
+                        </div>
+                        <dl class="grid gap-2 text-sm">
+                            <div>
+                                <dt class="text-muted-foreground">
+                                    {{ $t('Package') }}
+                                </dt>
+                                <dd class="font-medium">
+                                    {{ server.package ?? $t('Custom') }}
+                                </dd>
+                            </div>
+                            <div>
+                                <dt class="text-muted-foreground">
+                                    {{ $t('CPU, memory and disk') }}
+                                </dt>
+                                <dd>
+                                    {{ server.cpu_cores }} vCPU ·
+                                    {{ formatMib(server.memory_mib) }} ·
+                                    {{ formatMib(server.disk_mib) }}
+                                </dd>
+                            </div>
+                            <div>
+                                <dt class="text-muted-foreground">
+                                    {{ $t('Port speed and traffic') }}
+                                </dt>
+                                <dd>
+                                    {{
+                                        server.port_speed_mbps
+                                            ? `${server.port_speed_mbps} Mbps`
+                                            : $t('unlimited')
+                                    }}
+                                    · {{ formatTraffic(server.traffic_bytes) }}
+                                </dd>
+                            </div>
+                        </dl>
+                    </section>
+
+                    <section class="flex flex-col gap-3 rounded-xl border p-4">
+                        <h2 class="font-medium">{{ $t('Access') }}</h2>
+                        <dl class="grid gap-2 text-sm">
+                            <div>
+                                <dt class="text-muted-foreground">
+                                    {{ $t('Root password') }}
+                                </dt>
+                                <dd
+                                    v-if="revealedPassword"
+                                    class="font-mono text-xs break-all select-all"
+                                >
+                                    {{ revealedPassword }}
+                                </dd>
+                                <dd
+                                    v-else-if="server.has_password"
+                                    class="flex flex-col items-start gap-1"
+                                >
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        :disabled="passwordRequest.processing"
+                                        data-test="reveal-password"
+                                        @click="revealPassword"
+                                    >
+                                        <Eye class="h-4 w-4" />
+                                        {{ $t('Show') }}
+                                    </Button>
+                                    <span
+                                        v-if="passwordFailed"
+                                        class="text-xs text-destructive"
+                                        >{{
+                                            $t(
+                                                'The password could not be shown.',
+                                            )
+                                        }}</span
+                                    >
+                                </dd>
+                                <dd v-else>—</dd>
+                            </div>
+                            <div v-if="active">
+                                <dt class="text-muted-foreground">
+                                    {{ $t('Guest agent') }}
+                                </dt>
+                                <dd class="font-medium">
+                                    <template v-if="vmAway || vmStopped">{{
+                                        $t('Server not running')
+                                    }}</template>
+                                    <template v-else-if="agent === undefined">{{
+                                        $t('Checking…')
+                                    }}</template>
+                                    <template v-else-if="agent === true">{{
+                                        $t('Reachable')
+                                    }}</template>
+                                    <template v-else-if="agent === false">{{
+                                        $t('Not reachable')
+                                    }}</template>
+                                    <template v-else>{{
+                                        $t('Unknown')
+                                    }}</template>
+                                </dd>
+                            </div>
+                        </dl>
+                    </section>
+
+                    <section class="flex flex-col gap-3 rounded-xl border p-4">
+                        <h2 class="font-medium">
+                            {{ $t('Placement and billing') }}
+                        </h2>
+                        <dl class="grid gap-2 text-sm">
+                            <div>
+                                <dt class="text-muted-foreground">
+                                    {{ $t('Location') }}
+                                </dt>
+                                <dd class="font-medium">
+                                    {{ server.location }}
+                                </dd>
+                                <dd class="text-xs">
+                                    <Link
+                                        :href="showCluster(server.cluster.uuid)"
+                                        class="hover:underline"
+                                        >{{ server.cluster.name }}</Link
+                                    >
+                                    ·
+                                    <span class="font-mono">{{
+                                        server.node
+                                    }}</span>
+                                    <template v-if="server.storage">
+                                        · {{ server.storage }}</template
+                                    >
+                                </dd>
+                            </div>
+                            <div>
+                                <dt class="text-muted-foreground">
+                                    {{ $t('Billing service ID') }}
+                                </dt>
+                                <dd class="font-mono font-medium">
+                                    {{ server.external_id ?? '—' }}
+                                </dd>
+                                <dd
+                                    v-if="server.billing_system"
+                                    class="text-xs text-muted-foreground"
+                                >
+                                    {{ server.billing_system }}
+                                </dd>
+                                <dd
+                                    v-if="server.external_client_id"
+                                    class="text-xs text-muted-foreground"
+                                >
+                                    {{
+                                        $t('Client ID: :id', {
+                                            id: server.external_client_id,
+                                        })
+                                    }}
+                                </dd>
+                            </div>
+                            <div>
+                                <dt class="text-muted-foreground">
+                                    {{ $t('Created') }}
+                                </dt>
+                                <dd>
+                                    {{
+                                        formatDateTime(
+                                            server.provisioned_at ??
+                                                server.created_at,
+                                        )
+                                    }}
+                                </dd>
+                            </div>
+                        </dl>
+                        <!-- Moving to another node, cluster or location (docs/adr/0037). -->
+                        <MoveHistory
+                            v-if="moveOptions.moves.length"
+                            :moves="moveOptions.moves"
+                            :finish="(move) => finishMove([server.uuid, move])"
+                            :disabled="busy"
+                        />
+                    </section>
+                </div>
+
+                <!-- Live figures from Proxmox while its VM exists (docs/adr/0036). -->
+                <ServerStatsCards
+                    v-if="
+                        ['active', 'suspended'].includes(server.status) &&
+                        !vmAway
+                    "
+                    :server-uuid="server.uuid"
+                    :port-speed-mbps="server.port_speed_mbps"
+                />
+
+                <UsageSection
+                    v-if="['active', 'suspended'].includes(server.status)"
+                    :usage="usage"
+                    :exempt="server.usage_exempt"
+                    :exempt-action="usageExempt(server.uuid)"
+                />
+
+                <!-- Administrators' tools rather than everyday support, folded away until needed. -->
+                <ServerToolsSection
+                    v-if="toolsContents.length"
+                    :contents="toolsContents"
+                    :attention="toolsAttention"
+                >
+                    <ServerChecks
+                        v-if="active || server.verification"
+                        :verification="server.verification"
+                        :action="active ? verify(server.uuid) : undefined"
+                        :disabled="vmBlocked"
+                    />
+
+                    <ServerScripts
+                        v-if="scripts.length || scriptRuns.length"
+                        :server-uuid="server.uuid"
+                        :hostname="server.hostname"
+                        :scripts="scripts"
+                        :runs="scriptRuns"
+                        :disabled="!active || vmBlocked || agentDown"
+                    />
+
+                    <!-- Only the billing system's reinstalls are limited (docs/adr/0045). -->
+                    <ReinstallLimitSection
+                        v-if="hasReinstallLimit"
+                        :limit="reinstallLimit"
+                        :action="updateReinstallLimit(server.uuid)"
+                        :reset-action="resetReinstalls(server.uuid)"
+                    />
+
+                    <!-- Moving to another node, cluster or location (docs/adr/0037). -->
+                    <section
+                        v-if="canMove"
+                        class="flex flex-col gap-3 rounded-xl border p-4"
+                        data-test="server-move-section"
+                    >
                         <div>
-                            <dt class="text-muted-foreground">
-                                {{ $t('Created') }}
-                            </dt>
-                            <dd>
+                            <h2 class="font-medium">{{ $t('Move') }}</h2>
+                            <p class="text-sm text-muted-foreground">
                                 {{
-                                    formatDateTime(
-                                        server.provisioned_at ??
-                                            server.created_at,
+                                    $t(
+                                        'Moves the server to another node. With moves to other clusters turned on, also to another cluster or location.',
                                     )
                                 }}
-                            </dd>
+                            </p>
                         </div>
-                    </dl>
-                    <!-- Moving to another node, cluster or location (docs/adr/0037). -->
-                    <MoveHistory
-                        v-if="moveOptions.moves.length"
-                        :moves="moveOptions.moves"
-                        :finish="(move) => finishMove([server.uuid, move])"
-                        :disabled="busy"
-                    />
-                    <div
-                        v-if="['active', 'suspended'].includes(server.status)"
-                        class="mt-auto flex flex-wrap gap-2"
-                    >
-                        <MoveDialog
-                            :action="moveServer(server.uuid)"
-                            :options="moveOptions"
-                            :hostname="server.hostname"
+                        <div class="flex flex-wrap gap-2">
+                            <MoveDialog
+                                :action="moveServer(server.uuid)"
+                                :options="moveOptions"
+                                :hostname="server.hostname"
+                                :disabled="vmBlocked"
+                            />
+                        </div>
+                    </section>
+                </ServerToolsSection>
+
+                <!-- Operations that interrupt or remove the server. -->
+                <section
+                    v-if="
+                        ['active', 'suspended', 'error'].includes(server.status)
+                    "
+                    class="flex flex-col gap-3 rounded-xl border border-destructive/30 p-4"
+                    data-test="server-lifecycle"
+                >
+                    <div>
+                        <h2 class="font-medium">
+                            {{ $t('Suspend or delete') }}
+                        </h2>
+                        <p class="text-sm text-muted-foreground">
+                            {{
+                                $t(
+                                    'Billing systems usually do this for you. Deleting cannot be undone.',
+                                )
+                            }}
+                        </p>
+                    </div>
+                    <div class="flex flex-wrap gap-2">
+                        <SuspendDialog
+                            v-if="active"
+                            :action="suspend(server.uuid)"
                             :disabled="vmBlocked"
+                        />
+                        <!-- Suspended by the panel itself: an administrator may make it theirs (docs/adr/0039 §8). -->
+                        <SuspendDialog
+                            v-if="
+                                server.status === 'suspended' &&
+                                server.suspension_cause
+                            "
+                            take-over
+                            :action="suspend(server.uuid)"
+                            :disabled="busy"
+                        />
+                        <UnsuspendDialog
+                            v-if="server.status === 'suspended'"
+                            :action="unsuspend(server.uuid)"
+                            :disabled="busy"
+                        />
+                    </div>
+                    <!-- Kept apart from Reinstall, and confirmed by typing the hostname. Deleting would leave a VM moved to another node running there. -->
+                    <div
+                        v-if="!['elsewhere', 'moving'].includes(vmState)"
+                        class="flex flex-wrap items-center justify-between gap-3 border-t pt-3"
+                    >
+                        <p class="text-sm text-muted-foreground">
+                            {{
+                                $t(
+                                    'Deleting removes the VM, its disks and its IP addresses for good.',
+                                )
+                            }}
+                        </p>
+                        <TypedConfirmDialog
+                            :action="destroy(server.uuid)"
+                            :hostname="server.hostname"
+                            :icon="Trash2"
+                            label="Delete server"
+                            title="Delete this server?"
+                            description="The VM and its disks are deleted on Proxmox and its IP addresses are released. This cannot be undone, also for a server of a billing system."
+                            submit-label="Delete server"
+                            destructive
+                            data-test="server-delete"
                         />
                     </div>
                 </section>
+            </template>
+
+            <template v-else-if="tab === 'apps'">
+                <Notice
+                    v-if="active && agent === false && !vmAway && !vmStopped"
+                    data-test="apps-agent-unreachable"
+                >
+                    {{
+                        $t(
+                            'The guest agent (qemu-guest-agent) in the server does not answer, so apps cannot be installed or run.',
+                        )
+                    }}
+                </Notice>
+                <AppList
+                    :apps="apps"
+                    :options="appOptions"
+                    :unavailable="unavailableApps"
+                    :action="installApp(server.uuid)"
+                    :disabled="!active || agentDown"
+                    :revealed="revealedAppOutputs"
+                />
+
+                <section
+                    v-if="entitlements.length || entitlementOptions.length"
+                    class="flex flex-col gap-4"
+                >
+                    <Heading variant="small" title="Paid apps" />
+                    <AppEntitlementList
+                        :entitlements="entitlements"
+                        :options="entitlementOptions"
+                        :action="grantEntitlement(server.uuid)"
+                        :disabled="server.status === 'terminated'"
+                    />
+                </section>
+
+                <!-- Trial runs of app drafts (docs/adr/0018 §7); never on a billing system's server. -->
+                <section
+                    v-if="
+                        !server.billing_system && server.status !== 'terminated'
+                    "
+                    class="flex flex-wrap items-center justify-between gap-3 rounded-xl border p-4"
+                    data-test="test-server"
+                >
+                    <div>
+                        <h2 class="font-medium">{{ $t('Test server') }}</h2>
+                        <p class="text-sm text-muted-foreground">
+                            {{
+                                $t(
+                                    'Drafts of apps can be tried on test servers from the app editor. Only use a server nobody depends on. Reset after trial reinstalls it from its template, removing every app.',
+                                )
+                            }}
+                        </p>
+                    </div>
+                    <div class="flex flex-wrap gap-2">
+                        <Button
+                            v-if="server.is_test && active"
+                            variant="destructive"
+                            size="sm"
+                            :disabled="vmBlocked"
+                            data-test="trial-reset"
+                            @click="confirmingTrialReset = true"
+                        >
+                            <RotateCcw class="h-4 w-4" />
+                            {{ $t('Reset after trial') }}
+                        </Button>
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            @click="toggleTestServer"
+                        >
+                            {{
+                                server.is_test
+                                    ? $t('Stop using as a test server')
+                                    : $t('Use as a test server')
+                            }}
+                        </Button>
+                    </div>
+                </section>
+                <ConfirmDialog
+                    v-model:open="confirmingTrialReset"
+                    title="Reset after trial?"
+                    :description="
+                        $t(
+                            'Reinstall :hostname from :template? Its disks are wiped and every app on it is removed. IP addresses and SSH keys stay; the root password is new.',
+                            {
+                                hostname: server.hostname,
+                                template: server.os_template ?? '—',
+                            },
+                        )
+                    "
+                    confirm-label="Reset after trial"
+                    destructive
+                    @confirm="resetAfterTrial"
+                />
+            </template>
+
+            <UsageHistorySection
+                v-else-if="tab === 'usage'"
+                :server-uuid="server.uuid"
+            />
+
+            <SshKeysSection
+                v-else-if="tab === 'ssh-keys'"
+                :server="server.uuid"
+                :ssh-keys="sshKeys"
+                :changing="changingSshKeys"
+                :disabled="vmBlocked || agentDown"
+            />
+
+            <div v-else-if="tab === 'snapshots'" class="flex flex-col gap-4">
+                <SnapshotsSection
+                    v-if="server.status !== 'terminated'"
+                    :server="server.uuid"
+                    :hostname="server.hostname"
+                    :snapshots="snapshots"
+                    :busy="snapshotBusy"
+                    :disabled="vmBlocked || backupBusy"
+                />
+                <BackupsSection
+                    :server="server.uuid"
+                    :hostname="server.hostname"
+                    :backups="backups"
+                    :busy="backupBusy"
+                    :disabled="vmBlocked || snapshotBusy"
+                    :terminated="server.status === 'terminated'"
+                />
             </div>
 
-            <section class="flex flex-col gap-3 rounded-xl border p-4">
-                <div class="flex flex-wrap items-center justify-between gap-2">
-                    <h3 class="font-medium">
-                        {{ $t('IP addresses') }}
-                        <span class="text-sm font-normal text-muted-foreground"
-                            >· {{ $t(modelLabel) }}</span
-                        >
-                        <StatusBadge
-                            v-if="antiSpoofingOn"
-                            class="ml-2 align-middle"
-                            tone="success"
-                            label="Anti-spoofing on"
-                            :title="
-                                $t('Checked :time', {
-                                    time: formatDateTime(
-                                        server.firewall_checked_at,
-                                    ),
-                                })
-                            "
-                        />
-                        <StatusBadge
-                            v-else-if="firewallDrift"
-                            class="ml-2 align-middle"
-                            tone="warning"
-                            label="Anti-spoofing off"
-                        />
-                    </h3>
-                    <div
-                        v-if="active || offerAntiSpoofing"
-                        class="flex flex-wrap gap-2"
-                    >
-                        <AntiSpoofingButton
-                            v-if="offerAntiSpoofing"
-                            :action="enableAntiSpoofing(server.uuid)"
-                            :addresses="
-                                server.addresses.map(
-                                    (address) => address.address,
-                                )
-                            "
-                            :disabled="busy"
-                        />
-                        <ReapplyAddressesButton
-                            v-if="active"
-                            :action="reapplyAddresses(server.uuid)"
-                            :disabled="
-                                vmBlocked || server.addresses.length === 0
-                            "
-                        />
-                        <AddressesDialog
-                            v-if="active"
-                            :action="changeAddresses(server.uuid)"
-                            :addresses="server.addresses"
-                            :pools="addressPools"
-                            :disabled="vmBlocked"
-                        />
-                    </div>
-                </div>
-                <ul class="flex flex-col gap-1">
-                    <li
-                        v-for="address in server.addresses"
-                        :key="address.address"
-                        class="flex flex-wrap items-center gap-x-2 font-mono text-xs"
-                    >
-                        {{ address.address }}
-                        <StatusBadge
-                            v-if="address.primary"
-                            tone="neutral"
-                            label="Primary"
-                        />
-                        <Link
-                            :href="showPool(address.pool.uuid)"
-                            class="text-muted-foreground hover:underline"
-                            >({{ address.pool.name }})</Link
-                        >
-                        <span v-if="address.ptr" class="text-muted-foreground">
-                            → {{ address.ptr }}</span
-                        >
-                        <span
-                            v-if="address.ptr_pending"
-                            class="text-amber-700 dark:text-amber-400"
-                        >
-                            ({{ $t('pending') }})</span
-                        >
-                        <RdnsDialog
-                            v-if="active"
-                            :action="rdns(server.uuid)"
-                            :address="address.address"
-                            :ptr="address.ptr"
-                        />
-                        <RemoveAddressButton
-                            v-if="active && !address.primary"
-                            :action="changeAddresses(server.uuid)"
-                            :address="address.address"
-                            :disabled="vmBlocked"
-                        />
-                    </li>
-                    <li v-if="server.addresses.length === 0">—</li>
-                </ul>
-            </section>
-
-            <UsageSection
-                v-if="['active', 'suspended'].includes(server.status)"
-                :usage="usage"
-                :exempt="server.usage_exempt"
-                :exempt-action="usageExempt(server.uuid)"
-            />
-
-            <!-- Only the billing system's reinstalls are limited (docs/adr/0045). -->
-            <ReinstallLimitSection
-                v-if="
-                    server.billing_system &&
-                    ['active', 'suspended'].includes(server.status)
-                "
-                :limit="reinstallLimit"
-                :action="updateReinstallLimit(server.uuid)"
-                :reset-action="resetReinstalls(server.uuid)"
-            />
-
-            <ServerChecks
-                v-if="active || server.verification"
-                :verification="server.verification"
-                :action="active ? verify(server.uuid) : undefined"
-                :disabled="vmBlocked"
-            />
-
-            <ServerScripts
-                v-if="scripts.length || scriptRuns.length"
-                :server-uuid="server.uuid"
-                :hostname="server.hostname"
-                :scripts="scripts"
-                :runs="scriptRuns"
-                :disabled="!active || vmBlocked || agentDown"
-            />
-
-            <!-- Operations that interrupt or remove the server. -->
-            <section
-                v-if="['active', 'suspended', 'error'].includes(server.status)"
-                class="flex flex-col gap-3 rounded-xl border border-destructive/30 p-4"
-                data-test="server-lifecycle"
-            >
-                <div>
-                    <h3 class="font-medium">
-                        {{ $t('Suspend, reinstall or delete') }}
-                    </h3>
-                    <p class="text-sm text-muted-foreground">
-                        {{
-                            $t(
-                                'Billing systems usually do this for you. Reinstalling and deleting cannot be undone.',
-                            )
-                        }}
-                    </p>
-                </div>
-                <div class="flex flex-wrap gap-2">
-                    <SuspendDialog
-                        v-if="active"
-                        :action="suspend(server.uuid)"
-                        :disabled="vmBlocked"
-                    />
-                    <!-- Suspended by the panel itself: an administrator may make it theirs (docs/adr/0039 §8). -->
-                    <SuspendDialog
-                        v-if="
-                            server.status === 'suspended' &&
-                            server.suspension_cause
-                        "
-                        take-over
-                        :action="suspend(server.uuid)"
-                        :disabled="busy"
-                    />
-                    <UnsuspendDialog
-                        v-if="server.status === 'suspended'"
-                        :action="unsuspend(server.uuid)"
-                        :disabled="busy"
-                    />
-                    <ReinstallDialog
-                        v-if="active"
-                        :action="reinstall(server.uuid)"
-                        :hostname="server.hostname"
-                        :options="reinstallOptions"
-                        :ssh-keys="
-                            sshKeys.keys.map((key) => key.public_key).join('\n')
-                        "
-                        :disabled="busy || (vmAway && vmState !== 'missing')"
-                    />
-                    <!-- Deleting would leave a VM moved to another node running there. -->
-                    <ConfirmDelete
-                        v-if="!['elsewhere', 'moving'].includes(vmState)"
-                        with-label
-                        :action="destroy(server.uuid)"
-                        :name="server.hostname"
-                        description="The VM and its disks are deleted on Proxmox and its IP addresses are released. This cannot be undone."
-                    />
-                </div>
-            </section>
-        </template>
-
-        <template v-else-if="tab === 'apps'">
-            <AppList
-                :apps="apps"
-                :options="appOptions"
-                :unavailable="unavailableApps"
-                :action="installApp(server.uuid)"
-                :disabled="!active || agentDown"
-                :revealed="revealedAppOutputs"
-            />
-
-            <section
-                v-if="entitlements.length || entitlementOptions.length"
-                class="flex flex-col gap-4"
-            >
-                <Heading variant="small" title="Paid apps" />
-                <AppEntitlementList
-                    :entitlements="entitlements"
-                    :options="entitlementOptions"
-                    :action="grantEntitlement(server.uuid)"
-                    :disabled="server.status === 'terminated'"
-                />
-            </section>
-
-            <!-- Trial runs of app drafts (docs/adr/0018 §7); never on a billing system's server. -->
-            <section
-                v-if="!server.billing_system && server.status !== 'terminated'"
-                class="flex flex-wrap items-center justify-between gap-3 rounded-xl border p-4"
-                data-test="test-server"
-            >
-                <div>
-                    <h3 class="font-medium">{{ $t('Test server') }}</h3>
-                    <p class="text-sm text-muted-foreground">
-                        {{
-                            $t(
-                                'Drafts of apps can be tried on test servers from the app editor. Only use a server nobody depends on. Reset after trial reinstalls it from its template, removing every app.',
-                            )
-                        }}
-                    </p>
-                </div>
-                <div class="flex flex-wrap gap-2">
-                    <Button
-                        v-if="server.is_test && active"
-                        variant="destructive"
-                        size="sm"
-                        :disabled="vmBlocked"
-                        data-test="trial-reset"
-                        @click="resetAfterTrial"
-                    >
-                        <RotateCcw class="h-4 w-4" />
-                        {{ $t('Reset after trial') }}
-                    </Button>
-                    <Button
-                        variant="outline"
-                        size="sm"
-                        @click="toggleTestServer"
-                    >
-                        {{
-                            server.is_test
-                                ? $t('Stop using as a test server')
-                                : $t('Use as a test server')
-                        }}
-                    </Button>
-                </div>
-            </section>
-        </template>
-
-        <UsageHistorySection
-            v-else-if="tab === 'usage'"
-            :server-uuid="server.uuid"
-        />
-
-        <FirewallSection
-            v-else-if="tab === 'firewall'"
-            :server="server.uuid"
-            :firewall="firewall"
-            :disabled="vmBlocked"
-        />
-
-        <SshKeysSection
-            v-else-if="tab === 'ssh-keys'"
-            :server="server.uuid"
-            :ssh-keys="sshKeys"
-            :changing="changingSshKeys"
-            :disabled="vmBlocked || agentDown"
-        />
-
-        <div v-else-if="tab === 'snapshots'" class="flex flex-col gap-4">
-            <SnapshotsSection
-                v-if="server.status !== 'terminated'"
-                :server="server.uuid"
-                :hostname="server.hostname"
-                :snapshots="snapshots"
-                :busy="snapshotBusy"
-                :disabled="vmBlocked || backupBusy"
-            />
-            <BackupsSection
-                :server="server.uuid"
-                :hostname="server.hostname"
-                :backups="backups"
-                :busy="backupBusy"
-                :disabled="vmBlocked || snapshotBusy"
-                :terminated="server.status === 'terminated'"
-            />
+            <TaskList v-else-if="tab === 'tasks'" :tasks="tasks" />
         </div>
-
-        <TaskList v-else :tasks="tasks" />
     </div>
 </template>

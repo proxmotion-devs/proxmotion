@@ -9,12 +9,16 @@ import {
     Trash2,
     Upload,
 } from '@lucide/vue';
-import { reactive, watch } from 'vue';
+import { trans } from 'laravel-vue-i18n';
+import { computed, reactive, ref, watch } from 'vue';
 import ConfirmDelete from '@/components/admin/ConfirmDelete.vue';
+import ConfirmDialog from '@/components/admin/ConfirmDialog.vue';
+import DraftRunDialog from '@/components/admin/DraftRunDialog.vue';
 import GuestScriptRuns from '@/components/admin/GuestScriptRuns.vue';
 import NativeSelect from '@/components/admin/NativeSelect.vue';
 import StatusBadge from '@/components/admin/StatusBadge.vue';
 import CodeEditor from '@/components/apps/CodeEditor.vue';
+import { useUnsavedChanges } from '@/lib/unsavedChanges';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
@@ -30,8 +34,9 @@ import type {
     GuestScriptEvent,
     GuestScriptRun,
     OsPlatform,
-    Option,
+    ScriptServerOption,
 } from '@/types/admin';
+import type { RouteDefinition } from '@/wayfinder';
 
 /**
  * One administrator's script of an OS template (docs/adr/0043): its triggers,
@@ -42,7 +47,7 @@ const props = defineProps<{
     template: { uuid: string; platform: OsPlatform };
     script: CustomScript;
     runs: GuestScriptRun[];
-    servers: Option[];
+    servers: ScriptServerOption[];
     eventTitles: Record<GuestScriptEvent, string>;
     canTrace: boolean;
     maxBytes: number;
@@ -60,6 +65,7 @@ const route = [props.template.uuid, props.script.uuid] as [string, string];
 // The editor shows the draft when there is one, otherwise what runs now.
 const shown = () => props.script.draft ?? props.script.content ?? '';
 const form = useForm({ script: shown() });
+useUnsavedChanges(() => form.isDirty);
 
 // After a reload the editor follows what was saved, published or discarded.
 watch(
@@ -81,19 +87,86 @@ const visit = (action: Parameters<typeof router.visit>[0]) =>
 const moveTo = (direction: 'up' | 'down') =>
     router.visit(move(route), { data: { direction }, preserveScroll: true });
 
+// A draft runs on a server that is not a test server only with its hostname typed again.
+const draftRun = ref<{
+    action: RouteDefinition<'post'>;
+    hostname: string;
+    data: Record<string, unknown>;
+    started: () => void;
+} | null>(null);
+const draftRunOpen = computed({
+    get: () => draftRun.value !== null,
+    set: (value: boolean) => {
+        if (!value) {
+            draftRun.value = null;
+        }
+    },
+});
+
 const tryScript = () => {
     const after = props.runs[0]?.uuid ?? null;
+    const action = run(route);
+    const data = {
+        server: tryOn.server,
+        draft: props.script.draft !== null,
+        trace: props.canTrace && tryOn.trace,
+    };
+    const server = props.servers.find((item) => item.value === data.server);
 
-    router.visit(run(route), {
-        data: {
-            server: tryOn.server,
-            draft: props.script.draft !== null,
-            trace: props.canTrace && tryOn.trace,
-        },
+    if (data.draft && server && !server.test) {
+        draftRun.value = {
+            action,
+            hostname: server.hostname,
+            data,
+            started: () => emit('started', after),
+        };
+
+        return;
+    }
+
+    router.visit(action, {
+        data,
         preserveScroll: true,
         onSuccess: () => emit('started', after),
     });
 };
+
+// Questions before a script changes what runs on every server of the template.
+const asking = ref<{
+    title: string;
+    description: string;
+    confirmLabel: string;
+    destructive: boolean;
+    go: () => void;
+} | null>(null);
+const askingOpen = computed({
+    get: () => asking.value !== null,
+    set: (value: boolean) => {
+        if (!value) {
+            asking.value = null;
+        }
+    },
+});
+const askPublish = (go: () => void) =>
+    (asking.value = {
+        title: 'Publish the draft?',
+        description: trans(
+            'From now on it runs instead of the script that runs now, on every server of this template.',
+        ),
+        confirmLabel: 'Publish',
+        destructive: false,
+        go,
+    });
+const askDiscard = (go: () => void) =>
+    (asking.value = {
+        title: 'Discard the draft?',
+        description: trans(
+            'The draft is deleted. Servers keep running the script that runs now.',
+        ),
+        confirmLabel: 'Discard draft',
+        destructive: true,
+        go,
+    });
 
 const bytes = (text: string) => new TextEncoder().encode(text).length;
 </script>
@@ -114,7 +187,7 @@ const bytes = (text: string) => new TextEncoder().encode(text).length;
                     />
                     <StatusBadge
                         v-if="script.draft !== null"
-                        tone="warning"
+                        tone="neutral"
                         label="Draft"
                     />
                 </h3>
@@ -185,15 +258,12 @@ const bytes = (text: string) => new TextEncoder().encode(text).length;
                 template.platform === 'windows' ? '# PowerShell' : '#!/bin/sh'
             "
         />
-        <p
-            v-if="form.errors.script"
-            class="text-sm text-red-600 dark:text-red-500"
-        >
+        <p v-if="form.errors.script" class="text-sm text-status-danger-text">
             {{ form.errors.script }}
         </p>
         <p
             v-if="script.draft !== null"
-            class="text-sm text-amber-700 dark:text-amber-400"
+            class="text-sm text-status-warning-text"
         >
             {{
                 script.content === null
@@ -219,7 +289,7 @@ const bytes = (text: string) => new TextEncoder().encode(text).length;
                 variant="outline"
                 :disabled="form.isDirty"
                 :title="form.isDirty ? $t('Save the script first.') : undefined"
-                @click="visit(publish(route))"
+                @click="askPublish(() => visit(publish(route)))"
             >
                 <Upload class="h-4 w-4" />
                 {{ $t('Publish') }}
@@ -227,7 +297,7 @@ const bytes = (text: string) => new TextEncoder().encode(text).length;
             <Button
                 v-if="script.draft !== null && script.content !== null"
                 variant="outline"
-                @click="visit(discard(route))"
+                @click="askDiscard(() => visit(discard(route)))"
             >
                 <Trash2 class="h-4 w-4" />
                 {{ $t('Discard draft') }}
@@ -286,5 +356,23 @@ const bytes = (text: string) => new TextEncoder().encode(text).length;
         </div>
 
         <GuestScriptRuns :runs="runs" />
+
+        <ConfirmDialog
+            v-if="asking"
+            v-model:open="askingOpen"
+            :title="asking.title"
+            :description="asking.description"
+            :confirm-label="asking.confirmLabel"
+            :destructive="asking.destructive"
+            @confirm="asking.go()"
+        />
+        <DraftRunDialog
+            v-if="draftRun"
+            v-model:open="draftRunOpen"
+            :action="draftRun.action"
+            :hostname="draftRun.hostname"
+            :data="draftRun.data"
+            @started="draftRun.started()"
+        />
     </section>
 </template>

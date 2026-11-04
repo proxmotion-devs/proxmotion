@@ -1,12 +1,15 @@
 <script setup lang="ts">
-import { Head, Link, router, setLayoutProps, usePoll } from '@inertiajs/vue3';
+import { Head, Link, setLayoutProps, usePoll } from '@inertiajs/vue3';
 import { KeyRound, Pencil, RefreshCw, Send } from '@lucide/vue';
 import { computed, ref, watch } from 'vue';
 import ConfirmDelete from '@/components/admin/ConfirmDelete.vue';
 import StatusBadge from '@/components/admin/StatusBadge.vue';
 import WebhookEndpointDialog from '@/components/admin/WebhookEndpointDialog.vue';
+import Pagination from '@/components/admin/Pagination.vue';
 import Heading from '@/components/Heading.vue';
 import { Button } from '@/components/ui/button';
+import { Spinner } from '@/components/ui/spinner';
+import { usePendingVisit } from '@/lib/pendingVisit';
 import {
     Dialog,
     DialogClose,
@@ -60,15 +63,15 @@ const editOpen = ref(false);
 const replaceOpen = ref(false);
 const expanded = ref<string | null>(null);
 
-const post = (action: ReturnType<typeof ping>) =>
-    router.visit(action, { preserveScroll: true });
+// A test event and a delivery wait for the receiver's answer.
+const { pending, busy, visit } = usePendingVisit();
+const post = (key: string, action: ReturnType<typeof ping>) =>
+    visit(key, action);
 
-const replaceSecret = () => {
-    router.visit(secret(props.endpoint.uuid), {
-        preserveScroll: true,
+const replaceSecret = () =>
+    visit('secret', secret(props.endpoint.uuid), {
         onFinish: () => (replaceOpen.value = false),
     });
-};
 
 const prettyPayload = (payload: string) => {
     try {
@@ -86,6 +89,7 @@ const prettyPayload = (payload: string) => {
         <div class="flex flex-wrap items-start justify-between gap-4">
             <div class="min-w-0">
                 <Heading
+                    class="mb-2"
                     title="Webhook"
                     description="Every request carries a Proxmotion-Signature header: t=<timestamp>,v1=<HMAC-SHA256 of timestamp.body with the secret>. Only a 2xx answer counts as delivered; others are retried for about a day."
                 />
@@ -107,8 +111,13 @@ const prettyPayload = (payload: string) => {
                 </div>
             </div>
             <div class="flex flex-wrap gap-2">
-                <Button variant="outline" @click="post(ping(endpoint.uuid))">
-                    <Send class="h-4 w-4" />
+                <Button
+                    variant="outline"
+                    :disabled="pending !== null"
+                    @click="post('ping', ping(endpoint.uuid))"
+                >
+                    <Spinner v-if="busy('ping')" />
+                    <Send v-else class="h-4 w-4" />
                     {{ $t('Send test event') }}
                 </Button>
                 <Button variant="outline" @click="editOpen = true">
@@ -130,7 +139,7 @@ const prettyPayload = (payload: string) => {
 
         <div
             v-if="newSecret"
-            class="flex flex-col gap-2 rounded-xl border border-emerald-500/40 bg-emerald-500/10 p-4"
+            class="flex flex-col gap-2 rounded-xl border border-status-success-foreground/30 bg-status-success p-4"
             data-test="new-secret"
         >
             <p class="flex items-center gap-2 text-sm font-medium">
@@ -179,7 +188,9 @@ const prettyPayload = (payload: string) => {
                             <th class="px-4 py-3 font-medium">
                                 {{ $t('Result') }}
                             </th>
-                            <th class="px-4 py-3" />
+                            <th class="px-4 py-3">
+                                <span class="sr-only">{{ $t('Actions') }}</span>
+                            </th>
                         </tr>
                     </thead>
                     <tbody>
@@ -262,9 +273,16 @@ const prettyPayload = (payload: string) => {
                                         v-if="delivery.status !== 'pending'"
                                         variant="ghost"
                                         size="sm"
-                                        @click="post(redeliver(delivery.uuid))"
+                                        :disabled="pending !== null"
+                                        @click="
+                                            post(
+                                                delivery.uuid,
+                                                redeliver(delivery.uuid),
+                                            )
+                                        "
                                     >
-                                        <RefreshCw class="h-4 w-4" />
+                                        <Spinner v-if="busy(delivery.uuid)" />
+                                        <RefreshCw v-else class="h-4 w-4" />
                                         {{ $t('Send again') }}
                                     </Button>
                                 </td>
@@ -291,21 +309,7 @@ const prettyPayload = (payload: string) => {
                 </table>
             </div>
 
-            <nav v-if="deliveries.last_page > 1" class="flex flex-wrap gap-1">
-                <template v-for="link in deliveries.links" :key="link.label">
-                    <Link
-                        v-if="link.url"
-                        :href="link.url"
-                        preserve-scroll
-                        class="rounded-md border px-3 py-1 text-sm"
-                        :class="{
-                            'bg-primary text-primary-foreground': link.active,
-                        }"
-                    >
-                        <span v-html="link.label" />
-                    </Link>
-                </template>
-            </nav>
+            <Pagination :paginator="deliveries" />
         </section>
     </div>
 
@@ -330,7 +334,12 @@ const prettyPayload = (payload: string) => {
                 <DialogClose as-child>
                     <Button variant="secondary">{{ $t('Cancel') }}</Button>
                 </DialogClose>
-                <Button variant="destructive" @click="replaceSecret">
+                <Button
+                    variant="destructive"
+                    :disabled="pending !== null"
+                    @click="replaceSecret"
+                >
+                    <Spinner v-if="busy('secret')" />
                     {{ $t('Replace secret') }}
                 </Button>
             </DialogFooter>

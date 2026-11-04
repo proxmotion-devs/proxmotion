@@ -252,7 +252,7 @@ const statusOf = (token: ApiToken) => {
 
             <div
                 v-if="newToken && newToken.billing_system === system.uuid"
-                class="flex flex-col gap-2 rounded-xl border border-emerald-500/40 bg-emerald-500/10 p-4"
+                class="flex flex-col gap-2 rounded-xl border border-status-success-foreground/30 bg-status-success p-4"
                 data-test="new-token"
             >
                 <p class="flex items-center gap-2 text-sm font-medium">
@@ -294,7 +294,9 @@ const statusOf = (token: ApiToken) => {
                             <th class="px-4 py-3 font-medium">
                                 {{ $t('Status') }}
                             </th>
-                            <th class="px-4 py-3" />
+                            <th class="px-4 py-3">
+                                <span class="sr-only">{{ $t('Actions') }}</span>
+                            </th>
                         </tr>
                     </thead>
                     <tbody>

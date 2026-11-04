@@ -283,9 +283,16 @@ class CustomScriptsTest extends TestCase
     {
         $script = $this->custom('Agent', "echo live\n");
         $script->forceFill(['draft_content' => "echo draft\n"])->save();
+        $route = route('admin.os-templates.custom-scripts.run', [$this->osTemplate, $script]);
+
+        // Not a test server: only with its hostname typed again.
+        $this->actingAs($this->admin)
+            ->post($route, ['server' => $this->server->uuid, 'draft' => true])
+            ->assertSessionHasErrors('confirm_hostname');
+        $this->assertFalse(GuestScriptLog::query()->exists());
 
         $this->actingAs($this->admin)
-            ->post(route('admin.os-templates.custom-scripts.run', [$this->osTemplate, $script]), ['server' => $this->server->uuid, 'draft' => true])
+            ->post($route, ['server' => $this->server->uuid, 'draft' => true, 'confirm_hostname' => " {$this->server->hostname} "])
             ->assertSessionHasNoErrors();
 
         $files = $this->proxmox->guestFiles[$this->server->vmid];

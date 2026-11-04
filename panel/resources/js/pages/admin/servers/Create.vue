@@ -2,8 +2,9 @@
 import { Head, useForm } from '@inertiajs/vue3';
 import { trans } from 'laravel-vue-i18n';
 import { Check } from '@lucide/vue';
-import { computed, ref, watch } from 'vue';
+import { computed, nextTick, onMounted, ref, watch } from 'vue';
 import FormField from '@/components/admin/FormField.vue';
+import Notice from '@/components/admin/Notice.vue';
 import NativeSelect from '@/components/admin/NativeSelect.vue';
 import Heading from '@/components/Heading.vue';
 import CapacityNote from '@/components/servers/CapacityNote.vue';
@@ -19,6 +20,7 @@ import { Spinner } from '@/components/ui/spinner';
 import { formatMib } from '@/lib/format';
 import { optionalNumber } from '@/lib/forms';
 import { hostnameExample } from '@/lib/hostnames';
+import { useUnsavedChanges } from '@/lib/unsavedChanges';
 import {
     firstStepWithError,
     makesTestServer,
@@ -108,6 +110,11 @@ const form = useForm({
     external_id: '',
     external_client_id: '',
 });
+
+// The watchers below fill in a template and network model from the first
+// choices; what is there once the wizard shows counts as unchanged.
+onMounted(() => form.defaults());
+useUnsavedChanges(() => form.isDirty);
 
 const errors = computed(() => form.errors as Record<string, string>);
 
@@ -262,6 +269,30 @@ const complete = computed<boolean[]>(() => [
     true,
 ]);
 
+// Why Next is disabled, said beside it (English keys).
+const missingForNext = computed(() => {
+    if (complete.value[step.value]) {
+        return null;
+    }
+
+    return (
+        [
+            'Choose a location.',
+            custom.value
+                ? 'Enter CPU, memory, disk and at least one IP address, then choose where the server goes.'
+                : 'Choose a package.',
+            'Choose an operating system.',
+            'Choose a network model.',
+            'Enter a hostname.',
+        ][step.value] ?? null
+    );
+});
+
+// A new step takes focus on its (visually hidden) name, so screen readers
+// say where they are and Tab goes on to its first field.
+const stepHeading = ref<HTMLElement | null>(null);
+watch(step, () => nextTick(() => stepHeading.value?.focus()));
+
 const go = (target: number) => {
     if (target <= reached.value) {
         step.value = target;
@@ -310,7 +341,13 @@ const summary = computed(() => {
             trans('Operating system'),
             optionLabel(props.osTemplates, form.os_template),
         ],
-        [trans('App'), form.app === '' ? trans('No app') : form.app],
+        [
+            trans('App'),
+            form.app === ''
+                ? trans('No app')
+                : (props.apps.find((app) => app.slug === form.app)?.name ??
+                  form.app),
+        ],
         [
             trans('IP addresses'),
             `${r.ipv4_count}× IPv4, ${r.ipv6_count}× IPv6` +
@@ -398,11 +435,11 @@ const submit = () => {
             <li v-for="(item, number) in WIZARD_STEPS" :key="item.key">
                 <button
                     type="button"
-                    class="flex items-center gap-2 rounded-full border px-3 py-1 text-sm disabled:cursor-not-allowed disabled:opacity-50"
+                    class="flex h-8 items-center gap-2 rounded-md border px-3 text-sm outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50"
                     :class="
                         number === step
-                            ? 'border-primary bg-primary text-primary-foreground'
-                            : 'bg-background'
+                            ? 'border-foreground font-medium text-foreground'
+                            : 'bg-background text-muted-foreground enabled:hover:text-foreground'
                     "
                     :disabled="number > reached"
                     :aria-current="number === step ? 'step' : undefined"
@@ -412,13 +449,27 @@ const submit = () => {
                         v-if="number < reached && number !== step"
                         class="h-3.5 w-3.5"
                     />
-                    <span v-else>{{ number + 1 }}</span>
+                    <span v-else class="tabular-nums">{{ number + 1 }}</span>
                     {{ $t(item.title) }}
                 </button>
             </li>
         </ol>
 
         <form class="grid gap-4" @submit.prevent="submit">
+            <h2
+                ref="stepHeading"
+                class="sr-only"
+                tabindex="-1"
+                data-test="wizard-step-heading"
+            >
+                {{
+                    $t('Step :number of :total: :title', {
+                        number: String(step + 1),
+                        total: String(WIZARD_STEPS.length),
+                        title: $t(WIZARD_STEPS[step].title),
+                    })
+                }}
+            </h2>
             <template v-if="step === 0">
                 <FormField
                     label="Server type"
@@ -587,17 +638,13 @@ const submit = () => {
                         placeholder="ssh-ed25519 AAAA… user@host"
                     />
                 </FormField>
-                <p
-                    v-if="testServer"
-                    class="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm"
-                    data-test="test-server-note"
-                >
+                <Notice v-if="testServer" data-test="test-server-note">
                     {{
                         $t(
                             'The chosen OS template is inactive, so this becomes a test server without a billing system. Activate the template to offer it to customers.',
                         )
                     }}
-                </p>
+                </Notice>
                 <template v-else>
                     <FormField
                         label="Billing system"
@@ -676,13 +723,21 @@ const submit = () => {
                 >
                     {{ $t('Back') }}
                 </Button>
-                <Button
+                <div
                     v-if="step < last"
-                    type="submit"
-                    :disabled="!complete[step]"
+                    class="flex flex-wrap items-center justify-end gap-x-3 gap-y-1"
                 >
-                    {{ $t('Next') }}
-                </Button>
+                    <p
+                        v-if="missingForNext"
+                        class="text-xs text-muted-foreground"
+                        data-test="wizard-next-reason"
+                    >
+                        {{ $t(missingForNext) }}
+                    </p>
+                    <Button type="submit" :disabled="!complete[step]">
+                        {{ $t('Next') }}
+                    </Button>
+                </div>
                 <Button
                     v-else
                     type="submit"

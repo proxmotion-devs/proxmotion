@@ -11,17 +11,22 @@ withDefaults(defineProps<Props>(), {
 </script>
 
 <template>
-    <header :class="variant === 'small' ? '' : 'mb-8 space-y-0.5'">
-        <h2
+    <header :class="variant === 'small' ? '' : 'space-y-0.5'">
+        <!-- A page title is the page's h1; small headings name its sections. -->
+        <component
+            :is="variant === 'small' ? 'h2' : 'h1'"
             :class="
                 variant === 'small'
                     ? 'mb-0.5 text-base font-medium'
-                    : 'text-xl font-semibold tracking-tight'
+                    : 'text-xl font-semibold tracking-tight wrap-anywhere'
             "
         >
             {{ $t(title) }}
-        </h2>
-        <p v-if="description" class="text-sm text-muted-foreground">
+        </component>
+        <p
+            v-if="description"
+            class="text-sm wrap-anywhere text-muted-foreground"
+        >
             {{ $t(description) }}
         </p>
     </header>

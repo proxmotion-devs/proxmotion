@@ -9,7 +9,9 @@ import {
 import { Play, Plus, RotateCcw, Save, Trash2, Upload } from '@lucide/vue';
 import { trans } from 'laravel-vue-i18n';
 import { computed, reactive, ref, watch } from 'vue';
+import ConfirmDialog from '@/components/admin/ConfirmDialog.vue';
 import CustomScriptCard from '@/components/admin/CustomScriptCard.vue';
+import DraftRunDialog from '@/components/admin/DraftRunDialog.vue';
 import FormDialog from '@/components/admin/FormDialog.vue';
 import FormField from '@/components/admin/FormField.vue';
 import GuestScriptRuns from '@/components/admin/GuestScriptRuns.vue';
@@ -17,6 +19,7 @@ import NativeSelect from '@/components/admin/NativeSelect.vue';
 import StatusBadge from '@/components/admin/StatusBadge.vue';
 import CodeEditor from '@/components/apps/CodeEditor.vue';
 import Heading from '@/components/Heading.vue';
+import { useUnsavedChanges } from '@/lib/unsavedChanges';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
@@ -39,7 +42,9 @@ import type {
     GuestScriptSlot,
     OsPlatform,
     Option,
+    ScriptServerOption,
 } from '@/types/admin';
+import type { RouteDefinition } from '@/wayfinder';
 
 const props = defineProps<{
     template: { uuid: string; name: string; platform: OsPlatform };
@@ -47,7 +52,7 @@ const props = defineProps<{
     logs: Record<GuestScriptEvent, GuestScriptRun[]>;
     customScripts: CustomScript[];
     customLogs: Record<string, GuestScriptRun[]>;
-    servers: Option[];
+    servers: ScriptServerOption[];
     maxBytes: number;
     canTrace: boolean;
 }>();
@@ -160,6 +165,7 @@ const shown = (slot: GuestScriptSlot) =>
 const forms = Object.fromEntries(
     props.scripts.map((slot) => [slot.event, useForm({ script: shown(slot) })]),
 ) as Record<GuestScriptEvent, ReturnType<typeof useForm<{ script: string }>>>;
+useUnsavedChanges(() => Object.values(forms).some((form) => form.isDirty));
 
 const tryOn = reactive(
     Object.fromEntries(
@@ -251,19 +257,86 @@ watch(
     },
 );
 
+// A draft runs on a server that is not a test server only with its hostname typed again.
+const draftRun = ref<{
+    action: RouteDefinition<'post'>;
+    hostname: string;
+    data: Record<string, unknown>;
+    started: () => void;
+} | null>(null);
+const draftRunOpen = computed({
+    get: () => draftRun.value !== null,
+    set: (value: boolean) => {
+        if (!value) {
+            draftRun.value = null;
+        }
+    },
+});
+
 const tryScript = (slot: GuestScriptSlot) => {
     const after = props.logs[slot.event]?.[0]?.uuid ?? null;
+    const action = run([props.template.uuid, slot.event]);
+    const data = {
+        server: tryOn[slot.event],
+        draft: slot.draft !== null,
+        trace: props.canTrace && trace[slot.event],
+    };
+    const server = props.servers.find((item) => item.value === data.server);
 
-    router.visit(run([props.template.uuid, slot.event]), {
-        data: {
-            server: tryOn[slot.event],
-            draft: slot.draft !== null,
-            trace: props.canTrace && trace[slot.event],
-        },
+    if (data.draft && server && !server.test) {
+        draftRun.value = {
+            action,
+            hostname: server.hostname,
+            data,
+            started: () => follow(slot.event, after),
+        };
+
+        return;
+    }
+
+    router.visit(action, {
+        data,
         preserveScroll: true,
         onSuccess: () => follow(slot.event, after),
     });
 };
+
+// Questions before a script changes what runs on every server of the template.
+const asking = ref<{
+    title: string;
+    description: string;
+    confirmLabel: string;
+    destructive: boolean;
+    go: () => void;
+} | null>(null);
+const askingOpen = computed({
+    get: () => asking.value !== null,
+    set: (value: boolean) => {
+        if (!value) {
+            asking.value = null;
+        }
+    },
+});
+const askPublish = (go: () => void) =>
+    (asking.value = {
+        title: 'Publish the draft?',
+        description: trans(
+            'From now on it runs instead of the script that runs now, on every server of this template.',
+        ),
+        confirmLabel: 'Publish',
+        destructive: false,
+        go,
+    });
+const askDiscard = (go: () => void) =>
+    (asking.value = {
+        title: 'Discard the draft?',
+        description: trans(
+            'The draft is deleted. Servers keep running the script that runs now.',
+        ),
+        confirmLabel: 'Discard draft',
+        destructive: true,
+        go,
+    });
 
 const follow = (key: string, after: string | null) => {
     const newest = runsFor(key)[0];
@@ -442,7 +515,7 @@ const saveSettings = () => {
                         {{ $t(eventTitles[slot.event]) }}
                         <StatusBadge
                             v-if="slot.content !== null"
-                            tone="warning"
+                            tone="neutral"
                             label="Custom"
                         />
                         <StatusBadge
@@ -453,7 +526,7 @@ const saveSettings = () => {
                         <StatusBadge v-else tone="neutral" label="None" />
                         <StatusBadge
                             v-if="slot.draft !== null"
-                            tone="warning"
+                            tone="neutral"
                             label="Draft"
                         />
                     </h2>
@@ -499,14 +572,14 @@ const saveSettings = () => {
             />
             <p
                 v-if="forms[slot.event].errors.script"
-                class="text-sm text-red-600 dark:text-red-500"
+                class="text-sm text-status-danger-text"
             >
                 {{ forms[slot.event].errors.script }}
             </p>
 
             <p
                 v-if="slot.draft !== null"
-                class="text-sm text-amber-700 dark:text-amber-400"
+                class="text-sm text-status-warning-text"
             >
                 {{
                     $t(
@@ -536,7 +609,12 @@ const saveSettings = () => {
                             : undefined
                     "
                     @click="
-                        visit(publish([template.uuid, slot.event]), slot.event)
+                        askPublish(() =>
+                            visit(
+                                publish([template.uuid, slot.event]),
+                                slot.event,
+                            ),
+                        )
                     "
                 >
                     <Upload class="h-4 w-4" />
@@ -546,7 +624,12 @@ const saveSettings = () => {
                     v-if="slot.draft !== null"
                     variant="outline"
                     @click="
-                        visit(discard([template.uuid, slot.event]), slot.event)
+                        askDiscard(() =>
+                            visit(
+                                discard([template.uuid, slot.event]),
+                                slot.event,
+                            ),
+                        )
                     "
                 >
                     <Trash2 class="h-4 w-4" />
@@ -556,7 +639,19 @@ const saveSettings = () => {
                     v-if="slot.content !== null"
                     variant="outline"
                     @click="
-                        visit(destroy([template.uuid, slot.event]), slot.event)
+                        asking = {
+                            title: 'Reset to the default script?',
+                            description: $t(
+                                'The published script is removed and servers run the default script again. A draft stays.',
+                            ),
+                            confirmLabel: 'Reset to default',
+                            destructive: true,
+                            go: () =>
+                                visit(
+                                    destroy([template.uuid, slot.event]),
+                                    slot.event,
+                                ),
+                        }
                     "
                 >
                     <RotateCcw class="h-4 w-4" />
@@ -724,11 +819,29 @@ const saveSettings = () => {
                 </label>
                 <p
                     v-if="settings.errors.events"
-                    class="text-sm text-red-600 dark:text-red-500"
+                    class="text-sm text-status-danger-text"
                 >
                     {{ settings.errors.events }}
                 </p>
             </fieldset>
         </FormDialog>
+
+        <ConfirmDialog
+            v-if="asking"
+            v-model:open="askingOpen"
+            :title="asking.title"
+            :description="asking.description"
+            :confirm-label="asking.confirmLabel"
+            :destructive="asking.destructive"
+            @confirm="asking.go()"
+        />
+        <DraftRunDialog
+            v-if="draftRun"
+            v-model:open="draftRunOpen"
+            :action="draftRun.action"
+            :hostname="draftRun.hostname"
+            :data="draftRun.data"
+            @started="draftRun.started()"
+        />
     </div>
 </template>

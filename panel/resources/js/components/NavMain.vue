@@ -18,10 +18,10 @@ import {
     useSidebar,
 } from '@/components/ui/sidebar';
 import { useCurrentUrl } from '@/composables/useCurrentUrl';
-import type { NavItem } from '@/types';
+import type { NavGroup } from '@/composables/useMainNavigation';
 
 defineProps<{
-    items: NavItem[];
+    groups: NavGroup[];
 }>();
 
 const { isCurrentUrl, isCurrentOrParentUrl } = useCurrentUrl();
@@ -32,10 +32,15 @@ const { state, isMobile } = useSidebar();
 </script>
 
 <template>
-    <SidebarGroup class="px-2 py-0">
-        <SidebarGroupLabel>{{ $t('Platform') }}</SidebarGroupLabel>
+    <SidebarGroup
+        v-for="group in groups"
+        :key="group.title"
+        class="px-2 py-0"
+        :data-test="`nav-section-${group.title}`"
+    >
+        <SidebarGroupLabel>{{ $t(group.title) }}</SidebarGroupLabel>
         <SidebarMenu>
-            <template v-for="item in items" :key="item.title">
+            <template v-for="item in group.items" :key="item.title">
                 <Collapsible
                     v-if="
                         item.items?.length && (state === 'expanded' || isMobile)

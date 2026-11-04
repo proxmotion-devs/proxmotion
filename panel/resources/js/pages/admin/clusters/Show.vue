@@ -11,16 +11,19 @@ import FormDialog from '@/components/admin/FormDialog.vue';
 import FormField from '@/components/admin/FormField.vue';
 import HealthProblems from '@/components/admin/HealthProblems.vue';
 import NodeDisksTable from '@/components/admin/NodeDisksTable.vue';
+import Notice from '@/components/admin/Notice.vue';
 import StatusBadge from '@/components/admin/StatusBadge.vue';
 import Heading from '@/components/Heading.vue';
 import { useClusterSync } from '@/composables/useClusterSync';
 import { Button } from '@/components/ui/button';
+import { Spinner } from '@/components/ui/spinner';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useDateTime } from '@/composables/useDateTime';
-import { formatBytes, percentage } from '@/lib/format';
+import { formatBytes, formatPercent, percentage } from '@/lib/format';
 import { optionalNumber } from '@/lib/forms';
+import { usePendingVisit } from '@/lib/pendingVisit';
 import type { OptionalNumber } from '@/lib/forms';
 import { healthLabel, healthTone } from '@/lib/storageHealth';
 import { destroy, index, permissions, show } from '@/routes/admin/clusters';
@@ -45,8 +48,10 @@ const props = defineProps<{
     incomingPermissionCheck: PermissionCheck | null;
 }>();
 
+// Asks Proxmox, which can take a while.
+const { pending, busy, visit } = usePendingVisit();
 const checkPermissions = () =>
-    router.visit(permissions(props.cluster.uuid), { preserveScroll: true });
+    visit('permissions', permissions(props.cluster.uuid));
 
 setLayoutProps({
     breadcrumbs: [
@@ -132,12 +137,20 @@ const submitNode = () => {
             onSuccess: () => (nodeDialogOpen.value = false),
         });
 };
+
+// Ceph's own health words in plain ones (English keys); the raw value stays in the title.
+const cephLabel = (health: string) =>
+    ({
+        HEALTH_OK: 'Healthy',
+        HEALTH_WARN: 'Warning',
+        HEALTH_ERR: 'Error',
+    })[health] ?? health;
 </script>
 
 <template>
     <Head :title="cluster.name" />
 
-    <div class="flex flex-col gap-8 p-4">
+    <div class="flex flex-col gap-6 p-4">
         <div class="flex flex-wrap items-start justify-between gap-4">
             <div class="flex flex-col gap-2">
                 <Heading
@@ -170,22 +183,12 @@ const submitNode = () => {
             </div>
         </div>
 
-        <div
-            v-if="cluster.last_sync_error"
-            class="flex gap-3 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300"
-        >
-            <AlertTriangle class="mt-0.5 h-4 w-4 shrink-0" />
-            <div>
-                <div class="font-medium">{{ $t('The last sync failed') }}</div>
-                <div class="break-all">{{ cluster.last_sync_error }}</div>
-            </div>
-        </div>
+        <Notice v-if="cluster.last_sync_error" tone="danger">
+            <div class="font-medium">{{ $t('The last sync failed') }}</div>
+            <div class="break-all">{{ cluster.last_sync_error }}</div>
+        </Notice>
 
-        <div
-            v-if="cluster.firewall_problem"
-            class="flex gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200"
-        >
-            <AlertTriangle class="mt-0.5 h-4 w-4 shrink-0" />
+        <Notice v-if="cluster.firewall_problem">
             <div class="flex flex-col gap-1">
                 <div class="font-medium">
                     {{ $t('Anti-spoofing does not work on this cluster') }}
@@ -199,7 +202,7 @@ const submitNode = () => {
                     }}
                 </div>
             </div>
-        </div>
+        </Notice>
 
         <dl
             class="grid gap-4 rounded-xl border p-4 text-sm sm:grid-cols-2 lg:grid-cols-4"
@@ -289,7 +292,8 @@ const submitNode = () => {
                               ? 'danger'
                               : 'warning'
                     "
-                    :label="cluster.ceph_health"
+                    :label="cephLabel(cluster.ceph_health)"
+                    :title="cluster.ceph_health"
                 />
             </div>
             <ul
@@ -301,8 +305,8 @@ const submitNode = () => {
                     :key="index"
                     :class="
                         check.severity === 'HEALTH_ERR'
-                            ? 'text-red-700 dark:text-red-400'
-                            : 'text-amber-700 dark:text-amber-400'
+                            ? 'text-status-danger-text'
+                            : 'text-status-warning-text'
                     "
                 >
                     {{ check.message }}
@@ -317,8 +321,13 @@ const submitNode = () => {
                     title="API token permissions"
                     description="Checks on Proxmox whether the token has every privilege the panel needs."
                 />
-                <Button variant="outline" @click="checkPermissions">
-                    <ShieldCheck class="h-4 w-4" />
+                <Button
+                    variant="outline"
+                    :disabled="pending !== null"
+                    @click="checkPermissions"
+                >
+                    <Spinner v-if="busy('permissions')" />
+                    <ShieldCheck v-else class="h-4 w-4" />
                     {{ $t('Check permissions') }}
                 </Button>
             </div>
@@ -477,11 +486,13 @@ const submitNode = () => {
                                         class="text-muted-foreground"
                                     >
                                         ({{
-                                            percentage(
-                                                storage.used_bytes,
-                                                storage.total_bytes,
+                                            formatPercent(
+                                                percentage(
+                                                    storage.used_bytes,
+                                                    storage.total_bytes,
+                                                ) ?? 0,
                                             )
-                                        }}%)
+                                        }})
                                     </span>
                                     <div
                                         v-if="

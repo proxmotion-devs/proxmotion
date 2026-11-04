@@ -404,6 +404,9 @@ export type Option<T extends string | number = string> = {
     label: string;
 };
 
+/** A server scripts may be tried on: test servers first (docs/adr/0023). */
+export type ScriptServerOption = Option & { hostname: string; test: boolean };
+
 export type ServerListItem = {
     uuid: string;
     hostname: string;

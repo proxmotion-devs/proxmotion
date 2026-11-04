@@ -6,6 +6,7 @@ import { computed, watch } from 'vue';
 import NativeSelect from '@/components/admin/NativeSelect.vue';
 import StatusBadge from '@/components/admin/StatusBadge.vue';
 import FirewallRulesEditor from '@/components/servers/FirewallRulesEditor.vue';
+import { useUnsavedChanges } from '@/lib/unsavedChanges';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { firewall as firewallRoute } from '@/routes/admin/servers';
@@ -28,6 +29,7 @@ const form = useForm({
     default_policy: props.firewall.default_policy,
     rules: props.firewall.rules,
 });
+useUnsavedChanges(() => form.isDirty);
 
 const rulesetForm = useForm({
     ruleset: (props.firewall.rulesets[0]?.value ?? null) as string | null,
@@ -72,7 +74,7 @@ const applyRuleset = () =>
         data-test="server-firewall"
     >
         <div class="flex flex-wrap items-center justify-between gap-2">
-            <h3 class="flex items-center gap-2 font-medium">
+            <h2 class="flex items-center gap-2 font-medium">
                 <ShieldCheck class="h-4 w-4" />
                 {{ $t('Firewall') }}
                 <StatusBadge
@@ -87,7 +89,7 @@ const applyRuleset = () =>
                             : 'Allows by default'
                     "
                 />
-            </h3>
+            </h2>
         </div>
         <p class="text-sm text-muted-foreground">
             {{

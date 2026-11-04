@@ -614,12 +614,28 @@ class ServerManagementTest extends AdminTestCase
         $this->assertNull($server->suspension_reason);
         $this->post(route('admin.servers.unsuspend', $server));
 
-        $this->delete(route('admin.servers.destroy', $server));
+        $this->delete(route('admin.servers.destroy', $server), ['confirm_hostname' => strtoupper($server->hostname)]);
         $this->assertSame(ServerStatus::Terminated, $server->refresh()->status);
 
         // Deleted servers are hidden unless asked for.
         $this->get(route('admin.servers.index'))->assertInertia(fn (Assert $page) => $page->has('servers.data', 0));
         $this->get(route('admin.servers.index', ['terminated' => 1]))->assertInertia(fn (Assert $page) => $page->has('servers.data', 1));
+    }
+
+    public function test_deleting_a_server_needs_its_hostname_typed()
+    {
+        $server = Server::factory()->for($this->node)->create(['hostname' => 'web1.example.com', 'external_id' => 'svc-1']);
+
+        $this->delete(route('admin.servers.destroy', $server))->assertSessionHasErrors('confirm_hostname');
+        $this->delete(route('admin.servers.destroy', $server), ['confirm_hostname' => 'web2.example.com'])->assertSessionHasErrors('confirm_hostname');
+        // The billing service ID is not the hostname.
+        $this->delete(route('admin.servers.destroy', $server), ['confirm_hostname' => 'svc-1'])->assertSessionHasErrors('confirm_hostname');
+
+        $this->assertSame(ServerStatus::Active, $server->refresh()->status);
+        $this->assertSame(0, $server->tasks()->count());
+
+        $this->delete(route('admin.servers.destroy', $server), ['confirm_hostname' => ' web1.example.com '])->assertSessionHasNoErrors();
+        $this->assertSame(ServerStatus::Terminated, $server->refresh()->status);
     }
 
     public function test_actions_are_refused_in_the_wrong_state()
@@ -658,6 +674,26 @@ class ServerManagementTest extends AdminTestCase
         $this->assertSame(0, $server->tasks()->count());
         $this->assertSame([], $this->proxmox->writes);
         $this->assertTrue(AuditLog::query()->where('action', 'server.suspended')->sole()->properties['taken_over'] ?? false);
+    }
+
+    public function test_servers_can_be_searched_by_hostname_address_billing_id_and_vmid()
+    {
+        $web = Server::factory()->for($this->node)->create(['hostname' => 'web1.example.com', 'vmid' => 4242]);
+        $billed = Server::factory()->for($this->node)->create(['hostname' => 'db.example.com', 'external_id' => 'svc-77']);
+        $addressed = Server::factory()->for($this->node)->create(['hostname' => 'mail.example.com']);
+        IpAddress::query()->where('address', '203.0.113.5')->update(['server_id' => $addressed->id]);
+
+        $found = fn (string $search) => fn (Assert $page) => $page->where('search', $search)->has('servers.data', 1);
+
+        $this->get(route('admin.servers.index', ['search' => 'web1']))->assertInertia($found('web1'));
+        $this->get(route('admin.servers.index', ['search' => 'svc-77']))->assertInertia(fn (Assert $page) => $page->where('servers.data.0.uuid', $billed->uuid));
+        $this->get(route('admin.servers.index', ['search' => '203.0.113.5']))->assertInertia(fn (Assert $page) => $page->has('servers.data', 1)->where('servers.data.0.uuid', $addressed->uuid));
+        $this->get(route('admin.servers.index', ['search' => '4242']))->assertInertia(fn (Assert $page) => $page->has('servers.data', 1)->where('servers.data.0.uuid', $web->uuid));
+
+        // Wildcards and quotes are matched as text.
+        $this->get(route('admin.servers.index', ['search' => '%']))->assertInertia(fn (Assert $page) => $page->has('servers.data', 0));
+        $this->get(route('admin.servers.index', ['search' => '_']))->assertInertia(fn (Assert $page) => $page->has('servers.data', 0));
+        $this->get(route('admin.servers.index', ['search' => "' or 1=1 --"]))->assertInertia(fn (Assert $page) => $page->has('servers.data', 0));
     }
 
     public function test_servers_can_be_listed_by_status()

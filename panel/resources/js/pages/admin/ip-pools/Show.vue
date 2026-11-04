@@ -16,6 +16,7 @@ import FormDialog from '@/components/admin/FormDialog.vue';
 import FormField from '@/components/admin/FormField.vue';
 import IpPoolFormDialog from '@/components/admin/IpPoolFormDialog.vue';
 import StatusBadge from '@/components/admin/StatusBadge.vue';
+import Pagination from '@/components/admin/Pagination.vue';
 import Heading from '@/components/Heading.vue';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -391,7 +392,9 @@ const submitAddress = () => {
                         <th class="px-4 py-2 font-medium">
                             {{ $t('Reverse DNS') }}
                         </th>
-                        <th class="px-4 py-2" />
+                        <th class="px-4 py-2">
+                            <span class="sr-only">{{ $t('Actions') }}</span>
+                        </th>
                     </tr>
                 </thead>
                 <tbody>
@@ -427,7 +430,7 @@ const submitAddress = () => {
                             </Link>
                             <StatusBadge
                                 v-else-if="address.is_reserved"
-                                tone="warning"
+                                tone="neutral"
                                 label="Reserved"
                             />
                             <StatusBadge v-else tone="neutral" label="Free" />
@@ -454,7 +457,7 @@ const submitAddress = () => {
                             {{ address.ptr ?? '' }}
                             <span
                                 v-if="address.ptr_pending"
-                                class="text-amber-700 dark:text-amber-400"
+                                class="text-status-warning-text"
                                 >({{ $t('pending') }})</span
                             >
                         </td>
@@ -498,21 +501,7 @@ const submitAddress = () => {
             </table>
         </div>
 
-        <nav v-if="addresses.last_page > 1" class="flex flex-wrap gap-1">
-            <template v-for="link in addresses.links" :key="link.label">
-                <Link
-                    v-if="link.url"
-                    :href="link.url"
-                    preserve-scroll
-                    class="rounded-md border px-3 py-1 text-sm"
-                    :class="{
-                        'bg-primary text-primary-foreground': link.active,
-                    }"
-                >
-                    <span v-html="link.label" />
-                </Link>
-            </template>
-        </nav>
+        <Pagination :paginator="addresses" />
     </div>
 
     <IpPoolFormDialog

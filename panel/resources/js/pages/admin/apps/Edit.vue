@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import AppSystemsPicker from '@/components/admin/AppSystemsPicker.vue';
+import ConfirmDialog from '@/components/admin/ConfirmDialog.vue';
+import Notice from '@/components/admin/Notice.vue';
 import type { AppOsVersion } from '@/components/admin/AppSystemsPicker.vue';
 import { Head, Link, router, useForm, usePage, usePoll } from '@inertiajs/vue3';
 import {
@@ -34,7 +36,9 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { useDateTime } from '@/composables/useDateTime';
+import { formatPercent } from '@/lib/format';
 import { CATEGORIES, editable, languageOf, pruned } from '@/lib/recipes';
+import { useUnsavedChanges } from '@/lib/unsavedChanges';
 import type {
     RecipeAction,
     RecipeDefinition,
@@ -156,6 +160,7 @@ const reset = () => {
     files.value = { ...source()?.files };
     yamlText.value = dump(pruned(definition.value), { lineWidth: 120 });
     yamlError.value = null;
+    saved.value = current();
 };
 
 // Five tabs from describing the app to trying it (docs/adr/0018 §5); the
@@ -175,6 +180,27 @@ const formTab = ref<Exclude<Tab, 'yaml'>>('details');
 // YAML view: the whole definition as text, read back when leaving the tab.
 const yamlText = ref(dump(pruned(definition.value), { lineWidth: 120 }));
 const yamlError = ref<string | null>(null);
+
+// Unsaved edits: the YAML view's text, or the forms' definition, and the
+// files, against what was loaded or last saved.
+const current = () => ({
+    yaml:
+        tab.value === 'yaml'
+            ? yamlText.value
+            : dump(pruned(definition.value), { lineWidth: 120 }),
+    files: JSON.stringify(files.value),
+});
+const saved = ref({ yaml: yamlText.value, files: JSON.stringify(files.value) });
+const dirty = computed(() => {
+    if (readonly.value) {
+        return false;
+    }
+
+    const now = current();
+
+    return now.yaml !== saved.value.yaml || now.files !== saved.value.files;
+});
+useUnsavedChanges(() => dirty.value);
 
 const readYaml = (): boolean => {
     try {
@@ -362,19 +388,11 @@ const saveDraft = () => {
     );
 };
 
-const revertToBundled = () => {
-    if (
-        window.confirm(
-            trans(
-                'Go back to the bundled version :version? Your changes stay in the history; installations keep their version.',
-                { version: props.app.bundled_version ?? '' },
-            ),
-        )
-    ) {
-        router.post(revertRoute(props.app.slug), {}, { preserveScroll: true });
-    }
-};
+const confirmingRevert = ref(false);
+const revertToBundled = () =>
+    router.post(revertRoute(props.app.slug), {}, { preserveScroll: true });
 
+const confirmingDiscard = ref(false);
 const discardDraft = () =>
     router.delete(discard(props.app.slug), {
         preserveScroll: true,
@@ -538,15 +556,27 @@ const importDraft = (event: Event) => {
     const archive = input.files?.item(0) ?? null;
     input.value = '';
 
-    if (
-        archive === null ||
-        !window.confirm(
-            trans(
-                'Replace the draft with the recipe in :file? The published version stays as it is.',
-                { file: archive.name },
-            ),
-        )
-    ) {
+    if (archive === null) {
+        return;
+    }
+
+    // Asked in the panel's dialog; the import runs once it is confirmed.
+    pendingArchive.value = archive;
+};
+
+const pendingArchive = ref<File | null>(null);
+const confirmingImport = computed({
+    get: () => pendingArchive.value !== null,
+    set: (open: boolean) => {
+        if (!open) {
+            pendingArchive.value = null;
+        }
+    },
+});
+const runImport = () => {
+    const archive = pendingArchive.value;
+
+    if (archive === null) {
         return;
     }
 
@@ -557,8 +587,9 @@ const importDraft = (event: Event) => {
     );
 };
 
+// A draft is a deliberate state, not a problem: neutral, like archived.
 const statusTone = {
-    draft: 'warning',
+    draft: 'neutral',
     published: 'success',
     archived: 'neutral',
     pending_review: 'warning',
@@ -595,23 +626,23 @@ const statusLabels = {
                         app.slug
                     }}</span>
                     <StatusBadge
-                        :tone="app.source === 'custom' ? 'neutral' : 'success'"
+                        tone="neutral"
                         :label="app.source === 'custom' ? 'Custom' : 'Bundled'"
                     />
                     <StatusBadge
                         v-if="published"
-                        tone="success"
+                        tone="neutral"
                         :label="`v${published.version}`"
                     />
-                    <StatusBadge v-if="draft" tone="warning" label="Draft" />
+                    <StatusBadge v-if="draft" tone="neutral" label="Draft" />
                     <StatusBadge
                         v-if="app.modified"
-                        tone="warning"
+                        tone="neutral"
                         label="Modified"
                     />
                     <span
                         v-if="app.bundled_newer"
-                        class="text-amber-600 dark:text-amber-400"
+                        class="text-status-warning-text"
                         data-test="bundled-newer"
                     >
                         {{
@@ -631,7 +662,7 @@ const statusLabels = {
                     </span>
                     <span
                         v-if="app.upstream_version"
-                        class="text-amber-600 dark:text-amber-400"
+                        class="text-status-warning-text"
                     >
                         {{
                             $t('The original has a newer version: :version', {
@@ -680,7 +711,7 @@ const statusLabels = {
                     v-if="app.modified"
                     variant="outline"
                     data-test="revert"
-                    @click="revertToBundled"
+                    @click="confirmingRevert = true"
                 >
                     <RotateCcw class="h-4 w-4" />
                     {{ $t('Back to bundled version') }}
@@ -689,7 +720,8 @@ const statusLabels = {
                     <Button
                         v-if="draft && published"
                         variant="outline"
-                        @click="discardDraft"
+                        data-test="discard-draft"
+                        @click="confirmingDiscard = true"
                     >
                         {{ $t('Discard draft') }}
                     </Button>
@@ -721,31 +753,23 @@ const statusLabels = {
             </div>
         </div>
 
-        <div
-            v-if="draft && draft.errors.length"
-            class="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm"
-            data-test="draft-errors"
-        >
+        <Notice v-if="draft && draft.errors.length" data-test="draft-errors">
             <p class="font-medium">
                 {{ $t('Fix these before publishing:') }}
             </p>
             <ul class="mt-1 list-disc pl-5">
-                <li
-                    v-for="error in draft.errors"
-                    :key="error"
-                    class="break-words"
-                >
+                <li v-for="error in draft.errors" :key="error">
                     {{ error }}
                 </li>
             </ul>
-        </div>
-        <p
+        </Notice>
+        <Notice
+            tone="danger"
             v-for="(error, key) in page.props.errors"
             :key="key"
-            class="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300"
         >
             {{ error }}
-        </p>
+        </Notice>
 
         <GuideBox
             v-if="app.editable"
@@ -1289,12 +1313,9 @@ const statusLabels = {
                     )
                 }}
             </p>
-            <p
-                v-if="yamlError"
-                class="rounded-lg border border-red-200 bg-red-50 p-2 text-sm text-red-800 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300"
-            >
+            <Notice tone="danger" v-if="yamlError">
                 {{ yamlError }}
-            </p>
+            </Notice>
             <CodeEditor
                 v-model="yamlText"
                 language="yaml"
@@ -1340,16 +1361,13 @@ const statusLabels = {
                         </Button>
                     </div>
                 </div>
-                <p
-                    v-if="testServers.length === 0"
-                    class="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm"
-                >
+                <Notice v-if="testServers.length === 0">
                     {{
                         $t(
                             'No active test server yet. Mark a server without a billing system as a test server on its Apps tab.',
                         )
                     }}
-                </p>
+                </Notice>
                 <div class="overflow-x-auto rounded-xl border">
                     <table class="w-full text-sm">
                         <thead
@@ -1403,11 +1421,12 @@ const statusLabels = {
                                         "
                                         class="mt-1 text-xs text-muted-foreground"
                                     >
-                                        {{ trial.step }} · {{ trial.progress }}%
+                                        {{ trial.step }} ·
+                                        {{ formatPercent(trial.progress) }}
                                     </p>
                                     <p
                                         v-if="trial.error"
-                                        class="mt-1 text-xs break-words text-red-700 dark:text-red-400"
+                                        class="mt-1 text-xs break-words text-status-danger-text"
                                     >
                                         {{ trial.error }}
                                     </p>
@@ -1461,7 +1480,11 @@ const statusLabels = {
                                 <th class="px-4 py-3 font-medium">
                                     {{ $t('Date') }}
                                 </th>
-                                <th class="px-4 py-3" />
+                                <th class="px-4 py-3">
+                                    <span class="sr-only">{{
+                                        $t('Actions')
+                                    }}</span>
+                                </th>
                             </tr>
                         </thead>
                         <tbody>
@@ -1536,7 +1559,7 @@ const statusLabels = {
                     v-if="diffText !== null"
                     class="max-h-[32rem] overflow-auto rounded-lg border bg-muted/30 p-3 font-mono text-xs"
                     data-test="version-diff"
-                ><template v-for="(line, number) in diffText.split('\n')" :key="number"><span :class="line.startsWith('+') ? 'text-emerald-600 dark:text-emerald-400' : line.startsWith('-') ? 'text-red-600 dark:text-red-400' : line.startsWith('@@') ? 'text-sky-600 dark:text-sky-400' : ''">{{ line }}</span>
+                ><template v-for="(line, number) in diffText.split('\n')" :key="number"><span :class="line.startsWith('+') ? 'text-status-success-foreground' : line.startsWith('-') ? 'text-status-danger-text' : line.startsWith('@@') ? 'text-muted-foreground' : ''">{{ line }}</span>
 </template></pre>
                 <p v-if="diffText === ''" class="text-sm text-muted-foreground">
                     {{ $t('No differences.') }}
@@ -1616,4 +1639,43 @@ const statusLabels = {
             <Input id="copy_name" v-model="copyForm.name" />
         </FormField>
     </FormDialog>
+
+    <ConfirmDialog
+        v-model:open="confirmingRevert"
+        title="Back to bundled version?"
+        :description="
+            $t(
+                'Go back to the bundled version :version? Your changes stay in the history; installations keep their version.',
+                { version: app.bundled_version ?? '' },
+            )
+        "
+        confirm-label="Back to bundled version"
+        @confirm="revertToBundled"
+    />
+    <ConfirmDialog
+        v-model:open="confirmingDiscard"
+        title="Discard the draft?"
+        :description="
+            $t(
+                'The draft is deleted. Installed copies and new installations keep the published version.',
+            )
+        "
+        confirm-label="Discard draft"
+        destructive
+        @confirm="discardDraft"
+    />
+
+    <ConfirmDialog
+        v-model:open="confirmingImport"
+        title="Replace the draft?"
+        :description="
+            $t(
+                'Replace the draft with the recipe in :file? The published version stays as it is.',
+                { file: pendingArchive?.name ?? '' },
+            )
+        "
+        confirm-label="Replace draft"
+        destructive
+        @confirm="runImport"
+    />
 </template>
