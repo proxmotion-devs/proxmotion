@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { router } from '@inertiajs/vue3';
 import { RotateCcw } from '@lucide/vue';
 import StatusBadge from '@/components/admin/StatusBadge.vue';
 import { Button } from '@/components/ui/button';
+import { Spinner } from '@/components/ui/spinner';
+import { usePendingVisit } from '@/lib/pendingVisit';
 import { useDateTime } from '@/composables/useDateTime';
 import type {
     ServerMove,
@@ -43,8 +44,9 @@ const statusTone: Record<ServerMoveStatus, StatusTone> = {
     failed: 'danger',
 };
 
+const { pending, busy, visit } = usePendingVisit();
 const finishMove = (move: ServerMove) =>
-    router.visit(props.finish(move.uuid), { preserveScroll: true });
+    visit(move.uuid, props.finish(move.uuid));
 </script>
 
 <template>
@@ -74,11 +76,12 @@ const finishMove = (move: ServerMove) =>
                 <Button
                     variant="outline"
                     size="sm"
-                    :disabled="disabled"
+                    :disabled="disabled || pending !== null"
                     data-test="move-finish"
                     @click="finishMove(move)"
                 >
-                    <RotateCcw class="h-4 w-4" />
+                    <Spinner v-if="busy(move.uuid)" />
+                    <RotateCcw v-else class="h-4 w-4" />
                     {{ $t('Finish the move') }}
                 </Button>
             </div>

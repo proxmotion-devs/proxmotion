@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Head, Link, router, setLayoutProps, usePoll } from '@inertiajs/vue3';
+import { Head, Link, setLayoutProps, usePoll } from '@inertiajs/vue3';
 import { KeyRound, Pencil, RefreshCw, Send } from '@lucide/vue';
 import { computed, ref, watch } from 'vue';
 import ConfirmDelete from '@/components/admin/ConfirmDelete.vue';
@@ -8,6 +8,8 @@ import WebhookEndpointDialog from '@/components/admin/WebhookEndpointDialog.vue'
 import Pagination from '@/components/admin/Pagination.vue';
 import Heading from '@/components/Heading.vue';
 import { Button } from '@/components/ui/button';
+import { Spinner } from '@/components/ui/spinner';
+import { usePendingVisit } from '@/lib/pendingVisit';
 import {
     Dialog,
     DialogClose,
@@ -61,15 +63,15 @@ const editOpen = ref(false);
 const replaceOpen = ref(false);
 const expanded = ref<string | null>(null);
 
-const post = (action: ReturnType<typeof ping>) =>
-    router.visit(action, { preserveScroll: true });
+// A test event and a delivery wait for the receiver's answer.
+const { pending, busy, visit } = usePendingVisit();
+const post = (key: string, action: ReturnType<typeof ping>) =>
+    visit(key, action);
 
-const replaceSecret = () => {
-    router.visit(secret(props.endpoint.uuid), {
-        preserveScroll: true,
+const replaceSecret = () =>
+    visit('secret', secret(props.endpoint.uuid), {
         onFinish: () => (replaceOpen.value = false),
     });
-};
 
 const prettyPayload = (payload: string) => {
     try {
@@ -109,8 +111,13 @@ const prettyPayload = (payload: string) => {
                 </div>
             </div>
             <div class="flex flex-wrap gap-2">
-                <Button variant="outline" @click="post(ping(endpoint.uuid))">
-                    <Send class="h-4 w-4" />
+                <Button
+                    variant="outline"
+                    :disabled="pending !== null"
+                    @click="post('ping', ping(endpoint.uuid))"
+                >
+                    <Spinner v-if="busy('ping')" />
+                    <Send v-else class="h-4 w-4" />
                     {{ $t('Send test event') }}
                 </Button>
                 <Button variant="outline" @click="editOpen = true">
@@ -266,9 +273,16 @@ const prettyPayload = (payload: string) => {
                                         v-if="delivery.status !== 'pending'"
                                         variant="ghost"
                                         size="sm"
-                                        @click="post(redeliver(delivery.uuid))"
+                                        :disabled="pending !== null"
+                                        @click="
+                                            post(
+                                                delivery.uuid,
+                                                redeliver(delivery.uuid),
+                                            )
+                                        "
                                     >
-                                        <RefreshCw class="h-4 w-4" />
+                                        <Spinner v-if="busy(delivery.uuid)" />
+                                        <RefreshCw v-else class="h-4 w-4" />
                                         {{ $t('Send again') }}
                                     </Button>
                                 </td>
@@ -320,7 +334,12 @@ const prettyPayload = (payload: string) => {
                 <DialogClose as-child>
                     <Button variant="secondary">{{ $t('Cancel') }}</Button>
                 </DialogClose>
-                <Button variant="destructive" @click="replaceSecret">
+                <Button
+                    variant="destructive"
+                    :disabled="pending !== null"
+                    @click="replaceSecret"
+                >
+                    <Spinner v-if="busy('secret')" />
                     {{ $t('Replace secret') }}
                 </Button>
             </DialogFooter>

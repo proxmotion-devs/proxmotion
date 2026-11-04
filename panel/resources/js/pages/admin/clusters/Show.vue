@@ -16,12 +16,14 @@ import StatusBadge from '@/components/admin/StatusBadge.vue';
 import Heading from '@/components/Heading.vue';
 import { useClusterSync } from '@/composables/useClusterSync';
 import { Button } from '@/components/ui/button';
+import { Spinner } from '@/components/ui/spinner';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useDateTime } from '@/composables/useDateTime';
 import { formatBytes, formatPercent, percentage } from '@/lib/format';
 import { optionalNumber } from '@/lib/forms';
+import { usePendingVisit } from '@/lib/pendingVisit';
 import type { OptionalNumber } from '@/lib/forms';
 import { healthLabel, healthTone } from '@/lib/storageHealth';
 import { destroy, index, permissions, show } from '@/routes/admin/clusters';
@@ -46,8 +48,10 @@ const props = defineProps<{
     incomingPermissionCheck: PermissionCheck | null;
 }>();
 
+// Asks Proxmox, which can take a while.
+const { pending, busy, visit } = usePendingVisit();
 const checkPermissions = () =>
-    router.visit(permissions(props.cluster.uuid), { preserveScroll: true });
+    visit('permissions', permissions(props.cluster.uuid));
 
 setLayoutProps({
     breadcrumbs: [
@@ -317,8 +321,13 @@ const cephLabel = (health: string) =>
                     title="API token permissions"
                     description="Checks on Proxmox whether the token has every privilege the panel needs."
                 />
-                <Button variant="outline" @click="checkPermissions">
-                    <ShieldCheck class="h-4 w-4" />
+                <Button
+                    variant="outline"
+                    :disabled="pending !== null"
+                    @click="checkPermissions"
+                >
+                    <Spinner v-if="busy('permissions')" />
+                    <ShieldCheck v-else class="h-4 w-4" />
                     {{ $t('Check permissions') }}
                 </Button>
             </div>

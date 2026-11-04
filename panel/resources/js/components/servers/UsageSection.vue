@@ -1,10 +1,10 @@
 <script setup lang="ts">
-import { router } from '@inertiajs/vue3';
 import { computed } from 'vue';
 import StatusBadge from '@/components/admin/StatusBadge.vue';
 import { Checkbox } from '@/components/ui/checkbox';
 import { useDateTime } from '@/composables/useDateTime';
 import { formatTraffic, formatUsageValue, percentage } from '@/lib/format';
+import { usePendingVisit } from '@/lib/pendingVisit';
 import type { ServerUsage, UsageViolation } from '@/types/admin';
 import type { RouteDefinition } from '@/wayfinder';
 
@@ -49,10 +49,10 @@ const actions: Record<UsageViolation['action'], string> = {
 const amount = (violation: UsageViolation, value: number): string =>
     formatUsageValue(violation.unit, value);
 
+const { pending, visit } = usePendingVisit();
 const toggleExempt = () =>
-    router.visit(props.exemptAction, {
+    visit('exempt', props.exemptAction, {
         data: { usage_exempt: !props.exempt },
-        preserveScroll: true,
     });
 </script>
 
@@ -78,6 +78,7 @@ const toggleExempt = () =>
             <label class="flex items-center gap-2 text-sm">
                 <Checkbox
                     :model-value="exempt"
+                    :disabled="pending !== null"
                     data-test="usage-exempt"
                     @update:model-value="toggleExempt"
                 />
