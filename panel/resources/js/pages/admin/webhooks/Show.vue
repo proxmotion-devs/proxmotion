@@ -87,6 +87,7 @@ const prettyPayload = (payload: string) => {
         <div class="flex flex-wrap items-start justify-between gap-4">
             <div class="min-w-0">
                 <Heading
+                    class="mb-2"
                     title="Webhook"
                     description="Every request carries a Proxmotion-Signature header: t=<timestamp>,v1=<HMAC-SHA256 of timestamp.body with the secret>. Only a 2xx answer counts as delivered; others are retried for about a day."
                 />

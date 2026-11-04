@@ -157,7 +157,7 @@
       { "name": "The Explanation Is Not State Rule", "body": "Sky belongs to guides only. Don't use it for info badges, links in general, or \"in progress\".", "section": "colors" },
       { "name": "The Tabular Figures Rule", "body": "Every number that is compared or updates live (capacity, traffic, counts, percentages, sizes) uses tabular numerals.", "section": "typography" },
       { "name": "The Machine Values Rule", "body": "Addresses, identifiers and code are monospace; human words never are.", "section": "typography" },
-      { "name": "The Busy Is Not Wrong Rule", "body": "Amber means \"needs a look\". Something that is merely in progress is `progress`, never `warning`.", "section": "components" },
+      { "name": "The Busy Is Not Wrong Rule", "body": "Amber means \"needs a look\". Something that is merely in progress is `progress`, never `warning`; a state an administrator chose on purpose (Draft, Modified, Custom, Paid, Test server, Reserved) is `neutral`.", "section": "components" },
       { "name": "The Flat-Room Rule", "body": "At rest nothing casts a shadow. If an element is not floating over other content, separate it with a border or a tonal step, not a shadow.", "section": "elevation" }
     ],
     "dos": [

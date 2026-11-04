@@ -207,7 +207,7 @@ All status and guide colours live as CSS variables in `panel/resources/css/app.c
 **Character:** One humanist-grotesque family, used at small sizes and medium weights. It reads friendly rather than technical, so the monospace is kept for machine values only.
 
 ### Hierarchy
-- **Page title** (600, 1.25rem, tight tracking -0.025em): the `Heading` at the top of each page, followed by a muted 0.875rem description.
+- **Page title** (600, 1.25rem, tight tracking -0.025em): the `Heading` at the top of each page, followed by a muted 0.875rem description. It has no margin of its own: the page's `gap-6` column spaces it (24px), and a page without one passes a class.
 - **Metric** (600, 1.875rem, tabular numbers): dashboard figures and stat cards.
 - **Section title** (500, 1rem): `Heading variant="small"` for sections and dialogs.
 - **Body** (400, 0.875rem, ~1.43): almost all UI text, table cells, form labels (500), table headers (500, muted). Inputs use 1rem on phones and 0.875rem from `md` up, so mobile browsers do not zoom.
@@ -261,7 +261,7 @@ The panel's main signal. `StatusBadge` takes a tone (`StatusTone`: success, warn
 - **Progress:** work still running (provisioning, reinstalling, deleting, installing, a running task, run or move) uses the neutral colours with a 12px spinning loader before the label; with reduced motion the loader stays but does not spin. Queued work stays plain neutral.
 - **Rule:** always a word, never colour alone; "Recorded only" style neutral badges are as important as the coloured ones.
 
-**The Busy Is Not Wrong Rule.** Amber means "needs a look". Something that is merely in progress is `progress`, never `warning`.
+**The Busy Is Not Wrong Rule.** Amber means "needs a look". Something that is merely in progress is `progress`, never `warning`; a state an administrator chose on purpose (Draft, Modified, Custom, Paid, Test server, Reserved) is `neutral`.
 
 ### Panels / Cards
 - **Corner Style:** 12px.
@@ -276,6 +276,7 @@ The panel's main signal. `StatusBadge` takes a tone (`StatusTone`: success, warn
 - **Error:** destructive border and a destructive ring at 20% (40% dark); the message sits below via `InputError` in the danger text tone. `FormField` links its control to the hint and the error (`aria-describedby`) and sets `aria-invalid` while there is an error, so every field inside a `FormField` gets the red border without its own code.
 - **Disabled:** 50% opacity, not-allowed cursor.
 - **Selects:** `NativeSelect` uses the platform select, styled into the theme; where `appearance: base-select` is supported it gets the panel's own menu look with muted uppercase group labels.
+- **Wizard steps** (new server): 32px outline buttons with 6px corners and the focus ring, the step number in tabular figures (a check once passed); the current step takes a foreground border and medium weight, never the provider colour; steps not reached yet are disabled at 50%. A disabled **Next** says what is missing in one muted line beside it ("Choose a package.").
 
 ### Navigation
 - **Sidebar:** links with 16px icons on the Sidebar Ground, in four labelled groups of at most five pages, daily work first: **Operate** (Dashboard, Servers, Drift report, Reports), **Infrastructure** (Locations, Clusters, IP pools, Placement groups, DNS providers), **Catalog** (OS templates, Packages, Firewall rule sets, Apps), **Administration** (Billing systems, Administrators, Panel settings, Help); `useMainNavigationGroups()`. A new page joins the group it belongs to rather than a new one. The active item takes the light grey sidebar accent fill and medium weight. The provider colour reaches the sidebar through `--sidebar-primary`, which fills the 32px logo tile in the sidebar header. It collapses to icons on desktop and slides in as a sheet on phones.
@@ -294,7 +295,7 @@ The panel's main signal. `StatusBadge` takes a tone (`StatusTone`: success, warn
 `GuideBox` opens explanatory pages with a calm how-to: 12px corners, sky border at 30%, sky fill at 5% (`border-guide/30`, `bg-guide/5`), a sky lightbulb icon (`text-guide-icon`), a medium title, muted body text with styled lists and inline code, and a "More in Help" link (`text-guide-link`). A 32px ghost × hides it, which is remembered per browser; hidden guides leave a 32px-high "Show guide" text button. Every control in it shows the focus ring. It is the panel's reassurance made visible.
 
 ### Notices
-`Notice` (components/admin) is the one way to say something about the state of what a page shows ("restart to apply", "suspended over its quota", "the VM was deleted outside the panel", a task's error): 8px corners, 12px padding, a 16px icon before the text. `warning` (default) uses the amber tint and border with a triangle icon; `danger` uses the red tint, a red border at 40% and a circled exclamation; `success` (a check that passed, a token or secret shown once) uses the green tint and a circled check. Body text stays in the foreground colour; bold lines inside carry the detail (the reason, the figures). Never hand-build an amber or red box.
+`Notice` (components/admin) is the one way to say something about the state of what a page shows ("restart to apply", "suspended over its quota", "the VM was deleted outside the panel", a task's error): 8px corners, 12px padding, a 16px icon before the text. `warning` (default) uses the amber tint and border with a triangle icon; `danger` uses the red tint, a red border at 40% and a circled exclamation; `success` (a check that passed, a token or secret shown once) uses the green tint and a circled check. Body text stays in the foreground colour; bold lines inside carry the detail (the reason, the figures). A notice about something the administrator can do from here carries that control (a small outline button on the page background, after the text): "restart to apply" offers **Reboot now** (confirmed) or **Start now**, never "use the button over there". Never hand-build an amber or red box.
 
 ### Tabs
 Page tabs (the server page) sit on a hairline with a 2px underline in the foreground colour, not the accent, so a pale provider colour cannot hide the selection. Counts are small muted pills; running work shows a 14px spinner. Arrow keys, Home and End move between tabs, only the selected tab is in the tab order, focus shows the inset ring, and the row scrolls sideways on phones instead of widening the page: the edge with more tabs behind it fades out (a 2.5rem mask, only while there is more to scroll to), and the chosen tab scrolls into view. The tabs name their panel (`aria-controls`) and the panel names its tab (`role="tabpanel"`, `aria-labelledby`).

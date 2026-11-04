@@ -114,7 +114,7 @@ const bytes = (text: string) => new TextEncoder().encode(text).length;
                     />
                     <StatusBadge
                         v-if="script.draft !== null"
-                        tone="warning"
+                        tone="neutral"
                         label="Draft"
                     />
                 </h3>

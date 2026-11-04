@@ -7,7 +7,15 @@ import {
     useHttp,
     usePoll,
 } from '@inertiajs/vue3';
-import { Eye, LoaderCircle, Monitor, RotateCcw, Trash2 } from '@lucide/vue';
+import {
+    Eye,
+    LoaderCircle,
+    Monitor,
+    Play,
+    RotateCcw,
+    RotateCw,
+    Trash2,
+} from '@lucide/vue';
 import { useResizeObserver } from '@vueuse/core';
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import ConfirmDialog from '@/components/admin/ConfirmDialog.vue';
@@ -650,6 +658,13 @@ const toggleTestServer = () =>
         preserveScroll: true,
     });
 
+// The restart a pending change waits for, right from its notice.
+const confirmingReboot = ref(false);
+const restartForChanges = () =>
+    router.visit(powerAction(props.power === 'running' ? 'reboot' : 'start'), {
+        preserveScroll: true,
+    });
+
 // Reinstall the test server from its template after trials (docs/adr/0018 §7).
 const confirmingTrialReset = ref(false);
 const resetAfterTrial = () =>
@@ -678,7 +693,7 @@ const resetAfterTrial = () =>
                     />
                     <StatusBadge
                         v-if="server.is_test"
-                        tone="warning"
+                        tone="neutral"
                         label="Test server"
                     />
                 </div>
@@ -723,12 +738,51 @@ const resetAfterTrial = () =>
         </div>
 
         <Notice v-if="server.reboot_required" data-test="reboot-required">
-            {{
-                $t(
-                    'Some changes take effect when the server is restarted (Start or Reboot here).',
-                )
-            }}
+            <div
+                class="flex flex-wrap items-center justify-between gap-x-4 gap-y-2"
+            >
+                <span>{{
+                    $t('Some changes take effect when the server restarts.')
+                }}</span>
+                <template v-if="active && !vmAway">
+                    <Button
+                        v-if="power === 'running'"
+                        variant="outline"
+                        size="sm"
+                        class="bg-background"
+                        :disabled="busy"
+                        data-test="reboot-required-reboot"
+                        @click="confirmingReboot = true"
+                    >
+                        <RotateCw class="h-4 w-4" />
+                        {{ $t('Reboot now') }}
+                    </Button>
+                    <Button
+                        v-else-if="power === 'stopped'"
+                        variant="outline"
+                        size="sm"
+                        class="bg-background"
+                        :disabled="busy"
+                        data-test="reboot-required-start"
+                        @click="restartForChanges"
+                    >
+                        <Play class="h-4 w-4" />
+                        {{ $t('Start now') }}
+                    </Button>
+                </template>
+            </div>
         </Notice>
+        <ConfirmDialog
+            v-model:open="confirmingReboot"
+            title="Reboot the server?"
+            :description="
+                $t(
+                    'The operating system is asked to restart. Running programs are stopped.',
+                )
+            "
+            confirm-label="Reboot"
+            @confirm="restartForChanges"
+        />
 
         <Notice v-if="server.status === 'suspended'" data-test="suspension">
             <template v-if="server.suspension_cause === 'traffic'">

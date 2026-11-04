@@ -11,7 +11,7 @@ withDefaults(defineProps<Props>(), {
 </script>
 
 <template>
-    <header :class="variant === 'small' ? '' : 'mb-8 space-y-0.5'">
+    <header :class="variant === 'small' ? '' : 'space-y-0.5'">
         <!-- A page title is the page's h1; small headings name its sections. -->
         <component
             :is="variant === 'small' ? 'h2' : 'h1'"

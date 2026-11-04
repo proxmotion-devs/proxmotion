@@ -263,6 +263,25 @@ const complete = computed<boolean[]>(() => [
     true,
 ]);
 
+// Why Next is disabled, said beside it (English keys).
+const missingForNext = computed(() => {
+    if (complete.value[step.value]) {
+        return null;
+    }
+
+    return (
+        [
+            'Choose a location.',
+            custom.value
+                ? 'Enter CPU, memory, disk and at least one IP address, then choose where the server goes.'
+                : 'Choose a package.',
+            'Choose an operating system.',
+            'Choose a network model.',
+            'Enter a hostname.',
+        ][step.value] ?? null
+    );
+});
+
 const go = (target: number) => {
     if (target <= reached.value) {
         step.value = target;
@@ -405,11 +424,11 @@ const submit = () => {
             <li v-for="(item, number) in WIZARD_STEPS" :key="item.key">
                 <button
                     type="button"
-                    class="flex items-center gap-2 rounded-full border px-3 py-1 text-sm disabled:cursor-not-allowed disabled:opacity-50"
+                    class="flex h-8 items-center gap-2 rounded-md border px-3 text-sm outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50"
                     :class="
                         number === step
-                            ? 'border-primary bg-primary text-primary-foreground'
-                            : 'bg-background'
+                            ? 'border-foreground font-medium text-foreground'
+                            : 'bg-background text-muted-foreground enabled:hover:text-foreground'
                     "
                     :disabled="number > reached"
                     :aria-current="number === step ? 'step' : undefined"
@@ -419,7 +438,7 @@ const submit = () => {
                         v-if="number < reached && number !== step"
                         class="h-3.5 w-3.5"
                     />
-                    <span v-else>{{ number + 1 }}</span>
+                    <span v-else class="tabular-nums">{{ number + 1 }}</span>
                     {{ $t(item.title) }}
                 </button>
             </li>
@@ -679,13 +698,21 @@ const submit = () => {
                 >
                     {{ $t('Back') }}
                 </Button>
-                <Button
+                <div
                     v-if="step < last"
-                    type="submit"
-                    :disabled="!complete[step]"
+                    class="flex flex-wrap items-center justify-end gap-x-3 gap-y-1"
                 >
-                    {{ $t('Next') }}
-                </Button>
+                    <p
+                        v-if="missingForNext"
+                        class="text-xs text-muted-foreground"
+                        data-test="wizard-next-reason"
+                    >
+                        {{ $t(missingForNext) }}
+                    </p>
+                    <Button type="submit" :disabled="!complete[step]">
+                        {{ $t('Next') }}
+                    </Button>
+                </div>
                 <Button
                     v-else
                     type="submit"

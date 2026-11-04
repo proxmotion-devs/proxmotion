@@ -442,7 +442,7 @@ const saveSettings = () => {
                         {{ $t(eventTitles[slot.event]) }}
                         <StatusBadge
                             v-if="slot.content !== null"
-                            tone="warning"
+                            tone="neutral"
                             label="Custom"
                         />
                         <StatusBadge
@@ -453,7 +453,7 @@ const saveSettings = () => {
                         <StatusBadge v-else tone="neutral" label="None" />
                         <StatusBadge
                             v-if="slot.draft !== null"
-                            tone="warning"
+                            tone="neutral"
                             label="Draft"
                         />
                     </h2>

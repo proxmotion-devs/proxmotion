@@ -358,13 +358,13 @@ const submitCreate = () =>
                             <StatusBadge
                                 v-if="app.modified"
                                 class="ml-2"
-                                tone="warning"
+                                tone="neutral"
                                 label="Modified"
                             />
                             <StatusBadge
                                 v-if="app.draft_version"
                                 class="ml-2"
-                                tone="warning"
+                                tone="neutral"
                                 label="Draft"
                             />
                             <StatusBadge
@@ -375,7 +375,7 @@ const submitCreate = () =>
                             />
                             <StatusBadge
                                 v-if="app.billing === 'paid'"
-                                tone="warning"
+                                tone="neutral"
                                 label="Paid"
                                 class="ml-2"
                             />

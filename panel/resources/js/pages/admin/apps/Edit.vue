@@ -562,8 +562,9 @@ const runImport = () => {
     );
 };
 
+// A draft is a deliberate state, not a problem: neutral, like archived.
 const statusTone = {
-    draft: 'warning',
+    draft: 'neutral',
     published: 'success',
     archived: 'neutral',
     pending_review: 'warning',
@@ -608,10 +609,10 @@ const statusLabels = {
                         tone="success"
                         :label="`v${published.version}`"
                     />
-                    <StatusBadge v-if="draft" tone="warning" label="Draft" />
+                    <StatusBadge v-if="draft" tone="neutral" label="Draft" />
                     <StatusBadge
                         v-if="app.modified"
-                        tone="warning"
+                        tone="neutral"
                         label="Modified"
                     />
                     <span

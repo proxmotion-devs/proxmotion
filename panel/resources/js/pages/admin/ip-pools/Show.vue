@@ -428,7 +428,7 @@ const submitAddress = () => {
                             </Link>
                             <StatusBadge
                                 v-else-if="address.is_reserved"
-                                tone="warning"
+                                tone="neutral"
                                 label="Reserved"
                             />
                             <StatusBadge v-else tone="neutral" label="Free" />

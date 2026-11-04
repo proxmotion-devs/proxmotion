@@ -146,7 +146,7 @@ const cephLabel = (health: string) =>
 <template>
     <Head :title="cluster.name" />
 
-    <div class="flex flex-col gap-8 p-4">
+    <div class="flex flex-col gap-6 p-4">
         <div class="flex flex-wrap items-start justify-between gap-4">
             <div class="flex flex-col gap-2">
                 <Heading
