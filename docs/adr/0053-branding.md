@@ -2,6 +2,7 @@
 
 - **Status:** Accepted
 - **Date:** 2026-11-03
+- **Revised 2026-11-04:** the colour no longer sets `--ring`. With a pale or yellow colour (e.g. `#f5c400`, 1.6:1 on white) the components' 3px focus ring at 50% fell to about 1.3:1 and keyboard focus was effectively invisible (WCAG 2.2 1.4.11, 2.4.7). The ring keeps the neutral colours of `app.css` (near-black in light mode, light grey in dark), which stay at least 3.7:1 against the page at 50% for any brand colour. The form also warns when the colour looks like the amber of warnings or the red of errors and deleting (`resemblesStatus()` in `lib/brandColor.ts`): primary buttons in those hues read as a status.
 
 ## Context
 

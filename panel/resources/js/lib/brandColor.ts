@@ -42,6 +42,50 @@ export function foreground(color: string): '#ffffff' | '#000000' {
         : '#000000';
 }
 
+/** Hue (0–360) and saturation (0–1) of a #rrggbb colour (HSL). */
+function hueAndSaturation(color: string): { hue: number; saturation: number } {
+    const [r, g, b] = [1, 3, 5].map(
+        (start) => parseInt(color.slice(start, start + 2), 16) / 255,
+    );
+    const max = Math.max(r, g, b);
+    const min = Math.min(r, g, b);
+    const delta = max - min;
+    const lightness = (max + min) / 2;
+
+    if (delta === 0) {
+        return { hue: 0, saturation: 0 };
+    }
+
+    const saturation = delta / (1 - Math.abs(2 * lightness - 1));
+    const hue =
+        max === r
+            ? 60 * (((g - b) / delta + 6) % 6)
+            : max === g
+              ? 60 * ((b - r) / delta + 2)
+              : 60 * ((r - g) / delta + 4);
+
+    return { hue, saturation };
+}
+
+/**
+ * The status tone a colour could be taken for (DESIGN.md, The Two Voices
+ * Rule): amber means "needs a look" and red "failed or destroys", so primary
+ * buttons in such a hue read as warnings. Greys and pale tints are fine.
+ */
+export function resemblesStatus(color: string): 'warning' | 'danger' | null {
+    const { hue, saturation } = hueAndSaturation(color);
+
+    if (saturation < 0.45) {
+        return null;
+    }
+
+    if (hue >= 30 && hue <= 60) {
+        return 'warning';
+    }
+
+    return hue <= 12 || hue >= 345 ? 'danger' : null;
+}
+
 /** The modes whose page background the colour hardly stands out from. */
 export function lowContrastModes(color: string): Array<'light' | 'dark'> {
     return (['light', 'dark'] as const).filter(

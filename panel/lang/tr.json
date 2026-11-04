@@ -2684,5 +2684,7 @@
     "Replace the draft?": "Taslak değiştirilsin mi?",
     "Replace draft": "Taslağı değiştir",
     "Done:": "Tamamlandı:",
-    "Not done yet:": "Henüz yapılmadı:"
+    "Not done yet:": "Henüz yapılmadı:",
+    "This colour looks like the amber the panel uses for warnings: primary buttons may be taken for one.": "Bu renk, panelin uyarılar için kullandığı amber renge benziyor: birincil düğmeler bir uyarı sanılabilir.",
+    "This colour looks like the red the panel uses for errors and deleting: primary buttons may be taken for one.": "Bu renk, panelin hatalar ve silme için kullandığı kırmızıya benziyor: birincil düğmeler bunlardan biri sanılabilir."
 }

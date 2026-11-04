@@ -18,7 +18,12 @@ import Heading from '@/components/Heading.vue';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
-import { foreground, isBrandColor, lowContrastModes } from '@/lib/brandColor';
+import {
+    foreground,
+    isBrandColor,
+    lowContrastModes,
+    resemblesStatus,
+} from '@/lib/brandColor';
 import { optionalNumber } from '@/lib/forms';
 import type { OptionalNumber } from '@/lib/forms';
 import { fitsCloudInit, passwordExample } from '@/lib/passwordExample';
@@ -121,6 +126,10 @@ const brandColorPicker = computed({
 
 const brandColorLowContrast = computed(() =>
     brandColorValid.value ? lowContrastModes(form.brand_color) : [],
+);
+// Amber and red already mean "needs a look" and "failed" (DESIGN.md).
+const brandColorStatus = computed(() =>
+    brandColorValid.value ? resemblesStatus(form.brand_color) : null,
 );
 
 // Email notifications (docs/adr/0044): a test mail through the mailer of .env.
@@ -865,6 +874,17 @@ const sectionClass = 'flex flex-col gap-4 rounded-xl border p-4';
                               )
                             : $t(
                                   'This colour hardly stands out from the dark page background: buttons will be hard to see in dark mode.',
+                              )
+                    }}
+                </Notice>
+                <Notice v-if="brandColorStatus" data-test="brand-color-status">
+                    {{
+                        brandColorStatus === 'warning'
+                            ? $t(
+                                  'This colour looks like the amber the panel uses for warnings: primary buttons may be taken for one.',
+                              )
+                            : $t(
+                                  'This colour looks like the red the panel uses for errors and deleting: primary buttons may be taken for one.',
                               )
                     }}
                 </Notice>

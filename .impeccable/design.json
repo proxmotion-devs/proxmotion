@@ -4,7 +4,7 @@
   "title": "Design System: Proxmotion",
   "extensions": {
     "colorMeta": {
-      "primary": { "role": "primary", "displayName": "Provider Accent", "canonical": "hsl(0 0% 9%)", "note": "Placeholder: replaced at runtime by the provider's branding colour (--primary, --sidebar-primary, --ring) in both modes.", "tonalRamp": ["oklch(15% 0 0)", "oklch(25% 0 0)", "oklch(35% 0 0)", "oklch(45% 0 0)", "oklch(55% 0 0)", "oklch(65% 0 0)", "oklch(80% 0 0)", "oklch(95% 0 0)"] },
+      "primary": { "role": "primary", "displayName": "Provider Accent", "canonical": "hsl(0 0% 9%)", "note": "Placeholder: replaced at runtime by the provider's branding colour (--primary, --sidebar-primary) in both modes; the focus ring stays neutral.", "tonalRamp": ["oklch(15% 0 0)", "oklch(25% 0 0)", "oklch(35% 0 0)", "oklch(45% 0 0)", "oklch(55% 0 0)", "oklch(65% 0 0)", "oklch(80% 0 0)", "oklch(95% 0 0)"] },
       "primary-foreground": { "role": "primary", "displayName": "Accent Text", "canonical": "hsl(0 0% 98%)", "note": "Black or white at runtime, whichever contrasts more with the provider colour." },
       "background": { "role": "neutral", "displayName": "Paper", "canonical": "hsl(0 0% 100%)", "dark": "hsl(0 0% 3.9%)", "tonalRamp": ["oklch(15% 0 0)", "oklch(25% 0 0)", "oklch(35% 0 0)", "oklch(45% 0 0)", "oklch(55% 0 0)", "oklch(65% 0 0)", "oklch(80% 0 0)", "oklch(95% 0 0)"] },
       "foreground": { "role": "neutral", "displayName": "Ink", "canonical": "hsl(0 0% 3.9%)", "dark": "hsl(0 0% 98%)" },
@@ -46,7 +46,7 @@
       { "name": "float", "value": "0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)", "purpose": "Menus, select pickers, popovers: layers floating above the page." }
     ],
     "focus": [
-      { "name": "ring", "value": "border-color: var(--ring); box-shadow: 0 0 0 3px color-mix(in oklab, var(--ring) 50%, transparent)", "purpose": "Focus-visible on buttons, inputs and badges; follows the provider colour." }
+      { "name": "ring", "value": "border-color: var(--ring); box-shadow: 0 0 0 3px color-mix(in oklab, var(--ring) 50%, transparent)", "purpose": "Focus-visible on buttons, inputs and badges; neutral (never the provider colour), at least 3.7:1 against the page in both modes." }
     ],
     "motion": [
       { "name": "state", "value": "150ms cubic-bezier(0.4, 0, 0.2, 1)", "purpose": "Colour and ring transitions of controls (Tailwind's default transition)." },
@@ -153,7 +153,7 @@
     ],
     "rules": [
       { "name": "The Two Voices Rule", "body": "Only state and the provider accent may carry colour. A new feature that wants its own hue must express it as one of the three status tones, the guide sky, or the accent, or stay neutral.", "section": "colors" },
-      { "name": "The Any-Colour Rule", "body": "Never rely on the accent's hue for meaning or contrast. The provider may pick yellow, pale blue or black. Meaning comes from labels, icons and the status tones; the accent only marks \"primary\" and \"focused\".", "section": "colors" },
+      { "name": "The Any-Colour Rule", "body": "Never rely on the accent's hue for meaning or contrast. The provider may pick yellow, pale blue or black. Meaning comes from labels, icons and the status tones; the accent only marks \"primary\". Focus is drawn in the neutral ring colour, never in the accent.", "section": "colors" },
       { "name": "The Explanation Is Not State Rule", "body": "Sky belongs to guides only. Don't use it for info badges, links in general, or \"in progress\".", "section": "colors" },
       { "name": "The Tabular Figures Rule", "body": "Every number that is compared or updates live (capacity, traffic, counts, percentages, sizes) uses tabular numerals.", "section": "typography" },
       { "name": "The Machine Values Rule", "body": "Addresses, identifiers and code are monospace; human words never are.", "section": "typography" },

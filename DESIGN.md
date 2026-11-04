@@ -150,7 +150,7 @@ components:
 
 **Creative North Star: "The Control Room"**
 
-Proxmotion's admin panel is a quiet operations room. Everything at rest is neutral: white or near-black surfaces, grey text, hairline borders. Only two things are allowed to speak. One is **state**: a green, amber or red badge, an amber-bordered panel, a red error. The other is **the provider's single brand colour**, carried by primary buttons, the active navigation item and focus rings. Staff look across a room of servers, tasks and nodes. Whatever is coloured is what needs their attention, or what they can act on.
+Proxmotion's admin panel is a quiet operations room. Everything at rest is neutral: white or near-black surfaces, grey text, hairline borders. Only two things are allowed to speak. One is **state**: a green, amber or red badge, an amber-bordered panel, a red error. The other is **the provider's single brand colour**, carried by primary buttons and the active navigation item. Focus rings stay neutral, so the brand can never hide where the keyboard is. Staff look across a room of servers, tasks and nodes. Whatever is coloured is what needs their attention, or what they can act on.
 
 The panel belongs to the hosting provider, not to Proxmotion. Its neutral base is deliberate: the provider sets one colour and a logo under *Panel settings → Branding*, and the panel takes them on without clashing. Proxmotion's own craft shows in precision rather than identity: tabular numbers that line up, status that is never ambiguous, guides that explain before anyone gets lost.
 
@@ -169,7 +169,8 @@ The intended feel is **comfortable and reassuring**. Support staff who are less 
 A greyscale room with a single, swappable brand light and a fixed traffic-light vocabulary for state.
 
 ### Primary
-- **Provider Accent** (default near-black `hsl(0 0% 9%)` light, near-white `hsl(0 0% 98%)` dark): primary buttons, the active sidebar item, the focus ring, links styled as primary. At runtime the provider's branding colour replaces `--primary`, `--sidebar-primary` and `--ring` in both modes, with black or white text chosen by WCAG contrast. Treat the default as a placeholder: design every screen as if this colour could be any hue.
+- **Provider Accent** (default near-black `hsl(0 0% 9%)` light, near-white `hsl(0 0% 98%)` dark): primary buttons, the active sidebar item, links styled as primary. At runtime the provider's branding colour replaces `--primary` and `--sidebar-primary` in both modes, with black or white text chosen by WCAG contrast. The form warns when it looks like the amber or red of status.
+- **Focus Ring** (`--ring`: `hsl(0 0% 3.9%)` light, `hsl(0 0% 83.1%)` dark): neutral, never the brand colour. The components draw it as a 3px ring at 50%, which stays at least 3.7:1 against the page in both modes (3.74 and 3.94 measured). Treat the default as a placeholder: design every screen as if this colour could be any hue.
 
 ### Secondary
 - **Status Green** (`status-success-*`, Tailwind emerald 100/800; dark: emerald 900 at 40% / emerald 300): healthy, active, succeeded.
@@ -194,7 +195,7 @@ All status and guide colours live as CSS variables in `panel/resources/css/app.c
 ### Named Rules
 **The Two Voices Rule.** Only state and the provider accent may carry colour. A new feature that wants its own hue must express it as one of the three status tones, the guide sky, or the accent, or stay neutral.
 
-**The Any-Colour Rule.** Never rely on the accent's hue for meaning or contrast. The provider may pick yellow, pale blue or black. Meaning comes from labels, icons and the status tones; the accent only marks "primary" and "focused".
+**The Any-Colour Rule.** Never rely on the accent's hue for meaning or contrast. The provider may pick yellow, pale blue or black. Meaning comes from labels, icons and the status tones; the accent only marks "primary". Focus is drawn in the neutral ring colour, never in the accent.
 
 **The Explanation Is Not State Rule.** Sky belongs to guides only. Don't use it for info badges, links in general, or "in progress".
 
@@ -252,7 +253,7 @@ Steady and unhurried: full-height targets with one clear primary per area.
 - **Secondary / Ghost:** light grey fill, or no fill until hover. Ghost for icon buttons and row actions.
 - **Destructive:** Destructive Red fill with white text (red at 60% in dark mode). Used only for the final confirming action of terminate, delete, reinstall, rollback or restore, normally inside `ConfirmDelete` or a dialog that asks for the hostname.
 - **Typed confirmation:** anything that destroys a server's VM or disks (delete, rebuild; reinstall, rollback and restore follow the same pattern in their own dialogs) uses `TypedConfirmDialog`: a red-text outline trigger, a dialog asking for the hostname in a monospace field, and a destructive submit that stays disabled until the text matches (trimmed, case-insensitive); the server checks `confirm_hostname` again. On the server page, Delete sits on its own row below a hairline, apart from Suspend and Reinstall, with one line saying what is lost. `ConfirmDelete` stays for records the panel can recreate (locations, pools, templates). Any other yes/no question uses `ConfirmDialog` (destructive when it wipes something); never the browser's `window.confirm()`, which can be neither styled nor translated.
-- **Focus:** border turns to the ring colour plus a 3px ring at 50% opacity. Disabled is 50% opacity with no pointer events.
+- **Focus:** border turns to the neutral ring colour plus a 3px ring at 50% opacity (at least 3.7:1 against the page, whatever the brand colour). Disabled is 50% opacity with no pointer events.
 
 ### Status badges
 The panel's main signal. `StatusBadge` takes a tone (`StatusTone`: success, warning, danger, neutral, progress) and an English label key. The colours are the `--status-*` tokens of `app.css` (`bg-status-success`, `text-status-success-foreground`, …), never Tailwind palette classes.

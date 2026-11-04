@@ -45,7 +45,8 @@
 
         @vite(['resources/css/app.css', 'resources/js/app.ts', "resources/js/pages/{$page['component']}.vue"])
 
-        {{-- The colour of Panel settings > Branding (docs/adr/0053), validated as #rrggbb, in both modes. --}}
+        {{-- The colour of Panel settings > Branding (docs/adr/0053), validated as #rrggbb, in both modes.
+             The focus ring (--ring) stays neutral: a pale or yellow brand colour would make keyboard focus invisible. --}}
         @if (! empty($branding['color']))
             <style>
                 /* html: more specific than app.css, wherever the stylesheets end up. */
@@ -54,7 +55,6 @@
                     --primary-foreground: {{ $branding['color_foreground'] }};
                     --sidebar-primary: {{ $branding['color'] }};
                     --sidebar-primary-foreground: {{ $branding['color_foreground'] }};
-                    --ring: {{ $branding['color'] }};
                 }
             </style>
         @endif
