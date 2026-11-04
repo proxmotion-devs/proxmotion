@@ -1,5 +1,35 @@
+import { getActiveLanguage } from 'laravel-vue-i18n';
+
 const BINARY_UNITS = ['B', 'KiB', 'MiB', 'GiB', 'TiB', 'PiB'];
 const DECIMAL_UNITS = ['B', 'KB', 'MB', 'GB', 'TB', 'PB'];
+
+/** The language the page is shown in, which decides decimal marks and the place of %. */
+function locale(): string {
+    try {
+        return getActiveLanguage() || 'en';
+    } catch {
+        return 'en';
+    }
+}
+
+/**
+ * A number in the page's language, at most one decimal: "1.5" in English,
+ * "1,5" in Turkish. Groups thousands ("12,400") unless `grouping` is false.
+ */
+export function formatNumber(value: number, grouping = true): string {
+    return new Intl.NumberFormat(locale(), {
+        maximumFractionDigits: 1,
+        useGrouping: grouping,
+    }).format(value);
+}
+
+/** A percentage from 0–100 in the page's language: "45%" in English, "%45" in Turkish. */
+export function formatPercent(value: number): string {
+    return new Intl.NumberFormat(locale(), {
+        style: 'percent',
+        maximumFractionDigits: 1,
+    }).format(value / 100);
+}
 
 function scale(value: number, base: number, units: string[]): string {
     let unit = 0;
@@ -9,9 +39,8 @@ function scale(value: number, base: number, units: string[]): string {
         unit++;
     }
 
-    const rounded = Number.isInteger(value) ? value : Number(value.toFixed(1));
-
-    return `${rounded} ${units[unit]}`;
+    // Below the base, so no thousands separator ("1023 KiB").
+    return `${formatNumber(value, false)} ${units[unit]}`;
 }
 
 /** Storage and memory sizes (binary units). */
@@ -98,8 +127,8 @@ export function formatUsageValue(
         case 'bytes':
             return formatTraffic(value);
         case 'percent':
-            return `${value}%`;
+            return formatPercent(value);
         default:
-            return `${value} ${unit}`;
+            return `${formatNumber(value)} ${unit}`;
     }
 }

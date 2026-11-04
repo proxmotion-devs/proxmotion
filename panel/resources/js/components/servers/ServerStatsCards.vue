@@ -8,6 +8,7 @@ import {
     formatBitRate,
     formatByteRate,
     formatBytes,
+    formatPercent,
     percentage,
 } from '@/lib/format';
 
@@ -69,7 +70,8 @@ const uptime = computed(() => {
         : trans(':minutes min', { minutes: String(minutes) });
 });
 
-const percent = (value: number | null) => (value === null ? '—' : `${value} %`);
+const percent = (value: number | null) =>
+    value === null ? '—' : formatPercent(value);
 const bytes = (value: number | null) => formatBytes(value);
 
 const memoryShare = computed(() =>

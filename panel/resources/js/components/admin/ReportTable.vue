@@ -5,7 +5,12 @@ import { trans } from 'laravel-vue-i18n';
 import ServerStatusBadge from '@/components/admin/ServerStatusBadge.vue';
 import { Button } from '@/components/ui/button';
 import { useDateTime } from '@/composables/useDateTime';
-import { formatMib, formatTraffic, formatUsageValue } from '@/lib/format';
+import {
+    formatMib,
+    formatPercent,
+    formatTraffic,
+    formatUsageValue,
+} from '@/lib/format';
 import { TASK_TYPE_LABELS } from '@/lib/taskTypes';
 import { show as showServer } from '@/routes/admin/servers';
 import type {
@@ -100,7 +105,7 @@ const format = (
         case 'traffic':
             return formatTraffic(value);
         case 'percent':
-            return `${formatNumber(value)}%`;
+            return formatPercent(value);
         case 'duration':
             return formatDuration(value);
         case 'usage':

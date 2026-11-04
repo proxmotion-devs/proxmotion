@@ -217,6 +217,8 @@ All status and guide colours live as CSS variables in `panel/resources/css/app.c
 ### Named Rules
 **The Tabular Figures Rule.** Every number that is compared or updates live (capacity, traffic, counts, percentages, sizes) uses tabular numerals.
 
+**The Page Language Rule.** Numbers are written the way the page language writes them, through `lib/format.ts` (`formatNumber`, `formatPercent`, `formatBytes`, …), never with `toFixed` or a literal `%`: "1.5 GiB" and "45%" in English, "1,5 GiB" and "%45" in Turkish. Units stay as they are (KiB, GB, Mbps).
+
 **The Machine Values Rule.** Addresses, identifiers and code are monospace; human words never are.
 
 ## Layout

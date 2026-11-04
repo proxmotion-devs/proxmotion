@@ -36,6 +36,7 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { useDateTime } from '@/composables/useDateTime';
+import { formatPercent } from '@/lib/format';
 import { CATEGORIES, editable, languageOf, pruned } from '@/lib/recipes';
 import type {
     RecipeAction,
@@ -1406,7 +1407,8 @@ const statusLabels = {
                                         "
                                         class="mt-1 text-xs text-muted-foreground"
                                     >
-                                        {{ trial.step }} · {{ trial.progress }}%
+                                        {{ trial.step }} ·
+                                        {{ formatPercent(trial.progress) }}
                                     </p>
                                     <p
                                         v-if="trial.error"

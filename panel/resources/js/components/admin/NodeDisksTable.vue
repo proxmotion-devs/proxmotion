@@ -2,7 +2,7 @@
 import ConfirmDelete from '@/components/admin/ConfirmDelete.vue';
 import HealthProblems from '@/components/admin/HealthProblems.vue';
 import StatusBadge from '@/components/admin/StatusBadge.vue';
-import { formatBytes } from '@/lib/format';
+import { formatBytes, formatPercent } from '@/lib/format';
 import { healthLabel, healthTone, lifeUsed } from '@/lib/storageHealth';
 import { destroy } from '@/routes/admin/node-disks';
 import type { NodeDisk } from '@/types/admin';
@@ -73,9 +73,9 @@ defineProps<{
                             {{ disk.smart ?? '—' }}
                         </td>
                         <td class="px-3 py-2 whitespace-nowrap">
-                            <template v-if="lifeUsed(disk.wearout) !== null"
-                                >{{ lifeUsed(disk.wearout) }}%</template
-                            >
+                            <template v-if="lifeUsed(disk.wearout) !== null">{{
+                                formatPercent(lifeUsed(disk.wearout) ?? 0)
+                            }}</template>
                             <template v-else>—</template>
                         </td>
                         <td class="px-3 py-2">

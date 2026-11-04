@@ -2,7 +2,7 @@
 import { CircleAlert, HardDrive } from '@lucide/vue';
 import { computed } from 'vue';
 import { Skeleton } from '@/components/ui/skeleton';
-import { formatBytes, percentage } from '@/lib/format';
+import { formatBytes, formatPercent, percentage } from '@/lib/format';
 import type { ServerDiskUsage } from '@/types/admin';
 
 /**
@@ -125,7 +125,7 @@ const textClass = {
                     <span
                         class="text-2xl font-semibold tabular-nums"
                         :class="textClass[fileSystem.level]"
-                        >{{ fileSystem.percent }} %</span
+                        >{{ formatPercent(fileSystem.percent) }}</span
                     >
                     <span class="text-sm tabular-nums">
                         <span class="font-medium">{{

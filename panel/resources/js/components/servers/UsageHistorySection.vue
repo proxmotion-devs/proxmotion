@@ -2,7 +2,12 @@
 import { computed, onMounted, ref, watch } from 'vue';
 import type { ChartPoint } from '@/components/servers/UsageChart.vue';
 import UsageChart from '@/components/servers/UsageChart.vue';
-import { formatBitRate, formatByteRate, formatTraffic } from '@/lib/format';
+import {
+    formatBitRate,
+    formatByteRate,
+    formatPercent,
+    formatTraffic,
+} from '@/lib/format';
 import { usage as usageRoute } from '@/routes/admin/servers';
 import type { UsageHistory, UsagePoint, UsageRange } from '@/types/admin';
 
@@ -121,7 +126,8 @@ const TRAFFIC_INTERVALS = {
     period: 'Traffic per period',
 } as const;
 
-const percent = (value: number | null) => (value === null ? '—' : `${value} %`);
+const percent = (value: number | null) =>
+    value === null ? '—' : formatPercent(value);
 const traffic = (value: number | null) => formatTraffic(value ?? 0);
 </script>
 

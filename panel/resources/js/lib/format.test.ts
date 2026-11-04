@@ -1,14 +1,38 @@
-import { describe, expect, it } from 'vite-plus/test';
+import { afterEach, describe, expect, it, vi } from 'vite-plus/test';
 import {
     formatBytes,
     formatDateTime,
     formatMib,
+    formatNumber,
+    formatPercent,
     formatTraffic,
     formatUsageValue,
     percentage,
 } from '@/lib/format';
 
+const { language } = vi.hoisted(() => ({ language: { current: 'en' } }));
+
+vi.mock('laravel-vue-i18n', () => ({
+    getActiveLanguage: () => language.current,
+}));
+
 describe('format', () => {
+    afterEach(() => (language.current = 'en'));
+
+    it('writes numbers and percentages the way the page language does', () => {
+        expect(formatBytes(1536)).toBe('1.5 KiB');
+        expect(formatPercent(45)).toBe('45%');
+        expect(formatNumber(12400)).toBe('12,400');
+
+        language.current = 'tr';
+        expect(formatBytes(1536)).toBe('1,5 KiB');
+        expect(formatBytes(1023 * 1024)).toBe('1023 KiB');
+        expect(formatPercent(45)).toBe('%45');
+        expect(formatNumber(12400)).toBe('12.400');
+        expect(formatUsageValue('percent', 90)).toBe('%90');
+        expect(formatUsageValue('MB/s', 2.5)).toBe('2,5 MB/s');
+    });
+
     it('formats sizes in binary units', () => {
         expect(formatBytes(0)).toBe('0 B');
         expect(formatBytes(1536)).toBe('1.5 KiB');

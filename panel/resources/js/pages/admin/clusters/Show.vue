@@ -20,7 +20,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useDateTime } from '@/composables/useDateTime';
-import { formatBytes, percentage } from '@/lib/format';
+import { formatBytes, formatPercent, percentage } from '@/lib/format';
 import { optionalNumber } from '@/lib/forms';
 import type { OptionalNumber } from '@/lib/forms';
 import { healthLabel, healthTone } from '@/lib/storageHealth';
@@ -477,11 +477,13 @@ const cephLabel = (health: string) =>
                                         class="text-muted-foreground"
                                     >
                                         ({{
-                                            percentage(
-                                                storage.used_bytes,
-                                                storage.total_bytes,
+                                            formatPercent(
+                                                percentage(
+                                                    storage.used_bytes,
+                                                    storage.total_bytes,
+                                                ) ?? 0,
                                             )
-                                        }}%)
+                                        }})
                                     </span>
                                     <div
                                         v-if="

@@ -113,7 +113,7 @@ describe('ServerStatsCards', () => {
 
         expect(fetchMock.mock.calls[0][0]).toContain('history=1');
         expect(wrapper.get('[data-test="stats-cpu"]').text()).toContain(
-            '25.6 %',
+            '25.6%',
         );
         expect(wrapper.get('[data-test="stats-cpu"]').text()).toContain(
             'of :count vCPUs',
@@ -148,7 +148,7 @@ describe('ServerStatsCards', () => {
 
         expect(fetchMock).toHaveBeenCalledTimes(2);
         expect(fetchMock.mock.calls[1][0]).not.toContain('history');
-        expect(wrapper.get('[data-test="stats-cpu"]').text()).toContain('80 %');
+        expect(wrapper.get('[data-test="stats-cpu"]').text()).toContain('80%');
 
         wrapper.unmount();
         await vi.advanceTimersByTimeAsync(POLL_MS * 3);
@@ -166,12 +166,12 @@ describe('ServerStatsCards', () => {
 
         socket.pushed?.(sample({ time: 1_790_000_010_000, cpu_percent: 42 }));
         await flushPromises();
-        expect(wrapper.get('[data-test="stats-cpu"]').text()).toContain('42 %');
+        expect(wrapper.get('[data-test="stats-cpu"]').text()).toContain('42%');
 
         // An older sample (e.g. a late answer) never replaces a newer one.
         socket.pushed?.(sample({ time: 1_790_000_001_000, cpu_percent: 1 }));
         await flushPromises();
-        expect(wrapper.get('[data-test="stats-cpu"]').text()).toContain('42 %');
+        expect(wrapper.get('[data-test="stats-cpu"]').text()).toContain('42%');
 
         await vi.advanceTimersByTimeAsync(POLL_MS);
         expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -252,9 +252,9 @@ describe('ServerStatsCards', () => {
             rows[0].get('[role="progressbar"]').attributes('aria-valuenow'),
         ).toBe('90');
         expect(rows[0].find('.bg-destructive').exists()).toBe(true);
-        expect(rows[0].get('.text-destructive').text()).toBe('90 %');
+        expect(rows[0].get('.text-destructive').text()).toBe('90%');
         expect(rows[1].text()).toContain('/boot');
-        expect(rows[1].text()).toContain('10 %');
+        expect(rows[1].text()).toContain('10%');
         expect(rows[1].find('.bg-primary').exists()).toBe(true);
         expect(rows[1].find('.text-destructive').exists()).toBe(false);
     });

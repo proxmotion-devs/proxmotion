@@ -20,6 +20,7 @@ import AppInputFields from '@/components/servers/AppInputFields.vue';
 import AppLogDialog from '@/components/servers/AppLogDialog.vue';
 import AppOutputs from '@/components/servers/AppOutputs.vue';
 import { Button } from '@/components/ui/button';
+import { formatPercent } from '@/lib/format';
 import { useDateTime } from '@/composables/useDateTime';
 import {
     action as actionRoute,
@@ -451,7 +452,7 @@ const openRunLog = (app: AppInstallation, run: AppRun) => {
                             </td>
                             <td class="px-4 py-3">
                                 <span v-if="app.status === 'installing'"
-                                    >{{ app.progress }}% · </span
+                                    >{{ formatPercent(app.progress) }} · </span
                                 >{{ app.step ?? '' }}
                                 <p
                                     v-if="app.error"

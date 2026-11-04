@@ -3,6 +3,7 @@ import { Download } from '@lucide/vue';
 import { nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import NativeSelect from '@/components/admin/NativeSelect.vue';
 import { Button } from '@/components/ui/button';
+import { formatPercent } from '@/lib/format';
 import {
     Dialog,
     DialogContent,
@@ -176,9 +177,8 @@ const download = () => {
                     data-test="app-log-live"
                 >
                     <Spinner />
-                    {{ $t('Live') }} · {{ progress }}%<template v-if="step">
-                        · {{ step }}</template
-                    >
+                    {{ $t('Live') }} · {{ formatPercent(progress)
+                    }}<template v-if="step"> · {{ step }}</template>
                 </span>
                 <span
                     v-if="failed"
