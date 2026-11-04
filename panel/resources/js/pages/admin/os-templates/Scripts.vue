@@ -9,7 +9,9 @@ import {
 import { Play, Plus, RotateCcw, Save, Trash2, Upload } from '@lucide/vue';
 import { trans } from 'laravel-vue-i18n';
 import { computed, reactive, ref, watch } from 'vue';
+import ConfirmDialog from '@/components/admin/ConfirmDialog.vue';
 import CustomScriptCard from '@/components/admin/CustomScriptCard.vue';
+import DraftRunDialog from '@/components/admin/DraftRunDialog.vue';
 import FormDialog from '@/components/admin/FormDialog.vue';
 import FormField from '@/components/admin/FormField.vue';
 import GuestScriptRuns from '@/components/admin/GuestScriptRuns.vue';
@@ -40,7 +42,9 @@ import type {
     GuestScriptSlot,
     OsPlatform,
     Option,
+    ScriptServerOption,
 } from '@/types/admin';
+import type { RouteDefinition } from '@/wayfinder';
 
 const props = defineProps<{
     template: { uuid: string; name: string; platform: OsPlatform };
@@ -48,7 +52,7 @@ const props = defineProps<{
     logs: Record<GuestScriptEvent, GuestScriptRun[]>;
     customScripts: CustomScript[];
     customLogs: Record<string, GuestScriptRun[]>;
-    servers: Option[];
+    servers: ScriptServerOption[];
     maxBytes: number;
     canTrace: boolean;
 }>();
@@ -253,19 +257,86 @@ watch(
     },
 );
 
+// A draft runs on a server that is not a test server only with its hostname typed again.
+const draftRun = ref<{
+    action: RouteDefinition<'post'>;
+    hostname: string;
+    data: Record<string, unknown>;
+    started: () => void;
+} | null>(null);
+const draftRunOpen = computed({
+    get: () => draftRun.value !== null,
+    set: (value: boolean) => {
+        if (!value) {
+            draftRun.value = null;
+        }
+    },
+});
+
 const tryScript = (slot: GuestScriptSlot) => {
     const after = props.logs[slot.event]?.[0]?.uuid ?? null;
+    const action = run([props.template.uuid, slot.event]);
+    const data = {
+        server: tryOn[slot.event],
+        draft: slot.draft !== null,
+        trace: props.canTrace && trace[slot.event],
+    };
+    const server = props.servers.find((item) => item.value === data.server);
 
-    router.visit(run([props.template.uuid, slot.event]), {
-        data: {
-            server: tryOn[slot.event],
-            draft: slot.draft !== null,
-            trace: props.canTrace && trace[slot.event],
-        },
+    if (data.draft && server && !server.test) {
+        draftRun.value = {
+            action,
+            hostname: server.hostname,
+            data,
+            started: () => follow(slot.event, after),
+        };
+
+        return;
+    }
+
+    router.visit(action, {
+        data,
         preserveScroll: true,
         onSuccess: () => follow(slot.event, after),
     });
 };
+
+// Questions before a script changes what runs on every server of the template.
+const asking = ref<{
+    title: string;
+    description: string;
+    confirmLabel: string;
+    destructive: boolean;
+    go: () => void;
+} | null>(null);
+const askingOpen = computed({
+    get: () => asking.value !== null,
+    set: (value: boolean) => {
+        if (!value) {
+            asking.value = null;
+        }
+    },
+});
+const askPublish = (go: () => void) =>
+    (asking.value = {
+        title: 'Publish the draft?',
+        description: trans(
+            'From now on it runs instead of the script that runs now, on every server of this template.',
+        ),
+        confirmLabel: 'Publish',
+        destructive: false,
+        go,
+    });
+const askDiscard = (go: () => void) =>
+    (asking.value = {
+        title: 'Discard the draft?',
+        description: trans(
+            'The draft is deleted. Servers keep running the script that runs now.',
+        ),
+        confirmLabel: 'Discard draft',
+        destructive: true,
+        go,
+    });
 
 const follow = (key: string, after: string | null) => {
     const newest = runsFor(key)[0];
@@ -538,7 +609,12 @@ const saveSettings = () => {
                             : undefined
                     "
                     @click="
-                        visit(publish([template.uuid, slot.event]), slot.event)
+                        askPublish(() =>
+                            visit(
+                                publish([template.uuid, slot.event]),
+                                slot.event,
+                            ),
+                        )
                     "
                 >
                     <Upload class="h-4 w-4" />
@@ -548,7 +624,12 @@ const saveSettings = () => {
                     v-if="slot.draft !== null"
                     variant="outline"
                     @click="
-                        visit(discard([template.uuid, slot.event]), slot.event)
+                        askDiscard(() =>
+                            visit(
+                                discard([template.uuid, slot.event]),
+                                slot.event,
+                            ),
+                        )
                     "
                 >
                     <Trash2 class="h-4 w-4" />
@@ -558,7 +639,19 @@ const saveSettings = () => {
                     v-if="slot.content !== null"
                     variant="outline"
                     @click="
-                        visit(destroy([template.uuid, slot.event]), slot.event)
+                        asking = {
+                            title: 'Reset to the default script?',
+                            description: $t(
+                                'The published script is removed and servers run the default script again. A draft stays.',
+                            ),
+                            confirmLabel: 'Reset to default',
+                            destructive: true,
+                            go: () =>
+                                visit(
+                                    destroy([template.uuid, slot.event]),
+                                    slot.event,
+                                ),
+                        }
                     "
                 >
                     <RotateCcw class="h-4 w-4" />
@@ -732,5 +825,23 @@ const saveSettings = () => {
                 </p>
             </fieldset>
         </FormDialog>
+
+        <ConfirmDialog
+            v-if="asking"
+            v-model:open="askingOpen"
+            :title="asking.title"
+            :description="asking.description"
+            :confirm-label="asking.confirmLabel"
+            :destructive="asking.destructive"
+            @confirm="asking.go()"
+        />
+        <DraftRunDialog
+            v-if="draftRun"
+            v-model:open="draftRunOpen"
+            :action="draftRun.action"
+            :hostname="draftRun.hostname"
+            :data="draftRun.data"
+            @started="draftRun.started()"
+        />
     </div>
 </template>

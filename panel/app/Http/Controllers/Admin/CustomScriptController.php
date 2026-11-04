@@ -17,6 +17,7 @@ use App\Models\Server;
 use App\Models\User;
 use App\Provisioning\Exceptions\ProvisioningException;
 use App\Provisioning\TaskRunner;
+use App\Rules\TypedHostname;
 use Illuminate\Container\Attributes\CurrentUser;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -206,6 +207,16 @@ class CustomScriptController extends Controller
         }
 
         $server = Server::query()->where('uuid', $validated['server'])->firstOrFail();
+
+        // A draft has never run on customers' servers: anywhere but on a test
+        // server it runs only with the hostname typed again.
+        if ($draft && ! $server->is_test) {
+            $request->validate(
+                ['confirm_hostname' => ['required', 'string', new TypedHostname($server->hostname)]],
+                ['confirm_hostname.required' => __('Type the hostname of the server to confirm.')],
+            );
+        }
+
         $trace = $request->boolean('trace') && $osTemplate->platform === OsPlatform::Linux;
 
         return $this->start($request, $tasks, $admin, $server, $customScript, ['draft' => $draft, 'trace' => $trace]);

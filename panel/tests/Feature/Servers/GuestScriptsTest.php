@@ -337,7 +337,7 @@ class GuestScriptsTest extends TestCase
                 ->where('scripts.5.default', file_get_contents(resource_path('guest/linux/ssh-keys.sh')))
                 ->where('scripts.5.inputs', ['server', 'hostname', 'mac', 'username', 'ssh_keys', 'removed_ssh_keys'])
                 ->where('scripts.5.critical', true)
-                ->where('servers', [['value' => $this->server->uuid, 'label' => $this->server->hostname]]));
+                ->where('servers', [['value' => $this->server->uuid, 'label' => $this->server->hostname, 'hostname' => $this->server->hostname, 'test' => false]]));
     }
 
     public function test_saving_writes_a_draft_that_operations_do_not_run_until_it_is_published()
@@ -413,7 +413,7 @@ class GuestScriptsTest extends TestCase
             : [0, '', ''];
 
         $this->actingAs($this->admin)
-            ->post(route('admin.os-templates.scripts.run', [$this->osTemplate, 'disk_resized']), ['server' => $this->server->uuid, 'draft' => true, 'trace' => true])
+            ->post(route('admin.os-templates.scripts.run', [$this->osTemplate, 'disk_resized']), ['server' => $this->server->uuid, 'draft' => true, 'trace' => true, 'confirm_hostname' => strtoupper($this->server->hostname)])
             ->assertSessionHasNoErrors();
 
         $files = $this->proxmox->guestFiles[$this->server->vmid];
@@ -451,6 +451,45 @@ class GuestScriptsTest extends TestCase
             ->assertJsonPath('script', "#!/bin/sh\nset -e\necho growing\nfalse\n")
             ->assertJsonPath('inputs.hostname', $this->server->hostname)
             ->assertJsonPath('server', $this->server->hostname);
+    }
+
+    public function test_a_draft_runs_elsewhere_than_on_a_test_server_only_with_the_hostname_typed_again()
+    {
+        $this->override(GuestScriptEvent::DiskResized, "echo live\n");
+        GuestScript::query()->sole()->forceFill(['draft_content' => "echo draft\n"])->save();
+        $route = route('admin.os-templates.scripts.run', [$this->osTemplate, 'disk_resized']);
+
+        $this->actingAs($this->admin)
+            ->post($route, ['server' => $this->server->uuid, 'draft' => true])
+            ->assertSessionHasErrors(['confirm_hostname' => 'Type the hostname of the server to confirm.']);
+        $this->actingAs($this->admin)
+            ->post($route, ['server' => $this->server->uuid, 'draft' => true, 'confirm_hostname' => 'other.example.com'])
+            ->assertSessionHasErrors('confirm_hostname');
+        $this->assertSame(0, $this->server->tasks()->where('type', TaskType::GuestScript)->count());
+
+        // The published script, and any script on a test server, runs at once.
+        $this->actingAs($this->admin)
+            ->post($route, ['server' => $this->server->uuid])
+            ->assertSessionHasNoErrors();
+        $this->server->forceFill(['is_test' => true])->save();
+        $this->actingAs($this->admin)
+            ->post($route, ['server' => $this->server->uuid, 'draft' => true])
+            ->assertSessionHasNoErrors();
+
+        $this->assertSame(2, $this->server->tasks()->where('type', TaskType::GuestScript)->count());
+    }
+
+    public function test_the_page_lists_test_servers_first()
+    {
+        $this->server->forceFill(['hostname' => 'zz.example.com', 'is_test' => true])->save();
+
+        $this->actingAs($this->admin)
+            ->get(route('admin.os-templates.scripts', $this->osTemplate))
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('servers.0.value', $this->server->uuid)
+                ->where('servers.0.label', 'zz.example.com (test server)')
+                ->where('servers.0.hostname', 'zz.example.com')
+                ->where('servers.0.test', true));
     }
 
     public function test_a_draft_trial_needs_a_draft()
