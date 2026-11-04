@@ -22,7 +22,7 @@ import {
 } from '@/components/ui/dialog';
 import { Spinner } from '@/components/ui/spinner';
 import { useDateTime } from '@/composables/useDateTime';
-import { TASK_TYPE_LABELS } from '@/lib/taskTypes';
+import { TASK_STATUS_LABELS, TASK_TYPE_LABELS } from '@/lib/taskTypes';
 import { cancel, fail } from '@/routes/admin/tasks';
 import type { StatusTone, TaskProgress, TaskStatus } from '@/types/admin';
 
@@ -75,12 +75,18 @@ const taskStatusTone: Record<TaskStatus, StatusTone> = {
     succeeded: 'success',
     failed: 'danger',
 };
-const taskStatusLabels: Record<TaskStatus, string> = {
-    queued: 'Queued',
-    running: 'Running',
-    succeeded: 'Succeeded',
-    failed: 'Failed',
-};
+// What a step's icon shows, in words for screen readers (English keys).
+const stepState = (
+    task: TaskProgress,
+    row: { step: TaskProgress['steps'][number] | null; active: boolean },
+): string =>
+    row.step?.status === 'done'
+        ? 'Done'
+        : row.active
+          ? 'Running'
+          : task.status === 'failed'
+            ? 'Not run'
+            : 'Still to come';
 const stepLabels: Record<string, string> = {
     clone: 'Clone template',
     configure: 'Configure CPU, memory, network and cloud-init',
@@ -222,7 +228,7 @@ const stepRows = (task: TaskProgress) => {
                     }}</span>
                     <StatusBadge
                         :tone="taskStatusTone[task.status]"
-                        :label="taskStatusLabels[task.status]"
+                        :label="TASK_STATUS_LABELS[task.status]"
                     />
                 </div>
                 <div class="flex items-center gap-2">
@@ -277,19 +283,26 @@ const stepRows = (task: TaskProgress) => {
                     <CircleCheck
                         v-if="row.step?.status === 'done'"
                         class="h-4 w-4 text-status-success-foreground"
+                        aria-hidden="true"
                     />
                     <LoaderCircle
                         v-else-if="row.active"
                         class="h-4 w-4 animate-spin text-muted-foreground"
+                        aria-hidden="true"
                     />
                     <CircleX
                         v-else-if="task.status === 'failed'"
                         class="h-4 w-4 text-muted-foreground/50"
+                        aria-hidden="true"
                     />
                     <CircleDashed
                         v-else
                         class="h-4 w-4 text-muted-foreground/50"
+                        aria-hidden="true"
                     />
+                    <span class="sr-only">{{
+                        `${$t(stepState(task, row))}: `
+                    }}</span>
                     <span
                         :class="{
                             'text-muted-foreground':

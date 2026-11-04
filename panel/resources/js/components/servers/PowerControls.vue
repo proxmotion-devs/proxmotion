@@ -143,10 +143,13 @@ const stateLabel = computed(() => {
 
 <template>
     <div class="flex flex-wrap items-center gap-2">
-        <StatusBadge
-            :tone="power === 'running' ? 'success' : 'neutral'"
-            :label="stateLabel"
-        />
+        <!-- Read out when polling brings a new power state. -->
+        <span role="status" aria-live="polite" data-test="power-state">
+            <StatusBadge
+                :tone="power === 'running' ? 'success' : 'neutral'"
+                :label="stateLabel"
+            />
+        </span>
         <Button
             v-for="item in buttons"
             :key="item.value"

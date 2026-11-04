@@ -31,6 +31,15 @@ describe('PowerControls', () => {
         expect(render('stopped').text()).toContain('Powered off');
     });
 
+    it('reads a new power state out politely', async () => {
+        const wrapper = render('stopped');
+        const state = wrapper.find('[data-test="power-state"]');
+
+        expect(state.attributes('role')).toBe('status');
+        await wrapper.setProps({ power: 'running' });
+        expect(state.text()).toBe('Powered on');
+    });
+
     it('offers everything while the state is not known', () => {
         expect(buttons(null)).toEqual(['Start', 'Reboot', 'More']);
         expect(render('unknown').text()).toContain('Power state unknown');

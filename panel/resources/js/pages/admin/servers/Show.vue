@@ -49,6 +49,7 @@ import ServerChecks from '@/components/servers/ServerChecks.vue';
 import ServerScripts from '@/components/servers/ServerScripts.vue';
 import ServerStatsCards from '@/components/servers/ServerStatsCards.vue';
 import SuspendDialog from '@/components/servers/SuspendDialog.vue';
+import TaskAnnouncer from '@/components/servers/TaskAnnouncer.vue';
 import TaskList from '@/components/servers/TaskList.vue';
 import UnsuspendDialog from '@/components/servers/UnsuspendDialog.vue';
 import UsageHistorySection from '@/components/servers/UsageHistorySection.vue';
@@ -675,6 +676,8 @@ const resetAfterTrial = () =>
     <Head :title="title" />
 
     <div class="flex flex-col gap-6 p-4">
+        <!-- Whatever tab is open, a task that starts or ends is read out. -->
+        <TaskAnnouncer :tasks="tasks" />
         <!-- Who the server is, its state and the everyday controls. -->
         <div class="flex flex-wrap items-start justify-between gap-4">
             <div class="flex flex-col gap-2">
