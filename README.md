@@ -2,7 +2,7 @@
 
 **Open-source VPS management panel for Proxmox VE** — in the spirit of Virtualizor and VirtFusion.
 
-> ⚠️ **Status: 0.1.0, not ready for production.** Phases 0–7 are largely built and covered by automated tests that fake Proxmox, WHMCS and WISECP. Only part of it has been checked against a real Proxmox VE server so far; see [what is verified](docs/wiki/Features.md#17-verification-status) before you rely on anything.
+> ⚠️ **Status: 0.1.1, not ready for production.** Phases 0–7 are largely built and covered by automated tests that fake Proxmox, WHMCS and WISECP. Only part of it has been checked against a real Proxmox VE server so far; see [what is verified](docs/wiki/Features.md#17-verification-status) before you rely on anything.
 
 Proxmotion lets hosting providers connect their Proxmox nodes and clusters and sell VPS through billing systems such as WHMCS and WISECP. When a customer orders a VPS, it is provisioned automatically, and the customer manages it in the billing system's client area through a Proxmotion module. There is no separate client panel and there are no customer accounts in Proxmotion.
 

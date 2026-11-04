@@ -94,8 +94,19 @@ check_options() {
         die "--version must look like 1.2.3."
     fi
 
-    if [ -n "$archive" ] && [ ! -f "$archive" ]; then
-        die "The archive $archive does not exist."
+    if [ -n "$admin_name" ] || [ -n "$admin_email" ]; then
+        if [ -z "$admin_name" ] || [ -z "$admin_email" ]; then
+            die "Give both --admin-name and --admin-email."
+        fi
+    elif [ ! -L "$PREFIX/current" ] && [ ! -t 0 ]; then
+        # Found out now rather than after every package is installed (e.g. curl … | bash).
+        die "Without a terminal to ask in, the first install needs --admin-name and --admin-email."
+    fi
+
+    if [ -n "$archive" ]; then
+        [ -f "$archive" ] || die "The archive $archive does not exist."
+        # main() changes to / next: a relative path would no longer be found.
+        archive="$(readlink -f "$archive")"
     fi
 }
 
@@ -215,12 +226,19 @@ fetch_release() {
 
     if [ -d "$release" ]; then
         log "Proxmotion $version is unpacked already"
-        return
+    else
+        log "Unpacking Proxmotion $version"
+        # Build metadata, not part of the panel (0.1.0's archive carried it).
+        rm -f "$unpacked/provenance.json" "$unpacked/sbom.spdx.json"
+        # Root owns the code; the panel's user must read all of it. 0.1.0's archive had
+        # its top directory at 0700, which left the panel unable to start.
+        chown -R root:root "$unpacked"
+        chmod -R u=rwX,go=rX "$unpacked"
+        mv "$unpacked" "$release"
     fi
 
-    log "Unpacking Proxmotion $version"
-    chown -R root:root "$unpacked"
-    mv "$unpacked" "$release"
+    # Also repairs a release unpacked from such an archive by an earlier run.
+    chmod 0755 "$release"
 }
 
 # What every release shares: .env and storage/. The panel may write storage/ and its
@@ -243,6 +261,22 @@ link_shared() {
 
 random() { head -c "$1" /dev/urandom | od -An -tx1 | tr -d ' \n'; }
 
+# The host part of APP_URL without --domain: the first IPv4 address, else the first IPv6
+# one in brackets, else localhost (hostname -I may list IPv6 first, or nothing).
+server_address() {
+    local address
+
+    for address in $(hostname -I 2> /dev/null); do
+        [[ "$address" == *.* ]] && { printf '%s' "$address"; return; }
+    done
+
+    for address in $(hostname -I 2> /dev/null); do
+        [[ "$address" == *:* ]] && { printf '[%s]' "$address"; return; }
+    done
+
+    printf 'localhost'
+}
+
 # On the first run only: the database, its user and .env. Later runs never touch .env.
 write_environment() {
     local env="$PREFIX/shared/.env"
@@ -264,7 +298,7 @@ SQL
     elif [ -n "$domain" ]; then
         url="http://$domain"
     else
-        url="http://$(hostname -I | awk '{ print $1 }')"
+        url="http://$(server_address)"
     fi
 
     umask 027
@@ -475,11 +509,11 @@ prune_releases() {
 }
 
 main() {
-    # The panel's user cannot read most working directories, e.g. root's home.
-    cd /
     parse_options "$@"
     load_saved_options
     check_options
+    # The panel's user cannot read most working directories, e.g. root's home.
+    cd /
     check_system
     install_packages
     create_user

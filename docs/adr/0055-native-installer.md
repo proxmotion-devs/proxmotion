@@ -63,8 +63,9 @@ Besides Docker Compose (ADR 0054), the panel is meant to run directly on a Debia
   - Ubuntu 22.04 and 24.04 and Debian 13: a first install.
   - Each time: sign-in page, the Reverb handshake through nginx, the internal route refusing requests without the secret, the scheduler and a queued job.
 
+- Tested on 2026-11-04 in a Debian 12 systemd container with the published 0.1.0 release (download, checksum): the installation failed because the archive's top directory was `0700` (the export of `docker/build-push-action`, which also added its `provenance.json`), so the `proxmotion` user could not read `artisan`. 0.1.1 builds the archive without attestations and with readable modes, and the installer makes an unpacked release readable itself (also one an earlier run unpacked). It also resolves a relative `--archive` before changing to `/`, writes `APP_URL` from an IPv4 address (an IPv6 one in brackets), and refuses a first install without a terminal and without `--admin-name`/`--admin-email` before installing any package.
+
   Not tested:
   - Let's Encrypt.
-  - A download from a published release and its checksum.
   - arm64.
   - A real server (rather than a container) and a console relayed to Proxmox.
