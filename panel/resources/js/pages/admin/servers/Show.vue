@@ -910,6 +910,15 @@ const resetAfterTrial = () =>
             class="flex flex-col gap-6"
             data-test="server-tabpanel"
         >
+            <!-- Only hidden on other tabs, so rules being edited survive a look elsewhere. -->
+            <FirewallSection
+                v-if="hasFirewall"
+                v-show="tab === 'firewall'"
+                :server="server.uuid"
+                :firewall="firewall"
+                :disabled="vmBlocked"
+            />
+
             <template v-if="tab === 'overview'">
                 <TaskList v-if="runningTasks.length" :tasks="runningTasks" />
 
@@ -1512,13 +1521,6 @@ const resetAfterTrial = () =>
                 :server-uuid="server.uuid"
             />
 
-            <FirewallSection
-                v-else-if="tab === 'firewall'"
-                :server="server.uuid"
-                :firewall="firewall"
-                :disabled="vmBlocked"
-            />
-
             <SshKeysSection
                 v-else-if="tab === 'ssh-keys'"
                 :server="server.uuid"
@@ -1546,7 +1548,7 @@ const resetAfterTrial = () =>
                 />
             </div>
 
-            <TaskList v-else :tasks="tasks" />
+            <TaskList v-else-if="tab === 'tasks'" :tasks="tasks" />
         </div>
     </div>
 </template>

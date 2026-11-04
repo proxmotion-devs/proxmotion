@@ -18,12 +18,15 @@ withDefaults(defineProps<Props>(), {
             :class="
                 variant === 'small'
                     ? 'mb-0.5 text-base font-medium'
-                    : 'text-xl font-semibold tracking-tight'
+                    : 'text-xl font-semibold tracking-tight wrap-anywhere'
             "
         >
             {{ $t(title) }}
         </component>
-        <p v-if="description" class="text-sm text-muted-foreground">
+        <p
+            v-if="description"
+            class="text-sm wrap-anywhere text-muted-foreground"
+        >
             {{ $t(description) }}
         </p>
     </header>
