@@ -278,8 +278,8 @@ The panel's main signal. `StatusBadge` takes a tone (`StatusTone`: success, warn
 - **Selects:** `NativeSelect` uses the platform select, styled into the theme; where `appearance: base-select` is supported it gets the panel's own menu look with muted uppercase group labels.
 
 ### Navigation
-- **Sidebar:** grouped links with 16px icons on the Sidebar Ground; the active item takes the light grey sidebar accent fill and medium weight. The provider colour reaches the sidebar through `--sidebar-primary`, which fills the 32px logo tile in the sidebar header. It collapses to icons on desktop and slides in as a sheet on phones.
-- **Header:** breadcrumbs at body size beside the sidebar trigger.
+- **Sidebar:** links with 16px icons on the Sidebar Ground, in four labelled groups of at most five pages, daily work first: **Operate** (Dashboard, Servers, Drift report, Reports), **Infrastructure** (Locations, Clusters, IP pools, Placement groups, DNS providers), **Catalog** (OS templates, Packages, Firewall rule sets, Apps), **Administration** (Billing systems, Administrators, Panel settings, Help); `useMainNavigationGroups()`. A new page joins the group it belongs to rather than a new one. The active item takes the light grey sidebar accent fill and medium weight. The provider colour reaches the sidebar through `--sidebar-primary`, which fills the 32px logo tile in the sidebar header. It collapses to icons on desktop and slides in as a sheet on phones.
+- **Header:** breadcrumbs at body size beside the sidebar trigger; on the right, **Find a server** (`ServerQuickFind`): a search box (16rem, 20rem from `lg`) taking a hostname, IP address, billing ID or VMID, opening the server list searched for it, focused with Ctrl+K / ⌘K (shown as a muted `kbd` hint). On phones it is a 32px search icon linking to the server list.
 
 ### Tables
 - **Header:** `muted` at 50% fill, muted 0.875rem medium text, left-aligned.

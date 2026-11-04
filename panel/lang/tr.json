@@ -2686,5 +2686,10 @@
     "Done:": "Tamamlandı:",
     "Not done yet:": "Henüz yapılmadı:",
     "This colour looks like the amber the panel uses for warnings: primary buttons may be taken for one.": "Bu renk, panelin uyarılar için kullandığı amber renge benziyor: birincil düğmeler bir uyarı sanılabilir.",
-    "This colour looks like the red the panel uses for errors and deleting: primary buttons may be taken for one.": "Bu renk, panelin hatalar ve silme için kullandığı kırmızıya benziyor: birincil düğmeler bunlardan biri sanılabilir."
+    "This colour looks like the red the panel uses for errors and deleting: primary buttons may be taken for one.": "Bu renk, panelin hatalar ve silme için kullandığı kırmızıya benziyor: birincil düğmeler bunlardan biri sanılabilir.",
+    "Operate": "Operasyon",
+    "Catalog": "Katalog",
+    "Administration": "Yönetim",
+    "Find a server": "Sunucu bul",
+    "Find a server by hostname, IP address, billing ID or VMID": "Hostname, IP adresi, faturalama ID'si veya VMID ile sunucu bul"
 }

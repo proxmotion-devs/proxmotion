@@ -12,10 +12,10 @@ import {
     SidebarMenuButton,
     SidebarMenuItem,
 } from '@/components/ui/sidebar';
-import { useMainNavigation } from '@/composables/useMainNavigation';
+import { useMainNavigationGroups } from '@/composables/useMainNavigation';
 import { dashboard } from '@/routes/admin';
 
-const mainNavItems = useMainNavigation();
+const navGroups = useMainNavigationGroups();
 </script>
 
 <template>
@@ -33,7 +33,7 @@ const mainNavItems = useMainNavigation();
         </SidebarHeader>
 
         <SidebarContent>
-            <NavMain :items="mainNavItems" />
+            <NavMain :groups="navGroups" />
         </SidebarContent>
 
         <SidebarFooter>

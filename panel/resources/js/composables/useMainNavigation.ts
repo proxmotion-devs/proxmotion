@@ -42,52 +42,87 @@ import {
 import { index as users } from '@/routes/admin/users';
 import type { NavItem } from '@/types';
 
+/** A labelled part of the menu; titles are English keys. */
+export type NavGroup = { title: string; items: NavItem[] };
+
 /**
- * Main navigation. Every panel user is an administrator (docs/adr/0007).
- * Titles are English keys, translated by the navigation components.
+ * Main navigation in groups: daily work first, then what is set up once.
+ * Every panel user is an administrator (docs/adr/0007). Titles are English
+ * keys, translated by the navigation components.
  */
-export function useMainNavigation(): ComputedRef<NavItem[]> {
+export function useMainNavigationGroups(): ComputedRef<NavGroup[]> {
     return computed(() => [
-        { title: 'Dashboard', href: dashboard(), icon: LayoutGrid },
-        { title: 'Servers', href: servers(), icon: Server },
-        { title: 'Locations', href: locations(), icon: MapPin },
-        { title: 'Clusters', href: clusters(), icon: Boxes },
-        { title: 'IP pools', href: ipPools(), icon: Network },
-        { title: 'DNS providers', href: dnsProviders(), icon: Globe },
-        { title: 'OS templates', href: osTemplates(), icon: Disc3 },
-        { title: 'Packages', href: packages(), icon: Package },
         {
-            title: 'Placement groups',
-            href: placementGroups(),
-            icon: LayoutDashboard,
+            title: 'Operate',
+            items: [
+                { title: 'Dashboard', href: dashboard(), icon: LayoutGrid },
+                { title: 'Servers', href: servers(), icon: Server },
+                { title: 'Drift report', href: drifts(), icon: TriangleAlert },
+                {
+                    title: 'Reports',
+                    href: reports(),
+                    icon: ChartColumn,
+                    items: REPORTS.map((report) => ({
+                        title: report.title,
+                        href: reportPage(report.key),
+                    })),
+                },
+            ],
         },
         {
-            title: 'Firewall rule sets',
-            href: firewallRulesets(),
-            icon: Shield,
+            title: 'Infrastructure',
+            items: [
+                { title: 'Locations', href: locations(), icon: MapPin },
+                { title: 'Clusters', href: clusters(), icon: Boxes },
+                { title: 'IP pools', href: ipPools(), icon: Network },
+                {
+                    title: 'Placement groups',
+                    href: placementGroups(),
+                    icon: LayoutDashboard,
+                },
+                { title: 'DNS providers', href: dnsProviders(), icon: Globe },
+            ],
         },
-        { title: 'Apps', href: apps(), icon: AppWindow },
         {
-            title: 'Reports',
-            href: reports(),
-            icon: ChartColumn,
-            items: REPORTS.map((report) => ({
-                title: report.title,
-                href: reportPage(report.key),
-            })),
+            title: 'Catalog',
+            items: [
+                { title: 'OS templates', href: osTemplates(), icon: Disc3 },
+                { title: 'Packages', href: packages(), icon: Package },
+                {
+                    title: 'Firewall rule sets',
+                    href: firewallRulesets(),
+                    icon: Shield,
+                },
+                { title: 'Apps', href: apps(), icon: AppWindow },
+            ],
         },
-        { title: 'Drift report', href: drifts(), icon: TriangleAlert },
-        { title: 'Administrators', href: users(), icon: Users },
-        { title: 'Billing systems', href: billingSystems(), icon: KeyRound },
         {
-            title: 'Panel settings',
-            href: panelSettings(),
-            icon: Settings,
-            items: SETTINGS_CATEGORIES.map((category) => ({
-                title: category.title,
-                href: panelSettingsPage(category.key),
-            })),
+            title: 'Administration',
+            items: [
+                {
+                    title: 'Billing systems',
+                    href: billingSystems(),
+                    icon: KeyRound,
+                },
+                { title: 'Administrators', href: users(), icon: Users },
+                {
+                    title: 'Panel settings',
+                    href: panelSettings(),
+                    icon: Settings,
+                    items: SETTINGS_CATEGORIES.map((category) => ({
+                        title: category.title,
+                        href: panelSettingsPage(category.key),
+                    })),
+                },
+                { title: 'Help', href: help(), icon: LifeBuoy },
+            ],
         },
-        { title: 'Help', href: help(), icon: LifeBuoy },
     ]);
+}
+
+/** The same pages as one list, for the top bar of the header layout. */
+export function useMainNavigation(): ComputedRef<NavItem[]> {
+    const groups = useMainNavigationGroups();
+
+    return computed(() => groups.value.flatMap((group) => group.items));
 }

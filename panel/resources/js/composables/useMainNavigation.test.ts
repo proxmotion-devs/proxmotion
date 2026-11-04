@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vite-plus/test';
-import { useMainNavigation } from '@/composables/useMainNavigation';
+import {
+    useMainNavigation,
+    useMainNavigationGroups,
+} from '@/composables/useMainNavigation';
 import { toUrl } from '@/lib/utils';
 
 describe('useMainNavigation', () => {
@@ -9,22 +12,42 @@ describe('useMainNavigation', () => {
         expect(items.map((item) => toUrl(item.href))).toEqual([
             '/admin',
             '/admin/servers',
+            '/admin/drifts',
+            '/admin/reports',
             '/admin/locations',
             '/admin/clusters',
             '/admin/ip-pools',
+            '/admin/placement-groups',
             '/admin/dns-providers',
             '/admin/os-templates',
             '/admin/packages',
-            '/admin/placement-groups',
             '/admin/firewall-rulesets',
             '/admin/apps',
-            '/admin/reports',
-            '/admin/drifts',
-            '/admin/users',
             '/admin/billing-systems',
+            '/admin/users',
             '/admin/settings',
             '/admin/help',
         ]);
+    });
+
+    it('groups daily work first, with at most five pages per group', () => {
+        const groups = useMainNavigationGroups().value;
+
+        expect(groups.map((group) => group.title)).toEqual([
+            'Operate',
+            'Infrastructure',
+            'Catalog',
+            'Administration',
+        ]);
+        expect(groups[0].items.map((item) => item.title)).toEqual([
+            'Dashboard',
+            'Servers',
+            'Drift report',
+            'Reports',
+        ]);
+        expect(
+            Math.max(...groups.map((group) => group.items.length)),
+        ).toBeLessThanOrEqual(5);
     });
 
     it('lists the reports under Reports', () => {
