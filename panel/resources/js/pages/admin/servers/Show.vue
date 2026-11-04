@@ -47,6 +47,7 @@ import RemoveAddressButton from '@/components/servers/RemoveAddressButton.vue';
 import ResourcesDialog from '@/components/servers/ResourcesDialog.vue';
 import ResetPasswordButton from '@/components/servers/ResetPasswordButton.vue';
 import ServerChecks from '@/components/servers/ServerChecks.vue';
+import ServerIdentity from '@/components/servers/ServerIdentity.vue';
 import ServerScripts from '@/components/servers/ServerScripts.vue';
 import ServerToolsSection from '@/components/servers/ServerToolsSection.vue';
 import ServerStatsCards from '@/components/servers/ServerStatsCards.vue';
@@ -710,11 +711,8 @@ const resetAfterTrial = () =>
         <div class="flex flex-wrap items-start justify-between gap-4">
             <div class="flex flex-col gap-2">
                 <!-- Without the heading's own bottom margin: the status badges belong right under it. -->
-                <Heading
-                    class="mb-0!"
-                    :title="title"
-                    :description="`${server.vm_name ? `${server.hostname} · ` : ''}VMID ${server.vmid} · ${server.node} · ${server.os_template ?? '—'}`"
-                />
+                <Heading class="mb-0!" :title="title" />
+                <ServerIdentity :server="server" />
                 <div class="flex flex-wrap gap-2">
                     <ServerStatusBadge :status="server.status" />
                     <StatusBadge

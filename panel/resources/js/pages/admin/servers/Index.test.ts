@@ -31,9 +31,14 @@ const server = (overrides: Partial<ServerListItem> = {}): ServerListItem => ({
     ...overrides,
 });
 
-const render = (servers: ServerListItem[], search = '') =>
+const render = (
+    servers: ServerListItem[],
+    search = '',
+    power?: Record<string, string | null>,
+) =>
     mount(Index, {
         props: {
+            power,
             servers: {
                 data: servers,
                 current_page: 1,
@@ -61,6 +66,34 @@ describe('servers/Index', () => {
         expect(row.text()).not.toContain('2001:db8::5');
         expect(row.text()).toContain('4711');
         expect(row.text()).toContain('pve1');
+    });
+
+    it('shows the power state Proxmox reports once it has loaded', () => {
+        // Still loading: nothing, rather than a guess.
+        expect(
+            render([server()]).find('[data-test="server-power"]').exists(),
+        ).toBe(false);
+
+        const states = (power: string | null) =>
+            render([server()], '', { 'server-1': power })
+                .findAll('[data-test="server-power"]')
+                .map((state) => state.text());
+
+        // Once in the phone rows and once in the table.
+        expect(states('running')).toEqual(['Powered on', 'Powered on']);
+        expect(states('stopped')).toEqual(['Powered off', 'Powered off']);
+        expect(states(null)).toEqual([
+            'Power state unknown',
+            'Power state unknown',
+        ]);
+    });
+
+    it('asks nothing about deleted servers', () => {
+        expect(
+            render([server({ status: 'terminated' })], '', { 'server-1': null })
+                .find('[data-test="server-power"]')
+                .exists(),
+        ).toBe(false);
     });
 
     it('says why the phone list is empty', () => {

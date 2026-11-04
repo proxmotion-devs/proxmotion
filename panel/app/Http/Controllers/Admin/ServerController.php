@@ -18,6 +18,7 @@ use App\Domain\Backups\ServerSnapshots;
 use App\Domain\Firewall\ServerFirewalls;
 use App\Domain\Servers\GuestAgentProbe;
 use App\Domain\Servers\HostnameChanger;
+use App\Domain\Servers\ListedPowerStates;
 use App\Domain\Servers\MoveOptions;
 use App\Domain\Servers\ReinstallLimits;
 use App\Domain\Servers\ReinstallOptions;
@@ -106,7 +107,7 @@ class ServerController extends Controller
         private readonly ServerPower $power,
     ) {}
 
-    public function index(Request $request): Response
+    public function index(Request $request, ListedPowerStates $powerStates): Response
     {
         $showTerminated = $request->boolean('terminated');
         // One status only, e.g. the suspended servers; unknown values list them all.
@@ -114,44 +115,49 @@ class ServerController extends Controller
         // Part of a hostname, VM name, billing service or customer ID, IP address, or a VMID.
         $search = mb_substr(trim($request->string('search')->toString()), 0, 100);
 
-        return Inertia::render('admin/servers/Index', [
-            'servers' => Server::query()
-                ->when($status !== null, fn ($query) => $query->where('status', $status))
-                ->when($status === null && ! $showTerminated, fn ($query) => $query->occupying())
-                ->when($search !== '', fn ($query) => $query->where(function ($query) use ($search): void {
-                    $pattern = Like::contains($search);
-                    $query->whereRaw("hostname like ? escape '!'", [$pattern])
-                        ->orWhereRaw("vm_name like ? escape '!'", [$pattern])
-                        ->orWhereRaw("external_id like ? escape '!'", [$pattern])
-                        ->orWhereRaw("external_client_id like ? escape '!'", [$pattern])
-                        ->orWhereHas('ipAddresses', fn ($query) => $query->whereRaw("address like ? escape '!'", [$pattern]));
+        $servers = Server::query()
+            ->when($status !== null, fn ($query) => $query->where('status', $status))
+            ->when($status === null && ! $showTerminated, fn ($query) => $query->occupying())
+            ->when($search !== '', fn ($query) => $query->where(function ($query) use ($search): void {
+                $pattern = Like::contains($search);
+                $query->whereRaw("hostname like ? escape '!'", [$pattern])
+                    ->orWhereRaw("vm_name like ? escape '!'", [$pattern])
+                    ->orWhereRaw("external_id like ? escape '!'", [$pattern])
+                    ->orWhereRaw("external_client_id like ? escape '!'", [$pattern])
+                    ->orWhereHas('ipAddresses', fn ($query) => $query->whereRaw("address like ? escape '!'", [$pattern]));
 
-                    if (ctype_digit($search)) {
-                        $query->orWhere('vmid', (int) $search);
-                    }
-                }))
-                ->with(['node:id,name', 'location:id,name', 'package:id,name', 'billingSystem:id,name', 'ipAddresses:id,server_id,address'])
-                ->withExists(['drifts as firewall_drift' => fn ($query) => $query->where('type', DriftType::FirewallMismatch)->whereNull('resolved_at')->whereNull('dismissed_at')])
-                ->latest()
-                ->paginate(50)
-                ->withQueryString()
-                ->through(fn (Server $server) => [
-                    'uuid' => $server->uuid,
-                    'hostname' => $server->hostname,
-                    // Shown as the title when the hostname was generated (docs/adr/0031).
-                    'vm_name' => $server->vm_name,
-                    'status' => $server->status,
-                    'vmid' => $server->vmid,
-                    'billing_system' => $server->billingSystem?->name,
-                    'external_id' => $server->external_id,
-                    'external_client_id' => $server->external_client_id,
-                    'node' => $server->node->name,
-                    'location' => $server->location->name,
-                    'package' => $server->package?->name,
-                    'addresses' => $server->ipAddresses->pluck('address'),
-                    // Its VM firewall does not stop spoofing (docs/adr/0033).
-                    'unprotected' => (bool) $server->getAttribute('firewall_drift'),
-                ]),
+                if (ctype_digit($search)) {
+                    $query->orWhere('vmid', (int) $search);
+                }
+            }))
+            ->with(['node:id,name', 'location:id,name', 'package:id,name', 'billingSystem:id,name', 'ipAddresses:id,server_id,address'])
+            ->withExists(['drifts as firewall_drift' => fn ($query) => $query->where('type', DriftType::FirewallMismatch)->whereNull('resolved_at')->whereNull('dismissed_at')])
+            ->latest()
+            ->paginate(50)
+            ->withQueryString();
+        // The page's servers, for their power states once the list is shown (a copy: through() maps in place).
+        $listed = $servers->getCollection()->values();
+
+        return Inertia::render('admin/servers/Index', [
+            'servers' => $servers->through(fn (Server $server) => [
+                'uuid' => $server->uuid,
+                'hostname' => $server->hostname,
+                // Shown as the title when the hostname was generated (docs/adr/0031).
+                'vm_name' => $server->vm_name,
+                'status' => $server->status,
+                'vmid' => $server->vmid,
+                'billing_system' => $server->billingSystem?->name,
+                'external_id' => $server->external_id,
+                'external_client_id' => $server->external_client_id,
+                'node' => $server->node->name,
+                'location' => $server->location->name,
+                'package' => $server->package?->name,
+                'addresses' => $server->ipAddresses->pluck('address'),
+                // Its VM firewall does not stop spoofing (docs/adr/0033).
+                'unprotected' => (bool) $server->getAttribute('firewall_drift'),
+            ]),
+            // Asked from Proxmox after the list is shown: one request per cluster.
+            'power' => Inertia::defer(fn () => $powerStates->read($listed)),
             'showTerminated' => $showTerminated,
             'status' => $status,
             'search' => $search,

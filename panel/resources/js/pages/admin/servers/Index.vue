@@ -8,6 +8,7 @@ import ServerStatusBadge from '@/components/admin/ServerStatusBadge.vue';
 import StatusBadge from '@/components/admin/StatusBadge.vue';
 import Pagination from '@/components/admin/Pagination.vue';
 import Heading from '@/components/Heading.vue';
+import ServerPowerState from '@/components/servers/ServerPowerState.vue';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
@@ -26,7 +27,15 @@ const props = defineProps<{
     status: ServerStatus | null;
     /** Text the list is searched for (hostname, IP address, billing ID, VMID). */
     search: string;
+    /** Deferred: what Proxmox reports per server uuid; null when its cluster did not answer. */
+    power?: Record<string, string | null>;
 }>();
+
+// Deleted servers have no VM to ask about; undefined shows nothing while loading.
+const powerOf = (server: ServerListItem) =>
+    server.status === 'terminated' || props.power === undefined
+        ? undefined
+        : (props.power[server.uuid] ?? null);
 
 const statusOptions = computed(() =>
     (
@@ -170,6 +179,7 @@ const runSearch = () =>
                             tone="warning"
                             label="Anti-spoofing off"
                         />
+                        <ServerPowerState :power="powerOf(server)" />
                     </span>
                     <span
                         v-if="server.addresses.length || server.external_id"
@@ -262,6 +272,10 @@ const runSearch = () =>
                                     label="Anti-spoofing off"
                                 />
                             </div>
+                            <ServerPowerState
+                                class="mt-1"
+                                :power="powerOf(server)"
+                            />
                         </td>
                         <td class="px-4 py-3 font-mono text-xs">
                             {{ server.external_id ?? '—' }}

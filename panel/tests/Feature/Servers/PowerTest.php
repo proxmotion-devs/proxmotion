@@ -14,6 +14,7 @@ use App\Models\ServerMove;
 use App\Models\Task;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Testing\TestResponse;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\Concerns\BuildsInfrastructure;
@@ -141,6 +142,26 @@ class PowerTest extends TestCase
                 ->loadDeferredProps(fn (Assert $reload) => $reload
                     ->where('power', 'running')
                     ->where('agent', false)));
+    }
+
+    public function test_the_server_list_loads_power_states_after_rendering_with_one_request_per_cluster()
+    {
+        $this->proxmox->addVm(101, 'web2.example.com', status: 'stopped');
+        $stopped = Server::factory()->for($this->node)->create(['vmid' => 101]);
+        // No VM 102 in Proxmox: its state is unknown.
+        $missing = Server::factory()->for($this->node)->create(['vmid' => 102]);
+
+        $this->actingAs($this->admin)
+            ->get(route('admin.servers.index'))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->missing('power')
+                ->loadDeferredProps(fn (Assert $reload) => $reload
+                    ->where("power.{$this->server->uuid}", 'running')
+                    ->where("power.{$stopped->uuid}", 'stopped')
+                    ->where("power.{$missing->uuid}", null)));
+
+        $this->assertCount(1, Http::recorded(fn ($request) => str_ends_with(parse_url($request->url(), PHP_URL_PATH) ?: '', '/cluster/resources')));
     }
 
     public function test_the_guest_agent_of_a_vm_stopped_in_proxmox_is_not_asked()

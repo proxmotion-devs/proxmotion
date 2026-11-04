@@ -2758,5 +2758,11 @@
     "Next step": "Sıradaki adım",
     "Nothing to check yet": "Henüz kontrol edilecek bir şey yok",
     "No Proxmox cluster is connected. Once one is, its nodes, storage and tasks are checked here.": "Bağlı bir Proxmox cluster'ı yok. Bağlandığında node'ları, storage'ları ve görevleri burada kontrol edilir.",
-    "The connected clusters have no nodes yet. They are read at the next sync of each cluster.": "Bağlı cluster'larda henüz node yok. Her cluster'ın bir sonraki senkronizasyonunda okunurlar."
+    "The connected clusters have no nodes yet. They are read at the next sync of each cluster.": "Bağlı cluster'larda henüz node yok. Her cluster'ın bir sonraki senkronizasyonunda okunurlar.",
+    "Primary IPv4 address": "Birincil IPv4 adresi",
+    "Primary IPv6 address": "Birincil IPv6 adresi",
+    "Service": "Hizmet",
+    "Customer": "Müşteri",
+    "No billing system": "Faturalama sistemi yok",
+    "In Proxmox": "Proxmox'ta"
 }
