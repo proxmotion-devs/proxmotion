@@ -3,9 +3,8 @@ import { useForm } from '@inertiajs/vue3';
 import type { Component } from 'vue';
 import { computed, ref, useId } from 'vue';
 import FormDialog from '@/components/admin/FormDialog.vue';
-import FormField from '@/components/admin/FormField.vue';
+import HostnameConfirmField from '@/components/admin/HostnameConfirmField.vue';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import type { RouteDefinition } from '@/wayfinder';
 
 // The trigger button takes attributes such as data-test; the dialog does not.
@@ -87,21 +86,11 @@ const submit = () => {
         :submit-disabled="!matches"
         @submit="submit"
     >
-        <FormField
-            label="Type the hostname to confirm"
-            :for="inputId"
+        <HostnameConfirmField
+            :id="inputId"
+            v-model="form.confirm_hostname"
+            :hostname="hostname"
             :error="form.errors.confirm_hostname"
-        >
-            <Input
-                :id="inputId"
-                v-model="form.confirm_hostname"
-                class="font-mono"
-                autocomplete="off"
-                autocapitalize="off"
-                spellcheck="false"
-                required
-                :placeholder="hostname"
-            />
-        </FormField>
+        />
     </FormDialog>
 </template>

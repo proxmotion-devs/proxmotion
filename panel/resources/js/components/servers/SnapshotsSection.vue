@@ -89,7 +89,7 @@ const rollback = () => {
         data-test="server-snapshots"
     >
         <div class="flex flex-wrap items-center justify-between gap-2">
-            <h3 class="flex items-center gap-2 font-medium">
+            <h2 class="flex items-center gap-2 font-medium">
                 <Camera class="h-4 w-4" />
                 {{ $t('Snapshots') }}
                 <Badge
@@ -99,7 +99,7 @@ const rollback = () => {
                 >
                     {{ items.length }} / {{ snapshots.slots }}
                 </Badge>
-            </h3>
+            </h2>
             <Button
                 size="sm"
                 :disabled="

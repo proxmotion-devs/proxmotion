@@ -63,9 +63,9 @@ const toggleExempt = () =>
     >
         <div class="flex flex-wrap items-start justify-between gap-2">
             <div>
-                <h3 class="font-medium">
+                <h2 class="font-medium">
                     {{ $t('Traffic and usage limits') }}
-                </h3>
+                </h2>
                 <p class="text-xs text-muted-foreground">
                     {{
                         $t('This period: :start – :end', {

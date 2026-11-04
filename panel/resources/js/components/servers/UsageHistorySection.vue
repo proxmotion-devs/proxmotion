@@ -129,7 +129,7 @@ const traffic = (value: number | null) => formatTraffic(value ?? 0);
     <section class="flex flex-col gap-4" data-test="usage-history">
         <div class="flex flex-wrap items-center justify-between gap-2">
             <div>
-                <h3 class="font-medium">{{ $t('Usage history') }}</h3>
+                <h2 class="font-medium">{{ $t('Usage history') }}</h2>
                 <p class="text-xs text-muted-foreground">
                     {{
                         $t('Averages of what Proxmox reported every 5 minutes.')

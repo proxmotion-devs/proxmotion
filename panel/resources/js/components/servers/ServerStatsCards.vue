@@ -91,7 +91,7 @@ const portShare = computed(() => {
 <template>
     <section class="flex flex-col gap-3" data-test="server-stats">
         <div class="flex flex-wrap items-center justify-between gap-2">
-            <h3 class="font-medium">{{ $t('Live usage') }}</h3>
+            <h2 class="font-medium">{{ $t('Live usage') }}</h2>
             <div
                 class="flex flex-wrap items-center gap-3 text-xs text-muted-foreground"
             >

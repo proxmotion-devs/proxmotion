@@ -143,7 +143,7 @@ const restore = () => {
         data-test="server-backups"
     >
         <div class="flex flex-wrap items-center justify-between gap-2">
-            <h3 class="flex items-center gap-2 font-medium">
+            <h2 class="flex items-center gap-2 font-medium">
                 <Archive class="h-4 w-4" />
                 {{ $t('Backups') }}
                 <Badge
@@ -153,7 +153,7 @@ const restore = () => {
                 >
                     {{ items.length }} / {{ backups.slots }}
                 </Badge>
-            </h3>
+            </h2>
             <Button
                 v-if="!terminated"
                 size="sm"

@@ -56,14 +56,22 @@ describe('ServerChecks', () => {
                 .findAll('li')
                 .map((row) => [row.attributes('data-test'), row.text()]),
         ).toEqual([
-            ['check-passed', 'IP addresses on the network interface'],
-            ['check-failed', 'Gateway 203.0.113.1 answers'],
+            // The status is read out before each check (sr-only).
+            ['check-passed', 'Passed: IP addresses on the network interface'],
+            ['check-failed', 'Failed: Gateway 203.0.113.1 answers'],
             [
                 'check-failed',
-                'Hostname is web1.example.comThe server reports localhost.',
+                'Failed: Hostname is web1.example.comThe server reports localhost.',
             ],
-            ['check-skipped', 'Root file system has 40 GiB'],
+            ['check-skipped', 'Skipped: Root file system has 40 GiB'],
         ]);
+    });
+
+    it('announces the result of a check politely', () => {
+        const time = render({ verification }).find('[data-test="checks-time"]');
+
+        expect(time.attributes('aria-live')).toBe('polite');
+        expect(time.find('.sr-only').text()).toBe('2 of the checks failed.');
     });
 
     it('folds the list away when nothing failed', async () => {

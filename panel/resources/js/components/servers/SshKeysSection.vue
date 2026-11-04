@@ -222,7 +222,7 @@ const copy = async (key: SshKey) => {
         data-test="server-ssh-keys"
     >
         <div class="flex flex-wrap items-center justify-between gap-2">
-            <h3 class="flex items-center gap-2 font-medium">
+            <h2 class="flex items-center gap-2 font-medium">
                 <KeyRound class="h-4 w-4" />
                 {{ $t('SSH keys') }}
                 <Badge
@@ -232,7 +232,7 @@ const copy = async (key: SshKey) => {
                 >
                     {{ keys.length }} / {{ sshKeys.max }}
                 </Badge>
-            </h3>
+            </h2>
             <div class="flex flex-wrap gap-2">
                 <Button
                     variant="outline"

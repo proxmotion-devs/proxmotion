@@ -64,9 +64,15 @@ describe('TypedConfirmDialog', () => {
         await nextTick();
 
         const input = document.body.querySelector<HTMLInputElement>(
-            'input[placeholder="web1.example.com"]',
+            'input[id^="confirm-hostname-"]',
         );
         expect(input).not.toBeNull();
+        // The hostname is shown as text, not as a placeholder that looks typed.
+        expect(input!.hasAttribute('placeholder')).toBe(false);
+        expect(
+            document.body.querySelector('[data-test="confirm-hostname-target"]')
+                ?.textContent,
+        ).toContain('web1.example.com');
         expect(submitButton()?.hasAttribute('disabled')).toBe(true);
 
         input!.value = 'web2.example.com';

@@ -5,10 +5,10 @@ import { trans } from 'laravel-vue-i18n';
 import { computed, ref } from 'vue';
 import FormDialog from '@/components/admin/FormDialog.vue';
 import FormField from '@/components/admin/FormField.vue';
+import HostnameConfirmField from '@/components/admin/HostnameConfirmField.vue';
 import NativeSelect from '@/components/admin/NativeSelect.vue';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Input } from '@/components/ui/input';
 import { formatMib } from '@/lib/format';
 import type { MoveOptions, ServerMoveKind } from '@/types/admin';
 import type { RouteDefinition } from '@/wayfinder';
@@ -280,19 +280,12 @@ const errors = computed(
             }}</span>
         </label>
 
-        <FormField
+        <HostnameConfirmField
             v-if="needsHostname"
-            label="Type the hostname to confirm"
-            for="move_confirm_hostname"
+            id="move_confirm_hostname"
+            v-model="form.confirm_hostname"
+            :hostname="hostname"
             :error="errors.confirm_hostname"
-        >
-            <Input
-                id="move_confirm_hostname"
-                v-model="form.confirm_hostname"
-                class="font-mono"
-                autocomplete="off"
-                :placeholder="hostname"
-            />
-        </FormField>
+        />
     </FormDialog>
 </template>

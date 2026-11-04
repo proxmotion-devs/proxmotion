@@ -2,6 +2,7 @@
 import AppContent from '@/components/AppContent.vue';
 import AppHeader from '@/components/AppHeader.vue';
 import AppShell from '@/components/AppShell.vue';
+import SkipLink from '@/components/SkipLink.vue';
 import { Toaster } from '@/components/ui/sonner';
 import type { BreadcrumbItem } from '@/types';
 
@@ -16,8 +17,14 @@ withDefaults(defineProps<Props>(), {
 
 <template>
     <AppShell variant="header">
+        <SkipLink />
         <AppHeader :breadcrumbs="breadcrumbs" />
-        <AppContent variant="header">
+        <AppContent
+            id="main-content"
+            tabindex="-1"
+            variant="header"
+            class="outline-none"
+        >
             <slot />
         </AppContent>
         <Toaster />

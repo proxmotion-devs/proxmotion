@@ -125,7 +125,7 @@ const reset = () => router.visit(props.resetAction, { preserveScroll: true });
     >
         <div class="flex flex-wrap items-start justify-between gap-2">
             <div>
-                <h3 class="font-medium">{{ $t('Reinstall limit') }}</h3>
+                <h2 class="font-medium">{{ $t('Reinstall limit') }}</h2>
                 <p class="text-xs text-muted-foreground">
                     {{ sourceLabel }}
                 </p>

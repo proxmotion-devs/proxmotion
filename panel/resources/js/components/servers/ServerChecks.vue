@@ -40,6 +40,12 @@ const showList = computed(() => failed.value > 0 || expanded.value);
 const listId = useId();
 
 // English keys, translated in the template with the check's params.
+const statuses: Record<string, string> = {
+    passed: 'Passed',
+    failed: 'Failed',
+    skipped: 'Skipped',
+};
+
 const labels: Record<string, string> = {
     addresses: 'IP addresses on the network interface',
     gateway: 'Gateway :address answers',
@@ -68,8 +74,13 @@ const checkAgain = () => {
     >
         <div class="flex flex-wrap items-center justify-between gap-2">
             <div>
-                <h3 class="font-medium">{{ $t('Checks') }}</h3>
-                <p class="text-xs text-muted-foreground">
+                <h2 class="font-medium">{{ $t('Checks') }}</h2>
+                <!-- Announced when Check again brings a new result. -->
+                <p
+                    class="text-xs text-muted-foreground"
+                    aria-live="polite"
+                    data-test="checks-time"
+                >
                     {{
                         verification
                             ? $t('Checked inside the server :time.', {
@@ -77,6 +88,13 @@ const checkAgain = () => {
                               })
                             : $t('Not checked yet.')
                     }}
+                    <span v-if="verification" class="sr-only">{{
+                        failed > 0
+                            ? $t(':count of the checks failed.', {
+                                  count: String(failed),
+                              })
+                            : $t('Nothing failed inside the server.')
+                    }}</span>
                 </p>
             </div>
             <Button
@@ -136,12 +154,21 @@ const checkAgain = () => {
                 <CircleCheck
                     v-if="check.status === 'passed'"
                     class="h-4 w-4 text-status-success-foreground"
+                    aria-hidden="true"
                 />
                 <CircleAlert
                     v-else-if="check.status === 'failed'"
                     class="h-4 w-4 text-status-warning-text"
+                    aria-hidden="true"
                 />
-                <CircleMinus v-else class="h-4 w-4 text-muted-foreground/60" />
+                <CircleMinus
+                    v-else
+                    class="h-4 w-4 text-muted-foreground/60"
+                    aria-hidden="true"
+                />
+                <span class="sr-only">{{
+                    `${$t(statuses[check.status] ?? check.status)}: `
+                }}</span>
                 <span
                     :class="{
                         'text-muted-foreground': check.status === 'skipped',

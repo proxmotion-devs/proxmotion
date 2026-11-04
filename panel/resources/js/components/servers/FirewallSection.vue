@@ -72,7 +72,7 @@ const applyRuleset = () =>
         data-test="server-firewall"
     >
         <div class="flex flex-wrap items-center justify-between gap-2">
-            <h3 class="flex items-center gap-2 font-medium">
+            <h2 class="flex items-center gap-2 font-medium">
                 <ShieldCheck class="h-4 w-4" />
                 {{ $t('Firewall') }}
                 <StatusBadge
@@ -87,7 +87,7 @@ const applyRuleset = () =>
                             : 'Allows by default'
                     "
                 />
-            </h3>
+            </h2>
         </div>
         <p class="text-sm text-muted-foreground">
             {{
