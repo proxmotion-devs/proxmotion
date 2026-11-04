@@ -651,6 +651,10 @@ const everydayBlocked = computed((): string | null => {
         return 'The VM is not on the node the panel recorded; the note above says what to do.';
     }
 
+    if (props.reinstallOptions.osTemplates.length === 0) {
+        return 'No OS template can be used for this server, so it cannot be reinstalled. Its package may limit the templates, or none is active.';
+    }
+
     if (vmStopped.value) {
         return 'The server is not running. Start it to reset the root password.';
     }
@@ -736,6 +740,7 @@ const resetAfterTrial = () =>
                     :power="power"
                     :busy="busy"
                     :action="powerAction"
+                    :hostname="server.hostname"
                 />
                 <Button v-if="active && !vmAway" size="sm" as-child>
                     <a

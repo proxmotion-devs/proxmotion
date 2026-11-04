@@ -1,5 +1,6 @@
 import { mount } from '@vue/test-utils';
 import { describe, expect, it, vi } from 'vite-plus/test';
+import { nextTick } from 'vue';
 import PowerControls from '@/components/servers/PowerControls.vue';
 
 vi.mock('@inertiajs/vue3', () => ({ router: { visit: vi.fn() } }));
@@ -10,8 +11,10 @@ const render = (power: string | null | undefined) =>
             power,
             busy: false,
             action: () => ({ url: '/power', method: 'post' as const }),
+            hostname: 'web1.example.com',
         },
         global: { mocks: { $t: (key: string) => key } },
+        attachTo: document.body,
     });
 
 const buttons = (power: string | null | undefined) =>
@@ -43,5 +46,22 @@ describe('PowerControls', () => {
     it('offers everything while the state is not known', () => {
         expect(buttons(null)).toEqual(['Start', 'Reboot', 'More']);
         expect(render('unknown').text()).toContain('Power state unknown');
+    });
+
+    it('names the server in the confirmation', async () => {
+        const wrapper = render('running');
+        await wrapper
+            .findAll('button')
+            .find((button) => button.text() === 'Reboot')!
+            .trigger('click');
+        await nextTick();
+
+        expect(
+            document.body
+                .querySelector('[data-test="power-confirm-hostname"]')
+                ?.textContent?.trim(),
+        ).toBe('web1.example.com');
+        wrapper.unmount();
+        document.body.innerHTML = '';
     });
 });

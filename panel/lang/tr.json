@@ -494,6 +494,7 @@
     "No node in this location has enough free capacity for this package.": "Bu lokasyonda bu paket için yeterli boş kapasitesi olan node yok.",
     "No node in this location has enough free capacity for this server.": "Bu lokasyonda bu sunucu için yeterli boş kapasitesi olan node yok.",
     "No nodes yet. They appear after the first successful sync.": "Henüz node yok. İlk başarılı senkronizasyondan sonra görünürler.",
+    "No OS template can be used for this server, so it cannot be reinstalled. Its package may limit the templates, or none is active.": "Bu sunucu için kullanılabilecek bir OS şablonu yok, bu yüzden yeniden kurulamaz. Paketi şablonları sınırlıyor olabilir ya da hiçbiri aktif değil.",
     "No OS templates yet.": "Henüz OS şablonu yok.",
     "No package (custom)": "Paketsiz (özel)",
     "No packages yet.": "Henüz paket yok.",

@@ -35,6 +35,8 @@ const props = defineProps<{
     busy: boolean;
     /** Wayfinder route of the power endpoint for an action. */
     action: (action: PowerAction) => RouteDefinition<'post'>;
+    /** Named in the confirmation, so it is clear which server is affected. */
+    hostname?: string;
 }>();
 
 // English keys, translated in the template.
@@ -193,6 +195,13 @@ const stateLabel = computed(() => {
         >
             <DialogContent v-if="confirming">
                 <DialogTitle>{{ $t(confirming.question) }}</DialogTitle>
+                <p
+                    v-if="hostname"
+                    class="font-mono text-sm break-all text-muted-foreground"
+                    data-test="power-confirm-hostname"
+                >
+                    {{ hostname }}
+                </p>
                 <DialogDescription>
                     {{ $t(confirming.description) }}
                 </DialogDescription>
