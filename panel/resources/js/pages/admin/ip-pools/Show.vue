@@ -457,7 +457,7 @@ const submitAddress = () => {
                             {{ address.ptr ?? '' }}
                             <span
                                 v-if="address.ptr_pending"
-                                class="text-status-warning-text"
+                                class="text-muted-foreground"
                                 >({{ $t('pending') }})</span
                             >
                         </td>

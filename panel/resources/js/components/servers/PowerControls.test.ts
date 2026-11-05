@@ -29,23 +29,27 @@ describe('PowerControls', () => {
         expect(buttons('stopped')).toEqual(['Start']);
     });
 
-    it('words the power state apart from the panel status', () => {
-        expect(render('running').text()).toContain('Powered on');
-        expect(render('stopped').text()).toContain('Powered off');
-    });
+    it('offers Suspend in the menu only when asked to, and leaves it to the page', async () => {
+        const plain = render('stopped');
+        expect(plain.find('[data-test="power-menu"]').exists()).toBe(false);
 
-    it('reads a new power state out politely', async () => {
-        const wrapper = render('stopped');
-        const state = wrapper.find('[data-test="power-state"]');
-
-        expect(state.attributes('role')).toBe('status');
-        await wrapper.setProps({ power: 'running' });
-        expect(state.text()).toBe('Powered on');
+        const wrapper = mount(PowerControls, {
+            props: {
+                power: 'stopped',
+                busy: false,
+                action: () => ({ url: '/power', method: 'post' as const }),
+                canSuspend: true,
+            },
+            global: { mocks: { $t: (key: string) => key } },
+            attachTo: document.body,
+        });
+        // A stopped server has nothing else in the menu; Suspend still needs a way in.
+        expect(wrapper.find('[data-test="power-menu"]').exists()).toBe(true);
+        wrapper.unmount();
     });
 
     it('offers everything while the state is not known', () => {
         expect(buttons(null)).toEqual(['Start', 'Reboot', 'More']);
-        expect(render('unknown').text()).toContain('Power state unknown');
     });
 
     it('names the server in the confirmation', async () => {

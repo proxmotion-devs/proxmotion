@@ -57,7 +57,7 @@ class CatalogManagementTest extends AdminTestCase
                 ->where('templates.0.operating_system_version_id', $noble->id)
                 ->where('proxmoxTemplates.0.vmid', 9000)
                 ->where('systems.0.name', 'Ubuntu')
-                ->where('systems.0.versions.0', ['id' => $noble->id, 'version' => '24.04', 'templates' => 1]));
+                ->where('systems.0.versions.0', ['id' => $noble->id, 'version' => '24.04', 'templates' => 1, 'apps' => 0]));
 
         $this->put(route('admin.os-templates.update', $os), [
             'name' => 'Ubuntu 24.04 LTS',

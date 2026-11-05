@@ -11,6 +11,7 @@ use App\Models\Node;
 use App\Models\Server;
 use App\Models\ServerDrift;
 use App\Proxmox\Exceptions\ProxmoxAuthenticationFailed;
+use App\Proxmox\Exceptions\ProxmoxException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Factory;
 use Illuminate\Support\Facades\Http;
@@ -123,6 +124,74 @@ class ClusterSynchronizerTest extends TestCase
         $this->assertSame('2.00', $pve1->cpu_overcommit);
         $this->assertTrue($pve1->storages()->where('name', 'local-lvm')->sole()->use_for_servers);
         $this->assertSame(NodeStatus::Unknown, $ghost->refresh()->status);
+    }
+
+    public function test_storages_and_bridges_of_a_node_removed_from_the_cluster_are_not_used()
+    {
+        $this->fakeProxmox();
+        $cluster = Cluster::factory()->create();
+        $ghost = Node::factory()->for($cluster)->create(['name' => 'old-node']);
+        $ghost->storages()->forceCreate(['name' => 'local-lvm', 'type' => 'lvmthin', 'content' => ['images'], 'is_available' => true]);
+        $ghost->bridges()->forceCreate(['name' => 'vmbr0', 'is_active' => true, 'cidr' => '192.0.2.21/24']);
+
+        app(ClusterSynchronizer::class)->sync($cluster);
+
+        $this->assertSame(NodeStatus::Unknown, $ghost->refresh()->status);
+        $this->assertFalse($ghost->storages()->sole()->is_available);
+        $this->assertFalse($ghost->bridges()->sole()->is_active);
+        // The nodes Proxmox reports keep theirs.
+        $this->assertTrue($cluster->nodes()->where('name', 'pve1')->sole()->bridges()->where('name', 'vmbr0')->sole()->is_active);
+    }
+
+    public function test_a_removed_node_comes_back_when_proxmox_reports_it_again()
+    {
+        $this->fakeProxmox();
+        $cluster = Cluster::factory()->create();
+        $node = Node::factory()->for($cluster)->create(['name' => 'pve1', 'status' => NodeStatus::Unknown, 'is_maintenance' => true]);
+        $node->delete();
+
+        app(ClusterSynchronizer::class)->sync($cluster);
+
+        $node->refresh();
+        $this->assertNull($node->deleted_at);
+        $this->assertSame(NodeStatus::Online, $node->status);
+        $this->assertTrue($node->is_maintenance);
+        $this->assertSame(1, $cluster->nodes()->where('name', 'pve1')->count());
+    }
+
+    public function test_an_empty_node_list_fails_the_sync_instead_of_marking_every_node_gone()
+    {
+        $this->fakeProxmox();
+        $cluster = Cluster::factory()->create();
+        app(ClusterSynchronizer::class)->sync($cluster);
+
+        Http::swap(new Factory);
+        $this->fakeProxmox(['*/api2/json/nodes' => Http::response(['data' => []])]);
+
+        try {
+            app(ClusterSynchronizer::class)->sync($cluster);
+            $this->fail('Expected an exception.');
+        } catch (ProxmoxException) {
+            $this->assertSame('Proxmox listed no nodes.', $cluster->refresh()->last_sync_error);
+        }
+
+        $this->assertSame(NodeStatus::Online, $cluster->nodes()->where('name', 'pve1')->sole()->status);
+    }
+
+    public function test_a_node_whose_bridges_cannot_be_read_does_not_fail_the_sync()
+    {
+        $this->fakeProxmox();
+        $cluster = Cluster::factory()->create();
+        app(ClusterSynchronizer::class)->sync($cluster);
+
+        Http::swap(new Factory);
+        $this->fakeProxmox(['*/api2/json/nodes/pve1/network?type=any_bridge' => Http::response(['data' => null, 'message' => 'no route to host'], 595)]);
+        app(ClusterSynchronizer::class)->sync($cluster);
+
+        $cluster->refresh();
+        $this->assertNull($cluster->last_sync_error);
+        // Its bridges keep their last known state.
+        $this->assertTrue($cluster->nodes()->where('name', 'pve1')->sole()->bridges()->where('name', 'vmbr0')->sole()->is_active);
     }
 
     public function test_storages_that_disappear_are_marked_unavailable()

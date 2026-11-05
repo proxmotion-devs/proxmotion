@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { useForm } from '@inertiajs/vue3';
 import { Pause } from '@lucide/vue';
-import { computed, ref } from 'vue';
+import { computed, watch } from 'vue';
 import FormDialog from '@/components/admin/FormDialog.vue';
 import FormField from '@/components/admin/FormField.vue';
 import { Button } from '@/components/ui/button';
@@ -13,20 +13,31 @@ import type { RouteDefinition } from '@/wayfinder';
  * unsuspended. A server the panel suspended itself (docs/adr/0039) stays
  * suspended, and the suspension becomes the administrator's.
  */
-const props = defineProps<{
-    action: RouteDefinition<'post'>;
-    takeOver?: boolean;
-    disabled?: boolean;
-}>();
+const props = withDefaults(
+    defineProps<{
+        action: RouteDefinition<'post'>;
+        takeOver?: boolean;
+        disabled?: boolean;
+        /** Without its own button: opened from elsewhere (the power menu) through v-model:open. */
+        trigger?: boolean;
+    }>(),
+    { takeOver: false, disabled: false, trigger: true },
+);
 
-const open = ref(false);
+const open = defineModel<boolean>('open', { default: false });
 const form = useForm({ reason: '' });
 
 const openDialog = () => {
-    form.clearErrors();
-    form.reset();
     open.value = true;
 };
+
+// A fresh form each time it opens, whichever button opened it.
+watch(open, (value) => {
+    if (value) {
+        form.clearErrors();
+        form.reset();
+    }
+});
 
 const submit = () =>
     form.submit(props.action, {
@@ -43,6 +54,7 @@ const description = computed(() =>
 
 <template>
     <Button
+        v-if="trigger"
         variant="outline"
         size="sm"
         :disabled="disabled"

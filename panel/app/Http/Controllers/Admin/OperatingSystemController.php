@@ -7,15 +7,21 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\OperatingSystemRequest;
 use App\Http\Requests\Admin\OperatingSystemVersionRequest;
+use App\Models\AppRecipe;
+use App\Models\AuditLog;
 use App\Models\OperatingSystem;
 use App\Models\OperatingSystemVersion;
 use App\Models\OsTemplate;
+use App\Models\User;
+use Illuminate\Container\Attributes\CurrentUser;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
 
 /**
  * The administrators' operating systems and their versions, managed on the
  * OS templates page (docs/adr/0026). A system or version OS templates use
- * cannot be deleted.
+ * cannot be deleted. Deleting one also takes it off the apps ticked for it,
+ * so the deletion is audited with those apps.
  */
 class OperatingSystemController extends Controller
 {
@@ -40,7 +46,7 @@ class OperatingSystemController extends Controller
         return to_route('admin.os-templates.index');
     }
 
-    public function destroy(OperatingSystem $operatingSystem): RedirectResponse
+    public function destroy(Request $request, OperatingSystem $operatingSystem, #[CurrentUser] User $admin): RedirectResponse
     {
         $templates = OsTemplate::query()->whereIn('operating_system_version_id', $operatingSystem->versions()->select('id'))->count();
 
@@ -50,7 +56,15 @@ class OperatingSystemController extends Controller
             return back();
         }
 
+        $apps = AppRecipe::query()->whereHas('osVersions', fn ($query) => $query->where('operating_system_id', $operatingSystem->id))->orderBy('slug')->pluck('slug')->all();
+
         $operatingSystem->delete();
+
+        // Its versions go with it, and so do the apps' ticks for them.
+        AuditLog::record('operating_system.deleted', $admin, $operatingSystem, [
+            'name' => $operatingSystem->name,
+            'apps' => $apps,
+        ], $request->ip());
 
         $this->toast('success', 'Operating system deleted.');
 
@@ -66,7 +80,7 @@ class OperatingSystemController extends Controller
         return to_route('admin.os-templates.index');
     }
 
-    public function destroyVersion(OperatingSystem $operatingSystem, OperatingSystemVersion $version): RedirectResponse
+    public function destroyVersion(Request $request, OperatingSystem $operatingSystem, OperatingSystemVersion $version, #[CurrentUser] User $admin): RedirectResponse
     {
         $templates = $version->osTemplates()->count();
 
@@ -76,7 +90,15 @@ class OperatingSystemController extends Controller
             return back();
         }
 
+        $apps = $version->apps()->orderBy('slug')->pluck('slug')->all();
+
         $version->delete();
+
+        // The apps ticked for it are no longer offered on it.
+        AuditLog::record('operating_system.version_deleted', $admin, $operatingSystem, [
+            'version' => $version->label(),
+            'apps' => $apps,
+        ], $request->ip());
 
         $this->toast('success', 'Version deleted.');
 

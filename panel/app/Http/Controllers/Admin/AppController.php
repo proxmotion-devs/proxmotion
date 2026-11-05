@@ -16,6 +16,7 @@ use App\Enums\AppRunKind;
 use App\Enums\AppRunStatus;
 use App\Enums\TaskType;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Admin\TrialResetRequest;
 use App\Http\Resources\Api\V1\AppInstallationResource;
 use App\Models\AppInstallation;
 use App\Models\AppRecipe;
@@ -147,7 +148,7 @@ class AppController extends Controller
     /**
      * Reinstall a test server from its current template after trials, removing every app on it.
      */
-    public function resetTestServer(Request $request, Server $server, #[CurrentUser] User $admin, AppTrials $trials): RedirectResponse
+    public function resetTestServer(TrialResetRequest $request, Server $server, #[CurrentUser] User $admin, AppTrials $trials): RedirectResponse
     {
         try {
             $task = $trials->resetTestServer($server, $admin, $request->ip());

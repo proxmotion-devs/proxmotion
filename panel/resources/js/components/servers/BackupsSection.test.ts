@@ -136,10 +136,14 @@ const mountSection = (
             stubs: {
                 ConfirmDelete: true,
                 FormDialog: {
-                    props: ['title'],
+                    props: {
+                        title: String,
+                        submitDisabled: Boolean,
+                        destructive: Boolean,
+                    },
                     emits: ['submit'],
                     template:
-                        '<form :data-dialog="title" @submit.prevent="$emit(\'submit\')"><slot /></form>',
+                        '<form :data-dialog="title" :data-submit-disabled="String(!!submitDisabled)" :data-destructive="String(!!destructive)" @submit.prevent="$emit(\'submit\')"><slot /></form>',
                 },
             },
         },
@@ -197,6 +201,25 @@ describe('BackupsSection', () => {
         expect(wrapper.find('[data-test="backup-unrestorable"]').text()).toBe(
             'This backup is on another cluster.',
         );
+    });
+
+    it('keeps the destructive restore locked until the hostname matches', async () => {
+        const wrapper = mountSection([backup(1)]);
+
+        await wrapper.find('[data-test="restore-backup"]').trigger('click');
+        const dialog = () => wrapper.find('form[data-dialog="Restore backup"]');
+
+        expect(dialog().attributes('data-destructive')).toBe('true');
+        expect(dialog().attributes('data-submit-disabled')).toBe('true');
+        // The hostname is shown as text to copy, not as a hint or placeholder.
+        expect(
+            dialog().find('[data-test="confirm-hostname-target"]').text(),
+        ).toContain('vps1.example.com');
+
+        await wrapper
+            .find('#backup_confirm_hostname')
+            .setValue('  VPS1.example.com ');
+        expect(dialog().attributes('data-submit-disabled')).toBe('false');
     });
 
     it('restores a backup once the hostname is typed', async () => {

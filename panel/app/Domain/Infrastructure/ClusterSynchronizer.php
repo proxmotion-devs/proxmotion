@@ -10,7 +10,9 @@ use App\Enums\ClusterType;
 use App\Enums\NodeStatus;
 use App\Models\Cluster;
 use App\Models\IpAddress;
+use App\Models\NetworkBridge;
 use App\Models\Node;
+use App\Models\Storage;
 use App\Proxmox\Data\BridgeInfo;
 use App\Proxmox\Data\NodeInfo;
 use App\Proxmox\Data\StorageInfo;
@@ -21,6 +23,7 @@ use App\Proxmox\ProxmoxClientFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Throwable;
 
 /**
@@ -51,6 +54,13 @@ final readonly class ClusterSynchronizer
             $version = $client->version();
             $status = $client->cluster()->status();
             $nodes = $client->nodes()->list();
+
+            // Proxmox always lists at least the node that answers: an empty list is a
+            // broken answer, which must not mark every node as gone.
+            if ($nodes === []) {
+                throw new ProxmoxException('Proxmox listed no nodes.');
+            }
+
             $storages = $client->cluster()->storages();
             $guests = $client->cluster()->guests();
             $bridges = $this->fetchBridges($client, $nodes);
@@ -113,8 +123,17 @@ final readonly class ClusterSynchronizer
         $bridges = [];
 
         foreach ($nodes as $node) {
-            if ($node->online) {
+            if (! $node->online) {
+                continue;
+            }
+
+            // Proxmox proxies this call to the node itself, which can fail while /nodes
+            // still says online (e.g. a node being removed). That node keeps its last
+            // known bridges instead of failing the sync of the whole cluster.
+            try {
                 $bridges[$node->name] = $client->nodes()->bridges($node->name);
+            } catch (ProxmoxException $e) {
+                Log::warning('Could not read the bridges of a Proxmox node.', ['node' => $node->name, 'error' => $e->getMessage()]);
             }
         }
 
@@ -140,16 +159,25 @@ final readonly class ClusterSynchronizer
                 'address' => $addresses[$info->name] ?? null,
             ], fn ($value) => $value !== null);
 
-            $models[$info->name] = $this->upsert($cluster->nodes(), ['name' => $info->name], [
+            // A node an administrator removed from the panel comes back once Proxmox
+            // reports it again, e.g. after it rejoined the cluster (docs/adr/0057).
+            $models[$info->name] = $this->upsert($cluster->nodes()->withTrashed(), ['name' => $info->name], [
                 'status' => $info->online ? NodeStatus::Online : NodeStatus::Offline,
+                'deleted_at' => null,
                 ...$values,
             ]);
         }
 
-        // Nodes Proxmox no longer reports (removed from the cluster, renamed…).
-        $cluster->nodes()
-            ->whereNotIn('name', array_keys($models))
-            ->update(['status' => NodeStatus::Unknown]);
+        // Nodes Proxmox no longer reports (removed from the cluster, renamed…): kept, so
+        // their servers still have a node, until an administrator removes them. Their
+        // storages and bridges are gone with them.
+        $missing = $cluster->nodes()->whereNotIn('name', array_keys($models))->pluck('id');
+
+        if ($missing->isNotEmpty()) {
+            Node::query()->whereKey($missing)->update(['status' => NodeStatus::Unknown]);
+            Storage::query()->whereIn('node_id', $missing)->update(['is_available' => false]);
+            NetworkBridge::query()->whereIn('node_id', $missing)->update(['is_active' => false]);
+        }
 
         return $models;
     }

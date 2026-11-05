@@ -1,8 +1,6 @@
 <script setup lang="ts">
 import { useForm } from '@inertiajs/vue3';
 import {
-    Check,
-    Copy,
     KeyRound,
     LoaderCircle,
     Plus,
@@ -12,8 +10,10 @@ import {
 } from '@lucide/vue';
 import { trans } from 'laravel-vue-i18n';
 import { computed, ref, watch } from 'vue';
+import CopyButton from '@/components/admin/CopyButton.vue';
 import FormDialog from '@/components/admin/FormDialog.vue';
 import FormField from '@/components/admin/FormField.vue';
+import StatusBadge from '@/components/admin/StatusBadge.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -194,26 +194,6 @@ const manage = (selected: GuestSshKey[]) => {
     ];
     form.submit(sshKeysRoute(props.server), { preserveScroll: true });
 };
-
-// Browsers offer the clipboard only on HTTPS (and localhost).
-const canCopy =
-    typeof navigator !== 'undefined' && navigator.clipboard !== undefined;
-
-// The fingerprint of the key just copied, for a moment.
-const copied = ref<string | null>(null);
-let copiedTimer: ReturnType<typeof setTimeout> | undefined;
-
-const copy = async (key: SshKey) => {
-    try {
-        await navigator.clipboard.writeText(key.public_key);
-    } catch {
-        return;
-    }
-
-    copied.value = key.fingerprint;
-    clearTimeout(copiedTimer);
-    copiedTimer = setTimeout(() => (copied.value = null), 2000);
-};
 </script>
 
 <template>
@@ -360,40 +340,29 @@ const copy = async (key: SshKey) => {
                                 :title="key.fingerprint"
                                 >{{ key.fingerprint }}</code
                             >
-                            <Badge
+                            <!-- The status and what to do, both as text (no tooltip-only reason). -->
+                            <div
                                 v-if="missing.has(key.fingerprint)"
-                                variant="outline"
-                                class="mt-1 border-status-warning-border text-status-warning-text"
-                                :title="
+                                class="mt-1 flex flex-col items-start gap-1"
+                                data-test="ssh-key-missing"
+                            >
+                                <StatusBadge
+                                    tone="warning"
+                                    label="Not in the server"
+                                />
+                                <span class="text-xs text-muted-foreground">{{
                                     $t(
                                         'Add or delete a key to write the list into the server again.',
                                     )
-                                "
-                                data-test="ssh-key-missing"
-                                >{{ $t('Not in the server') }}</Badge
-                            >
+                                }}</span>
+                            </div>
                         </td>
                         <td class="px-2 py-2">
                             <div class="flex justify-end gap-1">
-                                <Button
-                                    v-if="canCopy"
-                                    variant="ghost"
-                                    size="icon"
-                                    class="h-8 w-8"
-                                    :aria-label="$t('Copy public key')"
-                                    :title="
-                                        copied === key.fingerprint
-                                            ? $t('Copied')
-                                            : $t('Copy public key')
-                                    "
-                                    @click="copy(key)"
-                                >
-                                    <Check
-                                        v-if="copied === key.fingerprint"
-                                        class="h-4 w-4 text-status-success-foreground"
-                                    />
-                                    <Copy v-else class="h-4 w-4" />
-                                </Button>
+                                <CopyButton
+                                    :value="key.public_key"
+                                    label="Copy public key"
+                                />
                                 <Button
                                     variant="ghost"
                                     size="icon"

@@ -1,19 +1,16 @@
 <script setup lang="ts">
 import { Head, Link } from '@inertiajs/vue3';
-import { BookOpen, Circle, CircleCheck } from '@lucide/vue';
-import { computed } from 'vue';
+import { BookOpen } from '@lucide/vue';
 import HelpQuestion from '@/components/admin/HelpQuestion.vue';
+import SetupSteps from '@/components/admin/SetupSteps.vue';
 import TemplateGuide from '@/components/admin/TemplateGuide.vue';
 import Heading from '@/components/Heading.vue';
 import { help } from '@/routes/admin';
 import { index as apps } from '@/routes/admin/apps';
 import { index as billingSystems } from '@/routes/admin/billing-systems';
-import { index as clusters } from '@/routes/admin/clusters';
-import { index as ipPools } from '@/routes/admin/ip-pools';
 import { index as locations } from '@/routes/admin/locations';
-import { index as osTemplates } from '@/routes/admin/os-templates';
-import { index as packages } from '@/routes/admin/packages';
 import { create as createServer } from '@/routes/admin/servers';
+import type { SetupProgress } from '@/types/admin';
 
 /**
  * Help: questions and answers for the pages administrators ask about most.
@@ -24,56 +21,10 @@ defineOptions({
     layout: { breadcrumbs: [{ title: 'Help', href: help() }] },
 });
 
-const props = defineProps<{
-    setup: {
-        locations: boolean;
-        clusters: boolean;
-        ip_pools: boolean;
-        os_templates: boolean;
-        packages: boolean;
-        billing_systems: boolean;
-    };
+defineProps<{
+    setup: SetupProgress;
     docsUrl: string | null;
 }>();
-
-const steps = computed(() => [
-    {
-        done: props.setup.locations,
-        href: locations(),
-        title: 'Add a location',
-        detail: 'A data centre or region. Clusters, IP pools and servers belong to a location.',
-    },
-    {
-        done: props.setup.clusters,
-        href: clusters(),
-        title: 'Connect a Proxmox cluster or node',
-        detail: 'Enter the API host and an API token, then run Check permissions on the cluster page.',
-    },
-    {
-        done: props.setup.ip_pools,
-        href: ipPools(),
-        title: 'Create an IP pool',
-        detail: 'The addresses servers get, with gateway, bridge and network model.',
-    },
-    {
-        done: props.setup.os_templates,
-        href: osTemplates(),
-        title: 'Add OS templates',
-        detail: 'Build a template from an ISO in Proxmox, sync the cluster and add it here.',
-    },
-    {
-        done: props.setup.packages,
-        href: packages(),
-        title: 'Create packages',
-        detail: 'The plans you sell: CPU, memory, disk, addresses and limits.',
-    },
-    {
-        done: props.setup.billing_systems,
-        href: billingSystems(),
-        title: 'Connect a billing system',
-        detail: 'Create an API token for WHMCS or WISECP and install the module there.',
-    },
-]);
 
 const topics = [
     ['getting-started', 'Getting started'],
@@ -124,39 +75,7 @@ const topics = [
                 title="Getting started"
                 description="Set the panel up in this order. Steps that are done are ticked."
             />
-            <ol class="flex flex-col gap-2">
-                <li
-                    v-for="(step, number) in steps"
-                    :key="step.title"
-                    class="flex items-start gap-3 rounded-lg border p-3 text-sm"
-                    :data-test="`setup-step-${number + 1}`"
-                >
-                    <CircleCheck
-                        v-if="step.done"
-                        class="mt-0.5 h-4 w-4 shrink-0 text-status-success-foreground"
-                        aria-hidden="true"
-                    />
-                    <Circle
-                        v-else
-                        class="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground"
-                        aria-hidden="true"
-                    />
-                    <span class="sr-only">{{
-                        step.done ? $t('Done:') : $t('Not done yet:')
-                    }}</span>
-                    <div>
-                        <Link
-                            :href="step.href"
-                            class="font-medium hover:underline"
-                        >
-                            {{ number + 1 }}. {{ $t(step.title) }}
-                        </Link>
-                        <p class="text-muted-foreground">
-                            {{ $t(step.detail) }}
-                        </p>
-                    </div>
-                </li>
-            </ol>
+            <SetupSteps :setup="setup" />
             <p class="text-sm text-muted-foreground">
                 {{
                     $t(

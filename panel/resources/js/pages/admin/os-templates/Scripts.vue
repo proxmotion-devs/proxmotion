@@ -463,7 +463,7 @@ const saveSettings = () => {
                                 class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border text-xs"
                                 :class="
                                     stage.event
-                                        ? 'border-primary bg-primary text-primary-foreground'
+                                        ? 'border-foreground bg-foreground text-background'
                                         : 'text-muted-foreground'
                                 "
                                 aria-hidden="true"

@@ -3,6 +3,7 @@ import { Head, Link } from '@inertiajs/vue3';
 import {
     ChevronRight,
     CircleCheck,
+    CircleDashed,
     CircleX,
     Gauge,
     GitCompareArrows,
@@ -13,7 +14,7 @@ import {
 } from '@lucide/vue';
 import type { Component } from 'vue';
 import { computed } from 'vue';
-import GuideBox from '@/components/admin/GuideBox.vue';
+import SetupSteps from '@/components/admin/SetupSteps.vue';
 import StatusBadge from '@/components/admin/StatusBadge.vue';
 import Heading from '@/components/Heading.vue';
 import { useDateTime } from '@/composables/useDateTime';
@@ -28,7 +29,7 @@ import { index as osTemplates } from '@/routes/admin/os-templates';
 import { index as packages } from '@/routes/admin/packages';
 import { show as showReport } from '@/routes/admin/reports';
 import { index as servers, show as showServer } from '@/routes/admin/servers';
-import type { TaskType, UsageViolation } from '@/types/admin';
+import type { SetupProgress, TaskType, UsageViolation } from '@/types/admin';
 import type { RouteDefinition } from '@/wayfinder';
 
 defineOptions({
@@ -36,6 +37,8 @@ defineOptions({
 });
 
 const props = defineProps<{
+    /** The setup order's steps (App\Domain\Installation\SetupProgress). */
+    setup: SetupProgress;
     stats: {
         locations: number;
         clusters: number;
@@ -147,6 +150,16 @@ const attention = computed<Attention[]>(() =>
     ).filter((item) => item.count > 0),
 );
 
+// Only connected clusters with nodes are checked; before that, "all clear" would claim too much.
+const checkable = computed(
+    () => props.stats.clusters > 0 && props.stats.nodes > 0,
+);
+
+const setupTotal = computed(() => Object.keys(props.setup).length);
+const setupDone = computed(
+    () => Object.values(props.setup).filter(Boolean).length,
+);
+
 const hasDanger = computed(() =>
     attention.value.some((item) => item.severity === 'danger'),
 );
@@ -227,43 +240,31 @@ const severityText = {
             description="Overview of the infrastructure connected to the panel."
         />
 
-        <GuideBox
-            id="dashboard"
-            title="New to Proxmotion?"
-            topic="getting-started"
+        <!-- Until the panel is set up, what to do next comes before any figure. -->
+        <section
+            v-if="setupDone < setupTotal"
+            class="flex flex-col gap-3 rounded-xl border p-4"
+            aria-labelledby="setup-heading"
+            data-test="setup"
         >
-            <p>
-                {{
-                    $t(
-                        'Set the panel up in this order: location, Proxmox cluster, IP pool, OS templates, packages, billing system. Help shows which steps are done and explains each page.',
-                    )
-                }}
-            </p>
-        </GuideBox>
-
-        <nav
-            class="grid grid-cols-2 gap-px overflow-hidden rounded-xl border bg-border sm:grid-cols-5"
-            :aria-label="$t('Servers')"
-            data-test="server-stats"
-        >
-            <Link
-                v-for="(stat, index) in serverStats"
-                :key="stat.label"
-                :href="stat.href"
-                class="flex flex-col gap-1 bg-background px-4 py-3 transition-colors outline-none hover:bg-muted/40 focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:ring-inset"
-                :class="{ 'col-span-2 sm:col-span-1': index === 0 }"
-            >
-                <span class="text-sm text-muted-foreground">
-                    {{ $t(stat.label) }}
-                </span>
-                <span
-                    class="text-2xl font-semibold tabular-nums"
-                    :class="{ 'text-status-danger-text': stat.danger }"
-                >
-                    {{ stat.value }}
-                </span>
-            </Link>
-        </nav>
+            <header class="flex flex-col gap-1">
+                <h2 id="setup-heading" class="font-medium">
+                    {{ $t('Set up the panel') }}
+                </h2>
+                <p class="text-sm text-muted-foreground">
+                    {{
+                        $t(
+                            ':done of :total steps done. Each step opens its page; Help explains them.',
+                            {
+                                done: String(setupDone),
+                                total: String(setupTotal),
+                            },
+                        )
+                    }}
+                </p>
+            </header>
+            <SetupSteps :setup="setup" mark-next />
+        </section>
 
         <div class="grid items-start gap-6 lg:grid-cols-3">
             <section
@@ -283,8 +284,36 @@ const severityText = {
                     />
                 </header>
 
+                <!-- Nothing connected yet: nothing was checked, so nothing is reported as fine. -->
                 <div
-                    v-if="attention.length === 0"
+                    v-if="attention.length === 0 && !checkable"
+                    class="flex items-start gap-3 border-t px-4 py-4 text-sm"
+                    data-test="attention-unchecked"
+                >
+                    <CircleDashed
+                        class="mt-0.5 size-4 shrink-0 text-muted-foreground"
+                        aria-hidden="true"
+                    />
+                    <div>
+                        <p class="font-medium">
+                            {{ $t('Nothing to check yet') }}
+                        </p>
+                        <p class="text-muted-foreground">
+                            {{
+                                stats.clusters === 0
+                                    ? $t(
+                                          'No Proxmox cluster is connected. Once one is, its nodes, storage and tasks are checked here.',
+                                      )
+                                    : $t(
+                                          'The connected clusters have no nodes yet. They are read at the next sync of each cluster.',
+                                      )
+                            }}
+                        </p>
+                    </div>
+                </div>
+
+                <div
+                    v-else-if="attention.length === 0"
                     class="flex items-start gap-3 border-t px-4 py-4 text-sm"
                     data-test="attention-clear"
                 >
@@ -527,5 +556,29 @@ const severityText = {
                 </ul>
             </section>
         </div>
+
+        <nav
+            class="grid grid-cols-2 gap-px overflow-hidden rounded-xl border bg-border sm:grid-cols-5"
+            :aria-label="$t('Servers')"
+            data-test="server-stats"
+        >
+            <Link
+                v-for="(stat, index) in serverStats"
+                :key="stat.label"
+                :href="stat.href"
+                class="flex flex-col gap-1 bg-background px-4 py-3 transition-colors outline-none hover:bg-muted/40 focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:ring-inset"
+                :class="{ 'col-span-2 sm:col-span-1': index === 0 }"
+            >
+                <span class="text-sm text-muted-foreground">
+                    {{ $t(stat.label) }}
+                </span>
+                <span
+                    class="text-2xl font-semibold tabular-nums"
+                    :class="{ 'text-status-danger-text': stat.danger }"
+                >
+                    {{ stat.value }}
+                </span>
+            </Link>
+        </nav>
     </div>
 </template>

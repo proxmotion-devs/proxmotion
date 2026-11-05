@@ -8,6 +8,7 @@ import ServerStatusBadge from '@/components/admin/ServerStatusBadge.vue';
 import StatusBadge from '@/components/admin/StatusBadge.vue';
 import Pagination from '@/components/admin/Pagination.vue';
 import Heading from '@/components/Heading.vue';
+import ServerPowerState from '@/components/servers/ServerPowerState.vue';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
@@ -26,7 +27,15 @@ const props = defineProps<{
     status: ServerStatus | null;
     /** Text the list is searched for (hostname, IP address, billing ID, VMID). */
     search: string;
+    /** Deferred: what Proxmox reports per server uuid; null when its cluster did not answer. */
+    power?: Record<string, string | null>;
 }>();
+
+// Deleted servers have no VM to ask about; undefined shows nothing while loading.
+const powerOf = (server: ServerListItem) =>
+    server.status === 'terminated' || props.power === undefined
+        ? undefined
+        : (props.power[server.uuid] ?? null);
 
 const statusOptions = computed(() =>
     (
@@ -138,7 +147,10 @@ const runSearch = () =>
                 data-test="status-filter"
             />
             <!-- A chosen status already says which servers are listed. -->
-            <Label v-if="!status" class="flex items-center gap-2 font-normal">
+            <Label
+                v-if="!status"
+                class="flex min-h-9 items-center gap-2 font-normal"
+            >
                 <Checkbox
                     :model-value="showTerminated"
                     @update:model-value="toggleTerminated"
@@ -147,103 +159,202 @@ const runSearch = () =>
             </Label>
         </div>
 
-        <div class="overflow-x-auto rounded-xl border">
-            <table class="w-full text-sm">
-                <thead class="bg-muted/50 text-left text-muted-foreground">
-                    <tr>
-                        <th class="px-4 py-3 font-medium">
-                            {{ $t('Hostname') }}
-                        </th>
-                        <th class="px-4 py-3 font-medium">
-                            {{ $t('Status') }}
-                        </th>
-                        <th class="px-4 py-3 font-medium">
-                            {{ $t('Billing service ID') }}
-                        </th>
-                        <th class="px-4 py-3 font-medium">
-                            {{ $t('IP addresses') }}
-                        </th>
-                        <th class="px-4 py-3 font-medium">
-                            {{ $t('Package') }}
-                        </th>
-                        <th class="px-4 py-3 font-medium">{{ $t('Node') }}</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <tr
-                        v-for="server in servers.data"
-                        :key="server.uuid"
-                        class="border-t hover:bg-muted/30"
+        <!--
+            Until the content area is wide enough for six columns (64rem, so it
+            depends on the sidebar too), one tappable row per server with what a
+            ticket names first; the table would only squeeze hostnames apart.
+        -->
+        <div class="@container">
+            <ul
+                class="flex flex-col divide-y rounded-xl border text-sm @5xl:hidden"
+                data-test="server-rows"
+            >
+                <li v-for="server in servers.data" :key="server.uuid">
+                    <Link
+                        :href="show(server.uuid)"
+                        class="flex flex-col gap-1 px-4 py-3 outline-none hover:bg-muted/30 focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:ring-inset"
                     >
-                        <td class="px-4 py-3">
-                            <Link
-                                :href="show(server.uuid)"
-                                class="font-medium hover:underline"
-                            >
-                                {{ server.vm_name ?? server.hostname }}
-                            </Link>
-                            <div
-                                v-if="server.vm_name"
-                                class="text-xs text-muted-foreground"
-                            >
-                                {{ server.hostname }}
-                            </div>
-                            <div
-                                class="font-mono text-xs text-muted-foreground"
-                            >
-                                VMID {{ server.vmid }}
-                            </div>
-                        </td>
-                        <td class="px-4 py-3">
-                            <div class="flex flex-wrap gap-1">
-                                <ServerStatusBadge :status="server.status" />
-                                <StatusBadge
-                                    v-if="server.unprotected"
-                                    tone="warning"
-                                    label="Anti-spoofing off"
-                                />
-                            </div>
-                        </td>
-                        <td class="px-4 py-3 font-mono text-xs">
-                            {{ server.external_id ?? '—' }}
-                            <div
-                                v-if="server.billing_system"
-                                class="font-sans text-muted-foreground"
-                            >
-                                {{ server.billing_system }}
-                            </div>
-                        </td>
-                        <td class="px-4 py-3 font-mono text-xs">
-                            {{ server.addresses.join(', ') || '—' }}
-                        </td>
-                        <td class="px-4 py-3">
-                            {{ server.package ?? $t('Custom') }}
-                        </td>
-                        <td class="px-4 py-3">
-                            <span class="font-mono text-xs">{{
-                                server.node
-                            }}</span>
-                            <div class="text-xs text-muted-foreground">
-                                {{ server.location }}
-                            </div>
-                        </td>
-                    </tr>
-                    <tr v-if="servers.data.length === 0">
-                        <td
-                            colspan="6"
-                            class="px-4 py-10 text-center text-muted-foreground"
+                        <span
+                            class="flex flex-wrap items-center gap-x-2 gap-y-1"
                         >
-                            {{
-                                search
-                                    ? $t('No servers match the search.')
-                                    : status
-                                      ? $t('No servers with this status.')
-                                      : $t('No servers yet.')
-                            }}
-                        </td>
-                    </tr>
-                </tbody>
-            </table>
+                            <span class="min-w-0 font-medium break-all">{{
+                                server.vm_name ?? server.hostname
+                            }}</span>
+                            <ServerStatusBadge :status="server.status" />
+                            <StatusBadge
+                                v-if="server.unprotected"
+                                tone="warning"
+                                label="Anti-spoofing off"
+                            />
+                            <ServerPowerState :power="powerOf(server)" />
+                        </span>
+                        <span
+                            v-if="server.addresses.length || server.external_id"
+                            class="flex flex-wrap gap-x-3 font-mono text-xs"
+                        >
+                            <span v-if="server.addresses.length"
+                                >{{ server.addresses[0]
+                                }}<span
+                                    v-if="server.addresses.length > 1"
+                                    class="font-sans text-muted-foreground"
+                                >
+                                    {{
+                                        $t('+:count more', {
+                                            count: String(
+                                                server.addresses.length - 1,
+                                            ),
+                                        })
+                                    }}</span
+                                ></span
+                            >
+                            <span v-if="server.external_id"
+                                ><span class="font-sans text-muted-foreground"
+                                    >{{ $t('Billing service ID') }}:</span
+                                >
+                                {{ server.external_id }}</span
+                            >
+                        </span>
+                        <span class="text-xs text-muted-foreground">
+                            {{ server.package ?? $t('Custom') }} ·
+                            <span class="font-mono">{{ server.node }}</span> ·
+                            {{ server.location }} ·
+                            <span class="font-mono"
+                                >VMID {{ server.vmid }}</span
+                            >
+                        </span>
+                    </Link>
+                </li>
+                <li
+                    v-if="servers.data.length === 0"
+                    class="px-4 py-10 text-center text-muted-foreground"
+                >
+                    {{
+                        search
+                            ? $t('No servers match the search.')
+                            : status
+                              ? $t('No servers with this status.')
+                              : $t('No servers yet.')
+                    }}
+                </li>
+            </ul>
+
+            <div class="hidden overflow-x-auto rounded-xl border @5xl:block">
+                <table class="w-full text-sm">
+                    <thead class="bg-muted/50 text-left text-muted-foreground">
+                        <tr>
+                            <th class="px-4 py-3 font-medium">
+                                {{ $t('Hostname') }}
+                            </th>
+                            <th class="px-4 py-3 font-medium">
+                                {{ $t('Status') }}
+                            </th>
+                            <th class="px-4 py-3 font-medium">
+                                {{ $t('Billing service ID') }}
+                            </th>
+                            <th class="px-4 py-3 font-medium">
+                                {{ $t('IP addresses') }}
+                            </th>
+                            <th class="px-4 py-3 font-medium">
+                                {{ $t('Package') }}
+                            </th>
+                            <th class="px-4 py-3 font-medium">
+                                {{ $t('Node') }}
+                            </th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr
+                            v-for="server in servers.data"
+                            :key="server.uuid"
+                            class="border-t hover:bg-muted/30"
+                        >
+                            <td class="px-4 py-3">
+                                <Link
+                                    :href="show(server.uuid)"
+                                    class="font-medium whitespace-nowrap hover:underline"
+                                >
+                                    {{ server.vm_name ?? server.hostname }}
+                                </Link>
+                                <div
+                                    v-if="server.vm_name"
+                                    class="text-xs text-muted-foreground"
+                                >
+                                    {{ server.hostname }}
+                                </div>
+                                <div
+                                    class="font-mono text-xs text-muted-foreground"
+                                >
+                                    VMID {{ server.vmid }}
+                                </div>
+                            </td>
+                            <td class="px-4 py-3">
+                                <div class="flex flex-wrap gap-1">
+                                    <ServerStatusBadge
+                                        :status="server.status"
+                                    />
+                                    <StatusBadge
+                                        v-if="server.unprotected"
+                                        tone="warning"
+                                        label="Anti-spoofing off"
+                                    />
+                                </div>
+                                <ServerPowerState
+                                    class="mt-1"
+                                    :power="powerOf(server)"
+                                />
+                            </td>
+                            <td class="px-4 py-3 font-mono text-xs">
+                                {{ server.external_id ?? '—' }}
+                                <div
+                                    v-if="server.billing_system"
+                                    class="font-sans text-muted-foreground"
+                                >
+                                    {{ server.billing_system }}
+                                </div>
+                            </td>
+                            <td class="px-4 py-3 font-mono text-xs">
+                                <!-- One address per line, never split inside one. -->
+                                <div
+                                    v-for="address in server.addresses"
+                                    :key="address"
+                                    class="whitespace-nowrap"
+                                >
+                                    {{ address }}
+                                </div>
+                                <template v-if="server.addresses.length === 0"
+                                    >—</template
+                                >
+                            </td>
+                            <td class="px-4 py-3">
+                                {{ server.package ?? $t('Custom') }}
+                            </td>
+                            <td class="px-4 py-3">
+                                <span
+                                    class="font-mono text-xs whitespace-nowrap"
+                                    >{{ server.node }}</span
+                                >
+                                <div class="text-xs text-muted-foreground">
+                                    {{ server.location }}
+                                </div>
+                            </td>
+                        </tr>
+                        <tr v-if="servers.data.length === 0">
+                            <td
+                                colspan="6"
+                                class="px-4 py-10 text-center text-muted-foreground"
+                            >
+                                {{
+                                    search
+                                        ? $t('No servers match the search.')
+                                        : status
+                                          ? $t('No servers with this status.')
+                                          : $t('No servers yet.')
+                                }}
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
         </div>
 
         <Pagination :paginator="servers" />

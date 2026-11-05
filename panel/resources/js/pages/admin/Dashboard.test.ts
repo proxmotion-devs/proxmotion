@@ -27,9 +27,19 @@ const stats = {
 
 const servers = { total: 10, active: 8, suspended: 1, busy: 1, error: 0 };
 
+const setup = {
+    locations: true,
+    clusters: true,
+    ip_pools: true,
+    os_templates: true,
+    packages: true,
+    billing_systems: true,
+};
+
 const mountDashboard = (props: Record<string, unknown> = {}) =>
     mount(Dashboard, {
         props: {
+            setup,
             stats,
             servers,
             usageViolations: [],
@@ -49,7 +59,6 @@ const mountDashboard = (props: Record<string, unknown> = {}) =>
                           )
                         : key,
             },
-            stubs: { GuideBox: true },
         },
     });
 
@@ -61,6 +70,53 @@ describe('Dashboard', () => {
             true,
         );
         expect(wrapper.findAll('[data-test^="attention-"]')).toHaveLength(1);
+    });
+
+    it('claims nothing is fine before a cluster is connected', () => {
+        const wrapper = mountDashboard({
+            stats: { ...stats, clusters: 0, nodes: 0, nodes_online: 0 },
+        });
+
+        expect(wrapper.find('[data-test="attention-clear"]').exists()).toBe(
+            false,
+        );
+        expect(
+            wrapper.find('[data-test="attention-unchecked"]').text(),
+        ).toContain('No Proxmox cluster is connected.');
+    });
+
+    it('says the clusters have no nodes yet before their first sync', () => {
+        const wrapper = mountDashboard({
+            stats: { ...stats, nodes: 0, nodes_online: 0 },
+        });
+
+        expect(
+            wrapper.find('[data-test="attention-unchecked"]').text(),
+        ).toContain('The connected clusters have no nodes yet.');
+    });
+
+    it('shows the setup steps until every one is done', () => {
+        expect(mountDashboard().find('[data-test="setup"]').exists()).toBe(
+            false,
+        );
+
+        const wrapper = mountDashboard({
+            setup: { ...setup, ip_pools: false, billing_systems: false },
+        });
+        const section = wrapper.find('[data-test="setup"]');
+
+        expect(section.text()).toContain('4 of 6 steps done.');
+        // The first open step is the next one.
+        expect(
+            section
+                .find('[data-test="setup-step-3"]')
+                .attributes('aria-current'),
+        ).toBe('step');
+        expect(
+            section
+                .find('[data-test="setup-step-6"]')
+                .attributes('aria-current'),
+        ).toBeUndefined();
     });
 
     it('lists only the problems that have a count', () => {

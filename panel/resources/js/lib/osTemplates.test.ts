@@ -7,16 +7,18 @@ const systems: OperatingSystem[] = [
         id: 1,
         name: 'Ubuntu',
         platform: 'linux',
+        apps: 0,
         versions: [
-            { id: 10, version: '26.04', templates: 0 },
-            { id: 11, version: '24.04', templates: 2 },
+            { id: 10, version: '26.04', templates: 0, apps: 0 },
+            { id: 11, version: '24.04', templates: 2, apps: 0 },
         ],
     },
     {
         id: 2,
         name: 'Windows Server',
         platform: 'windows',
-        versions: [{ id: 20, version: '2022', templates: 0 }],
+        apps: 0,
+        versions: [{ id: 20, version: '2022', templates: 0, apps: 0 }],
     },
 ];
 

@@ -227,6 +227,15 @@ class ReinstallTest extends TestCase
             ->assertInertia(fn (Assert $page) => $page->has('reinstallOptions.osTemplates', 2));
     }
 
+    public function test_the_dialog_starts_from_the_template_the_server_runs_now()
+    {
+        $this->server->forceFill(['os_template_id' => $this->debian->id])->save();
+
+        $this->actingAs($this->admin)
+            ->get(route('admin.servers.show', $this->server))
+            ->assertInertia(fn (Assert $page) => $page->where('reinstallOptions.current', $this->debian->uuid));
+    }
+
     public function test_an_inactive_template_is_tried_only_on_a_server_without_a_billing_system()
     {
         // docs/adr/0024 §8: the server becomes a test server; customers never get the template.

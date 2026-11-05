@@ -29,6 +29,11 @@ const { isCurrentUrl, isCurrentOrParentUrl } = useCurrentUrl();
 // A collapsed (icon only) sidebar has no room for sub-pages: the item then
 // links to its own page, which opens the first of them.
 const { state, isMobile } = useSidebar();
+
+// The panel's own focus ring (neutral, 3px at 50%: DESIGN.md), not the
+// generated sidebar's 2px one; sub-pages get 32px targets instead of 28px.
+const focusRing = 'focus-visible:ring-[3px] ring-ring/50';
+const subItem = `h-8 ${focusRing}`;
 </script>
 
 <template>
@@ -52,6 +57,7 @@ const { state, isMobile } = useSidebar();
                     <SidebarMenuItem :data-test="`nav-group-${item.title}`">
                         <CollapsibleTrigger as-child>
                             <SidebarMenuButton
+                                :class="focusRing"
                                 :is-active="isCurrentOrParentUrl(item.href)"
                                 :tooltip="$t(item.title)"
                             >
@@ -69,6 +75,7 @@ const { state, isMobile } = useSidebar();
                                     :key="child.title"
                                 >
                                     <SidebarMenuSubButton
+                                        :class="subItem"
                                         as-child
                                         :is-active="isCurrentUrl(child.href)"
                                     >
@@ -83,6 +90,7 @@ const { state, isMobile } = useSidebar();
                 </Collapsible>
                 <SidebarMenuItem v-else>
                     <SidebarMenuButton
+                        :class="focusRing"
                         as-child
                         :is-active="
                             item.items?.length

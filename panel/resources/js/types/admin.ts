@@ -26,6 +26,16 @@ export type Location = LocationOption & {
 };
 
 /** Panel settings (docs/adr/0038); saved ones override .env. */
+/** Which steps of the setup order are done (App\Domain\Installation\SetupProgress). */
+export type SetupProgress = {
+    locations: boolean;
+    clusters: boolean;
+    ip_pools: boolean;
+    os_templates: boolean;
+    packages: boolean;
+    billing_systems: boolean;
+};
+
 export type PanelSettings = {
     cross_cluster_moves: boolean;
     move_deadline_minutes: number;
@@ -558,6 +568,8 @@ export type AddressPoolOption = Option & {
 /** Choices for ReinstallDialog: OS templates of the server's cluster and the apps that can come with them. */
 export type ReinstallOptions = {
     osTemplates: Option[];
+    /** The template the server runs now, when it is still offered to it. */
+    current: string | null;
     apps: OrderedAppOption[];
 };
 
@@ -724,6 +736,8 @@ export type TaskProgress = {
     estimate?: { remaining_seconds: number; based_on: number } | null;
     error?: string | null;
     created_at: string | null;
+    /** When it succeeded or failed; null while it runs. */
+    finished_at?: string | null;
     /** Stuck (queued, or running past its time limit): an administrator may end it. */
     can_fail?: boolean;
     /** An administrator's script run, queued or running: it may be cancelled. */

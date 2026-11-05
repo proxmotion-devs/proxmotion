@@ -5,10 +5,12 @@ import { computed, ref } from 'vue';
 import ConfirmDelete from '@/components/admin/ConfirmDelete.vue';
 import FormDialog from '@/components/admin/FormDialog.vue';
 import FormField from '@/components/admin/FormField.vue';
+import HostnameConfirmField from '@/components/admin/HostnameConfirmField.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useDateTime } from '@/composables/useDateTime';
+import { confirmsHostname } from '@/lib/hostname';
 import {
     destroy as destroyRoute,
     rollback as rollbackRoute,
@@ -158,6 +160,7 @@ const rollback = () => {
                     <Button
                         variant="outline"
                         size="sm"
+                        class="text-destructive hover:bg-destructive/10 hover:text-destructive"
                         :disabled="disabled || busy"
                         data-test="rollback-snapshot"
                         @click="startRollback(snapshot)"
@@ -213,6 +216,10 @@ const rollback = () => {
             description="Everything written to the disk since the snapshot is lost, and apps installed since are removed. The root password becomes the one of that time."
             submit-label="Roll back"
             :processing="rollbackForm.processing"
+            destructive
+            :submit-disabled="
+                !confirmsHostname(rollbackForm.confirm_hostname, hostname)
+            "
             @submit="rollback"
         >
             <p v-if="rollingBack" class="text-sm">
@@ -223,18 +230,12 @@ const rollback = () => {
                     })
                 }}
             </p>
-            <FormField
-                label="Type the hostname to confirm"
-                for="snapshot_confirm_hostname"
+            <HostnameConfirmField
+                id="snapshot_confirm_hostname"
+                v-model="rollbackForm.confirm_hostname"
+                :hostname="hostname"
                 :error="rollbackForm.errors.confirm_hostname"
-                :hint="hostname"
-            >
-                <Input
-                    id="snapshot_confirm_hostname"
-                    v-model="rollbackForm.confirm_hostname"
-                    autocomplete="off"
-                />
-            </FormField>
+            />
         </FormDialog>
     </section>
 </template>

@@ -397,7 +397,7 @@ const openRunLog = (app: AppInstallation, run: AppRun) => {
                                 <StatusBadge
                                     v-if="app.is_trial"
                                     class="ml-1"
-                                    tone="warning"
+                                    tone="neutral"
                                     label="Trial"
                                 />
                                 <ul

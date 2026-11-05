@@ -57,8 +57,8 @@ const statuses: Record<
         installable: boolean;
     }
 > = {
-    new: { label: 'New app', tone: 'success', installable: true },
-    update: { label: 'Update', tone: 'success', installable: true },
+    new: { label: 'New app', tone: 'neutral', installable: true },
+    update: { label: 'Update', tone: 'neutral', installable: true },
     current: {
         label: 'Installed already',
         tone: 'neutral',
@@ -67,7 +67,7 @@ const statuses: Record<
     older: { label: 'Older version', tone: 'warning', installable: true },
     edited: {
         label: 'Edited by an administrator',
-        tone: 'warning',
+        tone: 'neutral',
         installable: true,
     },
     conflict: {

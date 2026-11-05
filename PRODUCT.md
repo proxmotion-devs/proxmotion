@@ -57,7 +57,7 @@ All four are confirmed as the claims future work must carry:
 
 - Feature overview and verification status: `docs/wiki/Features.md`; architecture decisions: `docs/adr/` (0001–0056); API contract: `docs/api/openapi.yaml`; guides under `docs/guides/` (with Turkish translations in `docs/guides/tr/`).
 - Proxmotion logo and favicons: `panel/public/favicon.svg`, `favicon.ico`, `apple-touch-icon.png`.
-- Version 0.1.1, explicitly **not ready for production**. Only part of it has been checked against a real Proxmox VE server; WHMCS and WISECP modules have not run in a real billing system.
+- Version 0.1.2, explicitly **not ready for production**. Only part of it has been checked against a real Proxmox VE server; WHMCS and WISECP modules have not run in a real billing system.
 - No customers, testimonials, case studies, benchmarks, press or adoption figures exist. Future work, especially the website, must not invent them.
 
 ## Product Principles

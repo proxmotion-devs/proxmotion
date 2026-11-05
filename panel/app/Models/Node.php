@@ -14,11 +14,15 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Carbon;
 
 /**
  * A Proxmox node. Created and updated by the cluster sync; admins only
- * change the placement settings (maintenance, over-commit, limits).
+ * change the placement settings (maintenance, over-commit, limits). A node
+ * Proxmox no longer reports can be removed by an administrator: it is
+ * soft-deleted, since terminated servers and past moves keep pointing at it,
+ * and restored by the sync when Proxmox reports it again (docs/adr/0057).
  *
  * @property int $id
  * @property string $uuid
@@ -38,13 +42,14 @@ use Illuminate\Support\Carbon;
  * @property string|null $disk_health_error why its disks and pools could not be read at the last sync (docs/adr/0047)
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
+ * @property Carbon|null $deleted_at when an administrator removed it from the panel
  * @property-read Cluster $cluster
  */
 #[Fillable(['is_maintenance', 'cpu_overcommit', 'memory_overcommit', 'disk_overcommit', 'max_servers', 'api_host'])]
 class Node extends Model
 {
     /** @use HasFactory<NodeFactory> */
-    use HasFactory, HasPublicUuid;
+    use HasFactory, HasPublicUuid, SoftDeletes;
 
     /**
      * @return array<string, string>

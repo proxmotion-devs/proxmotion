@@ -31,7 +31,7 @@ const emit = defineEmits<{ submit: [] }>();
 <template>
     <Dialog v-model:open="open">
         <DialogContent
-            class="max-h-[90vh] overflow-y-auto"
+            class="max-h-[90dvh] overflow-y-auto"
             :class="wide ? 'sm:max-w-4xl' : 'sm:max-w-xl'"
         >
             <form class="grid gap-6" @submit.prevent="emit('submit')">
@@ -46,7 +46,7 @@ const emit = defineEmits<{ submit: [] }>();
                     <slot />
                 </div>
 
-                <DialogFooter class="gap-2">
+                <DialogFooter class="dialog-sticky-footer gap-2">
                     <Button
                         type="button"
                         variant="secondary"
