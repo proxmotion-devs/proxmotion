@@ -2,7 +2,6 @@
 import { router } from '@inertiajs/vue3';
 import { ChevronDown, Pause, Play, Power, RotateCw, Square } from '@lucide/vue';
 import { computed, ref } from 'vue';
-import StatusBadge from '@/components/admin/StatusBadge.vue';
 import { Button } from '@/components/ui/button';
 import {
     Dialog,
@@ -27,7 +26,8 @@ import type { RouteDefinition } from '@/wayfinder';
  * Start, shut down, reboot and stop for an active server, with a confirmation
  * for everything but start. Only the usual action is a button (Start when the
  * server is off, Reboot when it runs); Shut down and Stop, rarer and the
- * latter like pulling the plug, sit in the menu beside it.
+ * latter like pulling the plug, sit in the menu beside it. The power state
+ * itself is `PowerStateBadge`, on the page's state line.
  */
 const props = defineProps<{
     /** Proxmox power state; undefined while loading, null when unknown. */
@@ -133,30 +133,11 @@ const choose = (item: (typeof actions)[number]) => {
         confirming.value = item;
     }
 };
-
-const stateLabel = computed(() => {
-    if (props.power === undefined) {
-        return 'Checking…';
-    }
-
-    // Proxmox's power state, worded apart from the panel's own status (Active).
-    if (props.power === 'running') {
-        return 'Powered on';
-    }
-
-    return props.power === 'stopped' ? 'Powered off' : 'Power state unknown';
-});
 </script>
 
 <template>
-    <div class="flex flex-wrap items-center gap-2">
-        <!-- Read out when polling brings a new power state. -->
-        <span role="status" aria-live="polite" data-test="power-state">
-            <StatusBadge
-                :tone="power === 'running' ? 'success' : 'neutral'"
-                :label="stateLabel"
-            />
-        </span>
+    <!-- Its buttons join the page's row of actions, so they wrap with it. -->
+    <div class="contents">
         <Button
             v-for="item in buttons"
             :key="item.value"

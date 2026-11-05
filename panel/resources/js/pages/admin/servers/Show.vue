@@ -30,6 +30,7 @@ import AppEntitlementList from '@/components/servers/AppEntitlementList.vue';
 import AddressesDialog from '@/components/servers/AddressesDialog.vue';
 import AppList from '@/components/servers/AppList.vue';
 import PowerControls from '@/components/servers/PowerControls.vue';
+import PowerStateBadge from '@/components/servers/PowerStateBadge.vue';
 import HostnameDialog from '@/components/servers/HostnameDialog.vue';
 import MoveDialog from '@/components/servers/MoveDialog.vue';
 import MoveHistory from '@/components/servers/MoveHistory.vue';
@@ -716,13 +717,24 @@ const restartForChanges = () =>
         <!-- Whatever tab is open, a task that starts or ends is read out. -->
         <TaskAnnouncer :tasks="tasks" />
         <!-- Who the server is, its state and the everyday controls. -->
-        <div class="flex flex-wrap items-start justify-between gap-4">
-            <div class="flex flex-col gap-2">
+        <div class="flex flex-wrap items-start justify-between gap-x-4 gap-y-3">
+            <div class="flex min-w-0 flex-col gap-2">
                 <!-- Without the heading's own bottom margin: the status badges belong right under it. -->
                 <Heading class="mb-0!" :title="title" />
                 <ServerIdentity :server="server" />
-                <div class="flex flex-wrap gap-2">
+                <!-- One state line: the panel's status and what Proxmox reports. -->
+                <div
+                    class="flex flex-wrap items-center gap-2"
+                    data-test="server-state"
+                >
                     <ServerStatusBadge :status="server.status" />
+                    <StatusBadge
+                        v-if="active && vmAway"
+                        :tone="vmState === 'moving' ? 'warning' : 'danger'"
+                        :label="vmBadge"
+                        data-test="vm-away"
+                    />
+                    <PowerStateBadge v-else-if="active" :power="power" />
                     <StatusBadge
                         v-if="server.origin === 'adopted'"
                         tone="neutral"
@@ -735,30 +747,13 @@ const restartForChanges = () =>
                     />
                 </div>
             </div>
-            <div class="flex flex-wrap items-center gap-2">
-                <StatusBadge
-                    v-if="active && vmAway"
-                    :tone="vmState === 'moving' ? 'warning' : 'danger'"
-                    :label="vmBadge"
-                    data-test="vm-away"
-                />
-                <PowerControls
-                    v-else-if="active"
-                    :power="power"
-                    :busy="busy"
-                    :action="powerAction"
-                    :hostname="server.hostname"
-                    :can-suspend="!vmBlocked"
-                    @suspend="suspending = true"
-                />
-                <!-- Suspend from the power menu: during an incident it is at hand, not at the bottom of the page. -->
-                <SuspendDialog
-                    v-if="active"
-                    v-model:open="suspending"
-                    :trigger="false"
-                    :action="suspend(server.uuid)"
-                />
-                <Button v-if="active && !vmAway" size="sm" as-child>
+            <!-- The everyday controls; the console leads, so on a phone it is first. -->
+            <div
+                v-if="active && !vmAway"
+                class="flex flex-wrap items-center gap-2"
+                data-test="server-actions"
+            >
+                <Button size="sm" as-child>
                     <a
                         :href="openConsole(server.uuid).url"
                         target="_blank"
@@ -768,7 +763,22 @@ const restartForChanges = () =>
                         {{ $t('Console') }}
                     </a>
                 </Button>
+                <PowerControls
+                    :power="power"
+                    :busy="busy"
+                    :action="powerAction"
+                    :hostname="server.hostname"
+                    :can-suspend="!vmBlocked"
+                    @suspend="suspending = true"
+                />
             </div>
+            <!-- Suspend from the power menu: during an incident it is at hand, not at the bottom of the page. -->
+            <SuspendDialog
+                v-if="active"
+                v-model:open="suspending"
+                :trigger="false"
+                :action="suspend(server.uuid)"
+            />
         </div>
 
         <!-- Why the server is in error and what to do about it, before anything else. -->
