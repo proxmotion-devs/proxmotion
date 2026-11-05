@@ -2778,5 +2778,13 @@
     "A move from or to this node is not finished yet.": "Bu node'dan veya bu node'a yapılan bir taşıma henüz bitmedi.",
     "Node :name removed from the panel. Nothing was changed on Proxmox.": ":name node'u panelden kaldırıldı. Proxmox'ta hiçbir şey değiştirilmedi.",
     "Proxmox no longer reports this node. It is only removed from the panel, with its storages and bridges; nothing is changed on Proxmox. It comes back if Proxmox reports it again.": "Proxmox bu node'u artık raporlamıyor. Node yalnızca panelden, storage'ları ve bridge'leriyle birlikte kaldırılır; Proxmox'ta hiçbir şey değişmez. Proxmox onu yeniden raporlarsa geri gelir.",
-    "Proxmox no longer reports this node, e.g. because it was removed from the cluster. Its storages and bridges are not used. Once no servers are left on it, remove it from the panel.": "Proxmox bu node'u artık raporlamıyor, örneğin cluster'dan çıkarıldığı için. Storage'ları ve bridge'leri kullanılmıyor. Üzerinde sunucu kalmadığında node'u panelden kaldırın."
+    "Proxmox no longer reports this node, e.g. because it was removed from the cluster. Its storages and bridges are not used. Once no servers are left on it, remove it from the panel.": "Proxmox bu node'u artık raporlamıyor, örneğin cluster'dan çıkarıldığı için. Storage'ları ve bridge'leri kullanılmıyor. Üzerinde sunucu kalmadığında node'u panelden kaldırın.",
+    ":name is deleted. No OS template or app uses it.": ":name silinir. Onu kullanan bir OS şablonu ya da uygulama yok.",
+    ":name is deleted and 1 app is no longer offered on it. Adding it back does not tick it again.": ":name silinir ve 1 uygulama artık bu sürümde sunulmaz. Sürümü yeniden eklemek işareti geri getirmez.",
+    ":name is deleted and :count apps are no longer offered on it. Adding it back does not tick them again.": ":name silinir ve :count uygulama artık bu sürümde sunulmaz. Sürümü yeniden eklemek işaretleri geri getirmez.",
+    "Its versions are deleted too, and 1 app is no longer offered on them.": "Sürümleri de silinir ve 1 uygulama artık bu sürümlerde sunulmaz.",
+    "Its versions are deleted too, and :count apps are no longer offered on them.": "Sürümleri de silinir ve :count uygulama artık bu sürümlerde sunulmaz.",
+    "Versions an OS template uses cannot be deleted.": "Bir OS şablonunun kullandığı sürümler silinemez.",
+    "Delete this version?": "Bu sürüm silinsin mi?",
+    "Delete version": "Sürümü sil"
 }

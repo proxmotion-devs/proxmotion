@@ -79,4 +79,29 @@ class OperatingSystemManagementTest extends AdminTestCase
         $this->put(route('admin.apps.systems', $wireguard), ['os_version_ids' => []])->assertSessionHasNoErrors();
         $this->assertSame(0, $wireguard->osVersions()->count());
     }
+
+    public function test_the_page_counts_the_apps_a_deletion_would_untick_and_the_deletion_is_audited()
+    {
+        $this->syncRecipes();
+        $wireguard = AppRecipe::query()->where('slug', 'wireguard')->sole();
+        $docker = AppRecipe::query()->where('slug', 'docker')->sole();
+        $ubuntu = OperatingSystem::query()->create(['name' => 'Ubuntu', 'platform' => 'linux']);
+        $noble = $ubuntu->versions()->create(['version' => '24.04']);
+        $jammy = $ubuntu->versions()->create(['version' => '22.04']);
+        $wireguard->osVersions()->sync([$noble->id, $jammy->id]);
+        $docker->osVersions()->sync([$noble->id]);
+
+        // Two apps on 24.04, one on 22.04, two distinct apps on Ubuntu.
+        $this->get(route('admin.os-templates.index'))->assertInertia(fn ($page) => $page
+            ->where('systems.0.apps', 2)
+            ->where('systems.0.versions', fn ($versions) => collect($versions)->pluck('apps', 'version')->all() === ['24.04' => 2, '22.04' => 1]));
+
+        $this->delete(route('admin.operating-systems.versions.destroy', [$ubuntu, $noble]))->assertSessionHas('inertia.flash_data.toast.type', 'success');
+        $this->assertSame(['docker', 'wireguard'], AuditLog::query()->where('action', 'operating_system.version_deleted')->sole()->properties['apps']);
+        $this->assertSame(0, $docker->osVersions()->count());
+
+        $this->delete(route('admin.operating-systems.destroy', $ubuntu))->assertSessionHas('inertia.flash_data.toast.type', 'success');
+        $entry = AuditLog::query()->where('action', 'operating_system.deleted')->sole();
+        $this->assertSame(['Ubuntu', ['wireguard']], [$entry->properties['name'], $entry->properties['apps']]);
+    }
 }

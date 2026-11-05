@@ -37,7 +37,13 @@ class OsTemplateController extends Controller
             ->orderBy('cluster_id')
             ->orderBy('vmid')
             ->get();
-        $versions = AppSystems::all()->loadCount('osTemplates');
+        $versions = AppSystems::all()->loadCount(['osTemplates', 'apps']);
+        // Apps ticked for any version of a system: what deleting it takes away.
+        $systemApps = DB::table('app_recipe_operating_system_version')
+            ->join('operating_system_versions', 'operating_system_versions.id', '=', 'app_recipe_operating_system_version.operating_system_version_id')
+            ->selectRaw('operating_system_versions.operating_system_id as system_id, count(distinct app_recipe_operating_system_version.app_recipe_id) as apps')
+            ->groupBy('operating_system_versions.operating_system_id')
+            ->pluck('apps', 'system_id');
 
         return Inertia::render('admin/os-templates/Index', [
             'templates' => OsTemplate::query()
@@ -84,10 +90,12 @@ class OsTemplateController extends Controller
                 'id' => $system->id,
                 'name' => $system->name,
                 'platform' => $system->platform->value,
+                'apps' => (int) $systemApps->get($system->id, 0),
                 'versions' => $versions->where('operating_system_id', $system->id)->map(fn (OperatingSystemVersion $version) => [
                     'id' => $version->id,
                     'version' => $version->version,
                     'templates' => (int) $version->getAttribute('os_templates_count'),
+                    'apps' => (int) $version->getAttribute('apps_count'),
                 ])->values(),
             ]),
         ]);

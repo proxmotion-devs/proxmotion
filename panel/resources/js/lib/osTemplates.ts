@@ -12,6 +12,8 @@ export type SystemVersion = {
     version: string;
     /** How many OS templates use it; such a version cannot be deleted. */
     templates: number;
+    /** How many apps are ticked for it; deleting it takes it off them. */
+    apps: number;
 };
 
 /** An operating system with its versions, newest first. */
@@ -19,6 +21,8 @@ export type OperatingSystem = {
     id: number;
     name: string;
     platform: OsPlatform;
+    /** Apps ticked for any of its versions. */
+    apps: number;
     versions: SystemVersion[];
 };
 

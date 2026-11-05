@@ -21,6 +21,8 @@ const props = defineProps<{
     /** Name of the thing being deleted, shown in the question. */
     name: string;
     description?: string;
+    /** Placeholders of the description key, e.g. `{ count }`. */
+    descriptionParams?: Record<string, string>;
     /** Show "Delete" next to the icon (for page headers). */
     withLabel?: boolean;
 }>();
@@ -65,7 +67,12 @@ const confirm = () => {
         <DialogContent>
             <DialogTitle>{{ $t('Delete :name?', { name }) }}</DialogTitle>
             <DialogDescription>
-                {{ $t(description ?? 'This cannot be undone.') }}
+                {{
+                    $t(
+                        description ?? 'This cannot be undone.',
+                        descriptionParams,
+                    )
+                }}
             </DialogDescription>
             <DialogFooter class="gap-2">
                 <DialogClose as-child>

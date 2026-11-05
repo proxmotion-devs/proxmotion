@@ -1,14 +1,17 @@
 <script setup lang="ts">
 import { router, useForm } from '@inertiajs/vue3';
 import { Pencil, Plus, X } from '@lucide/vue';
-import { ref } from 'vue';
+import { trans } from 'laravel-vue-i18n';
+import { computed, ref } from 'vue';
 import ConfirmDelete from '@/components/admin/ConfirmDelete.vue';
+import ConfirmDialog from '@/components/admin/ConfirmDialog.vue';
 import FormDialog from '@/components/admin/FormDialog.vue';
 import FormField from '@/components/admin/FormField.vue';
 import NativeSelect from '@/components/admin/NativeSelect.vue';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import type { OperatingSystem } from '@/lib/osTemplates';
+import { versionLabel } from '@/lib/osTemplates';
+import type { OperatingSystem, SystemVersion } from '@/lib/osTemplates';
 import { destroy, store, update } from '@/routes/admin/operating-systems';
 import {
     destroy as destroyVersion,
@@ -74,10 +77,66 @@ const saveVersion = () => {
     }
 };
 
-const removeVersion = (entry: OperatingSystem, id: number) =>
-    router.visit(destroyVersion({ operatingSystem: entry.id, version: id }), {
-        preserveScroll: true,
-    });
+// Deleting a version also takes it off every app ticked for it, and adding
+// it back does not tick them again, so it is asked first (with the count).
+const removing = ref<{
+    system: OperatingSystem;
+    version: SystemVersion;
+} | null>(null);
+const removingOpen = ref(false);
+
+const askRemoveVersion = (entry: OperatingSystem, item: SystemVersion) => {
+    removing.value = { system: entry, version: item };
+    removingOpen.value = true;
+};
+
+const removeDescription = computed(() => {
+    if (!removing.value) {
+        return '';
+    }
+
+    const { system: entry, version: item } = removing.value;
+    const name = versionLabel(entry, item.version);
+
+    if (item.apps === 0) {
+        return trans(':name is deleted. No OS template or app uses it.', {
+            name,
+        });
+    }
+
+    return item.apps === 1
+        ? trans(
+              ':name is deleted and 1 app is no longer offered on it. Adding it back does not tick it again.',
+              { name },
+          )
+        : trans(
+              ':name is deleted and :count apps are no longer offered on it. Adding it back does not tick them again.',
+              { name, count: String(item.apps) },
+          );
+});
+
+const removeVersion = () => {
+    if (removing.value) {
+        router.visit(
+            destroyVersion({
+                operatingSystem: removing.value.system.id,
+                version: removing.value.version.id,
+            }),
+            { preserveScroll: true },
+        );
+    }
+};
+
+/** What deleting a whole system takes off the apps. */
+const systemDeleteDescription = (entry: OperatingSystem) =>
+    entry.apps === 0
+        ? undefined
+        : entry.apps === 1
+          ? 'Its versions are deleted too, and 1 app is no longer offered on them.'
+          : 'Its versions are deleted too, and :count apps are no longer offered on them.';
+
+const inUse = (entry: OperatingSystem) =>
+    entry.versions.some((item) => item.templates > 0);
 </script>
 
 <template>
@@ -94,6 +153,13 @@ const removeVersion = (entry: OperatingSystem, id: number) =>
                             'Your list: add a system, then its versions. OS templates and apps use these versions.',
                         )
                     }}
+                    <template v-if="systems.some(inUse)">
+                        {{
+                            $t(
+                                'Versions an OS template uses cannot be deleted.',
+                            )
+                        }}
+                    </template>
                 </p>
             </div>
             <Button
@@ -134,31 +200,39 @@ const removeVersion = (entry: OperatingSystem, id: number) =>
                     <span
                         v-for="item in entry.versions"
                         :key="item.id"
-                        class="inline-flex items-center gap-1 rounded-md border bg-muted/40 py-0.5 pr-1 pl-2 text-xs"
+                        class="inline-flex h-8 items-stretch overflow-hidden rounded-md border bg-muted/40 text-sm tabular-nums"
+                        :data-test="`version-${item.id}`"
                     >
-                        {{ item.version }}
+                        <span class="flex items-center px-2.5">{{
+                            item.version
+                        }}</span>
                         <button
                             v-if="item.templates === 0"
                             type="button"
-                            class="rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+                            class="flex w-8 items-center justify-center border-l text-muted-foreground outline-none hover:bg-destructive/10 hover:text-destructive focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:ring-inset"
                             :aria-label="
                                 $t('Delete :name', {
-                                    name: `${entry.name} ${item.version}`,
+                                    name: versionLabel(entry, item.version),
                                 })
                             "
-                            @click="removeVersion(entry, item.id)"
+                            :title="
+                                $t('Delete :name', {
+                                    name: versionLabel(entry, item.version),
+                                })
+                            "
+                            :data-test="`remove-version-${item.id}`"
+                            @click="askRemoveVersion(entry, item)"
                         >
-                            <X class="h-3 w-3" />
+                            <X class="size-4" />
                         </button>
                     </span>
                     <Button
                         variant="ghost"
                         size="sm"
-                        class="h-6 px-2 text-xs"
                         :data-test="`add-version-${entry.id}`"
                         @click="openVersion(entry)"
                     >
-                        <Plus class="h-3 w-3" />
+                        <Plus class="size-4" />
                         {{ $t('Version') }}
                     </Button>
                 </div>
@@ -174,6 +248,8 @@ const removeVersion = (entry: OperatingSystem, id: number) =>
                     <ConfirmDelete
                         :action="destroy(entry.id)"
                         :name="entry.name"
+                        :description="systemDeleteDescription(entry)"
+                        :description-params="{ count: String(entry.apps) }"
                     />
                 </div>
             </li>
@@ -207,6 +283,15 @@ const removeVersion = (entry: OperatingSystem, id: number) =>
             />
         </FormField>
     </FormDialog>
+
+    <ConfirmDialog
+        v-model:open="removingOpen"
+        title="Delete this version?"
+        :description="removeDescription"
+        confirm-label="Delete version"
+        destructive
+        @confirm="removeVersion"
+    />
 
     <FormDialog
         v-model:open="versionOpen"
