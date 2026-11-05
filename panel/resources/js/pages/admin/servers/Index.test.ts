@@ -64,8 +64,12 @@ describe('servers/Index', () => {
         // The primary address only, and the billing service ID.
         expect(row.text()).toContain('203.0.113.5');
         expect(row.text()).not.toContain('2001:db8::5');
+        // How many more it has, so the row does not look like the whole list.
+        expect(row.text()).toContain('+:count more');
         expect(row.text()).toContain('4711');
         expect(row.text()).toContain('pve1');
+        // The table's VMID column is not on screen while the rows are.
+        expect(row.text()).toContain('VMID');
     });
 
     it('shows the power state Proxmox reports once it has loaded', () => {

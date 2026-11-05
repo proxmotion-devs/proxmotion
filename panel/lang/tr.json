@@ -2786,5 +2786,6 @@
     "Its versions are deleted too, and :count apps are no longer offered on them.": "Sürümleri de silinir ve :count uygulama artık bu sürümlerde sunulmaz.",
     "Versions an OS template uses cannot be deleted.": "Bir OS şablonunun kullandığı sürümler silinemez.",
     "Delete this version?": "Bu sürüm silinsin mi?",
-    "Delete version": "Sürümü sil"
+    "Delete version": "Sürümü sil",
+    "+:count more": "+:count tane daha"
 }
