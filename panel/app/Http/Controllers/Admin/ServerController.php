@@ -219,9 +219,11 @@ class ServerController extends Controller
             'selectedOsTemplate' => $osTemplates->firstWhere('uuid', $request->query('os_template'))?->uuid,
             // Apps that can come with the server (docs/adr/0016 §5).
             'apps' => fn () => $orderedApps->for($osTemplates),
-            // Nodes of active clusters with the storages that take VM disks, for choosing the placement by hand.
+            // Nodes of active clusters with the storages that take VM disks, for choosing the placement by hand;
+            // not those Proxmox no longer reports (docs/adr/0057).
             'nodes' => fn () => Node::query()
                 ->whereHas('cluster', fn ($query) => $query->where('is_active', true))
+                ->where('status', '!=', NodeStatus::Unknown)
                 ->with(['cluster.location:id,uuid', 'placementGroups:id,uuid', 'storages' => fn ($query) => $query->where('is_available', true)->orderBy('name')])
                 ->orderBy('name')
                 ->get()

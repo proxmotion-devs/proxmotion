@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Admin;
 
+use App\Enums\NodeStatus;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\PlacementGroupRequest;
 use App\Models\Location;
@@ -41,7 +42,9 @@ class PlacementGroupController extends Controller
                 ]),
             'locations' => Location::query()->orderBy('name')->get(['uuid', 'name'])
                 ->map(fn (Location $location) => ['value' => $location->uuid, 'label' => $location->name]),
+            // Not nodes Proxmox no longer reports, unless a group still has them (docs/adr/0057).
             'nodes' => fn () => Node::query()
+                ->where(fn ($query) => $query->where('status', '!=', NodeStatus::Unknown)->orWhereHas('placementGroups'))
                 ->with(['cluster:id,name,location_id', 'cluster.location:id,uuid', 'storages' => fn ($query) => $query->orderBy('name')])
                 ->orderBy('name')
                 ->get()

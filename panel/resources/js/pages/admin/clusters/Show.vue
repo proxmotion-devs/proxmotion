@@ -27,7 +27,10 @@ import { usePendingVisit } from '@/lib/pendingVisit';
 import type { OptionalNumber } from '@/lib/forms';
 import { healthLabel, healthTone } from '@/lib/storageHealth';
 import { destroy, index, permissions, show } from '@/routes/admin/clusters';
-import { update as updateNode } from '@/routes/admin/nodes';
+import {
+    destroy as destroyNode,
+    update as updateNode,
+} from '@/routes/admin/nodes';
 import { update as updateStorage } from '@/routes/admin/storages';
 import type {
     Cluster,
@@ -373,11 +376,31 @@ const cephLabel = (health: string) =>
                             label="Maintenance"
                         />
                     </div>
-                    <Button variant="outline" size="sm" @click="editNode(node)">
-                        <Pencil class="h-4 w-4" />
-                        {{ $t('Placement settings') }}
-                    </Button>
+                    <div class="flex flex-wrap items-center gap-2">
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            @click="editNode(node)"
+                        >
+                            <Pencil class="h-4 w-4" />
+                            {{ $t('Placement settings') }}
+                        </Button>
+                        <!-- Only nodes Proxmox no longer reports (docs/adr/0057). -->
+                        <ConfirmDelete
+                            v-if="node.status === 'unknown'"
+                            :action="destroyNode(node.uuid)"
+                            :name="node.name"
+                            description="Proxmox no longer reports this node. It is only removed from the panel, with its storages and bridges; nothing is changed on Proxmox. It comes back if Proxmox reports it again."
+                        />
+                    </div>
                 </div>
+                <Notice v-if="node.status === 'unknown'">
+                    {{
+                        $t(
+                            'Proxmox no longer reports this node, e.g. because it was removed from the cluster. Its storages and bridges are not used. Once no servers are left on it, remove it from the panel.',
+                        )
+                    }}
+                </Notice>
 
                 <dl class="grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
                     <div>

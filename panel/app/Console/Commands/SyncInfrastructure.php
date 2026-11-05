@@ -10,6 +10,7 @@ use App\Proxmox\Exceptions\ProxmoxException;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
+use Throwable;
 
 #[Signature('infra:sync {cluster? : UUID of a single cluster to sync}')]
 #[Description('Sync nodes, storages, bridges and templates from Proxmox')]
@@ -31,6 +32,11 @@ class SyncInfrastructure extends Command
                 $synchronizer->sync($cluster);
                 $this->components->info("Synced {$cluster->name}.");
             } catch (ProxmoxException $e) {
+                $failed = true;
+                $this->components->error("{$cluster->name}: {$e->getMessage()}");
+            } catch (Throwable $e) {
+                // A bug or an answer shaped unlike expected must not keep the other clusters from syncing.
+                report($e);
                 $failed = true;
                 $this->components->error("{$cluster->name}: {$e->getMessage()}");
             }

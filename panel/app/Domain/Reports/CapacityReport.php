@@ -73,8 +73,10 @@ final class CapacityReport implements Report
             $row = $booked->get($node->id);
             $cpu = (int) ($row->cpu ?? 0);
             $memory = (int) ($row->memory ?? 0);
-            $cpuCapacity = $node->cpu_cores === null ? null : round($node->cpu_cores * (float) $node->cpu_overcommit, 2);
-            $memoryCapacity = $node->memory_bytes === null
+            // A node Proxmox no longer reports offers nothing, whatever it last had (docs/adr/0057).
+            $reported = $node->status !== NodeStatus::Unknown;
+            $cpuCapacity = ! $reported || $node->cpu_cores === null ? null : round($node->cpu_cores * (float) $node->cpu_overcommit, 2);
+            $memoryCapacity = ! $reported || $node->memory_bytes === null
                 ? null
                 : (int) floor(intdiv($node->memory_bytes, 1024 ** 2) * (float) $node->memory_overcommit);
 
@@ -168,6 +170,12 @@ final class CapacityReport implements Report
 
             foreach ($members as ['node' => $node, 'storage' => $storage]) {
                 $booked += (int) ($bookedByStorage[$storage->id] ?? 0);
+
+                // Storages of nodes Proxmox no longer reports only show what is still booked there.
+                if ($node->status === NodeStatus::Unknown) {
+                    continue;
+                }
+
                 $offered = $offered || ($storage->use_for_servers && $storage->supportsVmDisks());
                 $overcommit = min($overcommit ?? PHP_FLOAT_MAX, (float) $node->disk_overcommit);
                 $sized ??= $storage->total_bytes === null ? null : $storage;

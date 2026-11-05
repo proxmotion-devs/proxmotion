@@ -2772,5 +2772,11 @@
     "Suspend…": "Askıya al…",
     "App editor sections": "Uygulama düzenleyicisi bölümleri",
     "The server is rolled back to its trial base snapshot, or reinstalled from its template when it has none. Everything written since is lost and every app installed since is removed. IP addresses and SSH keys stay.": "Sunucu trial base snapshot'ına geri döndürülür, yoksa şablonundan yeniden kurulur. O zamandan beri yazılan her şey kaybolur ve o zamandan beri kurulan her uygulama kaldırılır. IP adresleri ve SSH anahtarları kalır.",
-    "A move of this server has not finished: its VM is no longer on :node. If the move failed, Finish the move completes it.": "Bu sunucunun taşınması bitmedi: VM'i artık :node üzerinde değil. Taşıma başarısız olduysa Taşımayı tamamla onu bitirir."
+    "A move of this server has not finished: its VM is no longer on :node. If the move failed, Finish the move completes it.": "Bu sunucunun taşınması bitmedi: VM'i artık :node üzerinde değil. Taşıma başarısız olduysa Taşımayı tamamla onu bitirir.",
+    "Proxmox still reports this node. Remove it from the cluster in Proxmox first.": "Proxmox bu node'u hâlâ raporluyor. Önce Proxmox'ta node'u cluster'dan çıkarın.",
+    ":count servers are still on this node. Move or terminate them first.": "Bu node'da hâlâ :count sunucu var. Önce onları taşıyın veya sonlandırın.",
+    "A move from or to this node is not finished yet.": "Bu node'dan veya bu node'a yapılan bir taşıma henüz bitmedi.",
+    "Node :name removed from the panel. Nothing was changed on Proxmox.": ":name node'u panelden kaldırıldı. Proxmox'ta hiçbir şey değiştirilmedi.",
+    "Proxmox no longer reports this node. It is only removed from the panel, with its storages and bridges; nothing is changed on Proxmox. It comes back if Proxmox reports it again.": "Proxmox bu node'u artık raporlamıyor. Node yalnızca panelden, storage'ları ve bridge'leriyle birlikte kaldırılır; Proxmox'ta hiçbir şey değişmez. Proxmox onu yeniden raporlarsa geri gelir.",
+    "Proxmox no longer reports this node, e.g. because it was removed from the cluster. Its storages and bridges are not used. Once no servers are left on it, remove it from the panel.": "Proxmox bu node'u artık raporlamıyor, örneğin cluster'dan çıkarıldığı için. Storage'ları ve bridge'leri kullanılmıyor. Üzerinde sunucu kalmadığında node'u panelden kaldırın."
 }

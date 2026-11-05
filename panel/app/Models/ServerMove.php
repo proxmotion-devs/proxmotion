@@ -152,7 +152,8 @@ class ServerMove extends Model
      */
     public function sourceNode(): BelongsTo
     {
-        return $this->belongsTo(Node::class, 'source_node_id');
+        // Also a node removed from the panel since (docs/adr/0057).
+        return $this->belongsTo(Node::class, 'source_node_id')->withTrashed();
     }
 
     /**
@@ -184,7 +185,8 @@ class ServerMove extends Model
      */
     public function targetNode(): BelongsTo
     {
-        return $this->belongsTo(Node::class, 'target_node_id');
+        // Also a node removed from the panel since (docs/adr/0057).
+        return $this->belongsTo(Node::class, 'target_node_id')->withTrashed();
     }
 
     /**

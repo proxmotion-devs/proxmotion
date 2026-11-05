@@ -182,7 +182,8 @@ class Server extends Model
      */
     public function node(): BelongsTo
     {
-        return $this->belongsTo(Node::class);
+        // Also a node removed from the panel, which only terminated servers point at (docs/adr/0057).
+        return $this->belongsTo(Node::class)->withTrashed();
     }
 
     /**

@@ -92,6 +92,7 @@ Route::post('clusters/{cluster}/permissions', [ClusterController::class, 'checkP
 Route::put('clusters/{cluster}/incoming', [ClusterController::class, 'updateIncoming'])->middleware('throttle:10,1')->name('clusters.incoming');
 Route::post('clusters/{cluster}/incoming/permissions', [ClusterController::class, 'checkIncomingPermissions'])->name('clusters.incoming.permissions');
 Route::patch('nodes/{node}', [NodeController::class, 'update'])->name('nodes.update');
+Route::delete('nodes/{node}', [NodeController::class, 'destroy'])->name('nodes.destroy');
 Route::patch('storages/{storage}', [StorageController::class, 'update'])->name('storages.update');
 Route::delete('node-disks/{disk}', [NodeDiskController::class, 'destroy'])->name('node-disks.destroy');
 
